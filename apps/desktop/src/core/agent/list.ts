@@ -14,6 +14,7 @@ import { type AgentProbe, storedProbe } from "./probe";
 import {
   type AgentInfo,
   type AgentSettings,
+  agentDisabled,
   customInfo,
   detect,
   resolveCommand,
@@ -76,6 +77,8 @@ export interface AgentListRow extends AgentInfo {
    * 不带这个键。
    */
   readonly acp?: AgentAcpInfo;
+  /** 用户在设置里关掉了这家（契约 §97）；只在为真时出现。 */
+  readonly disabled?: true;
 }
 
 /** `GET /api/agents` 行的 `acp`（契约 §14.1）。 */
@@ -103,6 +106,7 @@ export function listAgents(options: ListAgentsOptions): AgentListRow[] {
       ...withIntegration(row, options),
       history: availabilityOf(row.id, options.settings, options.env),
       ...(acp === undefined ? {} : { acp }),
+      ...(agentDisabled(options.settings, row.id) ? { disabled: true } : {}),
     };
   });
 }

@@ -10,7 +10,12 @@ import {
   launchCommand,
   supportedPermissionModes,
 } from "../../agent/launch";
-import { baseAgent, validAgentId } from "../../agent/registry";
+import {
+  agentDisabled,
+  availableAgentIds,
+  baseAgent,
+  validAgentId,
+} from "../../agent/registry";
 import { getAgentStatus } from "../../agent/status";
 import type {
   BoardDocument,
@@ -234,7 +239,11 @@ export async function openAgent(
   caller: Caller,
   args: Args,
 ): Promise<Outcome> {
-  const agentId = requireAgent(args.text("agent"), "open-agent 需要 --agent");
+  const agentId = requireAgent(
+    context,
+    args.text("agent"),
+    "open-agent 需要 --agent",
+  );
   const worktreeSpec =
     args.text("worktree") === undefined
       ? undefined
@@ -596,17 +605,33 @@ function reusedTask(context: CollabContext, run: TaskRun): Outcome | undefined {
   );
 }
 
-const AGENT_CHOICES = "claude / codex / opencode / pi / omp / copilot";
+/**
+ * 给 Agent 看的「可用 agent」：内置的与自定义的，去掉用户在设置里关掉的
+ * （契约 §97）。报错里的名单与 `canvas help` 的 `agents` 是同一份。
+ */
+function agentChoices(context: CollabContext): string {
+  return availableAgentIds(context.settings).join(" / ");
+}
 
-function requireAgent(agentId: string | undefined, missing: string): string {
+function requireAgent(
+  context: CollabContext,
+  agentId: string | undefined,
+  missing: string,
+): string {
   if (agentId === undefined) {
-    throw Refusal.badRequest(
-      `${missing} claude|codex|opencode|pi|omp|copilot。`,
-    );
+    throw Refusal.badRequest(`${missing} ${agentChoices(context)}。`);
   }
   if (!validAgentId(agentId)) {
     throw Refusal.badRequest(
-      `不认识的 agent \`${agentId}\`；可用：${AGENT_CHOICES}。`,
+      `不认识的 agent \`${agentId}\`；可用：${agentChoices(context)}。`,
+    );
+  }
+  // 关掉只拦**派发**：已有节点照常工作，只是不能再替用户建新的。
+  if (agentDisabled(context.settings, agentId)) {
+    throw new Refused(
+      403,
+      "AGENT_DISABLED",
+      `agent \`${agentId}\` 已被用户在设置里关闭，不能派发；可用：${agentChoices(context)}。`,
     );
   }
   return agentId;
@@ -647,7 +672,11 @@ function roleOption(segment: string): RoleOption | undefined {
  * 段才当成选项摘下来（没有任务时写成 `agent|标题||cwd=src`）。标题缺省为
  * agent 名，任务可以没有。
  */
-function parseRole(raw: string, flag: string): TeamRole {
+function parseRole(
+  context: CollabContext,
+  raw: string,
+  flag: string,
+): TeamRole {
   const parts = raw.split("|");
   const options: Partial<Record<RoleOption, string>> = {};
   for (;;) {
@@ -677,6 +706,7 @@ function parseRole(raw: string, flag: string): TeamRole {
   const at = head.indexOf("@");
   const agentPart = (at < 0 ? head : head.slice(0, at)).trim();
   const agentId = requireAgent(
+    context,
     agentPart === "" ? undefined : agentPart,
     `${flag} 的第一段是 agent：`,
   );
@@ -770,10 +800,12 @@ export async function team(
   if (specs.length > MAX_TEAM_MEMBERS) {
     throw Refusal.badRequest(`一次最多组 ${MAX_TEAM_MEMBERS} 个成员。`);
   }
-  const members = specs.map((spec) => parseRole(spec, "--member"));
+  const members = specs.map((spec) => parseRole(context, spec, "--member"));
   const gatherSpec = args.text("gather");
   const gather =
-    gatherSpec === undefined ? undefined : parseRole(gatherSpec, "--gather");
+    gatherSpec === undefined
+      ? undefined
+      : parseRole(context, gatherSpec, "--gather");
   const roster = gather === undefined ? members : [...members, gather];
   const chain = args.flag("chain");
   const after = args.list("after");

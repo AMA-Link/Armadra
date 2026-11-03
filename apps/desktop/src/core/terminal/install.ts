@@ -47,7 +47,7 @@ import { installRoutes as installCredentialRoutes } from "../agent/credentials/r
 import { type SecretBackend, secretsFor } from "../secrets";
 import { listAgents } from "../agent/list";
 import { baseAgent } from "../agent/registry";
-import { parseCustomAgents } from "../settings/custom-agents";
+import { liveAgentSettings } from "../settings/custom-agents";
 import {
   HIBERNATE_INTERVAL_MS,
   ecoPolicy,
@@ -333,10 +333,8 @@ export function install(
   // delivery gate would wait for a status that never comes.
   // 自定义 Agent 的注册表每次现读：设置里刚加的条目下一次启动就认得。
   const agentSettings = () =>
-    collab()?.settings ?? {
-      customAgents: () =>
-        parseCustomAgents(settingsDomain()?.settings.snapshot() ?? {}),
-    };
+    collab()?.settings ??
+    liveAgentSettings(() => settingsDomain()?.settings.snapshot() ?? {});
   // `ssh`：这个终端是 SSH 会话——本机的垫片目录在执行主机上不存在，那边的
   // `PATH` 由远端 shell 命令前置远端的垫片（`remote/integration.ts`）。
   // 节点凭据（契约 §20）：校验在起终端之前；环境里只有条目名，值由画布启动器

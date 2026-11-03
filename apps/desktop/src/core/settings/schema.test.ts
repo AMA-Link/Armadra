@@ -17,6 +17,7 @@ import {
   validEnvKey,
 } from "./custom-agents";
 import type { JsonObject, JsonValue } from "./local";
+import { parseDisabledAgents } from "./custom-agents";
 import { normalize } from "./schema";
 import { parseHosts, validateHost } from "./ssh-hosts";
 
@@ -532,5 +533,35 @@ describe("host.name (contract §61)", () => {
     expect(
       object(normalize({ host: { name: "x".repeat(129), other: 1 } }).host),
     ).toEqual({ other: 1 });
+  });
+});
+
+describe("agents.disabled (contract §97)", () => {
+  const disabled = (document: JsonObject) =>
+    object(normalize(document).agents).disabled;
+
+  it("keeps valid, distinct ids in order and drops everything else", () => {
+    expect(
+      disabled({
+        agents: {
+          disabled: ["codex", "codex", "custom:mine", "gemini", 3, "custom:"],
+        },
+      }),
+    ).toEqual(["codex", "custom:mine"]);
+  });
+
+  it("removes the key when nothing valid is left, and never creates the section", () => {
+    expect(disabled({ agents: { disabled: ["gemini"] } })).toBeUndefined();
+    expect(disabled({ agents: { disabled: "codex" } })).toBeUndefined();
+    expect(normalize({}).agents).toBeUndefined();
+  });
+
+  it("is read by parseDisabledAgents and survives next to the custom list", () => {
+    const document = normalize({
+      agents: { disabled: ["pi"], defaultDriver: "terminal" },
+    });
+    expect(parseDisabledAgents(document)).toEqual(["pi"]);
+    expect(object(document.agents).defaultDriver).toBe("terminal");
+    expect(parseDisabledAgents({})).toEqual([]);
   });
 });

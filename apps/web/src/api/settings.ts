@@ -97,7 +97,11 @@ export const runtimeSettingsSchema = z.looseObject({
    * 整份设置解析失败，坏条目丢掉即可——和 `ssh.hosts` 同样的处理。
    */
   agents: z
-    .looseObject({ custom: z.array(customAgentSchema).catch([]).default([]) })
+    .looseObject({
+      custom: z.array(customAgentSchema).catch([]).default([]),
+      /** 关掉的 Agent id（契约 §97）；页面的 `agentModes` 镜像到这里。 */
+      disabled: z.array(z.string()).optional().catch(undefined),
+    })
     .optional(),
   /** Hook 直答（§5.5）：权限请求直接由 Runtime 回，不弹节点头部按钮。 */
   hooks: z.looseObject({ replyApprovals: z.boolean().optional() }).optional(),
@@ -265,7 +269,12 @@ export interface RuntimeSettingsPatch {
   /** 数组是整段替换（Runtime 的 merge 只对对象递归），删主机就是发新数组。 */
   ssh?: { hosts: SshHost[] };
   /** `defaultDriver`：新建 Agent 节点缺省走会话视图还是终端（ACP 设计 §8）。 */
-  agents?: { custom?: CustomAgent[]; defaultDriver?: AgentDriver };
+  agents?: {
+    custom?: CustomAgent[];
+    defaultDriver?: AgentDriver;
+    /** 关掉的 Agent id，整组替换（契约 §97）；空数组 = 一个都没关。 */
+    disabled?: string[] | null;
+  };
   hooks?: { replyApprovals?: boolean };
   watchdog?: { stalledMinutes?: number; needsHumanMinutes?: number };
   /** 派发树往哪个方向长（契约 §50）；整理与 core 的放置都按它。 */

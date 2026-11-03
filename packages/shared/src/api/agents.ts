@@ -107,6 +107,12 @@ export const agentInfoSchema = z.object({
    * §14.1). Absent from a core without ACP, and for an agent without a path.
    */
   acp: agentAcpInfoSchema.optional(),
+  /**
+   * 用户在设置里关掉了这家（`settings.agents.disabled`，契约 §97）。只在为
+   * `true` 时出现。清单仍然列它——设置页要靠这一行把它开回来——但 core 不再把
+   * 它列给 Agent、也不再替 Agent 建它的节点；已有节点不受影响。
+   */
+  disabled: z.boolean().optional(),
 });
 
 export const agentListSchema = z.array(agentInfoSchema);

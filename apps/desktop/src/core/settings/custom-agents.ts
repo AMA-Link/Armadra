@@ -245,6 +245,45 @@ export function customAgentToJson(agent: CustomAgent): JsonObject {
 }
 
 /**
+ * `settings.agents.disabled[]` —— 用户在设置里关掉的 Agent（契约 §97）。
+ *
+ * 页面把「关」的那几家同步到这里，core 据此不再把它们列给 Agent、也不再替
+ * Agent 建它们的节点。只收合法的 id（内置或 `custom:`），去重，最多
+ * {@link MAX_DISABLED_AGENTS} 个；不是数组、不是字符串的条目一律当没写。
+ */
+export function parseDisabledAgents(document: JsonValue): string[] {
+  if (!isJsonObject(document)) return [];
+  const section = document.agents;
+  if (!isJsonObject(section)) return [];
+  const list = section.disabled;
+  if (!Array.isArray(list)) return [];
+  const ids: string[] = [];
+  for (const raw of list) {
+    if (ids.length >= MAX_DISABLED_AGENTS) break;
+    if (typeof raw !== "string" || !validAgentId(raw)) continue;
+    if (!ids.includes(raw)) ids.push(raw);
+  }
+  return ids;
+}
+
+/**
+ * 每次现读的 Agent 设置：自定义条目与关掉的 Agent 都按设置文档此刻的样子给，
+ * 不留快照——刚改的下一次调用就认。
+ */
+export function liveAgentSettings(snapshot: () => JsonValue): {
+  customAgents(): CustomAgent[];
+  disabledAgents(): string[];
+} {
+  return {
+    customAgents: () => parseCustomAgents(snapshot()),
+    disabledAgents: () => parseDisabledAgents(snapshot()),
+  };
+}
+
+/** 内置 7 家加自定义 64 个，是「全关」的上界。 */
+export const MAX_DISABLED_AGENTS = BUILTIN_AGENT_IDS.length + MAX_CUSTOM_AGENTS;
+
+/**
  * The section is only written when it already exists, so a settings file that
  * never had a custom agent does not grow an empty one.
  */
@@ -254,5 +293,11 @@ export function normalizeCustomAgents(document: JsonObject): void {
   const existing = document.agents;
   const section: JsonObject = isJsonObject(existing) ? clone(existing) : {};
   section.custom = agents.map(customAgentToJson);
+  // `disabled` 只在写过时才有；清洗后空了就删掉键，回到「没关过」。
+  if ("disabled" in section) {
+    const disabled = parseDisabledAgents({ agents: section });
+    if (disabled.length === 0) delete section.disabled;
+    else section.disabled = disabled;
+  }
   document.agents = section;
 }
