@@ -259,8 +259,14 @@ describe("PromptBox", () => {
   it("shows context usage and turns to the warning colour near the limit", () => {
     renderBox({ usage: { used: 12_300, size: 200_000 } });
     const usage = document.querySelector("[data-slot=acp-usage]")!;
-    // 数字按界面语言紧凑写（中文是「万」）。
-    expect(usage.textContent).toBe("1.2万 / 20万");
+    // 数字按界面语言紧凑写（中文是「万」）。宽窄两种写法都在，操作行的容器
+    // 宽度决定显示哪一种（#768）。
+    expect(usage.querySelector("[data-slot=acp-usage-wide]")?.textContent).toBe(
+      "1.2万 / 20万",
+    );
+    expect(
+      usage.querySelector("[data-slot=acp-usage-short]")?.textContent,
+    ).toBe("6%");
     expect(usage.getAttribute("data-warn")).toBeNull();
     cleanup();
     renderBox({ usage: { used: 190, size: 200 } });
@@ -409,6 +415,50 @@ describe("PromptBox", () => {
       expect(screen.queryByRole("button", { name: "更多" })).toBeNull();
     });
 
+    it("draws each option as its own control: Label · value, and a toggle chip (#768)", () => {
+      const COLLAB = {
+        id: "collaboration_mode",
+        name: "Collaboration mode",
+        type: "select" as const,
+        currentValue: "default",
+        options: [
+          { value: "default", name: "Default" },
+          { value: "plan", name: "Plan" },
+        ],
+      };
+      const FAST = {
+        id: "fast_mode",
+        name: "Fast mode",
+        type: "boolean" as const,
+        currentValue: false,
+        options: [],
+      };
+      renderBox({ configOptions: [COLLAB, FAST], onConfig });
+      const select = document.querySelector<HTMLElement>(
+        "[data-slot=acp-config-select]",
+      )!;
+      const parts = [...select.children].map((child) => child.textContent);
+      // 项名、分隔点、值各占一段，值不会被项名挤没。
+      expect(parts.slice(0, 3)).toEqual(["Collaboration mode", "·", "Default"]);
+      expect(select.getAttribute("title")).toBe("Collaboration mode · Default");
+      expect(select.className).toContain("shrink-0");
+      expect(
+        select.querySelector("[data-slot=acp-config-label]")?.className,
+      ).toContain("truncate");
+      const toggle = screen.getByRole("button", { name: "Fast mode" });
+      expect(toggle.dataset.slot).toBe("acp-config-toggle");
+      expect(toggle.getAttribute("title")).toBe("Fast mode");
+      // 切换胶囊有边框，与相邻的下拉分得开；控件之间有间隔，选择器放不下时换行。
+      expect(toggle.className).toContain("border");
+      expect(toggle.className).toContain("shrink-0");
+      const pickers = document.querySelector<HTMLElement>(
+        "[data-slot=acp-composer-pickers]",
+      )!;
+      expect(pickers.className).toContain("gap-1");
+      expect(pickers.dataset.wrap).toBe("true");
+      expect(pickers.className).toContain("flex-wrap");
+    });
+
     it("keeps everything on the action row on a narrow screen too", () => {
       const restore = narrowViewport();
       try {
@@ -467,7 +517,9 @@ describe("PromptBox", () => {
     // 溢出与零总量不画成 NaN。
     renderBox({ usage: { used: 500, size: 100 } });
     expect(cells()).toHaveLength(20);
-    expect(trigger().textContent).toBe("500 / 100");
+    expect(
+      trigger().querySelector("[data-slot=acp-usage-wide]")?.textContent,
+    ).toBe("500 / 100");
   });
 
   it("opens the context popover: big number, remaining, cost, percent", async () => {

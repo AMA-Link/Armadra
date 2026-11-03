@@ -459,3 +459,125 @@ export const ACP_ELICITATION_URL: AcpElicitationView = {
     url: "https://example.com/authorize",
   },
 };
+
+/**
+ * 以 ACP 驱动的 Codex 调 MCP 工具（#768）：Armadra 自己的读终端、等成员（core 按
+ * 来源放行，没有审批卡），以及一条别家 MCP 服务器的工具——它照常要人答，卡片是
+ * Codex 式的四个选项（「本会话」与「始终」两种 `allow_always`）。`mcp` 字段是
+ * 时间线从适配器的结构化字段推出来的；标题仍是 Agent 给的原始 id，页面不显示它。
+ */
+export const ACP_MCP_ITEMS: TimelineItem[] = (() => {
+  resetFixtureCounter();
+  return [
+    userItem(3, "等 reviewer 回话，先看看 builder 的终端"),
+    toolItem(3, "m1", {
+      title: "mcp.armadra.context_terminal",
+      toolKind: "execute",
+      mcp: { server: "armadra", tool: "context_terminal" },
+      startedAt: 1_760_000_000_000,
+      endedAt: 1_760_000_000_004,
+      input: {
+        fields: [
+          { key: "node", value: "builder" },
+          { key: "n", value: "40" },
+        ],
+      },
+    }),
+    thoughtItem(3, "终端里测试还在跑。"),
+    assistantItem(3, "builder 的测试还在跑，我先等 reviewer，顺便查一下笔记。"),
+    toolItem(3, "m2", {
+      title: "mcp.armadra.canvas_wait",
+      toolKind: "execute",
+      mcp: { server: "armadra", tool: "canvas_wait" },
+      status: "in_progress",
+      endedAt: undefined,
+      input: { fields: [{ key: "task-id", value: "review-1" }] },
+    }),
+    toolItem(3, "m3", {
+      title: "mcp.notes.search_notes",
+      toolKind: "execute",
+      mcp: { server: "notes", tool: "search_notes" },
+      status: "pending",
+      endedAt: undefined,
+      input: { query: "release checklist" },
+    }),
+    {
+      id: "ap:mcp",
+      kind: "approval",
+      turn: 3,
+      ord: 900,
+      rev: 900,
+      source: "acp",
+      at: 1_760_000_100_000,
+      gen: 1,
+      pendingId: "p-mcp",
+      protocol: "acp",
+      toolCallId: "m3",
+      options: [
+        { optionId: "allow_once", name: "Allow", kind: "allow_once" },
+        {
+          optionId: "allow_session",
+          name: "Allow for this session",
+          kind: "allow_always",
+        },
+        {
+          optionId: "allow_always",
+          name: "Always allow",
+          kind: "allow_always",
+        },
+        { optionId: "cancel", name: "Cancel", kind: "reject_once" },
+      ],
+      state: "pending",
+    },
+  ];
+})();
+
+/** Codex 的操作行：长名字的模式、模型 · 强度、一个 select 与一个 boolean 配置项。 */
+export const ACP_MCP_MODES: AcpModeState = {
+  currentModeId: "auto",
+  availableModes: [
+    { id: "read-only", name: "Read only" },
+    { id: "auto", name: "Workspace write" },
+    { id: "full-access", name: "Full access" },
+  ],
+};
+
+export const ACP_MCP_MODELS: AcpModelState = {
+  currentModelId: "gpt-6-astra",
+  availableModels: [
+    { modelId: "gpt-6-astra", name: "GPT-6 Astra" },
+    { modelId: "gpt-6-mini", name: "GPT-6 Mini" },
+  ],
+};
+
+export const ACP_MCP_CONFIG: TimelineConfigOption[] = [
+  {
+    id: "reasoning_effort",
+    name: "Reasoning effort",
+    category: "thought_level",
+    type: "select",
+    currentValue: "medium",
+    options: [
+      { value: "low", name: "Low" },
+      { value: "medium", name: "Medium" },
+      { value: "high", name: "High" },
+    ],
+  },
+  {
+    id: "collaboration_mode",
+    name: "Collaboration mode",
+    type: "select",
+    currentValue: "default",
+    options: [
+      { value: "default", name: "Default" },
+      { value: "plan", name: "Plan" },
+    ],
+  },
+  {
+    id: "fast_mode",
+    name: "Fast mode",
+    type: "boolean",
+    currentValue: false,
+    options: [],
+  },
+];

@@ -141,15 +141,29 @@ function Usage({
             </span>
           ) : (
             <>
-              <Progress
-                variant="ticks"
-                tone={tone}
-                value={percent}
+              {/* 操作行够宽才画刻度与「已用 / 总量」；节点窄时只剩百分比，把宽度让给选择器。 */}
+              <span
+                data-slot="acp-usage-wide"
+                className="hidden items-center gap-2 @2xl/composer:flex"
+              >
+                <Progress
+                  variant="ticks"
+                  tone={tone}
+                  value={percent}
+                  aria-hidden
+                  className="w-12"
+                />
+                <span data-numeric className="font-mono text-caption">
+                  {t("acp.usage", values)}
+                </span>
+              </span>
+              <span
+                data-slot="acp-usage-short"
+                data-numeric
                 aria-hidden
-                className="w-12"
-              />
-              <span data-numeric className="font-mono text-caption">
-                {t("acp.usage", values)}
+                className="font-mono text-caption @2xl/composer:hidden"
+              >
+                {percent}%
               </span>
             </>
           )}
@@ -482,7 +496,7 @@ export function PromptBox({
         />
         <div
           data-slot="acp-composer-actions"
-          className="flex min-w-0 items-center gap-1 px-1 pb-1"
+          className="@container/composer flex min-w-0 items-end gap-1 px-1 pb-1"
         >
           {attachable && (
             <>
@@ -509,10 +523,19 @@ export function PromptBox({
               </Button>
             </>
           )}
-          {/* 选择器一行摆开；放不下时这一段横向滚动，用量与发送始终在右侧。 */}
+          {/*
+            选择器各自成控件。宽屏放不下时折到下一行（节点只有四五百宽时也看得全，
+            不会挤成一串连读的字，#768）；窄屏一行横向滚动。用量与发送始终在右侧。
+          */}
           <div
             data-slot="acp-composer-pickers"
-            className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]"
+            data-wrap={compact ? undefined : true}
+            className={cn(
+              "flex min-w-0 flex-1 items-center gap-1",
+              compact
+                ? "overflow-x-auto [scrollbar-width:none]"
+                : "flex-wrap gap-y-0.5",
+            )}
           >
             {modeChoice && (
               <ModePicker
