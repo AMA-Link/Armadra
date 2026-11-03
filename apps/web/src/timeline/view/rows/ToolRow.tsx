@@ -24,6 +24,7 @@ import type {
 import { TOOL_STATUS_TONES } from "@/agent/display";
 import { useT } from "@/app/preferences-store";
 import { DiffCounts, diffStat } from "@/acp/DiffBlock";
+import { mcpToolDisplay } from "@/acp/mcp-tools";
 import { basename } from "@/files/file-operations";
 import { cn } from "@/lib/cn";
 import { Button } from "@/ui/button";
@@ -187,7 +188,9 @@ function ToolRowImpl({
   const [manual, setManual] = React.useState<boolean | null>(null);
   const open = manual ?? nestedPending;
   const setOpen = setManual;
-  const Icon = KIND_ICONS[item.toolKind];
+  // MCP 调用按来源（`item.mcp`）换成本地化的名字与图标，不显示 `mcp.<服务器>.<工具>`。
+  const mcp = mcpToolDisplay(item.mcp, t);
+  const Icon = mcp?.Icon ?? KIND_ICONS[item.toolKind];
   const running = item.status === "in_progress" || item.status === "pending";
   const stat = React.useMemo(() => toolDiffStat(item.content), [item.content]);
   const shown = item.locations.slice(0, MAX_LOCATIONS);
@@ -226,7 +229,7 @@ function ToolRowImpl({
     (item.status === "failed" && !rejected) ||
     item.status === "cancelled";
   // 标题里已经写了文件的，不再重复文件名；有行号的仍留一枚「:行号」，行号不在标题里。
-  const title = item.title;
+  const title = mcp?.title ?? item.title;
   const chips = shown.flatMap((location) => {
     const name = basename(location.path) || location.path;
     if (!titleMentionsPath(title, location.path))
@@ -258,7 +261,7 @@ function ToolRowImpl({
               active={item.status === "in_progress"}
               className={cn(
                 "min-w-0 truncate text-meta",
-                item.toolKind === "execute" && "font-mono",
+                item.toolKind === "execute" && mcp === null && "font-mono",
               )}
             >
               {title}

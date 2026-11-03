@@ -415,20 +415,22 @@ describe("PermissionCard", () => {
       expect(hasDuplicateKinds(many.options)).toBe(true);
     });
 
-    it("lists every option by name, one-time before always, without a segment", () => {
+    it("lists every option, one-time before always, without a segment", () => {
       render(<PermissionCard permission={many} canAnswer pinned />);
       expect(screen.queryByRole("tab")).toBeNull();
+      // 按 kind 用我们的说法；两个 `allow_once` 撞了字，才退回 Agent 自己的名字。
       expect(
         actionButtons().map((button) => [
           button.dataset.optionId,
           button.textContent,
+          button.getAttribute("title"),
         ]),
       ).toEqual([
-        ["o1", "Allow this once↵"],
-        ["o2", "Allow and edit"],
-        ["p1", "Allow in /repo"],
-        ["no", "NoEsc"],
-        ["never", "Never"],
+        ["o1", "Allow this once↵", "Allow this once"],
+        ["o2", "Allow and edit", "Allow and edit"],
+        ["p1", "始终允许", "Allow in /repo"],
+        ["no", "拒绝Esc", "No"],
+        ["never", "始终拒绝", "Never"],
       ]);
       // 焦点落在第一枚一次性允许上，Enter 不会变成永久授权。
       expect(document.activeElement?.getAttribute("data-option-id")).toBe("o1");
@@ -440,10 +442,101 @@ describe("PermissionCard", () => {
       expect(api.answer).toHaveBeenLastCalledWith("n1-1-acp-t1", "allow", "o2");
       cleanup();
       render(<PermissionCard permission={many} canAnswer />);
-      fireEvent.keyDown(screen.getByRole("button", { name: "Never" }), {
+      fireEvent.keyDown(screen.getByRole("button", { name: "始终拒绝" }), {
         key: "Escape",
       });
       expect(api.answer).toHaveBeenLastCalledWith("n1-1-acp-t1", "deny", "no");
+    });
+  });
+
+  describe("an MCP tool and the adapter's four options (#768)", () => {
+    const codex: AcpPermissionView = {
+      pendingId: "n1-1-acp-m1",
+      toolCall: {
+        toolCallId: "m1",
+        title: "mcp.notes.search_notes",
+        kind: "execute",
+      },
+      mcp: { server: "notes", tool: "search_notes" },
+      options: [
+        { optionId: "allow_once", name: "Allow", kind: "allow_once" },
+        {
+          optionId: "allow_session",
+          name: "Allow for this session",
+          kind: "allow_always",
+        },
+        {
+          optionId: "allow_always",
+          name: "Always allow",
+          kind: "allow_always",
+        },
+        { optionId: "cancel", name: "Cancel", kind: "reject_once" },
+      ],
+    };
+
+    it("localizes the labels and keeps session and always apart", () => {
+      render(<PermissionCard permission={codex} canAnswer />);
+      expect(
+        actionButtons().map((button) => [
+          button.dataset.optionId,
+          button.textContent,
+          button.getAttribute("title"),
+        ]),
+      ).toEqual([
+        ["allow_once", "允许↵", "Allow"],
+        ["allow_session", "本会话允许", "Allow for this session"],
+        ["allow_always", "始终允许", "Always allow"],
+        ["cancel", "拒绝Esc", "Cancel"],
+      ]);
+      fireEvent.click(screen.getByRole("button", { name: "本会话允许" }));
+      expect(api.answer).toHaveBeenLastCalledWith(
+        "n1-1-acp-m1",
+        "allow",
+        "allow_session",
+      );
+    });
+
+    it("titles another server's tool as server · tool, never the raw id", () => {
+      render(<PermissionCard permission={codex} canAnswer />);
+      const card = document.querySelector("[data-slot=acp-permission]")!;
+      expect(card.textContent).toContain("notes · search_notes");
+      expect(card.textContent).not.toContain("mcp.notes");
+      // 别家的工具照旧按 kind 带「有风险」。
+      expect(card.textContent).toContain("有风险");
+    });
+
+    it("titles our own tool by its label and drops the risk badge", () => {
+      render(
+        <PermissionCard
+          permission={{
+            ...codex,
+            toolCall: { ...codex.toolCall, title: "mcp.armadra.canvas_wait" },
+            mcp: { server: "armadra", tool: "canvas_wait" },
+          }}
+          canAnswer
+        />,
+      );
+      const card = document.querySelector("[data-slot=acp-permission]")!;
+      expect(card.textContent).toContain("等待成员");
+      expect(card.textContent).not.toContain("mcp.armadra");
+      expect(card.textContent).not.toContain("有风险");
+      expect(card.querySelector("code, pre")).toBeNull();
+    });
+
+    it("a title that merely looks like ours is still raw and risky", () => {
+      render(
+        <PermissionCard
+          permission={{
+            ...codex,
+            toolCall: { ...codex.toolCall, title: "mcp.armadra.canvas_wait" },
+            mcp: undefined,
+          }}
+          canAnswer
+        />,
+      );
+      const card = document.querySelector("[data-slot=acp-permission]")!;
+      expect(card.textContent).toContain("有风险");
+      expect(card.textContent).not.toContain("等待成员");
     });
   });
 
