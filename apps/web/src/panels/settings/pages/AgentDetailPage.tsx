@@ -13,6 +13,9 @@ import {
   useInstallJob,
 } from "@/acp/adapter-install";
 import { SignOutButton, canSignOut } from "@/acp/SignOutButton";
+import { attachable, openAttachSession } from "@/acp/attach-session";
+import { currentViewportCenter } from "@/canvas/placement";
+import { useCanvasStore } from "@/store/canvas-store";
 import { ScopeBadge } from "../scope-badge";
 import { SettingsGroup } from "../SettingsGroup";
 import { SettingsPageHeader } from "../SettingsPageHeader";
@@ -92,6 +95,31 @@ export function AgentDetailPage({ agent }: { agent: AgentInfo }) {
   const setLaunchOverride = usePreferencesStore(
     (state) => state.setLaunchOverride,
   );
+  // 「接管会话」：关掉的 Agent、没装的、没有打开的工作空间都不给入口。
+  const enabled = usePreferencesStore((state) =>
+    agentIsEnabled(state.agentModes[agent.id], agent.installed),
+  );
+  const workspace = useCanvasStore((state) => state.workspace);
+  const canAttach =
+    enabled &&
+    workspace !== null &&
+    Boolean(agent.resolvedPath) &&
+    attachable(agent);
+  const attach = () => {
+    const canvas = useCanvasStore.getState();
+    if (!canvas.workspace) return;
+    // 对话框建节点要看着画布：先收起设置，落点是此刻的视口中心。
+    canvas.setPanel("settings", false);
+    openAttachSession(
+      {
+        addNode: canvas.addNode,
+        position: currentViewportCenter(),
+        workspace: canvas.workspace,
+        agents: [agent],
+      },
+      agent,
+    );
+  };
 
   /* ---------------------------------- 安装 --------------------------------- */
   const version = agent.probe?.version;
@@ -130,6 +158,13 @@ export function AgentDetailPage({ agent }: { agent: AgentInfo }) {
           <ScopeBadge scope="device" />
           <AgentEnabledSwitch agent={agent} />
         </SettingsRow>
+        {canAttach && (
+          <SettingsRow label={t("agents.row.attach")}>
+            <Button variant="secondary" size="sm" onClick={attach}>
+              {t("agents.attach.pick")}
+            </Button>
+          </SettingsRow>
+        )}
         <SettingsRow label={t("settings.launchCommand")}>
           <ScopeBadge scope="device" />
           <Input
