@@ -15,6 +15,7 @@ import {
   collaborationSkill,
   developerInstructions,
   installCollaborationSkill,
+  mcpInstructions,
   skillBody,
 } from "./skill";
 
@@ -116,10 +117,38 @@ describe("the collaboration skill", () => {
     const text = developerInstructions("/x/SKILL.md");
     const [first, zh, en] = text.split("\n");
     expect(first).toBe(`[Armadra canvas rules r${SKILLS_REVISION}]`);
-    expect(SKILLS_REVISION).toBe(22);
+    expect(SKILLS_REVISION).toBe(23);
     expect(zh).toContain("ARMADRA_NODE_ID");
     expect(en).toContain("only when ARMADRA_NODE_ID is set");
     expect(text.indexOf(canvasRules())).toBeGreaterThan(first?.length ?? 0);
+  });
+
+  /**
+   * 技能是写进数据目录的一份静态文件，所有会话共用：点名某一家会把用户关掉的
+   * 也告诉模型。所以示例用 `<agent>`，名单让模型自己问 `canvas help`（契约 §97）。
+   */
+  it("does not name a concrete agent in the dispatch examples", () => {
+    const dispatch = skillBody()
+      .split("\n")
+      .filter((line) => /^armadra-hook canvas (open-agent|team)\b/.test(line));
+    expect(dispatch.length).toBeGreaterThan(0);
+    for (const line of dispatch) {
+      expect(line).not.toMatch(/\b(claude|codex|opencode|copilot|omp)\b/);
+      expect(line).toContain("<agent>");
+    }
+    expect(skillBody()).toContain("AGENT_DISABLED");
+  });
+
+  it("lists the dispatchable agents in the MCP instructions only when given them", () => {
+    expect(mcpInstructions()).not.toContain("现在可以派发的 Agent");
+    const text = mcpInstructions(["claude", "custom:review"]);
+    expect(text).toContain("`claude`");
+    expect(text).toContain("`custom:review`");
+    expect(text).not.toContain("codex");
+    expect(text).toContain("现在可以派发的 Agent");
+    expect(text).toContain("AGENT_DISABLED");
+    // 空名单等于没问到：不写一行空话。
+    expect(mcpInstructions([])).toBe(mcpInstructions());
   });
 
   it("registers itself as the content the injection writes", () => {

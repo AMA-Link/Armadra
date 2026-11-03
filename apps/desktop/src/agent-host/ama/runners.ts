@@ -458,26 +458,38 @@ export function runnerDonePayload(
   };
 }
 
-/** The `custom:*` ids the core lists in `canvas help`. */
-export async function customAgentIds(
+/**
+ * The agent ids the core lists in `canvas help`: the built-ins and the
+ * `custom:*` entries, **minus the ones the user switched off in the settings**
+ * (contract §97). `undefined` = the core did not answer a list (unreachable,
+ * an older core): the caller then falls back to the built-ins.
+ */
+export async function listedAgentIds(
   control: typeof callControl = callControl,
-): Promise<string[]> {
+): Promise<string[] | undefined> {
   const answer = await control("help", {});
-  if (answer.kind !== "ok") return [];
+  if (answer.kind !== "ok") return undefined;
   const agents = (answer.body.result as { agents?: unknown } | undefined)
     ?.agents;
-  return Array.isArray(agents)
-    ? agents.filter(
-        (id): id is string =>
-          typeof id === "string" && /^custom:[A-Za-z0-9._-]{1,64}$/.test(id),
-      )
-    : [];
+  if (!Array.isArray(agents)) return undefined;
+  const builtin = new Set<string>(BUILTIN_RUNNER_IDS);
+  return agents.filter(
+    (id): id is string =>
+      typeof id === "string" &&
+      (builtin.has(id) || /^custom:[A-Za-z0-9._-]{1,64}$/.test(id)),
+  );
 }
 
 /**
- * Registers the built-in runners now and the custom ones once the core has
- * listed them. Answers the unregister function; a runtime without
- * `HostApi.runners` (older ama) gets nothing and keeps its own `task`.
+ * Registers a runner for every agent the core lists (`canvas help`) — an agent
+ * the user switched off is not listed, so ama never sees it as a `task` target.
+ * The built-ins stand in when the core gives no list. Answers the unregister
+ * function; a runtime without `HostApi.runners` (older ama) gets nothing and
+ * keeps its own `task`.
+ *
+ * The list is read when ama starts. Switching an agent off later does not
+ * unregister a runner already provided; the core refuses the dispatch
+ * (`AGENT_DISABLED`) and the next ama session no longer sees it.
  */
 export function provideRunners(
   api: Pick<HostApi, "env" | "runners" | "session" | "ui" | "log">,
@@ -521,7 +533,6 @@ export function provideRunners(
       api.log("warn", `could not provide the ${id} runner`, error);
     }
   };
-  for (const id of BUILTIN_RUNNER_IDS) provide(id);
   // host-api 1.1: a round's end as an event. Feature-detected, so an older ama
   // (local or on a remote host) subscribes nothing and behaves as before.
   if (typeof runners.onDone === "function") {
@@ -548,11 +559,11 @@ export function provideRunners(
       api.log("warn", "could not subscribe to runner completions", error);
     }
   }
-  void customAgentIds(deps.control)
+  void listedAgentIds(deps.control)
+    .catch(() => undefined)
     .then((ids) => {
-      for (const id of ids) provide(id);
-    })
-    .catch(() => undefined);
+      for (const id of ids ?? BUILTIN_RUNNER_IDS) provide(id);
+    });
   return () => {
     disposed = true;
     for (const release of releases.splice(0)) {

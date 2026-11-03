@@ -373,12 +373,21 @@ describe("the canvas runners", () => {
     });
   });
 
-  it("provides one runner per built-in and per custom agent the core lists", async () => {
+  it("provides one runner per agent the core lists, so a switched-off one is never offered (contract §97)", async () => {
     const provided: HostRunner[] = [];
     const released: string[] = [];
     const core = scriptedCore((call) =>
       call.verb === "help"
-        ? ok({ agents: ["claude", "ama", "custom:review", "custom:bad id"] })
+        ? ok({
+            agents: [
+              "claude",
+              "ama",
+              "custom:review",
+              "custom:bad id",
+              "gemini",
+              7,
+            ],
+          })
         : ok({}),
     );
     const api = {
@@ -397,15 +406,38 @@ describe("the canvas runners", () => {
     await vi.waitFor(() => {
       expect(provided.map((runner) => runner.id)).toContain("custom:review");
     });
+    // `codex` and the rest were switched off: the core did not list them, so
+    // there is no runner for ama's `task` to pick.
     expect(provided.map((runner) => runner.id)).toEqual([
-      ...BUILTIN_RUNNER_IDS,
+      "claude",
+      "ama",
       "custom:review",
     ]);
-    // `ama` too: another ama node on the board (ama ≥ 0.6.7 calls it).
-    expect(provided[0]?.id).toBe("ama");
     expect(provided.every((runner) => runner.description !== "")).toBe(true);
     release();
-    expect(released).toHaveLength(BUILTIN_RUNNER_IDS.length + 1);
+    expect(released).toHaveLength(3);
+
+    // No list at all (core unreachable, an older core): the built-ins stand in.
+    const fallback: string[] = [];
+    const lost = scriptedCore(() => ({
+      kind: "unreachable",
+      error: "nobody listening",
+    }));
+    provideRunners(
+      {
+        ...api,
+        runners: {
+          provide: (runner: HostRunner) => {
+            fallback.push(runner.id);
+            return () => undefined;
+          },
+        },
+      } as unknown as HostApi,
+      { control: lost.control },
+    );
+    await vi.waitFor(() => {
+      expect(fallback).toEqual([...BUILTIN_RUNNER_IDS]);
+    });
 
     // An older ama without the surface: nothing to provide.
     expect(() =>
@@ -477,6 +509,7 @@ describe("runner_done (host-api 1.1 runners.onDone)", () => {
       },
     });
     expect(onDone).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(ama.provided.length).toBeGreaterThan(0));
     const claude = ama.provided.find((runner) => runner.id === "claude");
     await claude?.start(request());
     // The session moved on after start: the key is the one start used.
@@ -518,9 +551,11 @@ describe("runner_done (host-api 1.1 runners.onDone)", () => {
     const report = vi.fn(async () => undefined);
     const core = scriptedCore(() => ok({ id: "node-1" }));
     const release = provideRunners(ama.api, { control: core.control, report });
-    expect(ama.provided.map((runner) => runner.id)).toEqual([
-      ...BUILTIN_RUNNER_IDS,
-    ]);
+    await vi.waitFor(() =>
+      expect(ama.provided.map((runner) => runner.id)).toEqual([
+        ...BUILTIN_RUNNER_IDS,
+      ]),
+    );
     expect("onDone" in (ama.api.runners ?? {})).toBe(false);
     const claude = ama.provided.find((runner) => runner.id === "claude");
     const handle = await claude?.start(request());

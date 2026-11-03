@@ -219,7 +219,9 @@ const CANVAS: Record<ControlVerb, Row> = {
     description:
       "Open an agent node, link it as your sub, and give it a first task once it reports idle.",
     properties: {
-      agent: str("agent id, e.g. claude, codex, or custom:<id>"),
+      agent: str(
+        "agent id from the list `canvas_help` answers (custom ones look like custom:<id>); an agent the user switched off is refused",
+      ),
       task: str("the first task, sent when the node is idle"),
       title: str("node title"),
       "item-title": str(
