@@ -40,6 +40,7 @@ import { installInstantOverlays } from "../keybindings";
 import { useAppKeybindings } from "./use-app-keybindings";
 import { useFirstScreenEnter } from "./use-first-screen-enter";
 import "./first-screen.css";
+import { useAgentModesMirror } from "./use-agent-modes-mirror";
 import { useLocaleMirror } from "./use-locale-mirror";
 import { useBoardSync } from "./use-board-sync";
 import { useWorkspaceAccessLost } from "./use-access-lost";
@@ -131,6 +132,7 @@ function AppShell() {
   const dispatch = useCommandDispatch();
   useAppKeybindings(dispatch);
   useLocaleMirror();
+  useAgentModesMirror();
 
   return (
     // 根容器只让开顶边的安全区（`--safe-top`，设计系统 §3.1），状态栏下只剩这块
