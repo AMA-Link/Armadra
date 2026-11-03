@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { AccountsTx } from "./accounts-store";
 import { IdentityError } from "./errors";
+import type { SweepCandidate } from "./session-sweep";
 import { ID_PATTERN, newId } from "./tokens";
 
 /**
@@ -295,6 +296,28 @@ export class IdentityTx {
         )
         .all(deviceId) as { origin: string }[]
     ).map((row) => row.origin);
+  }
+
+  /**
+   * 一台设备上还活着的会话（没撤销、没过绝对期限、epoch 对得上），只带判闲置要的
+   * 那几列。清理桌面壳闲置会话用（`session-sweep.ts`）。
+   */
+  deviceLiveSessions(deviceId: string, nowMs: number): SweepCandidate[] {
+    return (
+      this.database
+        .prepare(
+          "SELECT s.session_id, s.user_agent, s.created_at_ms, s.access_expires_at_ms, s.last_seen_at_ms " +
+            "FROM identity_sessions s JOIN identity_devices d ON d.device_id = s.device_id " +
+            "WHERE s.device_id = ? AND s.revoked_at_ms = 0 AND s.expires_at_ms > ? AND d.epoch = s.device_epoch",
+        )
+        .all(deviceId, nowMs) as Record<string, unknown>[]
+    ).map((row) => ({
+      sessionId: String(row.session_id),
+      userAgent: String(row.user_agent ?? ""),
+      createdAtMs: Number(row.created_at_ms),
+      accessExpiresAtMs: Number(row.access_expires_at_ms),
+      lastSeenAtMs: Number(row.last_seen_at_ms ?? 0),
+    }));
   }
 
   session(sessionId: string): IdentitySession | undefined {

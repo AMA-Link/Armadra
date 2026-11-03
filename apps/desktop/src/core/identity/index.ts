@@ -106,12 +106,19 @@ export function installIdentity(context: CoreContext): void {
   const store = new IdentityStore(context.db.database);
   // 测试寿命（#706，`ARMADRA_TEST_ACCESS_TTL_MS`）；没设是 15 分钟。
   const accessTtlMs = testAccessTtl();
-  const service = new IdentityService(
-    store,
-    runInstance,
-    undefined,
-    accessTtlMs === undefined ? {} : { accessTtlMs },
-  );
+  const service = new IdentityService(store, runInstance, undefined, {
+    ...(accessTtlMs === undefined ? {} : { accessTtlMs }),
+    log: context.log,
+  });
+  // 修好之前堆在本机设备上的闲置壳会话，启动时收一次（#770）；之后每次配对时收。
+  // 清理失败不挡启动：会话照旧能用，只是多留几条。
+  try {
+    service.sweepIdleShellSessions();
+  } catch (error) {
+    context.log.warn("启动时清理闲置壳会话失败", {
+      error: error instanceof Error ? error.name : "unknown",
+    });
+  }
   // Hello 报的能力名里多出的那些来自各域自己的注册表（`core/schedule/capabilities`）。
   // 身份域不该知道有哪些域存在，所以这里只转发；自动化面板认的
   // `automation.plans.v1` 就是这样传到页面的。

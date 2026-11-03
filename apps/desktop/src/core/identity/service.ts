@@ -3,6 +3,12 @@ import { accessChanged } from "./gate";
 import { nativeOrigin, validOrigin } from "./origin";
 import { CURRENT_KDF, derivePassword, verifyPassword } from "./passwords";
 import {
+  LAST_SEEN_RESOLUTION_MS,
+  shellClient,
+  staleOnPair,
+  staleOnStartup,
+} from "./session-sweep";
+import {
   type Scope,
   allScopes,
   decodeScopes,
@@ -242,23 +248,31 @@ export interface SessionView {
   readonly current: boolean;
 }
 
-/** 最近活动最多这么久写一次，免得每个请求都写库。 */
-export const LAST_SEEN_RESOLUTION_MS = 60 * 1000;
+/** 清理闲置壳会话的那一行日志：只有数目与种类。 */
+export interface SweepLog {
+  info(message: string, fields?: Record<string, unknown>): void;
+}
+
+/** 最近活动最多这么久写一次，免得每个请求都写库（定义在 `session-sweep.ts`，判闲置要算上它）。 */
+export { LAST_SEEN_RESOLUTION_MS };
 
 export class IdentityService {
   private readonly clock: () => number;
   /** 访问密钥寿命；缺省 {@link ACCESS_TTL_MS}，只有测试经 `ARMADRA_TEST_ACCESS_TTL_MS` 调短。 */
   private readonly accessTtlMs: number;
+  /** 清理闲置壳会话时记一行数目（不带任何 id 或密钥）。 */
+  private readonly log: SweepLog | undefined;
 
   constructor(
     private readonly store: IdentityStore,
     private readonly instanceId: string,
     clock: () => number = () => Date.now(),
-    options: { readonly accessTtlMs?: number } = {},
+    options: { readonly accessTtlMs?: number; readonly log?: SweepLog } = {},
   ) {
     if (!ID_PATTERN.test(instanceId)) throw new IdentityError("invalid");
     this.clock = clock;
     this.accessTtlMs = options.accessTtlMs ?? ACCESS_TTL_MS;
+    this.log = options.log;
   }
 
   hostId(): string {
@@ -399,7 +413,8 @@ export class IdentityService {
     const sessionId = newId();
     const deviceId = newId();
     const secrets = makeSecrets(sessionId);
-    return this.store.transaction((tx) => {
+    let swept = 0;
+    const paired = this.store.transaction((tx) => {
       const now = this.now();
       const ticket = tx.ticket(ticketId);
       if (
@@ -458,6 +473,18 @@ export class IdentityService {
       tx.createSession(session);
       // 一次性：第二次兑换在这里改不动任何行，整笔事务回滚。
       tx.consumeTicket(ticketId, now);
+      // 壳为页面或托盘配上一条新会话：这台本机设备上同一种客户端闲置的旧会话
+      // 撤掉（#770）。新建的设备上没有旧会话。
+      if (device.deviceId !== deviceId) {
+        const stale = staleOnPair(tx.deviceLiveSessions(device.deviceId, now), {
+          keep: sessionId,
+          client: shellClient(session.userAgent ?? ""),
+          now,
+          accessTtlMs: this.accessTtlMs,
+        });
+        for (const id of stale) tx.revokeSession(id, now);
+        swept = stale.length;
+      }
       return {
         ...secrets,
         accessExpiresAtMs,
@@ -465,6 +492,49 @@ export class IdentityService {
         principal: principalOf(this.store.hostId(), session, device, scopes),
       };
     });
+    if (swept > 0) {
+      this.log?.info("撤掉本机设备上闲置的壳会话", {
+        trigger: "pair",
+        client: shellClient(request.userAgent ?? ""),
+        revoked: swept,
+      });
+      accessChanged();
+    }
+    return paired;
+  }
+
+  /**
+   * core 启动时清一次桌面壳的闲置会话（#770）：主人名下每台本机设备、每种客户端
+   * 留最近用过的一条，其余闲置超过一个访问期的撤掉。修好之前堆下来的几百条
+   * 由此在下次启动时收掉。返回撤了几条；只记数目。
+   */
+  sweepIdleShellSessions(): number {
+    const { revoked, devices } = this.store.transaction((tx) => {
+      const now = this.now();
+      const owner = tx.owner();
+      if (owner === undefined) return { revoked: 0, devices: 0 };
+      let count = 0;
+      let touched = 0;
+      for (const device of localDevices(tx, owner.principalId)) {
+        const stale = staleOnStartup(
+          tx.deviceLiveSessions(device.deviceId, now),
+          { now, accessTtlMs: this.accessTtlMs },
+        );
+        for (const id of stale) tx.revokeSession(id, now);
+        count += stale.length;
+        if (stale.length > 0) touched += 1;
+      }
+      return { revoked: count, devices: touched };
+    });
+    if (revoked > 0) {
+      this.log?.info("撤掉本机设备上闲置的壳会话", {
+        trigger: "startup",
+        devices,
+        revoked,
+      });
+      accessChanged();
+    }
+    return revoked;
   }
 
   /**
@@ -1284,17 +1354,30 @@ function reusableLocalDevice(
   name: string,
 ): IdentityDevice | undefined {
   let found: IdentityDevice | undefined;
+  for (const device of localDevices(tx, principalId)) {
+    if (device.name !== name) continue;
+    if (found !== undefined && found.createdAtMs <= device.createdAtMs)
+      continue;
+    found = device;
+  }
+  return found;
+}
+
+/**
+ * 主人名下的本机设备：没被撤销，签过会话，而且每一条会话都来自回环明文来源。
+ * 手机（HTTPS 来源）、口令或云登录的设备都不在其中。
+ */
+function localDevices(tx: IdentityTx, principalId: string): IdentityDevice[] {
+  const found: IdentityDevice[] = [];
   let cursor = "";
   for (;;) {
     const page = tx.devices(cursor, 200, principalId);
     if (page.length === 0) break;
     for (const device of page) {
-      if (device.revokedAtMs !== 0 || device.name !== name) continue;
-      if (found !== undefined && found.createdAtMs <= device.createdAtMs)
-        continue;
+      if (device.revokedAtMs !== 0) continue;
       const origins = tx.deviceSessionOrigins(device.deviceId);
       if (origins.length === 0 || !origins.every(nativeOrigin)) continue;
-      found = device;
+      found.push(device);
     }
     cursor = page[page.length - 1]?.deviceId ?? "";
     if (page.length < 200) break;
