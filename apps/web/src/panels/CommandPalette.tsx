@@ -11,11 +11,28 @@ import { COMMANDS, commandKeysLabel, formatKeys } from "../keybindings";
 import { useCanvasStore } from "../store/canvas-store";
 import { useCommandDispatch } from "../app/commands";
 import { useEnabledAgents } from "../app/use-agents";
-import { useT } from "../app/preferences-store";
+import { useT, usePreferencesStore } from "../app/preferences-store";
 import { sshMenuItems } from "../canvas/menus/add-menu";
-import { requestCenterOnNode } from "../canvas/flow/flow-context";
 import { nodeDropPosition } from "../canvas/placement";
 import { useSshHosts } from "./settings/ssh-hosts";
+import { useOpenWorkspace } from "../app/workspace-actions";
+import { openFileInEditor } from "@/files/open-editor";
+import { parseQuery, scoreText } from "@/search/match";
+import { searchEntries } from "@/search";
+import { navigateTo } from "@/search/navigate";
+import {
+  EntryGroup,
+  FileGroup,
+  SearchRow,
+  topScore,
+} from "@/search/SearchGroups";
+import { useFileHits } from "@/search/use-file-hits";
+import { useSearchEntries } from "@/search/use-search-entries";
+import {
+  searchSettingsEntries,
+  useSettingsEntries,
+} from "@/search/settings-entries";
+import { Settings as SettingsIcon } from "lucide-react";
 import { useTerminalNodeCommands } from "./delivery-commands";
 import {
   CommandDialog,
@@ -24,15 +41,13 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
+  CommandMeta,
   CommandShortcut,
 } from "@/ui/command";
 import { Spinner } from "@/ui/spinner";
 import { readRecent, rememberRecent } from "./palette-recent";
 import { QUICK_PICK_COUNT, quickPickKeyDown } from "./quick-pick";
 import { revealCreatedNode } from "@/canvas/created-node";
-
-/** 一次最多列这么多个跳转目标，超过靠输入过滤。 */
-const MAX_NODE_RESULTS = 50;
 
 /** 运行后项尾的对勾停多久（设计系统 §11.2）。 */
 export const RAN_MARK_MS = 800;
@@ -74,8 +89,7 @@ export function CommandPalette() {
   const open = useCanvasStore((state) => state.panels.palette);
   const setPanel = useCanvasStore((state) => state.setPanel);
   const workspace = useCanvasStore((state) => state.workspace);
-  const document = useCanvasStore((state) => state.document);
-  const selectNodes = useCanvasStore((state) => state.selectNodes);
+  const boardId = useCanvasStore((state) => state.boardId);
   const addNode = useCanvasStore((state) => state.addNode);
   const agents = useEnabledAgents();
   const { run, addMenuItems, centerPosition } = useCommandDispatch();
@@ -94,9 +108,28 @@ export function CommandPalette() {
   // 历史对话索引（§17）：只在面板开着时查，输入去抖 150ms。
   const conversations = useConversations(query, open);
 
-  const nodes = useMemo(
-    () => (document?.nodes ?? []).slice(0, MAX_NODE_RESULTS),
-    [document],
+  const openWorkspace = useOpenWorkspace();
+  const rememberSection = usePreferencesStore(
+    (state) => state.setLastSettingsSection,
+  );
+  // 内容索引（工作空间、画布、节点、白板对象）、文件、设置项：匹配全在 `search/`，
+  // 所以 cmdk 的内置过滤关掉，命令与新建项也走同一套匹配（拼音首字母、模糊）。
+  const { entries, workspaces } = useSearchEntries(open, query);
+  const files = useFileHits(open, query);
+  const settingsEntries = useSettingsEntries(open);
+  const terms = useMemo(() => parseQuery(query), [query]);
+  const typing = terms.length > 0;
+  const groups = useMemo(() => {
+    const found = searchEntries(entries, query, {
+      workspaceId: workspace?.id ?? null,
+      boardId,
+    });
+    // 空查询时这是命令面板：只带出画布与当前画布的节点，不列工作空间。
+    return typing ? found : { ...found, workspaces: [] };
+  }, [boardId, entries, query, typing, workspace?.id]);
+  const settingsHits = useMemo(
+    () => searchSettingsEntries(settingsEntries, query),
+    [query, settingsEntries],
   );
 
   const close = () => setPanel("palette", false);
@@ -115,6 +148,18 @@ export function CommandPalette() {
   useEffect(() => {
     if (!open) setRanKey(null);
   }, [open]);
+
+  /** 新建项与命令按查询词过滤、按得分排序；没输入时原样。 */
+  function rank<T>(items: readonly T[], labelOf: (item: T) => string): T[] {
+    if (!typing) return [...items];
+    return items
+      .map((item) => ({ item, score: scoreText(terms, labelOf(item)) }))
+      .filter((hit) => hit.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map((hit) => hit.item);
+  }
+  const best = (items: readonly { label: string }[]) =>
+    items.reduce((top, item) => Math.max(top, scoreText(terms, item.label)), 0);
 
   const context = workspace
     ? { addNode, position: centerPosition(), workspace, agents }
@@ -218,67 +263,120 @@ export function CommandPalette() {
     if (id) revealCreatedNode(id);
   }
 
-  return (
-    <CommandDialog
-      open={open}
-      onOpenChange={(next) => setPanel("palette", next)}
-      className="z-[var(--z-dialog)]"
-      title={t("cluster.palette")}
-      description={t("palette.description")}
-    >
-      <CommandInput
-        placeholder={t("palette.placeholder")}
-        value={query}
-        onValueChange={setQuery}
-        onKeyDown={quickPickKeyDown}
-      />
-      <CommandList>
-        <CommandEmpty>{t("palette.empty")}</CommandEmpty>
+  const mainEntries = (list: readonly Entry[]) =>
+    rank(
+      list.filter((entry) => !recentKeys.has(entry.key)),
+      (entry) => entry.label,
+    );
+  const newRows = mainEntries(newEntries);
+  const commandRows = mainEntries(commandEntries);
+  const terminalRows = rank(terminalCommands, (command) => command.label);
+  const currentWorkspaceId = workspace?.id ?? null;
 
-        {recentEntries.length > 0 && (
-          <CommandGroup heading={t("palette.recent")}>
+  const pick = (entry: Parameters<typeof navigateTo>[0]) => {
+    close();
+    navigateTo(entry, { workspaces, openWorkspace });
+  };
+
+  const entryGroup = (
+    key: "workspaces" | "boards" | "nodes" | "items",
+    heading: string,
+  ) => ({
+    key,
+    rank: topScore(groups[key]),
+    node: (
+      <EntryGroup
+        key={key}
+        heading={heading}
+        hits={groups[key]}
+        currentWorkspaceId={currentWorkspaceId}
+        onPick={pick}
+      />
+    ),
+  });
+
+  /**
+   * 分组顺序：没输入时是固定的（最近、新建、画布、节点、对话、命令）；输入之后
+   * 按各组最高分排，同分保持这个固定顺序——输入「画布」时画布在前，输入「放大」
+   * 时命令在前。
+   */
+  const sections = [
+    {
+      key: "recent",
+      rank: 0,
+      node:
+        recentEntries.length > 0 ? (
+          <CommandGroup key="recent" heading={t("palette.recent")}>
             {recentEntries
               .slice(0, QUICK_PICK_COUNT)
               .map((entry, index) =>
                 row(entry, t("palette.recent"), index + 1),
               )}
           </CommandGroup>
-        )}
-
-        {newEntries.length > 0 && (
-          <CommandGroup heading={t("palette.new")}>
-            {newEntries
-              .filter((entry) => !recentKeys.has(entry.key))
-              .map((entry) => row(entry, t("palette.new")))}
+        ) : null,
+    },
+    {
+      key: "new",
+      rank: best(newRows),
+      node:
+        newRows.length > 0 ? (
+          <CommandGroup key="new" heading={t("palette.new")}>
+            {newRows.map((entry) => row(entry, t("palette.new")))}
           </CommandGroup>
-        )}
-
-        {nodes.length > 0 && (
-          <CommandGroup heading={t("palette.goto")}>
-            {nodes.map((node) => (
-              <CommandItem
-                key={node.id}
-                value={`${t("palette.goto")} ${node.title}`}
+        ) : null,
+    },
+    entryGroup("workspaces", t("search.workspaces")),
+    entryGroup("boards", t("search.boards")),
+    entryGroup("nodes", t("search.nodes")),
+    entryGroup("items", t("search.items")),
+    {
+      key: "files",
+      rank: 50,
+      node: (
+        <FileGroup
+          key="files"
+          heading={t("search.files")}
+          files={files}
+          onPick={(file) => {
+            close();
+            openFileInEditor(file.path);
+          }}
+        />
+      ),
+    },
+    {
+      key: "settings",
+      rank: 45,
+      node:
+        settingsHits.length > 0 ? (
+          <CommandGroup key="settings" heading={t("search.settings")}>
+            {settingsHits.map((hit) => (
+              <SearchRow
+                key={`${hit.sectionId}:${hit.rowKey ?? ""}`}
+                value={`setting:${hit.sectionId}:${hit.rowKey ?? ""}`}
+                icon={SettingsIcon}
+                title={hit.title}
+                label={hit.page}
                 onSelect={() => {
                   close();
-                  selectNodes([node.id]);
-                  // 居中的算术在画布那边（§9.1）：这里只发事件，
-                  // 免得壳自己复刻一份节点尺寸与缩放的规则。
-                  requestCenterOnNode(node.id);
+                  rememberSection(hit.sectionId);
+                  setPanel("settings", true);
                 }}
-              >
-                {node.title}
-              </CommandItem>
+              />
             ))}
           </CommandGroup>
-        )}
-
-        {workspace && (conversations.data?.length ?? 0) > 0 && (
-          <CommandGroup heading={t("meta.conversations")}>
+        ) : null,
+    },
+    {
+      key: "conversations",
+      rank: 40,
+      node:
+        workspace && (conversations.data?.length ?? 0) > 0 ? (
+          <CommandGroup key="conversations" heading={t("meta.conversations")}>
             {conversations.data!.map((conversation) => (
               <CommandItem
                 key={`${conversation.provider}:${conversation.sessionId}`}
-                value={`${t("meta.conversations")} ${conversation.title} ${basename(conversation.cwd)} ${conversation.provider}`}
+                value={`${t("meta.conversations")} ${conversation.provider}:${conversation.sessionId}`}
                 onSelect={() => resume(conversation)}
               >
                 <Bot />
@@ -286,28 +384,32 @@ export function CommandPalette() {
                   {conversation.title}
                 </span>
                 {/* 目录名和时间是文字，不是快捷键：不放进 Kbd */}
-                <span className="max-w-[30%] truncate text-caption text-muted-foreground">
+                <CommandMeta className="ml-0 max-w-[30%]">
                   {basename(conversation.cwd)}
-                </span>
+                </CommandMeta>
                 <span className="shrink-0 text-caption text-muted-foreground tabular-nums">
                   {formatRelativeTime(conversation.updatedAt)}
                 </span>
               </CommandItem>
             ))}
           </CommandGroup>
-        )}
-
-        {/*
-          选中的那个终端节点能做的两件事（设计 `agent-delivery.md` §10）。
-          只对**当前选中的终端节点**出现：这两条都是对一个具体终端说的话，
-          没有选中任何终端时它们没有主语。
-        */}
-        {terminalCommands.length > 0 && (
-          <CommandGroup heading={t("palette.command")}>
-            {terminalCommands.map((command) => (
+        ) : null,
+    },
+    {
+      /*
+        选中的那个终端节点能做的两件事（设计 `agent-delivery.md` §10）。
+        只对**当前选中的终端节点**出现：这两条都是对一个具体终端说的话，
+        没有选中任何终端时它们没有主语。
+      */
+      key: "terminal",
+      rank: best(terminalRows),
+      node:
+        terminalRows.length > 0 ? (
+          <CommandGroup key="terminal" heading={t("palette.command")}>
+            {terminalRows.map((command) => (
               <CommandItem
                 key={command.id}
-                value={`${t("palette.command")} ${command.label}`}
+                value={`${t("palette.command")} ${command.id}`}
                 onSelect={() => {
                   close();
                   command.run();
@@ -317,13 +419,41 @@ export function CommandPalette() {
               </CommandItem>
             ))}
           </CommandGroup>
-        )}
+        ) : null,
+    },
+    {
+      key: "commands",
+      rank: best(commandRows),
+      node:
+        commandRows.length > 0 ? (
+          <CommandGroup key="commands" heading={t("palette.command")}>
+            {commandRows.map((entry) => row(entry, t("palette.command")))}
+          </CommandGroup>
+        ) : null,
+    },
+  ];
+  const ordered = typing
+    ? [...sections].sort((a, b) => b.rank - a.rank)
+    : sections;
 
-        <CommandGroup heading={t("palette.command")}>
-          {commandEntries
-            .filter((entry) => !recentKeys.has(entry.key))
-            .map((entry) => row(entry, t("palette.command")))}
-        </CommandGroup>
+  return (
+    <CommandDialog
+      open={open}
+      onOpenChange={(next) => setPanel("palette", next)}
+      className="z-[var(--z-dialog)]"
+      title={t("cluster.palette")}
+      description={t("palette.description")}
+      shouldFilter={false}
+    >
+      <CommandInput
+        placeholder={t("palette.placeholder")}
+        value={query}
+        onValueChange={setQuery}
+        onKeyDown={quickPickKeyDown}
+      />
+      <CommandList>
+        <CommandEmpty>{t("palette.empty")}</CommandEmpty>
+        {ordered.map((section) => section.node)}
       </CommandList>
     </CommandDialog>
   );

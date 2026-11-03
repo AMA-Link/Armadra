@@ -23,12 +23,19 @@ import { commandKeysLabel, setShortcutsEnabled } from "../keybindings";
 import { CommandPalette, RAN_MARK_MS } from "./CommandPalette";
 
 const conversations = vi.fn();
+const listWorkspaces = vi.fn();
+const loadBoard = vi.fn();
+const fileIndex = vi.fn();
 
 vi.mock("../api/client", () => ({
   runtimeApi: {
     agents: vi.fn().mockResolvedValue([]),
     settings: vi.fn().mockResolvedValue({ ssh: { hosts: [] } }),
     conversations: (...args: unknown[]) => conversations(...args),
+    listWorkspaces: (...args: unknown[]) => listWorkspaces(...args),
+    loadBoard: (...args: unknown[]) => loadBoard(...args),
+    fileIndex: (...args: unknown[]) => fileIndex(...args),
+    openWorkspace: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -84,6 +91,9 @@ afterEach(() => {
 beforeEach(() => {
   setShortcutsEnabled(true);
   conversations.mockResolvedValue([row]);
+  listWorkspaces.mockResolvedValue([]);
+  loadBoard.mockResolvedValue(undefined);
+  fileIndex.mockResolvedValue({ entries: [], truncated: false, scanned: 0 });
   useCanvasStore.setState({
     workspace,
     boardId: BOARD_ID,
@@ -153,7 +163,7 @@ describe("暂时下线的功能（#295）", () => {
 describe("命令面板是键盘中枢", () => {
   const row = (label: string) =>
     screen.getByText(label).closest("[cmdk-item]") as HTMLElement;
-  const input = () => screen.getByPlaceholderText("搜索命令");
+  const input = () => screen.getByPlaceholderText("搜索");
 
   it("没有开关动画：内容不带 animate-in / zoom 类，带 data-instant，遮罩也即时", async () => {
     renderPalette();
@@ -269,5 +279,151 @@ describe("命令面板是键盘中枢", () => {
     act(() => useCanvasStore.getState().setPanel("palette", true));
     expect((input() as HTMLInputElement).value).toBe("");
     expect(view.container).toBeTruthy();
+  });
+});
+
+/** 内容搜索（#767）：画布、节点、白板内容、设置在 ⌘K 里也找得到。 */
+describe("命令面板里的内容搜索", () => {
+  const OTHER_BOARD = "019ff7d1-0d12-7421-833d-2c5e8d64ed31";
+  const input = () => screen.getByPlaceholderText("搜索");
+  const rowOf = (text: string) =>
+    screen.getByText(text).closest("[cmdk-item]") as HTMLElement;
+  const stickyNode = (index: number, title: string) =>
+    ({
+      id: `019ff7d1-0d12-7421-833d-${String(index).padStart(12, "0")}`,
+      boardId: BOARD_ID,
+      type: "sticky",
+      title,
+      color: "#5B5BD6",
+      position: { x: 0, y: 0 },
+      labels: [],
+      note: "",
+      data: { kind: "sticky", content: "" },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }) as BoardDocument["nodes"][number];
+
+  beforeEach(() => {
+    useCanvasStore.setState({
+      boards: [
+        { id: BOARD_ID, name: "Default", sortOrder: 0 },
+        { id: OTHER_BOARD, name: "画布 3", sortOrder: 1 },
+      ],
+      document: {
+        ...document,
+        nodes: [
+          ...Array.from({ length: 60 }, (_, index) =>
+            stickyNode(index + 1, `便签 ${index + 1}`),
+          ),
+          stickyNode(100, "发布清单"),
+        ],
+      },
+    });
+  });
+
+  it("没输入时除了最近、新建、命令，还带出画布与当前画布的节点", async () => {
+    renderPalette();
+    expect(await screen.findByText("画布")).toBeTruthy();
+    expect(screen.getByText("节点")).toBeTruthy();
+    // 没输入时它仍是命令面板：不列工作空间
+    expect(screen.queryByText("工作空间")).toBeNull();
+    const board = rowOf("画布 3");
+    expect(board.querySelector("svg")).not.toBeNull();
+    // 右对齐的次级标签：画布所在的工作空间
+    expect(board.querySelector('[data-slot="command-meta"]')?.textContent).toBe(
+      "repo",
+    );
+  });
+
+  it("当前画布超过 50 个节点时，靠后的节点也搜得到", async () => {
+    renderPalette();
+    fireEvent.change(input(), { target: { value: "发布清单" } });
+    const row = await screen.findByText("发布清单");
+    expect(row.closest("[cmdk-item]")).not.toBeNull();
+  });
+
+  it("选中一个节点：选中并居中，面板关闭", async () => {
+    renderPalette();
+    fireEvent.change(input(), { target: { value: "发布清单" } });
+    const centered: string[] = [];
+    const onCenter = (event: Event) =>
+      centered.push((event as CustomEvent<{ nodeId: string }>).detail.nodeId);
+    window.addEventListener("armadra:canvas:center-node", onCenter);
+    fireEvent.click(rowOf("发布清单"));
+    window.removeEventListener("armadra:canvas:center-node", onCenter);
+    expect(useCanvasStore.getState().panels.palette).toBe(false);
+    expect(useCanvasStore.getState().selectedNodeIds).toEqual([
+      "019ff7d1-0d12-7421-833d-000000000100",
+    ]);
+    expect(centered).toContain("019ff7d1-0d12-7421-833d-000000000100");
+  });
+
+  it("选中一块画布：切过去", async () => {
+    renderPalette();
+    fireEvent.change(input(), { target: { value: "hb" } });
+    fireEvent.click(await screen.findByText("画布 3"));
+    expect(useCanvasStore.getState().boardId).toBe(OTHER_BOARD);
+    expect(useCanvasStore.getState().panels.palette).toBe(false);
+  });
+
+  it("输入「画布」时画布组排在命令组前，输入「放大」时命令组在前", async () => {
+    renderPalette();
+    fireEvent.change(input(), { target: { value: "画布" } });
+    await screen.findByText("画布 3");
+    const headings = () =>
+      [...window.document.querySelectorAll("[cmdk-group-heading]")].map(
+        (heading) => heading.textContent,
+      );
+    expect(headings().indexOf("画布")).toBeLessThan(headings().indexOf("命令"));
+    fireEvent.change(input(), { target: { value: "放大" } });
+    await waitFor(() => expect(headings()[0]).toBe("命令"));
+  });
+
+  it("命令也认拼音首字母：fd → 放大", async () => {
+    renderPalette();
+    fireEvent.change(input(), { target: { value: "fd" } });
+    await waitFor(() => {
+      const first = window.document.querySelector("[cmdk-item]");
+      expect(first?.textContent).toContain("放大");
+    });
+  });
+
+  it("设置：按页名与行名找，选中后打开设置并停在那一页", async () => {
+    renderPalette();
+    fireEvent.change(input(), { target: { value: "主题" } });
+    const row = (await screen.findAllByText("主题"))
+      .map((element) => element.closest("[cmdk-item]"))
+      .find((item) => item?.getAttribute("data-value")?.startsWith("setting:"));
+    expect(row).toBeTruthy();
+    expect(
+      screen.getByText("设置", { selector: "[cmdk-group-heading]" }),
+    ).toBeTruthy();
+    expect(
+      row!.querySelector('[data-slot="command-meta"]')?.textContent,
+    ).not.toBe("");
+    fireEvent.click(row!);
+    expect(useCanvasStore.getState().panels.settings).toBe(true);
+    expect(useCanvasStore.getState().panels.palette).toBe(false);
+    useCanvasStore.getState().setPanel("settings", false);
+  });
+
+  it("⌘1 运行输入后排第一的内容行", async () => {
+    renderPalette();
+    fireEvent.change(input(), { target: { value: "画布 3" } });
+    await screen.findByText("画布 3");
+    fireEvent.keyDown(input(), { key: "1", ctrlKey: true });
+    expect(useCanvasStore.getState().boardId).toBe(OTHER_BOARD);
+  });
+
+  it("文件：选中交给编辑器", async () => {
+    fileIndex.mockResolvedValue({
+      entries: [{ name: "button.tsx", path: "src/ui/button.tsx" }],
+      truncated: false,
+      scanned: 1,
+    });
+    renderPalette();
+    fireEvent.change(input(), { target: { value: "button" } });
+    expect(await screen.findByText("button.tsx")).toBeTruthy();
+    expect(screen.getByText("文件")).toBeTruthy();
   });
 });

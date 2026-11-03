@@ -97,6 +97,11 @@ export const shell: MessageModule = {
     "search.empty": "无结果",
     "search.boards": "画布",
     "search.nodes": "节点",
+    "search.workspaces": "工作空间",
+    "search.items": "白板内容",
+    "search.files": "文件",
+    "search.settings": "设置",
+    "search.location": "{workspace} / {board}",
 
     "cluster.palette": "命令面板",
     "cluster.explorer": "资源管理器",
@@ -214,6 +219,11 @@ export const shell: MessageModule = {
     "search.empty": "No results",
     "search.boards": "Boards",
     "search.nodes": "Nodes",
+    "search.workspaces": "Workspaces",
+    "search.items": "Whiteboard",
+    "search.files": "Files",
+    "search.settings": "Settings",
+    "search.location": "{workspace} / {board}",
 
     "cluster.palette": "Command palette",
     "cluster.explorer": "Explorer",
