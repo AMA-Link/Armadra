@@ -5017,3 +5017,14 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 
 - `agents.installAdapter` 装 `target: "cli"` 且这一家的 CLI 包改过名（目前只有 `pi`）时，开始前先用同一个 npm 查旧包（`npm ls --global`）：装着就先 `npm rm --global <旧包>`，再装现行包，避免旧包占着同名可执行文件使 npm 因 bin 冲突失败。卸旧包的输出进任务的 `output` 尾部；卸不掉就不装，任务 `failed`，`failure.code` 为 `adapter_install_failed`，`failure.message` 带一条可复制的 `npm rm --global <旧包>`。`target: "adapter"` 与回滚不受影响，请求与答复形状不变。
 - 起会话前的 CLI 版本核对（`acp_cli_outdated`，§92 前的 #710）：不再记「过旧」的结论，每次都重问版本，所以 mise / asdf / volta 的 shim 升级后下一次会话即通过，不必重启 core；「够新」的结论照旧按文件路径、修改时间与大小记着。预发布版本（`x.y.z-beta.n`）排在同号正式版之前：恰为下限的预发布也答 `acp_cli_outdated`（`details.installed` 带完整版本串）。预启动的适配器进程也核对，不合格时收掉它再答错。
+
+## 96. 桌面壳闲置会话的自动清理（`#770`）
+
+桌面壳的页面与托盘经私有通道签的票配会话（§3.2），全部落在同一台本机设备上（主人名下、每条会话都来自回环明文来源，§18.4 的「本机桌面」）。core 自动撤掉其中闲置的会话，请求与答复形状不变（`GET sessions` 照旧只列活着的）。
+
+- **客户端种类**：会话建立时的 `userAgent` 以 `Mozilla/` 开头的是**页面**（主窗口与按源另开的窗口），其余是**壳进程**（托盘）。
+- **闲置**：访问密钥已过期（一个访问期里没有刷新），并且 `lastSeenAtMs` 也早于一个访问期，再宽出 `lastSeenAtMs` 一分钟的记录粒度。访问期即访问密钥寿命（15 分钟；`ARMADRA_TEST_ACCESS_TTL_MS` 调短时按它）。
+- **配对时**：壳的票为本机设备配上一条新会话时，在同一笔事务里撤掉这台设备上**同一种客户端**的闲置会话。刚配上的那条、另一种客户端的会话（托盘的活会话不因页面配对被撤，反之亦然）与其他设备的会话一律不动。经 Gateway 配对的设备（HTTPS 来源）与口令、passkey、云登录的设备不在范围内。
+- **启动时**：core 启动时对主人名下每台本机设备做一次：每种客户端留最近用过的一条，其余闲置的撤掉。
+- 撤销与 `DELETE sessions/{id}` 效果相同：下一个请求即失效，长连接按 §17.4 复核。被撤的页面刷新被拒后照 #706 的路径向壳要票重新配对。
+- 日志一行 `info`，只有数目：配对时 `{ trigger: "pair", client, revoked }`，启动时 `{ trigger: "startup", devices, revoked }`；不写会话 id、令牌或 UA。不写审计。

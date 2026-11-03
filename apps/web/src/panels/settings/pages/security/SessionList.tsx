@@ -37,10 +37,13 @@ import {
 /** 一页放几台设备。 */
 export const SESSION_PAGE_SIZE = 8;
 
+/** 展开一台设备时一页放几条会话（#770）：几百条的设备不一次铺开。 */
+export const DEVICE_SESSION_PAGE_SIZE = 10;
+
 /** 同一台设备（`deviceId`）的会话，归成列表里的一行。 */
 export interface SessionGroup {
   readonly deviceId: string;
-  /** 当前的排第一，其余按最近活动从近到远。 */
+  /** 活着的会话（没过期；撤销的 core 不列）。当前的排第一，其余按最近活动从近到远。 */
   readonly sessions: readonly IdentitySessionRow[];
   /** 这一组里有没有发这个请求的那一个。 */
   readonly current: boolean;
@@ -122,6 +125,10 @@ export function SessionList({
   const [expanded, setExpanded] = React.useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  /** 展开的设备各自翻到第几页（deviceId → 页号，从 0 起）。 */
+  const [devicePages, setDevicePages] = React.useState<
+    ReadonlyMap<string, number>
+  >(() => new Map());
   const groups = React.useMemo(
     () => (sessions === undefined ? [] : groupSessions(sessions)),
     [sessions],
@@ -207,6 +214,18 @@ export function SessionList({
               const name = lead.deviceName || lead.deviceId.slice(0, 8);
               const many = group.sessions.length > 1;
               const open = many && expanded.has(group.deviceId);
+              const sessionPages = Math.ceil(
+                group.sessions.length / DEVICE_SESSION_PAGE_SIZE,
+              );
+              // 退出几条之后页数变少：停在最后一页。
+              const sessionPage = Math.min(
+                devicePages.get(group.deviceId) ?? 0,
+                sessionPages - 1,
+              );
+              const shownSessions = group.sessions.slice(
+                sessionPage * DEVICE_SESSION_PAGE_SIZE,
+                (sessionPage + 1) * DEVICE_SESSION_PAGE_SIZE,
+              );
               return (
                 <React.Fragment key={group.deviceId}>
                   <TableRow data-slot="session-group">
@@ -274,7 +293,7 @@ export function SessionList({
                     </TableCell>
                   </TableRow>
                   {open &&
-                    group.sessions.map((session) => {
+                    shownSessions.map((session) => {
                       const SessionIcon = platformIcon(session.userAgent);
                       return (
                         <TableRow
@@ -313,6 +332,22 @@ export function SessionList({
                         </TableRow>
                       );
                     })}
+                  {open && sessionPages > 1 && (
+                    <TableRow data-slot="session-pages">
+                      <TableCell colSpan={columns}>
+                        <PageNav
+                          label={t("security.sessions.devicePages", { name })}
+                          page={sessionPage}
+                          count={sessionPages}
+                          onPage={(index) =>
+                            setDevicePages((pages) =>
+                              new Map(pages).set(group.deviceId, index),
+                            )
+                          }
+                        />
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </React.Fragment>
               );
             })}
@@ -349,46 +384,12 @@ export function SessionList({
             <span />
           )}
           {pageCount > 1 && (
-            <Pagination
-              aria-label={t("security.sessions.pages")}
-              className="mx-0 w-auto justify-end"
-            >
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    text={t("security.sessions.previous")}
-                    disabled={shownPage === 0}
-                    onClick={() => setPage(shownPage - 1)}
-                  />
-                </PaginationItem>
-                {paginationRange(shownPage, pageCount).map((index, position) =>
-                  index === "gap" ? (
-                    <PaginationItem key={`gap-${position}`}>
-                      <PaginationEllipsis />
-                    </PaginationItem>
-                  ) : (
-                    <PaginationItem key={index}>
-                      <PaginationLink
-                        isActive={index === shownPage}
-                        aria-label={t("security.sessions.page", {
-                          page: index + 1,
-                        })}
-                        onClick={() => setPage(index)}
-                      >
-                        {index + 1}
-                      </PaginationLink>
-                    </PaginationItem>
-                  ),
-                )}
-                <PaginationItem>
-                  <PaginationNext
-                    text={t("security.sessions.next")}
-                    disabled={shownPage >= pageCount - 1}
-                    onClick={() => setPage(shownPage + 1)}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
+            <PageNav
+              label={t("security.sessions.pages")}
+              page={shownPage}
+              count={pageCount}
+              onPage={setPage}
+            />
           )}
         </div>
       )}
@@ -414,6 +415,58 @@ export function SessionList({
         }}
       />
     </SecuritySection>
+  );
+}
+
+/** 一组分页按钮：上一页 · 页号 · 下一页。设备列表与展开的设备共用。 */
+function PageNav({
+  label,
+  page,
+  count,
+  onPage,
+}: {
+  label: string;
+  page: number;
+  count: number;
+  onPage(page: number): void;
+}) {
+  const t = useT();
+  return (
+    <Pagination aria-label={label} className="mx-0 w-auto justify-end">
+      <PaginationContent>
+        <PaginationItem>
+          <PaginationPrevious
+            text={t("security.sessions.previous")}
+            disabled={page === 0}
+            onClick={() => onPage(page - 1)}
+          />
+        </PaginationItem>
+        {paginationRange(page, count).map((index, position) =>
+          index === "gap" ? (
+            <PaginationItem key={`gap-${position}`}>
+              <PaginationEllipsis />
+            </PaginationItem>
+          ) : (
+            <PaginationItem key={index}>
+              <PaginationLink
+                isActive={index === page}
+                aria-label={t("security.sessions.page", { page: index + 1 })}
+                onClick={() => onPage(index)}
+              >
+                {index + 1}
+              </PaginationLink>
+            </PaginationItem>
+          ),
+        )}
+        <PaginationItem>
+          <PaginationNext
+            text={t("security.sessions.next")}
+            disabled={page >= count - 1}
+            onClick={() => onPage(page + 1)}
+          />
+        </PaginationItem>
+      </PaginationContent>
+    </Pagination>
   );
 }
 

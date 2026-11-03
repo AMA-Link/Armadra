@@ -1,9 +1,16 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { usePreferencesStore } from "../../../../app/preferences-store";
 import { installDomPolyfills } from "../../../../app/test-harness";
 import {
+  DEVICE_SESSION_PAGE_SIZE,
   LockoutList,
   SESSION_PAGE_SIZE,
   SessionList,
@@ -256,6 +263,95 @@ describe("SessionList 按设备归并与分页（#706）", () => {
         onRevoke={vi.fn()}
       />,
     );
+    expect(screen.queryByRole("navigation")).toBeNull();
+  });
+});
+
+describe("展开的设备在组内分页（#770）", () => {
+  const total = DEVICE_SESSION_PAGE_SIZE * 2 + 3;
+  const sessions = () => [
+    onDevice("current", "desk", 1_000, { current: true }),
+    ...Array.from({ length: total - 1 }, (_, index) =>
+      onDevice(`s${index}`, "desk", 900 - index),
+    ),
+    // 过期的不进会话数，也不出现在展开的列表里。
+    onDevice("expired-1", "desk", 2_000, { expiresAtMs: Date.now() - 1 }),
+    onDevice("expired-2", "desk", 2_000, { expiresAtMs: Date.now() - 1 }),
+  ];
+  const shown = () =>
+    [...document.querySelectorAll('[data-slot="session-row"]')].map(
+      (each) => each.querySelector("[title]")?.parentElement?.textContent ?? "",
+    );
+
+  it("会话数只数活着的；展开后一页一页看，当前与最近的在前", () => {
+    const onRevoke = vi.fn();
+    render(
+      <SessionList {...listProps} sessions={sessions()} onRevoke={onRevoke} />,
+    );
+    const group = document.querySelector('[data-slot="session-group"]');
+    expect(group?.textContent).toContain(`${total} 个会话`);
+    expect(screen.queryByRole("navigation")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "展开 本机桌面" }));
+    expect(shown()).toHaveLength(DEVICE_SESSION_PAGE_SIZE);
+    expect(shown()[0]).toContain("当前");
+    const nav = screen.getByRole("navigation", {
+      name: "本机桌面 的会话分页",
+    });
+    expect(
+      (within(nav).getByRole("button", { name: "上一页" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+
+    fireEvent.click(within(nav).getByRole("button", { name: "下一页" }));
+    expect(shown()).toHaveLength(DEVICE_SESSION_PAGE_SIZE);
+    expect(shown()[0]).not.toContain("当前");
+    fireEvent.click(within(nav).getByRole("button", { name: "第 3 页" }));
+    expect(shown()).toHaveLength(3);
+    // 这一页的每条都能单独退出。
+    const buttons = screen.getAllByRole("button", { name: "退出 本机桌面" });
+    expect(buttons).toHaveLength(3);
+    fireEvent.click(buttons[2] as HTMLElement);
+    fireEvent.click(screen.getByRole("button", { name: "退出" }));
+    expect(onRevoke).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: `s${total - 2}` }),
+    );
+  });
+
+  it("退出几条之后页数变少，停在最后一页", () => {
+    const { rerender } = render(
+      <SessionList {...listProps} sessions={sessions()} onRevoke={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "展开 本机桌面" }));
+    fireEvent.click(screen.getByRole("button", { name: "第 3 页" }));
+    rerender(
+      <SessionList
+        {...listProps}
+        sessions={sessions().slice(0, DEVICE_SESSION_PAGE_SIZE + 2)}
+        onRevoke={vi.fn()}
+      />,
+    );
+    expect(shown()).toHaveLength(2);
+    expect(
+      screen
+        .getByRole("button", { name: "第 2 页" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+  });
+
+  it("一页放得下的设备展开后没有组内分页", () => {
+    render(
+      <SessionList
+        {...listProps}
+        sessions={[
+          onDevice("a", "desk", 2, { current: true }),
+          onDevice("b", "desk", 1),
+        ]}
+        onRevoke={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "展开 本机桌面" }));
+    expect(shown()).toHaveLength(2);
     expect(screen.queryByRole("navigation")).toBeNull();
   });
 });

@@ -35,7 +35,7 @@ afterEach(() => {
 
 function fixture(
   start = 1_700_000_000_000,
-  options: { accessTtlMs?: number } = {},
+  options: ConstructorParameters<typeof IdentityService>[3] = {},
 ) {
   const directory = tempDir("armadra-identity-");
   const opened = openDatabase({
@@ -1044,5 +1044,201 @@ describe("限寿会话（SaaS 来源，#484）", () => {
     const credentials = open(fix);
     fix.advance(SESSION_TTL_MS - 1_000);
     expect(refresh(fix, credentials).expiresAtMs).toBe(credentials.expiresAtMs);
+  });
+});
+
+describe("清理本机设备上闲置的壳会话（#770）", () => {
+  const PAGE_UA =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Armadra Chrome/142.0.0.0 Electron/42.11.6 Safari/537.36";
+  const TRAY_UA = "node";
+  const TTL = 60_000;
+  /** 闲置的门槛：一个访问期再加最近活动一分钟的记录粒度。 */
+  const IDLE = TTL + 60_000;
+
+  function shellPair(
+    fix: ReturnType<typeof fixture>,
+    origin: string,
+    userAgent: string,
+  ) {
+    const ticket = fix.service.issueBootstrap({
+      hostId: fix.hostId,
+      instanceId: INSTANCE,
+      origin,
+      deviceName: "本机桌面",
+      scopes: allScopes(),
+    });
+    return fix.service.consumeBootstrap({
+      ticket: ticket.ticket,
+      hostId: fix.hostId,
+      instanceId: INSTANCE,
+      origin,
+      userAgent,
+    });
+  }
+
+  const revoked = (fix: ReturnType<typeof fixture>, sessionId: string) =>
+    (fix.store.transaction((tx) => tx.session(sessionId))?.revokedAtMs ?? 0) !==
+    0;
+
+  function logged() {
+    const lines: { message: string; fields?: Record<string, unknown> }[] = [];
+    return {
+      lines,
+      log: {
+        info: (message: string, fields?: Record<string, unknown>) =>
+          lines.push({ message, ...(fields ? { fields } : {}) }),
+      },
+    };
+  }
+
+  it("页面重新配对时撤掉同一设备上闲置的页面会话，托盘与当前会话不动", () => {
+    const sink = logged();
+    const fix = fixture(1_700_000_000_000, { accessTtlMs: TTL, log: sink.log });
+    const oldPage = shellPair(fix, "http://127.0.0.1:50001", PAGE_UA);
+    const tray = shellPair(fix, "http://127.0.0.1:43120", TRAY_UA);
+    fix.advance(IDLE + 1);
+    const page = shellPair(fix, "http://127.0.0.1:50002", PAGE_UA);
+    expect(revoked(fix, oldPage.principal.sessionId)).toBe(true);
+    expect(revoked(fix, page.principal.sessionId)).toBe(false);
+    // 托盘也闲置了一个访问期，但它是另一种客户端。
+    expect(revoked(fix, tray.principal.sessionId)).toBe(false);
+    expect(sink.lines).toEqual([
+      {
+        message: expect.any(String),
+        fields: { trigger: "pair", client: "page", revoked: 1 },
+      },
+    ]);
+    expect(JSON.stringify(sink.lines)).not.toContain(
+      oldPage.principal.sessionId,
+    );
+  });
+
+  it("一个访问期里刷新过或认证过的会话不算闲置（另开的窗口还开着）", () => {
+    // 访问期 5 分钟：最近活动一分钟才记一次，一分钟的访问期里记不下认证。
+    const ttl = 5 * 60_000;
+    const fix = fixture(1_700_000_000_000, { accessTtlMs: ttl });
+    const origin = "http://127.0.0.1:50001";
+    const refreshed = shellPair(fix, origin, PAGE_UA);
+    const seen = shellPair(fix, origin, PAGE_UA);
+    const idle = shellPair(fix, origin, PAGE_UA);
+    fix.advance(ttl - 5_000);
+    fix.service.refresh({
+      refreshToken: refreshed.refreshToken,
+      csrfToken: refreshed.csrfToken,
+      hostId: fix.hostId,
+      origin,
+    });
+    fix.service.authenticate({
+      accessToken: seen.accessToken,
+      hostId: fix.hostId,
+      origin,
+    });
+    fix.advance(5_000 + 60_000 + 10_000);
+    shellPair(fix, origin, PAGE_UA);
+    expect(revoked(fix, refreshed.principal.sessionId)).toBe(false);
+    expect(revoked(fix, seen.principal.sessionId)).toBe(false);
+    expect(revoked(fix, idle.principal.sessionId)).toBe(true);
+  });
+
+  it("托盘重新配对只撤闲置的托盘会话；别的设备一条不动", () => {
+    const fix = fixture(1_700_000_000_000, { accessTtlMs: TTL });
+    const page = shellPair(fix, "http://127.0.0.1:50001", PAGE_UA);
+    const oldTray = shellPair(fix, "http://127.0.0.1:43120", TRAY_UA);
+    const phone = shellPair(fix, "https://192.168.1.8:8443", PAGE_UA);
+    fix.advance(IDLE * 2);
+    const tray = shellPair(fix, "http://127.0.0.1:43121", TRAY_UA);
+    expect(revoked(fix, oldTray.principal.sessionId)).toBe(true);
+    expect(revoked(fix, tray.principal.sessionId)).toBe(false);
+    expect(revoked(fix, page.principal.sessionId)).toBe(false);
+    expect(revoked(fix, phone.principal.sessionId)).toBe(false);
+    expect(phone.principal.deviceId).not.toBe(tray.principal.deviceId);
+  });
+
+  it("没有闲置超过一个访问期就不撤（快速重载、刚重启）", () => {
+    const sink = logged();
+    const fix = fixture(1_700_000_000_000, { accessTtlMs: TTL, log: sink.log });
+    const first = shellPair(fix, "http://127.0.0.1:50001", PAGE_UA);
+    fix.advance(IDLE);
+    shellPair(fix, "http://127.0.0.1:50002", PAGE_UA);
+    expect(revoked(fix, first.principal.sessionId)).toBe(false);
+    expect(sink.lines).toEqual([]);
+  });
+
+  it("启动时每种客户端留最近的一条，其余闲置的撤掉，别的设备不动", () => {
+    const sink = logged();
+    const fix = fixture(1_700_000_000_000, { accessTtlMs: TTL, log: sink.log });
+    const pages: string[] = [];
+    const trays: string[] = [];
+    // 修好之前：每次启动一条页面、一条托盘，同一时刻配对，谁也不撤谁。
+    const stale = new IdentityService(fix.store, INSTANCE, () => fix.at(), {
+      accessTtlMs: SESSION_TTL_MS,
+    });
+    const legacy = (origin: string, userAgent: string) => {
+      const ticket = stale.issueBootstrap({
+        hostId: fix.hostId,
+        instanceId: INSTANCE,
+        origin,
+        deviceName: "本机桌面",
+        scopes: allScopes(),
+      });
+      return stale.consumeBootstrap({
+        ticket: ticket.ticket,
+        hostId: fix.hostId,
+        instanceId: INSTANCE,
+        origin,
+        userAgent,
+      }).principal;
+    };
+    for (let launch = 0; launch < 5; launch += 1) {
+      pages.push(
+        legacy(`http://127.0.0.1:${50001 + launch}`, PAGE_UA).sessionId,
+      );
+      trays.push(
+        legacy(`http://127.0.0.1:${43120 + launch}`, TRAY_UA).sessionId,
+      );
+      fix.advance(IDLE * 2);
+    }
+    const phone = shellPair(fix, "https://192.168.1.8:8443", PAGE_UA);
+    fix.advance(IDLE * 2);
+    // 那时的访问期是 30 天：换回 60 秒的规则，都闲置了。
+    const shorten = fix.database.prepare(
+      "UPDATE identity_sessions SET access_expires_at_ms = created_at_ms + ? WHERE session_id = ?",
+    );
+    for (const id of [...pages, ...trays]) shorten.run(TTL, id);
+
+    expect(fix.service.sweepIdleShellSessions()).toBe(8);
+    expect(pages.map((id) => revoked(fix, id))).toEqual([
+      true,
+      true,
+      true,
+      true,
+      false,
+    ]);
+    expect(trays.map((id) => revoked(fix, id))).toEqual([
+      true,
+      true,
+      true,
+      true,
+      false,
+    ]);
+    expect(revoked(fix, phone.principal.sessionId)).toBe(false);
+    expect(sink.lines).toEqual([
+      {
+        message: expect.any(String),
+        fields: { trigger: "startup", devices: 1, revoked: 8 },
+      },
+    ]);
+    // 再来一次什么也不撤。
+    expect(fix.service.sweepIdleShellSessions()).toBe(0);
+  });
+
+  it("启动时还在用的会话（一个访问期以内）一条不撤", () => {
+    const fix = fixture(1_700_000_000_000, { accessTtlMs: TTL });
+    const a = shellPair(fix, "http://127.0.0.1:50001", PAGE_UA);
+    const b = shellPair(fix, "http://127.0.0.1:50001", PAGE_UA);
+    fix.advance(TTL / 2);
+    expect(fix.service.sweepIdleShellSessions()).toBe(0);
+    expect(revoked(fix, a.principal.sessionId)).toBe(false);
+    expect(revoked(fix, b.principal.sessionId)).toBe(false);
   });
 });
