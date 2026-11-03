@@ -3010,6 +3010,23 @@
                                                           "outcome"
                                                         ]
                                                       },
+                                                      "mcp": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                          "server": {
+                                                            "type": "string",
+                                                            "maxLength": 200
+                                                          },
+                                                          "tool": {
+                                                            "type": "string",
+                                                            "maxLength": 200
+                                                          }
+                                                        },
+                                                        "required": [
+                                                          "server",
+                                                          "tool"
+                                                        ]
+                                                      },
                                                       "parentToolCallId": {
                                                         "type": "string",
                                                         "maxLength": 200
@@ -80858,6 +80875,20 @@
                                 },
                                 "required": ["pendingId", "outcome"]
                               },
+                              "mcp": {
+                                "type": "object",
+                                "properties": {
+                                  "server": {
+                                    "type": "string",
+                                    "maxLength": 200
+                                  },
+                                  "tool": {
+                                    "type": "string",
+                                    "maxLength": 200
+                                  }
+                                },
+                                "required": ["server", "tool"]
+                              },
                               "parentToolCallId": {
                                 "type": "string",
                                 "maxLength": 200
@@ -82863,6 +82894,20 @@
                                     },
                                     "required": ["pendingId", "outcome"]
                                   },
+                                  "mcp": {
+                                    "type": "object",
+                                    "properties": {
+                                      "server": {
+                                        "type": "string",
+                                        "maxLength": 200
+                                      },
+                                      "tool": {
+                                        "type": "string",
+                                        "maxLength": 200
+                                      }
+                                    },
+                                    "required": ["server", "tool"]
+                                  },
                                   "parentToolCallId": {
                                     "type": "string",
                                     "maxLength": 200
@@ -84510,6 +84555,20 @@
                                   }
                                 },
                                 "required": ["pendingId", "outcome"]
+                              },
+                              "mcp": {
+                                "type": "object",
+                                "properties": {
+                                  "server": {
+                                    "type": "string",
+                                    "maxLength": 200
+                                  },
+                                  "tool": {
+                                    "type": "string",
+                                    "maxLength": 200
+                                  }
+                                },
+                                "required": ["server", "tool"]
                               },
                               "parentToolCallId": {
                                 "type": "string",
