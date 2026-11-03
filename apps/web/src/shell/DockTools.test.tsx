@@ -151,7 +151,7 @@ describe("DockTools", () => {
     expect(button("选择").querySelector("[data-slot='indicator']")).toBeNull();
   });
 
-  it("手机竖屏那一份（inline）：七格一个不少，不折进弹层，也不画分隔线", () => {
+  it("手机那一份（inline）：七格一个不少，不折进弹层，前面一条分隔线与 Dock 同一行（#766）", () => {
     render(
       <TestProviders>
         <DockTools inline />
@@ -173,6 +173,9 @@ describe("DockTools", () => {
     expect(document.querySelector(".dock-tools-compact")).toBeNull();
     expect(document.querySelector(".dock-tools-expanded")).toBeNull();
     expect(screen.queryByLabelText("白板工具")).toBeNull();
-    expect(document.querySelector("[data-slot='separator']")).toBeNull();
+    // 与桌面一样在工具组前画分隔线：竖屏不再拆成第二行（#766）。
+    expect(document.querySelectorAll("[data-slot='separator']")).toHaveLength(
+      1,
+    );
   });
 });

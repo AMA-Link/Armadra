@@ -17,7 +17,7 @@
  * 自上而下：标题栏（折叠 / 搜索 / 通知）/ Armadra 下拉 / 新建画布 + 置顶 +
  * 项目（通知按下时这一段换成 Agent 状态面板）/ 设置。
  */
-import { useCompactLayout } from "../platform/layout";
+import { useCompactLayout, usePhoneLandscape } from "../platform/layout";
 import { isSimpleMode } from "../acp/simple-mode";
 import { Sheet, SheetClose, SheetContent, SheetTitle } from "@/ui/sheet";
 import { useState } from "react";
@@ -49,10 +49,13 @@ export function LeftSidebar() {
   const open = useCanvasStore((state) => state.panels.sidebar) === "open";
   const settingsOpen = useCanvasStore((state) => state.panels.settings);
   const compact = useCompactLayout();
+  // 手机横屏虽是电脑布局，侧栏却和竖屏一样是覆盖式抽屉（#766）：停靠的 280px
+  // 在 874 宽的屏幕上要挤掉三分之一画布，Dock 也跟着放不下。
+  const overlay = usePhoneLandscape() || compact;
   const shell = isDesktop();
-  // A compact sidebar is modal. Keep the desktop preference, but never create
+  // An overlay sidebar is modal. Keep the desktop preference, but never create
   // a second modal over settings when resizing or opening settings by shortcut.
-  const visible = open && (!compact || !settingsOpen);
+  const visible = open && (!overlay || !settingsOpen);
   const setPanel = useCanvasStore((state) => state.setPanel);
   const [searchOpen, setSearchOpen] = useState(false);
   // 简洁模式下 Agent 面板默认展开（ACP 设计 §8 第 3 条）；只定初值，之后由人收放。
@@ -62,12 +65,12 @@ export function LeftSidebar() {
     <div className="flex h-full w-full flex-col overflow-hidden">
       <div className="relative shrink-0">
         <TitlebarRow
-          brand={!shell && !compact}
+          brand={!shell && !overlay}
           agentsOpen={agentsOpen}
           onSearch={() => setSearchOpen(true)}
           onToggleAgents={() => setAgentsOpen((value) => !value)}
         />
-        {compact && (
+        {overlay && (
           <SheetClose asChild>
             <IconButton
               size="cluster"
@@ -82,7 +85,7 @@ export function LeftSidebar() {
       </div>
       {/* 没有红绿灯的页面（浏览器、中转托管）不留一整行标题栏：产品名并进
           搜索与通知那一行，给折叠钮让出左边的位置。 */}
-      {shell || compact ? <SidebarHeader /> : null}
+      {shell || overlay ? <SidebarHeader /> : null}
       {agentsOpen ? (
         <NotificationPanel onClose={() => setAgentsOpen(false)} />
       ) : (
@@ -91,7 +94,7 @@ export function LeftSidebar() {
       <Separator />
       <SidebarFooter
         onNavigate={
-          compact ? () => setPanel("sidebar", "collapsed") : undefined
+          overlay ? () => setPanel("sidebar", "collapsed") : undefined
         }
       />
     </div>
@@ -100,7 +103,7 @@ export function LeftSidebar() {
   return (
     <>
       <SidebarToggle open={visible} />
-      {compact ? (
+      {overlay ? (
         <Sheet
           open={visible}
           onOpenChange={(next) => {
@@ -136,12 +139,16 @@ export function LeftSidebar() {
           aria-hidden={!open}
           inert={!open}
           data-state={open ? "open" : "collapsed"}
-          style={{ width: open ? "var(--sidebar-w)" : 0 }}
+          // 开着时连左侧安全区一起占（设计系统 §3.1，根容器不再让左右安全区，
+          // #766）：底色铺到屏幕边，内容从安全区右边起。
+          style={{
+            width: open ? "calc(var(--sidebar-w) + var(--safe-left))" : 0,
+          }}
           // `.material-sidebar` 的 backdrop-filter 让这个 aside 自成一个层叠上下文：
           // 里面的按钮无论写多大的 z 都出不来，会被全局拖拽层（--z-pills）整个
           // 盖住——按搜索、通知按到的是「拖窗口」。于是 aside 自己抬到拖拽层之上，
           // 标题栏那一行改由 `TitlebarRow` 自带拖拽属性，空白处照样能拖。
-          className="material-sidebar relative z-[calc(var(--z-pills)+1)] h-full shrink-0 overflow-hidden border-r border-border transition-[width] duration-(--dur-base) ease-out data-[state=collapsed]:border-r-0"
+          className="material-sidebar relative z-[calc(var(--z-pills)+1)] h-full shrink-0 overflow-hidden border-r border-border transition-[width] duration-(--dur-base) ease-out data-[state=collapsed]:border-r-0 data-[state=open]:pl-[var(--safe-left)]"
         >
           <div className="h-full w-[var(--sidebar-w)]">{content}</div>
         </aside>
@@ -178,7 +185,7 @@ function TitlebarRow({
     >
       {brand ? (
         // 折叠钮固定在左上角（28px + 8px 边距），产品名从它右边起。
-        <span className="mr-auto truncate pl-[calc(var(--safe-left)+var(--window-controls-left)+36px)] text-section font-semibold">
+        <span className="mr-auto truncate pl-[calc(var(--window-controls-left)+36px)] text-section font-semibold">
           {t("app.brand")}
         </span>
       ) : null}

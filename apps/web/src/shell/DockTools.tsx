@@ -59,10 +59,10 @@ import { useMenuTooltip } from "./menu-tooltip";
  * 按钮显示当前成员、下拉换另一种。记忆在 `tool-store` 的
  * `useToolGroupChoice`，所以快捷键切过去之后图标也跟着变。
  *
- * 手机竖屏（`isCompactLayout()`）上工具一个不少（#715，推翻 F32 的「只留选择与手」）：
- * Dock 拆成两行，这一组整排放在第二行（`inline`），不画前面的分隔线，也不折进
- * 弹层——竖屏 402px 宽放得下七格，藏起来的按钮等于没有。引入开的是 `<input
- * type=file>`，手机上弹系统的照片 / 文件选择。
+ * 手机（竖屏与横屏）上工具一个不少（#715，推翻 F32 的「只留选择与手」）：这一组
+ * 整排留在 Dock 那一行里（`inline`），不折进弹层——藏起来的按钮等于没有；Dock
+ * 放不下时整行横向滚动（#766）。引入开的是 `<input type=file>`，手机上弹系统的
+ * 照片 / 文件选择。
  */
 export function DockTools({ inline = false }: { inline?: boolean }) {
   const t = useT();
@@ -90,9 +90,12 @@ export function DockTools({ inline = false }: { inline?: boolean }) {
 
   if (inline) {
     return (
-      <div data-slot="dock-tools" className="flex items-center gap-1">
-        {buttons("dock-tools")}
-      </div>
+      <>
+        <Separator orientation="vertical" className="mx-1 h-5" />
+        <div data-slot="dock-tools" className="flex items-center gap-1">
+          {buttons("dock-tools")}
+        </div>
+      </>
     );
   }
 

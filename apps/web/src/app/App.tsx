@@ -133,12 +133,13 @@ function AppShell() {
   useLocaleMirror();
 
   return (
-    // 根容器让开顶、左、右三边的安全区（`--safe-*`，设计系统 §3.1）：侧栏、画布
-    // 和画布里贴边的浮层（工具簇、通知条、Dock、缩略图）跟着整体内缩，状态栏下
-    // 只剩这块底色。底边不在这里让：手机布局的底部导航自己垫主页横条，画布底部
-    // 的浮层各自加 `--safe-bottom`，否则那一截会算两遍。
+    // 根容器只让开顶边的安全区（`--safe-top`，设计系统 §3.1），状态栏下只剩这块
+    // 底色。左右两边不在这里让（#766）：手机横屏时刘海与圆角那两条要铺画布，
+    // 不能空成底色带——停靠的侧栏自己让左侧，画布里贴边的浮层（工具簇、通知条、
+    // Dock、缩略图）按 `.workspace-surface` 的 `--surface-inset-*` 各自让开。底边
+    // 同理：手机布局的底部导航自己垫主页横条，画布底部的浮层各自加 `--safe-bottom`。
     <div
-      className="app-shell flex h-full overflow-hidden bg-background pt-[var(--safe-top)] pr-[var(--safe-right)] pl-[var(--safe-left)]"
+      className="app-shell flex h-full overflow-hidden bg-background pt-[var(--safe-top)]"
       data-enter={enter === "off" ? undefined : enter}
     >
       {/* 必须是整棵树的第一个子节点。原生层算可拖拽区域时按 DOM 顺序把

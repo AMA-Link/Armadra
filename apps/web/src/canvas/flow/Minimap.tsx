@@ -320,10 +320,14 @@ export function MinimapToggle({
       className="minimap-toggle-panel"
       style={
         collapsed
-          ? { margin: 0, right: 14, bottom: "var(--navigation-bottom)" }
+          ? {
+              margin: 0,
+              right: "calc(14px + var(--surface-inset-right, 0px))",
+              bottom: "var(--navigation-bottom)",
+            }
           : {
               margin: 0,
-              right: 18,
+              right: "calc(18px + var(--surface-inset-right, 0px))",
               bottom:
                 "calc(var(--navigation-bottom) + var(--minimap-h) - 28px)",
             }

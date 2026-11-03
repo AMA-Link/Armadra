@@ -29,8 +29,8 @@ export const emptyBoardState = {
 };
 
 export const initialPanels: PanelState = {
-  // 手机横屏是电脑布局（#715），但 280px 的侧栏在 800 宽上下的屏幕里要占掉三分
-  // 之一：默认收起，折叠钮照常在左上角。
+  // 手机横屏是电脑布局（#715），侧栏却是覆盖式抽屉（#766）：默认收起，免得一
+  // 打开就盖住画布；折叠钮照常在左上角。
   sidebar:
     !isCompactLayout() &&
     !isPhoneLandscape() &&

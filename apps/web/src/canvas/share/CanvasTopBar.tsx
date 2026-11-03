@@ -16,7 +16,7 @@ export function CanvasTopBar() {
     <div
       data-slot="canvas-top-bar"
       {...noDragProps()}
-      className="pointer-events-none absolute top-[14px] right-[60px] z-[var(--z-cluster)] flex items-center gap-2 *:pointer-events-auto"
+      className="pointer-events-none absolute top-[14px] right-[calc(60px+var(--surface-inset-right,0px))] z-[var(--z-cluster)] flex items-center gap-2 *:pointer-events-auto"
     >
       {shared && (
         <SharedWorkspaceBar className="h-[38px] rounded-card border border-border-strong bg-panel/90 px-2.5 shadow-overlay backdrop-blur-[12px]" />
