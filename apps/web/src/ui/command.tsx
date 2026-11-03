@@ -182,7 +182,7 @@ function CommandItem({
       {...props}
     >
       {children}
-      <CheckIcon className="ml-auto opacity-0 group-has-data-[slot=command-shortcut]/command-item:hidden group-data-[checked=true]/command-item:opacity-100" />
+      <CheckIcon className="ml-auto opacity-0 group-has-data-[slot=command-shortcut]/command-item:hidden group-has-data-[slot=command-meta]/command-item:hidden group-data-[checked=true]/command-item:opacity-100" />
     </CommandPrimitive.Item>
   );
 }
@@ -200,6 +200,24 @@ function CommandShortcut({ className, ...props }: React.ComponentProps<"kbd">) {
   );
 }
 
+/**
+ * 行尾的次要文字（画布名、目录名这类「在哪儿」）：右对齐、长了从尾部截断。
+ * 是文字不是快捷键，所以不用 `Kbd`；带它的行不画尾部的对勾，免得对勾的
+ * `ml-auto` 与它平分剩余空间，把标签挤到行中间。
+ */
+function CommandMeta({ className, ...props }: React.ComponentProps<"span">) {
+  return (
+    <span
+      data-slot="command-meta"
+      className={cn(
+        "ml-auto max-w-[45%] shrink-0 truncate text-meta text-muted-foreground",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
 export {
   Command,
   CommandDialog,
@@ -209,5 +227,6 @@ export {
   CommandGroup,
   CommandItem,
   CommandShortcut,
+  CommandMeta,
   CommandSeparator,
 };
