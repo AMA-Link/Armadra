@@ -5028,3 +5028,29 @@ owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourc
 - **启动时**：core 启动时对主人名下每台本机设备做一次：每种客户端留最近用过的一条，其余闲置的撤掉。
 - 撤销与 `DELETE sessions/{id}` 效果相同：下一个请求即失效，长连接按 §17.4 复核。被撤的页面刷新被拒后照 #706 的路径向壳要票重新配对。
 - 日志一行 `info`，只有数目：配对时 `{ trigger: "pair", client, revoked }`，启动时 `{ trigger: "startup", devices, revoked }`；不写会话 id、令牌或 UA。不写审计。
+
+## 97. 关掉的 Agent：`settings.agents.disabled`，对 Agent 不可见、不可派发
+
+用户在设置 → Agent 里把某家关掉（页面的 `agentModes`，本设备偏好）后，除了页面的新建入口，core 也要让 Agent 看不到它、派不了它。只加字段，不改已有形状。
+
+### 97.1 设置键
+
+- `settings.agents.disabled`：字符串数组，关掉的 Agent id（内置 id 或 `custom:<id>`）。没关过就没有这个键。
+- 页面把 `agentModes` 里为 `disabled` 的那几家**整组**写进来（`PATCH /api/settings`，数组整段替换；全开了写 `null` 删掉键），读到的文档与偏好不一致才写。服务器壳上的成员写不了，不镜像。
+- `normalize`：只留合法的 id（`validAgentId`），去重，最多 71 个；清洗后为空就删掉这个键；没有 `agents` 一节时不建。读写权限同 `settings`（owner）。
+- 关掉**只影响发现与派发**：已有节点、`send`、读转录、历史、用量都照常，自动化计划与工作流模板由用户自己配置，也不受影响。
+
+### 97.2 对 Agent 可见的名单
+
+下面这些只列没被关掉的 Agent，关掉的不出现：
+
+- `canvas help` 答复的 `result.agents`（ama 的 `HostApi.runners` 据此为每一家注册 runner，所以 ama 的 `task` 的目标名单随之收窄；这份名单在 ama 启动时读一次，之后再关的，由 97.3 的拒绝兜底，下一个 ama 会话起名单更新）。
+- `armadra-hook mcp` 的 `initialize.instructions`：`initialize` 时问一次 `canvas help`，把可派发名单写进说明；问不到（core 不在、旧版本、3 秒内没答）就不写名单。
+- `open-agent` / `team` 的报错（未知 agent、缺 `--agent`）里的「可用」名单。
+- 画布技能与 MCP 工具说明里不再点名具体 Agent，用 `<agent>` 占位并指向 `canvas help`（技能修订号 23）。
+
+`GET /api/agents` 仍列出全部 Agent（设置页要靠它把关掉的开回来），关掉的那一行多一个 `disabled: true`；没关的行没有这个键。
+
+### 97.3 派发拒绝
+
+`open-agent --agent <id>`、`team --member / --gather` 的第一段指向被关掉的 Agent 时，整条拒绝，不建任何节点：HTTP `403`，`{ code: "AGENT_DISABLED", message }`，`message` 说明已被用户关闭并列出可用的 Agent。`--dry-run` 同样拒绝。

@@ -347,9 +347,36 @@ export interface CustomAgent {
 /** The settings this domain reads. Injected, so a test can pass a literal. */
 export interface AgentSettings {
   customAgents(): readonly CustomAgent[];
+  /**
+   * 用户在设置里关掉的 Agent id（`settings.agents.disabled`，契约 §97）。缺席 =
+   * 一个都没关。关掉只影响**发现与派发**：已有节点照常工作。
+   */
+  disabledAgents?(): readonly string[];
 }
 
 export const NO_CUSTOM_AGENTS: AgentSettings = { customAgents: () => [] };
+
+/** 这家 Agent 被用户在设置里关掉了吗。 */
+export function agentDisabled(
+  settings: AgentSettings | undefined,
+  agentId: string,
+): boolean {
+  return settings?.disabledAgents?.().includes(agentId) ?? false;
+}
+
+/**
+ * 这台机器上 Agent 能发现、能派发的 id：内置的与设置里的自定义，去掉被关掉
+ * 的。`canvas help` 的 `agents`、`open-agent` / `team` 的报错、ama 的 runner
+ * 注册都读它——给 Agent 看的名单只有这一份。
+ */
+export function availableAgentIds(
+  settings: AgentSettings | undefined,
+): string[] {
+  return [
+    ...AGENT_IDS,
+    ...(settings?.customAgents().map((custom) => custom.id) ?? []),
+  ].filter((id) => !agentDisabled(settings, id));
+}
 
 export function customAgent(
   settings: AgentSettings,

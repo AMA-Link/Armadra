@@ -239,6 +239,8 @@ export const completionSettingsSchema = z.looseObject({
         .enum(AGENT_DRIVER_CHOICES)
         .catch(D.agents.defaultDriver)
         .default(D.agents.defaultDriver),
+      /** 用户在设置里关掉的 Agent id（契约 §97）；没关过就没有这个键。 */
+      disabled: z.array(z.string()).optional().catch(undefined),
     })
     .catch({ ...D.agents })
     .default({ ...D.agents }),

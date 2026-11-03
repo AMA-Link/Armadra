@@ -10,7 +10,6 @@ import {
   FolderTree,
   Frame,
   Globe,
-  History,
   LayoutGrid,
   Maximize,
   Network,
@@ -45,7 +44,6 @@ import { openAutomationPanel } from "../../panels/automation/open";
 import { openWorkflowPanel } from "../../workflow/store";
 import { isDesktop } from "../../platform";
 import { preferredView } from "../../acp/driver";
-import { attachable, openAttachSession } from "../../acp/attach-session";
 import { newNodeRole } from "../../agent/launch";
 import { defaultNodeSize } from "../../store/defaults";
 import { beginCoalesce, endCoalesce } from "../../store/canvas/history";
@@ -180,8 +178,9 @@ function itemVisible(item: AddMenuItem): boolean {
 
 /**
  * 选了一家 Agent：建一个终端节点（权限模式按偏好，不支持就提示）。`attach` 给了
- * 就是「接管已有会话」：节点以 ACP 驱动建出，`agent.sessionId` 记着 Agent 自己
- * 的会话 id，起会话时走已有的接回路径；会话在工作空间里的目录一并带上。
+ * 就是「接管已有会话」（入口在设置 → Agent 页，不在这份菜单里）：节点以 ACP
+ * 驱动建出，`agent.sessionId` 记着 Agent 自己的会话 id，起会话时走已有的接回
+ * 路径；会话在工作空间里的目录一并带上。
  */
 export function createAgentNode(
   context: AddMenuContext,
@@ -243,20 +242,6 @@ export function buildAddMenu(
     disabledReason: () => (agent.resolvedPath ? null : t("add.notInstalled")),
   }));
 
-  // 「接管已有会话」：只给报了 `session/list` 能力的 Agent（core 起过一次适配器
-  // 之后才知道），选了在对话框里列出它自己历史里的会话。
-  const attachItems: AddMenuItem[] = agents
-    .filter((agent) => attachable(agent))
-    .map((agent) => ({
-      id: `add.attach.${agent.id}`,
-      label: t("add.attachSession", { name: agent.label }),
-      icon: History,
-      group: "agent" as const,
-      color: agent.color,
-      run: (context) => openAttachSession(context, agent),
-      disabledReason: () => (agent.resolvedPath ? null : t("add.notInstalled")),
-    }));
-
   const items: AddMenuItem[] = [
     {
       id: "add.terminal",
@@ -271,7 +256,6 @@ export function buildAddMenu(
       },
     },
     ...agentItems,
-    ...attachItems,
     ...sshMenuItems(hosts, t),
     {
       id: "add.sticky",

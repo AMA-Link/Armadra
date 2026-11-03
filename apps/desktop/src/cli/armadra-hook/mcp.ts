@@ -94,7 +94,10 @@ export type ToolCaller = (
 /* --------------------------------- methods -------------------------------- */
 
 /** `initialize`: echo the client's revision when it is one of ours. */
-export function initializeResult(params: unknown): Record<string, unknown> {
+export function initializeResult(
+  params: unknown,
+  agents?: readonly string[],
+): Record<string, unknown> {
   const requested = (params as { protocolVersion?: unknown } | null)
     ?.protocolVersion;
   const protocolVersion =
@@ -106,9 +109,49 @@ export function initializeResult(params: unknown): Record<string, unknown> {
     protocolVersion,
     capabilities: { tools: { listChanged: false } },
     serverInfo: { name: MCP_SERVER_NAME, version: CLIENT_VERSION },
-    instructions: mcpInstructions(),
+    instructions: mcpInstructions(agents),
   };
 }
+
+/**
+ * 现在能派发的 Agent id：问 core 的 `canvas help`，那份名单已去掉用户在设置
+ * 里关掉的（契约 §97）。问不到（core 不在、旧版本、超时）就是 `undefined`，
+ * 说明里不写名单，模型自己调 `canvas_help`。
+ */
+export type AgentLister = () => Promise<readonly string[] | undefined>;
+
+/** `initialize` 不能为一个不在的 core 等很久。 */
+const AGENT_LIST_BUDGET_MS = 3_000;
+
+export const fetchAgentIds: AgentLister = async () => {
+  const loaded = loadSession();
+  if ("error" in loaded) return undefined;
+  const tool = toolByName("canvas_help");
+  if (tool === undefined) return undefined;
+  const outcome = await send(
+    loaded.ok,
+    (current, candidate) =>
+      postJsonRequest(
+        tool.path,
+        headersFor(current, candidate),
+        controlBody(loaded.ok.nodeId, {}),
+      ),
+    Math.min(verbTimeoutMs(), AGENT_LIST_BUDGET_MS),
+  );
+  if ("error" in outcome || !isSuccess(outcome.ok)) return undefined;
+  try {
+    const body = JSON.parse(outcome.ok.body) as {
+      agents?: unknown;
+      result?: { agents?: unknown };
+    };
+    const agents = body.agents ?? body.result?.agents;
+    return Array.isArray(agents)
+      ? agents.filter((id): id is string => typeof id === "string")
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 /** `tools/list`: the whole table, no pagination. */
 export function toolsListResult(): { tools: Record<string, unknown>[] } {
@@ -200,6 +243,7 @@ function isId(value: unknown): value is RpcId {
 export async function handleLine(
   line: string,
   call: ToolCaller = callTool,
+  agents: AgentLister = fetchAgentIds,
 ): Promise<McpResponse | undefined> {
   if (line.trim() === "") return undefined;
   let message: unknown;
@@ -242,7 +286,10 @@ export async function handleLine(
 
   switch (method) {
     case "initialize":
-      return reply(id, initializeResult(params));
+      return reply(
+        id,
+        initializeResult(params, await agents().catch(() => undefined)),
+      );
     case "ping":
       return reply(id, {});
     case "tools/list":
@@ -291,11 +338,12 @@ export async function serve(
   input: NodeJS.ReadableStream,
   output: NodeJS.WritableStream,
   call: ToolCaller = callTool,
+  agents: AgentLister = fetchAgentIds,
 ): Promise<void> {
   const lines = readline.createInterface({ input, crlfDelay: Infinity });
   const running = new Set<Promise<void>>();
   for await (const line of lines) {
-    const task = handleLine(line, call).then((response) => {
+    const task = handleLine(line, call, agents).then((response) => {
       if (response !== undefined) output.write(`${JSON.stringify(response)}\n`);
     });
     running.add(task);

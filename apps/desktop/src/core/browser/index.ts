@@ -1,4 +1,7 @@
-import { parseCustomAgents } from "../settings/custom-agents";
+import {
+  parseCustomAgents,
+  parseDisabledAgents,
+} from "../settings/custom-agents";
 import { settingsDomain } from "../settings";
 import type { Caller } from "../collab/nodes";
 import { asRefused } from "../collab/refusals";
@@ -136,6 +139,8 @@ export function install(context: CoreContext): BrowserContext {
     settings: {
       customAgents: () =>
         parseCustomAgents(settingsDomain()?.settings.snapshot() ?? {}),
+      disabledAgents: () =>
+        parseDisabledAgents(settingsDomain()?.settings.snapshot() ?? {}),
     },
     publish: (workspaceId, event) => {
       context.bus.emit("workspace.event", { workspaceId, event });

@@ -95,6 +95,21 @@ describe("the dispatcher", () => {
     );
   });
 
+  it("leaves an agent the user switched off out of help's list (contract §97)", async () => {
+    fixture.customAgents.push({
+      id: "custom:review",
+      label: "review",
+      launchCmd: "review",
+      baseAgent: "claude",
+    });
+    fixture.disabledAgents.push("codex", "custom:review");
+    const agents = (ok(await run(me, "help")).result as { agents: string[] })
+      .agents;
+    expect(agents).toContain("claude");
+    expect(agents).not.toContain("codex");
+    expect(agents).not.toContain("custom:review");
+  });
+
   it("refuses an unknown verb by name and lists the real ones", async () => {
     const refused = refusal(await run(me, "explode"));
     expect(refused.status).toBe(400);
@@ -345,6 +360,45 @@ describe("the verbs that add a node", () => {
     expect(refused.message).toContain("nobody");
   });
 
+  it("refuses an agent the user switched off, naming the ones still open (contract §97)", async () => {
+    fixture.disabledAgents.push("codex");
+    const before = loadBoard(
+      fixture.database,
+      fixture.workspaceId,
+      fixture.boardId,
+    ).nodes.length;
+    for (const args of [
+      { agent: "codex" },
+      { agent: "codex", "dry-run": true },
+    ]) {
+      const refused = refusal(await run(me, "open-agent", args));
+      expect(refused.status).toBe(403);
+      expect(refused.code).toBe("AGENT_DISABLED");
+      expect(refused.message).toContain("codex");
+      const open = refused.message.split("可用：")[1] ?? "";
+      expect(open).toContain("claude");
+      expect(open).not.toContain("codex");
+    }
+    expect(
+      loadBoard(fixture.database, fixture.workspaceId, fixture.boardId).nodes,
+    ).toHaveLength(before);
+    // An enabled agent still opens, and the node that already exists is untouched.
+    expect(ok(await run(me, "open-agent", { agent: "claude" }))).toHaveProperty(
+      "ok",
+      true,
+    );
+  });
+
+  it("the unknown-agent refusal lists only what is open (contract §97)", async () => {
+    fixture.disabledAgents.push("codex", "pi");
+    const refused = refusal(await run(me, "open-agent", { agent: "gemini" }));
+    expect(refused.status).toBe(400);
+    const open = refused.message.split("可用：")[1] ?? "";
+    expect(open).toContain("claude");
+    expect(open).not.toContain("codex");
+    expect(open.split(/[ /。]+/)).not.toContain("pi");
+  });
+
   it("changes nothing on a dry run", async () => {
     const before = loadBoard(
       fixture.database,
@@ -376,6 +430,20 @@ describe("team", () => {
   function board() {
     return loadBoard(fixture.database, fixture.workspaceId, fixture.boardId);
   }
+  it("refuses a team with a switched-off member or gatherer and builds nothing (contract §97)", async () => {
+    fixture.disabledAgents.push("codex");
+    const before = board().nodes.length;
+    for (const args of [
+      { member: ["claude|一|a", "codex|二|b"] },
+      { member: ["claude|一|a"], gather: "codex|汇总|c" },
+    ]) {
+      const refused = refusal(await run(me, "team", args));
+      expect(refused.status).toBe(403);
+      expect(refused.code).toBe("AGENT_DISABLED");
+    }
+    expect(board().nodes).toHaveLength(before);
+  });
+
   function queued(nodeId: string): string[] {
     return (
       fixture.database

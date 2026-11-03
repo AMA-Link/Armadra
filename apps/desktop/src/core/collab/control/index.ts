@@ -1,4 +1,4 @@
-import { AGENT_IDS, hasCapability } from "../../agent/registry";
+import { availableAgentIds, hasCapability } from "../../agent/registry";
 import type { Caller } from "../nodes";
 import { HELP, PROTOCOL, runMailbox } from "../mailbox";
 import { Args, Refusal, Refused, asRefused } from "../refusals";
@@ -195,13 +195,9 @@ export async function run(
         protocol: PROTOCOL,
         verbs: VERBS,
         // 这台机器上 `open-agent --agent` 认的 id：内置的与设置里的自定义
-        // Agent。ama 的适配器据此为每一个注册一个 runner（契约 §15.5）。
-        agents: [
-          ...AGENT_IDS,
-          ...(context.settings?.customAgents() ?? []).map(
-            (custom) => custom.id,
-          ),
-        ],
+        // Agent，去掉用户在设置里关掉的（契约 §97）。ama 的适配器据此为每一个
+        // 注册一个 runner（契约 §15.5）。
+        agents: availableAgentIds(context.settings),
       });
     case "handoff-read":
       return handoffRead(context, caller, args);

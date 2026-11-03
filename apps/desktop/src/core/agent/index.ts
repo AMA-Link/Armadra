@@ -1,4 +1,7 @@
-import { parseCustomAgents } from "../settings/custom-agents";
+import {
+  parseCustomAgents,
+  parseDisabledAgents,
+} from "../settings/custom-agents";
 import { settingsDomain } from "../settings";
 import {
   createControlDispatcher,
@@ -120,6 +123,8 @@ export function install(context: CoreContext): CollabContext {
     settings: {
       customAgents: () =>
         parseCustomAgents(settingsDomain()?.settings.snapshot() ?? {}),
+      disabledAgents: () =>
+        parseDisabledAgents(settingsDomain()?.settings.snapshot() ?? {}),
     },
     publish: (workspaceId, event) => {
       context.bus.emit("workspace.event", { workspaceId, event });

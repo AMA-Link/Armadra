@@ -253,7 +253,7 @@ describe("buildAddMenu", () => {
     });
   });
 
-  describe("接管已有会话（session/list）", () => {
+  describe("接管已有会话（入口在设置 → Agent 页）", () => {
     const withList = (list: boolean, installed = true): AgentInfo =>
       ({
         ...claude,
@@ -266,30 +266,14 @@ describe("buildAddMenu", () => {
         },
       }) as unknown as AgentInfo;
 
-    it("只给报了 list 能力、适配器也装了的 Agent 一项", () => {
-      const ids = (agent: AgentInfo) =>
-        buildAddMenu([agent], t).map((item) => item.id);
-      expect(ids(withList(true))).toContain("add.attach.claude");
-      expect(ids(withList(false))).not.toContain("add.attach.claude");
-      expect(ids(withList(true, false))).not.toContain("add.attach.claude");
-      expect(ids(claude)).not.toContain("add.attach.claude");
-    });
-
-    it("紧跟在各 Agent 项之后，同属 Agent 组，选了打开选择器而不是直接建", async () => {
-      const agent = withList(true);
-      const menu = buildAddMenu([agent], t);
-      const attach = menu.find((item) => item.id === "add.attach.claude");
-      expect(attach?.group).toBe("agent");
-      expect(menu.indexOf(attach!)).toBe(
-        menu.findIndex((item) => item.id === "add.agent.claude") + 1,
-      );
-      attach!.run({ ...ctx, agents: [agent] });
-      expect(addNode).not.toHaveBeenCalled();
-      const { useAttachSessionStore } = await import(
-        "../../acp/attach-session"
-      );
-      expect(useAttachSessionStore.getState().request?.agent.id).toBe("claude");
-      useAttachSessionStore.getState().close();
+    it("新建菜单里没有接管项：即使 Agent 报了 list 能力、适配器也装了", () => {
+      const menu = buildAddMenu([withList(true), withList(true, false)], t);
+      expect(
+        menu.map((item) => item.id).filter((id) => /attach/i.test(id)),
+      ).toEqual([]);
+      expect(
+        menu.filter((item) => item.group === "agent").map((item) => item.id),
+      ).toEqual(["add.agent.claude", "add.agent.claude"]);
     });
 
     it("createAgentNode 带 attach 时以 ACP 驱动建出并记下会话 id 与目录", async () => {

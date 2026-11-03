@@ -37,6 +37,8 @@ vi.mock("@/api/client", async () => {
 import { installDomPolyfills, TestProviders } from "@/app/test-harness";
 import { usePreferencesStore } from "@/app/preferences-store";
 import { translate } from "@/i18n";
+import { useAttachSessionStore } from "@/acp/attach-session";
+import { useCanvasStore } from "@/store/canvas-store";
 import { AgentsPage } from "./AgentsPage";
 
 installDomPolyfills();
@@ -653,5 +655,88 @@ describe("Agent CLI 主表", () => {
     await waitFor(() =>
       expect(mock.installIntegration).toHaveBeenCalledWith("claude"),
     );
+  });
+});
+
+/** 「接管会话」从新建菜单搬到这里（入口只在子页，关掉的 Agent 不给）。 */
+describe("Agent 子页的「接管会话」入口", () => {
+  const listing: AgentInfo = {
+    ...claude,
+    acp: {
+      support: "official",
+      program: "claude-agent-acp",
+      installed: true,
+      resume: "load",
+      capabilities: { list: true },
+    },
+  } as unknown as AgentInfo;
+  const workspace = { id: "w1", name: "alpha", rootPath: "/tmp/alpha" };
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    usePreferencesStore.setState({
+      locale: "zh-CN",
+      agentModes: {},
+      launchOverrides: {},
+    });
+    mock.agents.mockReset().mockResolvedValue([listing]);
+    mock.integration.mockReset().mockResolvedValue({
+      agentId: "claude",
+      mode: "canvas",
+      hook: { installed: true, revision: 4 },
+      skill: { installed: true, revision: 12 },
+      legacy: { found: [] },
+      revision: 412,
+    });
+    mock.installStatus.mockReset().mockResolvedValue({
+      agentId: "claude",
+      target: "cli",
+      state: "idle",
+      package: "pkg",
+      output: [],
+    });
+    useCanvasStore.setState({ workspace: workspace as never });
+    useAttachSessionStore.getState().close();
+  });
+  afterEach(() => {
+    useCanvasStore.setState({ workspace: null });
+    useAttachSessionStore.getState().close();
+  });
+
+  it("报了 list 能力的 Agent 有一行，点了收起设置并打开选择器", async () => {
+    useCanvasStore.getState().setPanel("settings", true);
+    view();
+    const pick = await screen.findByRole("button", {
+      name: zh("agents.attach.pick"),
+    });
+    fireEvent.click(pick);
+    expect(useAttachSessionStore.getState().request?.agent.id).toBe("claude");
+    expect(useCanvasStore.getState().panels.settings).toBe(false);
+  });
+
+  it("关掉的 Agent 不给入口", async () => {
+    usePreferencesStore.setState({ agentModes: { claude: "disabled" } });
+    view();
+    await screen.findByRole("heading", { name: zh("agents.group.launch") });
+    expect(
+      screen.queryByRole("button", { name: zh("agents.attach.pick") }),
+    ).toBeNull();
+  });
+
+  it("没报 list 能力、或没有打开的工作空间时不给入口", async () => {
+    mock.agents.mockResolvedValue([claude]);
+    view();
+    await screen.findByRole("heading", { name: zh("agents.group.launch") });
+    expect(
+      screen.queryByRole("button", { name: zh("agents.attach.pick") }),
+    ).toBeNull();
+    cleanup();
+    mock.agents.mockResolvedValue([listing]);
+    useCanvasStore.setState({ workspace: null });
+    view();
+    await screen.findByRole("heading", { name: zh("agents.group.launch") });
+    expect(
+      screen.queryByRole("button", { name: zh("agents.attach.pick") }),
+    ).toBeNull();
   });
 });

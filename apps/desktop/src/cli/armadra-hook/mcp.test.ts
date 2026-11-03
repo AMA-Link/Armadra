@@ -23,6 +23,7 @@ import {
   RPC_ERRORS,
   type ToolCaller,
   callTool,
+  fetchAgentIds,
   handleLine,
   serve,
 } from "./mcp.js";
@@ -114,8 +115,11 @@ const request = (id: number, method: string, params?: unknown): string =>
     ...(params === undefined ? {} : { params }),
   });
 
+/** `initialize` 问 core 要名单；测试里一律不问，以免碰到环境里真实的端点。 */
+const noAgents = async (): Promise<undefined> => undefined;
+
 async function answer(line: string, call?: ToolCaller): Promise<McpResponse> {
-  const response = await handleLine(line, call);
+  const response = await handleLine(line, call, noAgents);
   if (response === undefined) throw new Error("no response");
   return response;
 }
@@ -146,6 +150,58 @@ describe("initialize", () => {
     });
     expect(init.instructions).toContain("ARMADRA MESSAGE");
     expect(init.instructions).toContain("canvas_open_agent");
+  });
+
+  it("tells the model which agents it may dispatch, from the core's own list", async () => {
+    const line = request(1, "initialize", { protocolVersion: "2025-03-26" });
+    const response = await handleLine(line, undefined, async () => [
+      "claude",
+      "custom:review",
+    ]);
+    const init = (response as { result: { instructions: string } }).result;
+    expect(init.instructions).toBe(
+      mcpInstructions(["claude", "custom:review"]),
+    );
+    expect(init.instructions).not.toContain("codex");
+  });
+
+  it("falls back to the plain instructions when the core gives no list", async () => {
+    const line = request(1, "initialize", { protocolVersion: "2025-03-26" });
+    for (const lister of [
+      async () => undefined,
+      async () => {
+        throw new Error("unreachable");
+      },
+    ]) {
+      const response = await handleLine(line, undefined, lister);
+      expect(
+        (response as { result: { instructions: string } }).result.instructions,
+      ).toBe(mcpInstructions());
+    }
+  });
+
+  it("reads the dispatchable agents off the core's canvas help answer", async () => {
+    const body = JSON.stringify({
+      ok: true,
+      result: { agents: ["claude", "ama", 7, "custom:review"] },
+    });
+    const { requests } = await endpoint(JSON_OK(body));
+    expect(await fetchAgentIds()).toEqual(["claude", "ama", "custom:review"]);
+    expect(requests[0]).toContain("/control/help");
+  });
+
+  it("gets no list from a core that refuses, answers garbage, or is not there", async () => {
+    await endpoint(
+      `HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n`,
+    );
+    expect(await fetchAgentIds()).toBeUndefined();
+    await endpoint(JSON_OK("not json"));
+    expect(await fetchAgentIds()).toBeUndefined();
+    await endpoint(JSON_OK(JSON.stringify({ ok: true, result: {} })));
+    expect(await fetchAgentIds()).toBeUndefined();
+    delete process.env["ARMADRA_ENDPOINT_FILE"];
+    delete process.env["ARMADRA_NODE_ID"];
+    expect(await fetchAgentIds()).toBeUndefined();
   });
 
   it("offers its newest revision to a client asking for one it does not know", async () => {
@@ -344,7 +400,7 @@ describe("errors", () => {
       '{"jsonrpc":"2.0","id":5,"result":{}}',
       "",
     ]) {
-      expect(await handleLine(line)).toBeUndefined();
+      expect(await handleLine(line, undefined, noAgents)).toBeUndefined();
     }
   });
 });

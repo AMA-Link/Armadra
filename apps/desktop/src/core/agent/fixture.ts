@@ -157,6 +157,8 @@ export interface AgentFixture {
   /** How many clients the fixture pretends are watching. */
   watchers: number;
   customAgents: CustomAgent[];
+  /** `settings.agents.disabled`：推进去的 id 立刻对派发与名单生效。 */
+  disabledAgents: string[];
   call(
     method: string,
     path: string,
@@ -204,7 +206,11 @@ export function agentFixture(): AgentFixture {
   const events: { workspaceId: string; event: WorkspaceEvent }[] = [];
   const terminal = stubTerminal();
   const customAgents: CustomAgent[] = [];
-  const settings: AgentSettings = { customAgents: () => customAgents };
+  const disabledAgents: string[] = [];
+  const settings: AgentSettings = {
+    customAgents: () => customAgents,
+    disabledAgents: () => disabledAgents,
+  };
   const state = { watchers: 0 };
   const nudged: string[] = [];
 
@@ -270,6 +276,7 @@ export function agentFixture(): AgentFixture {
       state.watchers = value;
     },
     customAgents,
+    disabledAgents,
     call: async (method, path, body) => {
       const url = new URL(path, "http://core");
       const encoded =

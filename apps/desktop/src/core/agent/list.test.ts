@@ -80,6 +80,17 @@ describe("GET /api/agents", () => {
     expect(claude?.capabilities).toContain("contextLink");
   });
 
+  it("marks a switched-off agent with `disabled: true` and still lists it (contract §97)", async () => {
+    fixture.disabledAgents.push("codex");
+    const rows = (await fixture.call("GET", "/api/agents"))
+      .body as AgentListRow[];
+    expect(rows.map((row) => row.id)).toEqual([...AGENT_IDS]);
+    expect(rows.find((row) => row.id === "codex")?.disabled).toBe(true);
+    expect(rows.find((row) => row.id === "claude")).not.toHaveProperty(
+      "disabled",
+    );
+  });
+
   it("lists a custom agent after the built-ins, with its base borrowed", async () => {
     fixture.customAgents.push({
       id: "custom:mine",
