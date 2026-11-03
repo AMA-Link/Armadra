@@ -3,10 +3,14 @@
  * description, JSON Schema for the arguments, and the route the call goes to.
  *
  * Two programs read it and neither may keep a copy: `armadra-hook mcp`
- * (`tools/list`) and the `ama` adapter's tool registry. A `tools/call` is one
- * `POST <path>` with the body `armadra-hook canvas|context|browser` would have
- * sent — `{nodeId, args}` where `args` is {@link toWireArgs} of the input — so
- * the runtime cannot tell the three callers apart.
+ * (`tools/list`) and the `ama` adapter's tool registry. The core's ACP
+ * permission handler reads it too (`core/acp/own-tools.ts`, contract §98);
+ * the page only needs the names, which `@armadra/shared`'s
+ * `ARMADRA_MCP_TOOLS` lists in the same order (`own-tools.test.ts`
+ * compares). A `tools/call` is one `POST <path>` with the body
+ * `armadra-hook canvas|context|browser` would have sent — `{nodeId, args}`
+ * where `args` is {@link toWireArgs} of the input — so the runtime cannot tell
+ * the three callers apart.
  *
  * Where each part comes from:
  *

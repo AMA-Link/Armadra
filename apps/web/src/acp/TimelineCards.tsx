@@ -119,6 +119,7 @@ export function permissionViewOf(
       ...(tool.input === undefined ? {} : { rawInput: tool.input }),
     },
     options,
+    ...(tool.mcp === undefined ? {} : { mcp: tool.mcp }),
   };
 }
 

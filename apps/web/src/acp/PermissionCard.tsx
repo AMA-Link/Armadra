@@ -6,7 +6,7 @@ import type {
   AcpToolKind,
 } from "@armadra/shared";
 
-import { useT } from "@/app/preferences-store";
+import { type Translate, useT } from "@/app/preferences-store";
 import { useAgentStatusStore } from "@/agent/status-store";
 import {
   ApprovalActions,
@@ -31,6 +31,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/ui/tabs";
 import { toast } from "@/ui/toast";
 import { acpApi } from "./api";
 import { DiffBlock, DiffCounts, patchStat } from "./DiffBlock";
+import { mcpToolDisplay } from "./mcp-tools";
 import { useAnsweredStore } from "./answered";
 import type { AcpPermissionChange, AcpPermissionView } from "./approval-views";
 
@@ -273,6 +274,56 @@ export function hasDuplicateKinds(
   return new Set(options.map((option) => option.kind)).size < options.length;
 }
 
+const KIND_LABELS: Record<AcpPermissionOption["kind"], string> = {
+  allow_once: "acp.permission.allow",
+  allow_always: "acp.permission.allowAlways",
+  reject_once: "acp.permission.reject",
+  reject_always: "acp.permission.rejectAlways",
+};
+
+/**
+ * 同一种 kind 有不止一个选项时用来分开它们的细分：Agent 的 id 或名字里说了
+ * 「本会话」/「取消」的那一个。只影响按钮上的字，答复仍是 Agent 自己的 `optionId`。
+ */
+function refinedLabel(option: AcpPermissionOption): string | undefined {
+  const words = `${option.optionId} ${option.name}`;
+  if (option.kind === "allow_always" && /session|conversation/i.test(words))
+    return "acp.permission.allowSession";
+  if (option.kind.startsWith("reject") && /cancel/i.test(words))
+    return "acp.permission.cancel";
+  return undefined;
+}
+
+/**
+ * 每个选项的按钮文案（`optionId` → 文案）：按 kind 用我们的说法，同 kind 撞了
+ * 再按 {@link refinedLabel} 细分；还撞就退回 Agent 自己的名字。Agent 的名字
+ * 另作悬停提示。
+ */
+export function optionLabels(
+  options: readonly AcpPermissionOption[],
+  t: Translate,
+): Map<string, string> {
+  const count = new Map<string, number>();
+  for (const option of options)
+    count.set(option.kind, (count.get(option.kind) ?? 0) + 1);
+  const keyed = options.map((option) => {
+    const shared = (count.get(option.kind) ?? 0) > 1;
+    return {
+      option,
+      key:
+        (shared ? refinedLabel(option) : undefined) ?? KIND_LABELS[option.kind],
+    };
+  });
+  const uses = new Map<string, number>();
+  for (const { key } of keyed) uses.set(key, (uses.get(key) ?? 0) + 1);
+  return new Map(
+    keyed.map(({ option, key }) => [
+      option.optionId,
+      (uses.get(key) ?? 0) > 1 && option.name ? option.name : t(key),
+    ]),
+  );
+}
+
 /** 标题里要读的那段命令：`execute` 类（或入参里有 `command`）按命令画。 */
 function commandOf(permission: AcpPermissionView): string | null {
   const call = permission.toolCall;
@@ -328,15 +379,9 @@ export function PermissionCard({
       : "always",
   );
   const { allow, reject } = pairOf(options, segmented ? scope : "once");
+  const labels = optionLabels(options, t);
   const optionLabel = (option: AcpPermissionOption) =>
-    option.name ||
-    t(
-      option.kind === "allow_always"
-        ? "acp.permission.allowAlways"
-        : isAllowOption(option)
-          ? "acp.permission.allow"
-          : "acp.permission.reject",
-    );
+    labels.get(option.optionId) ?? option.name;
   const cardRef = React.useRef<HTMLDivElement>(null);
   const allowRef = React.useRef<HTMLButtonElement>(null);
   // 钉住时焦点落到「允许」——但人正在输入框里打字时不抢：那一下 Enter
@@ -391,8 +436,11 @@ export function PermissionCard({
     answer(option);
   };
 
-  const command = commandOf(permission);
-  const risky = isRiskyKind(permission.toolCall.kind);
+  // MCP 调用按来源换标题；Armadra 自己的工具不带「有风险」（它们只做节点令牌
+  // 本来就许可的事，契约 §98）。
+  const mcp = mcpToolDisplay(permission.mcp, t);
+  const command = mcp === null ? commandOf(permission) : null;
+  const risky = mcp?.own !== true && isRiskyKind(permission.toolCall.kind);
   return (
     <ApprovalShell
       ref={cardRef}
@@ -409,7 +457,7 @@ export function PermissionCard({
         {command !== null ? (
           <ApprovalCommand>{command}</ApprovalCommand>
         ) : (
-          <ApprovalText>{permission.toolCall.title}</ApprovalText>
+          <ApprovalText>{mcp?.title ?? permission.toolCall.title}</ApprovalText>
         )}
       </ApprovalTitle>
       <WillHappen permission={permission} />
@@ -423,6 +471,7 @@ export function PermissionCard({
               size={size}
               variant={option === allow ? "default" : "outline"}
               {...(option === allow ? { shortcut: "↵" } : {})}
+              title={option.name}
               data-option={option.kind}
               data-option-id={option.optionId}
               onClick={() => answer(option)}
@@ -440,6 +489,7 @@ export function PermissionCard({
                   option.kind === "reject_always" ? "destructive" : "outline"
                 }
                 {...(option === reject ? { shortcut: "Esc" } : {})}
+                title={option.name}
                 data-option={option.kind}
                 data-option-id={option.optionId}
                 onClick={() => answer(option)}

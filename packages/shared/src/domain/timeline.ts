@@ -233,6 +233,13 @@ export const timelineToolItemSchema = z.object({
   input: timelineToolInputSchema.optional(),
   content: z.array(timelineToolContentSchema),
   permission: timelineToolPermissionSchema.optional(),
+  /**
+   * MCP 调用的来源（#768）：适配器在结构化字段里写明的服务器与工具名
+   * （`acp-mcp.ts::acpMcpToolOf`），从不取自标题。页面据此换掉原始 id。
+   */
+  mcp: z
+    .object({ server: z.string().max(200), tool: z.string().max(200) })
+    .optional(),
   /** 子代理内部的调用挂在它下面（渲染层嵌套显示）。 */
   parentToolCallId: z.string().max(200).optional(),
   startedAt: epochMsSchema,

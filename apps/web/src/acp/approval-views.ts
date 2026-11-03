@@ -6,6 +6,7 @@ import {
   acpElicitationRequestSchema,
   acpPermissionRequestSchema,
   type AcpElicitation,
+  type AcpMcpTool,
   type AcpPermissionOption,
   type AcpToolCall,
 } from "@armadra/shared";
@@ -26,6 +27,8 @@ export interface AcpPermissionView {
    * 没有就由 `toolCall` 现算。
    */
   readonly changes?: readonly AcpPermissionChange[];
+  /** 这次调用的 MCP 来源（工具条目的 `mcp`，#768）：标题、图标与风险徽标按它换。 */
+  readonly mcp?: AcpMcpTool;
 }
 
 /** 一条挂起的 `elicitation/create`（契约 §26.1）。 */

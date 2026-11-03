@@ -22,6 +22,10 @@ import {
   ACP_FLOW_ITEMS,
   ACP_FLOW_PLAN,
   ACP_ITEMS,
+  ACP_MCP_CONFIG,
+  ACP_MCP_ITEMS,
+  ACP_MCP_MODELS,
+  ACP_MCP_MODES,
   ACP_MODELS,
   ACP_MODES,
   ACP_MODES_SHORT,
@@ -76,6 +80,10 @@ const renderFlowApproval = (approval: TimelineApprovalItem) => (
   <ApprovalCard approval={approval} canAnswer />
 );
 
+const MCP_BY_ID = Object.fromEntries(
+  ACP_MCP_ITEMS.map((item) => [item.id, item]),
+);
+
 const SERVICES = { loadBlob: acpShowcaseBlob, source: SOURCE };
 
 /** 展示页：消息工具条常显。 */
@@ -114,6 +122,32 @@ export default function AcpSection() {
             onModel={noop}
             onConfig={noop}
           />
+        </Frame>
+        <Frame className="max-w-[520px]">
+          <div data-showcase="acp-mcp" className="flex flex-col">
+            <ToolLookupProvider value={MCP_BY_ID}>
+              <div className="flex h-[400px] flex-col">
+                <TimelineView
+                  items={ACP_MCP_ITEMS}
+                  renderApproval={renderFlowApproval}
+                />
+              </div>
+            </ToolLookupProvider>
+            <PromptBox
+              sessionId={null}
+              disabled={false}
+              streaming
+              modes={ACP_MCP_MODES}
+              models={ACP_MCP_MODELS}
+              configOptions={ACP_MCP_CONFIG}
+              usage={{ used: 41_000, size: 258_000 }}
+              onSubmit={sent}
+              onCancel={noop}
+              onMode={noop}
+              onModel={noop}
+              onConfig={noop}
+            />
+          </div>
         </Frame>
         <Frame>
           <div className="flex h-[260px] flex-col">

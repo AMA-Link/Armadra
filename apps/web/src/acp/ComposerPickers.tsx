@@ -32,9 +32,22 @@ import { Toggle } from "@/ui/toggle";
 export const SEGMENTED_MODES_MAX = 3;
 export const SEGMENTED_NAME_MAX = 10;
 
-/** 操作行上的下拉：无边、无底，悬停才出底色，与图标按钮同高。 */
+/**
+ * 操作行上的下拉：无边、无底，悬停才出底色，与图标按钮同高。每个控件都不收缩
+ * （`shrink-0`）、各自有宽度上限并在里面截断：放不下时整段横向滚动，而不是把
+ * 相邻两个控件挤成一串连在一起的字（#768）。
+ */
 const QUIET_TRIGGER =
-  "min-w-0 border-transparent bg-transparent font-normal text-muted-foreground hover:bg-muted hover:text-foreground data-[state=open]:bg-muted data-[state=open]:text-foreground";
+  "min-w-0 shrink-0 border-transparent bg-transparent font-normal text-muted-foreground hover:bg-muted hover:text-foreground data-[state=open]:bg-muted data-[state=open]:text-foreground";
+
+/** select 当前值的名字（不在列表里时用值本身）。 */
+export function configValueName(option: TimelineConfigOption): string {
+  if (option.type === "boolean") return option.name;
+  return (
+    option.options.find((choice) => choice.value === option.currentValue)
+      ?.name ?? String(option.currentValue)
+  );
+}
 
 /** 思考强度当前值的名字：select 是选中项，boolean 打开时是项名，关着不显示。 */
 export function effortValueName(option: TimelineConfigOption): string | null {
@@ -93,7 +106,11 @@ export function ModePicker({
       <SelectTrigger
         size="sm"
         aria-label={t("acp.prompt.mode")}
-        className={cn(QUIET_TRIGGER, "max-w-32")}
+        title={
+          modes.availableModes.find((mode) => mode.id === modes.currentModeId)
+            ?.name
+        }
+        className={cn(QUIET_TRIGGER, compact ? "max-w-32" : "max-w-44")}
       >
         <SelectValue />
       </SelectTrigger>
@@ -145,6 +162,9 @@ export function ModelEffortPicker({
           variant="ghost"
           size="sm"
           aria-label={label}
+          title={
+            [model?.name, effortName].filter(Boolean).join(" · ") || undefined
+          }
           data-slot="acp-model-effort"
           disabled={disabled}
           className={cn(
@@ -240,7 +260,9 @@ export function ModelEffortPicker({
 }
 
 /**
- * 其余配置项直接放在操作行上：select 是无边下拉（宽屏带项名），boolean 是切换按钮。
+ * 其余配置项直接放在操作行上，每项一个独立的紧凑控件：select 是无边下拉，宽屏
+ * 写「项名 · 值 ⌄」（项名先截断，值留着），窄屏只写值；boolean 是带边框的切换
+ * 胶囊，打开时换底色。悬停给全名。
  */
 export function ConfigControl({
   option,
@@ -257,32 +279,55 @@ export function ConfigControl({
     return (
       <Toggle
         size="sm"
+        variant="outline"
         data-slot="acp-config-toggle"
+        title={option.name}
         pressed={option.currentValue === true}
         disabled={disabled}
         onPressedChange={(pressed) => onConfig(option.id, pressed)}
-        className="shrink-0 font-normal text-muted-foreground data-[state=on]:text-foreground"
+        className="max-w-36 min-w-0 shrink-0 rounded-full px-2.5 font-normal text-muted-foreground data-[state=on]:border-transparent data-[state=on]:text-foreground"
       >
-        {option.name}
+        <span className="min-w-0 truncate">{option.name}</span>
       </Toggle>
     );
   }
+  const value = configValueName(option);
   return (
     <Select
       value={String(option.currentValue)}
       disabled={disabled}
-      onValueChange={(value) => onConfig(option.id, value)}
+      onValueChange={(next) => onConfig(option.id, next)}
     >
       <SelectTrigger
         size="sm"
         aria-label={option.name}
+        title={`${option.name} · ${value}`}
         data-slot="acp-config-select"
-        className={cn(QUIET_TRIGGER, "max-w-44")}
+        className={cn(
+          QUIET_TRIGGER,
+          "gap-1 px-2",
+          compact ? "max-w-32" : "max-w-64",
+        )}
       >
         {!compact && (
-          <span className="shrink-0 text-muted-foreground">{option.name}</span>
+          <span
+            data-slot="acp-config-label"
+            className="min-w-0 shrink truncate"
+          >
+            {option.name}
+          </span>
         )}
-        <SelectValue />
+        {!compact && (
+          <span aria-hidden className="shrink-0">
+            ·
+          </span>
+        )}
+        <span
+          data-slot="acp-config-value"
+          className="max-w-24 min-w-0 shrink-0 truncate text-foreground"
+        >
+          <SelectValue />
+        </span>
       </SelectTrigger>
       <SelectContent>
         {option.options.map((choice) => (
