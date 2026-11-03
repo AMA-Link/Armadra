@@ -15,7 +15,9 @@
  *     `blocked` 事件与 reducer，`request_json = { protocol: "acp", toolCall,
  *     options }`）；答复从 `agent/approvals.ts` 的 `"acp"` 路由回到这里。
  *     回合被取消、适配器退出、切换驱动、休眠：挂起的请求一律回 `cancelled`，
- *     审批行记 `cancelled` / `core`。core 从不替人选项。
+ *     审批行记 `cancelled` / `core`。core 从不替人选项——唯一的例外是
+ *     Armadra 自己 MCP 服务器上的工具（`own-tools.ts`，契约 §98），按来源认出、
+ *     只答 `allow_once`。
  *   * **elicitation**（契约 §26.1）：`elicitation/create` 同样进
  *     `agent_approvals`（`request_json = { protocol: "acp", elicitation }`），
  *     状态 `waiting`（带 `pendingId`）；答复经同一条审批路由回到这里，取消、
@@ -49,6 +51,7 @@ import {
   withConfigValue,
 } from "./models";
 import type { AcpFeed } from "./feed";
+import { OwnToolCalls } from "./own-tools";
 import type { AcpHostSession, AcpUpdateMeta } from "./host";
 import type { AcpMirror } from "./mirror";
 import { mirrorFrames } from "./mirror-import";
@@ -241,6 +244,8 @@ export class AcpSession implements AcpSessionIdentity {
   /** 状态 reducer 眼里此刻是不是 `working`：工具信号只在它变了才走 `apply`（L5）。 */
   private workingSignalled = false;
   private lastExecuteTitle: string | undefined;
+  /** Armadra 自己 MCP 工具的调用来源与放行计数（#768，契约 §98）。 */
+  private readonly ownTools = new OwnToolCalls();
 
   constructor(options: AcpSessionOptions) {
     this.options = options;
@@ -651,6 +656,14 @@ export class AcpSession implements AcpSessionIdentity {
     });
     const clientTurnId = this.clientTurnOf(turnId);
     this.workingSignalled = false;
+    const approved = this.ownTools.takeTurnCounts();
+    if (approved.turn > 0) {
+      // 只记次数：工具名、参数与节点内容都不进日志。
+      this.sink.log?.("ACP own MCP tools auto-approved", {
+        count: approved.turn,
+        total: approved.total,
+      });
+    }
     this.feed?.endTurn(end, this.usage);
     if (end.error === undefined) {
       this.sink.signal({ signal: "turn", stopReason: end.stopReason });
@@ -885,6 +898,7 @@ export class AcpSession implements AcpSessionIdentity {
       return;
     }
     this.remember(update);
+    this.ownTools.record(update);
     if (update.sessionUpdate === "current_mode_update") {
       const modeId = (update as { currentModeId?: unknown }).currentModeId;
       if (typeof modeId === "string" && this.modeState !== null) {
@@ -942,6 +956,7 @@ export class AcpSession implements AcpSessionIdentity {
   }
 
   private onPermission(pending: AcpPendingPermission): void {
+    if (this.autoApproveOwnTool(pending)) return;
     const pendingId = pendingIdFor(this.nodeId);
     this.permissions.set(pendingId, pending);
     this.byProcessId.set(pending.id, pendingId);
@@ -951,6 +966,23 @@ export class AcpSession implements AcpSessionIdentity {
       { signal: "permission", pendingId },
       { protocol: "acp", toolCall: pending.toolCall, options: pending.options },
     );
+  }
+
+  /**
+   * Armadra 自己的 MCP 工具（契约 §98）：按来源认出来、有 `allow_once` 就当场
+   * 答掉，不进审批表、不上时间线、状态不离开 working。别的一律交给人。
+   */
+  private autoApproveOwnTool(pending: AcpPendingPermission): boolean {
+    const host = this.host;
+    if (host === undefined) return false;
+    if (pending.sessionId !== "" && pending.sessionId !== host.sessionId) {
+      return false;
+    }
+    const optionId = this.ownTools.decide(pending.toolCall, pending.options);
+    if (optionId === undefined) return false;
+    if (!host.process.answerPermission(pending.id, optionId)) return false;
+    this.ownTools.noteApproved();
+    return true;
   }
 
   private onPermissionSettled(

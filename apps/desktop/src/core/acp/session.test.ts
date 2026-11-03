@@ -250,3 +250,73 @@ describe("an elicitation for another session", () => {
     expect(session.owns("el-other")).toBe(false);
   });
 });
+
+describe("Armadra's own MCP tools (§98)", () => {
+  const OPTIONS = [
+    { optionId: "allow_once", name: "Allow", kind: "allow_once" },
+    { optionId: "allow_always", name: "Always allow", kind: "allow_always" },
+    { optionId: "cancel", name: "Cancel", kind: "reject_once" },
+  ] as const;
+  const mcpCall = (id: string, server: string, tool: string) => ({
+    sessionUpdate: "tool_call",
+    toolCallId: id,
+    title: `mcp.${server}.${tool}`,
+    kind: "execute",
+    status: "in_progress",
+    rawInput: { server, tool, arguments: {} },
+    _meta: { is_mcp_tool_call: true },
+  });
+
+  it("answers our tool's permission with allow_once and never shows it", async () => {
+    const { session, sink } = await open();
+    const host = (session as unknown as { host: AcpHostSession }).host;
+    const answer = vi
+      .spyOn(host.process, "answerPermission")
+      .mockReturnValue(true);
+    const callbacks = session.callbacks();
+    callbacks.onUpdate(
+      {
+        sessionId: host.sessionId,
+        update: mcpCall("m1", "armadra", "canvas_wait") as never,
+      },
+      { replay: false } as never,
+    );
+    const before = sink.signals.length;
+    callbacks.onPermission({
+      id: "perm-own",
+      sessionId: host.sessionId,
+      toolCall: { toolCallId: "m1", kind: "execute", status: "pending" },
+      options: [...OPTIONS],
+      createdAt: Date.now(),
+    } as never);
+    expect(answer).toHaveBeenCalledWith("perm-own", "allow_once");
+    expect(
+      sink.signals.slice(before).map((item) => item.signal.signal),
+    ).not.toContain("permission");
+    expect(session.pending()).toEqual([]);
+  });
+
+  it("still asks a person for another server's tool", async () => {
+    const { session, sink } = await open();
+    const host = (session as unknown as { host: AcpHostSession }).host;
+    const answer = vi.spyOn(host.process, "answerPermission");
+    const callbacks = session.callbacks();
+    callbacks.onUpdate(
+      {
+        sessionId: host.sessionId,
+        update: mcpCall("m2", "notes", "search_notes") as never,
+      },
+      { replay: false } as never,
+    );
+    callbacks.onPermission({
+      id: "perm-foreign",
+      sessionId: host.sessionId,
+      toolCall: { toolCallId: "m2", kind: "execute", status: "pending" },
+      options: [...OPTIONS],
+      createdAt: Date.now(),
+    } as never);
+    expect(answer).not.toHaveBeenCalled();
+    expect(sink.signals.at(-1)?.signal.signal).toBe("permission");
+    expect(session.pending()).toHaveLength(1);
+  });
+});
