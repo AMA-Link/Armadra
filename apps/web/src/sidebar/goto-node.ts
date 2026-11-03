@@ -11,6 +11,7 @@
  * 只发一次的代价是用户点了一行却什么都没发生。
  */
 import { requestCenterOnNode } from "../canvas/flow/flow-context";
+import { toItemId } from "../canvas/whiteboard/model";
 import { useCanvasStore } from "../store/canvas-store";
 
 /** 文档到位之后重发居中的时间表（毫秒）。 */
@@ -20,17 +21,36 @@ export const GOTO_TIMEOUT_MS = 10_000;
 
 function focusNow(nodeId: string): void {
   useCanvasStore.getState().selectNodes([nodeId]);
+  recenter(nodeId);
+}
+
+/** 白板对象（`wb:` id）：选中它、清掉节点选区，再居中。 */
+function focusItemNow(itemId: string): void {
+  useCanvasStore
+    .getState()
+    .setSelection({ nodes: [], edges: [], items: [itemId] });
+  recenter(itemId);
+}
+
+function recenter(id: string): void {
   for (const delay of CENTER_RETRY_DELAYS) {
-    if (delay === 0) requestCenterOnNode(nodeId);
-    else setTimeout(() => requestCenterOnNode(nodeId), delay);
+    if (delay === 0) requestCenterOnNode(id);
+    else setTimeout(() => requestCenterOnNode(id), delay);
   }
 }
 
-/** 需要时先切板，然后选中并居中到 `nodeId`。 */
-export function gotoNode(boardId: string, nodeId: string): void {
+/**
+ * 需要时先切板，等 `ready` 为真（目标已经在那块板的文档里）再 `focus`。
+ * 订阅有上限：超过 `GOTO_TIMEOUT_MS` 放弃，不留着一个永远不触发的监听。
+ */
+function gotoWhen(
+  boardId: string,
+  ready: (state: ReturnType<typeof useCanvasStore.getState>) => boolean,
+  focus: () => void,
+): void {
   const state = useCanvasStore.getState();
-  if (state.document?.board.id === boardId) {
-    focusNow(nodeId);
+  if (state.document?.board.id === boardId && ready(state)) {
+    focus();
     return;
   }
 
@@ -43,11 +63,30 @@ export function gotoNode(boardId: string, nodeId: string): void {
   }, GOTO_TIMEOUT_MS);
 
   unsubscribe = useCanvasStore.subscribe((next) => {
-    if (next.document?.board.id !== boardId) return;
-    if (!next.document.nodes.some((node) => node.id === nodeId)) return;
+    if (next.document?.board.id !== boardId || !ready(next)) return;
     clearTimeout(timer);
     unsubscribe?.();
     unsubscribe = null;
-    focusNow(nodeId);
+    focus();
   });
+}
+
+/** 需要时先切板，然后选中并居中到 `nodeId`。 */
+export function gotoNode(boardId: string, nodeId: string): void {
+  gotoWhen(
+    boardId,
+    (state) =>
+      state.document?.nodes.some((node) => node.id === nodeId) ?? false,
+    () => focusNow(nodeId),
+  );
+}
+
+/** 需要时先切板，然后选中并居中到白板对象 `itemId`（`wb:` 前缀的 id）。 */
+export function gotoItem(boardId: string, itemId: string): void {
+  gotoWhen(
+    boardId,
+    (state) =>
+      state.whiteboard.items.some((item) => toItemId(item.id) === itemId),
+    () => focusItemNow(itemId),
+  );
 }

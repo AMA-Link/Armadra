@@ -278,11 +278,10 @@ export const modals: MessageModule = {
     "permission.full-auto": "全自动",
     "permission.plan": "计划",
 
-    "palette.placeholder": "搜索命令",
-    "palette.description": "搜索并执行一条命令",
+    "palette.placeholder": "搜索",
+    "palette.description": "搜索画布、节点、文件、设置，或执行一条命令",
     "palette.empty": "无匹配",
     "palette.new": "新建",
-    "palette.goto": "跳转",
     "palette.command": "命令",
   },
   en: {
@@ -570,11 +569,11 @@ export const modals: MessageModule = {
     "permission.full-auto": "Full auto",
     "permission.plan": "Plan",
 
-    "palette.placeholder": "Search commands",
-    "palette.description": "Search for a command to run",
+    "palette.placeholder": "Search",
+    "palette.description":
+      "Search boards, nodes, files and settings, or run a command",
     "palette.empty": "No results",
     "palette.new": "New",
-    "palette.goto": "Go to",
     "palette.command": "Command",
   },
 };

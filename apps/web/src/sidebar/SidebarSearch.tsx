@@ -1,24 +1,24 @@
 /**
  * 侧栏顶行的搜索面板（§27）。
  *
- * 它搜的是**内容**，不是命令：当前工作空间所有画布的画布名、节点标题、
- * 便签正文，外加 Runtime 那份历史对话索引。⌘K 的命令面板原样保留，两者
- * 各管各的——一个找东西，一个执行动作。
+ * 它搜的是**内容**，不是命令：所有工作空间、所有画布，以及画布里的节点（标题、
+ * 便签正文、路径、网址）与白板上的文字，外加当前工作空间的文件和 Runtime 那份
+ * 历史对话索引。⌘K 的命令面板在这些之上再加设置、新建与命令。
  *
- * 三组结果各有各的落点：画布 → 切过去；节点 → 需要时先切板再居中；
- * 历史对话 → 以 `--resume` 起一个新终端节点（与命令面板同一条路径）。
+ * 匹配（含拼音首字母与模糊）全在 `search/` 里算，所以 cmdk 的内置过滤要关掉
+ * （`shouldFilter={false}`）：历史对话是 Runtime 按它自己的索引给的，标题里未必
+ * 逐字含有查询词，再过一遍模糊打分只会把对的条目筛掉。
  *
- * 匹配全在 `search-index.ts` 里算，所以 cmdk 的内置过滤要关掉
- * （`shouldFilter={false}`）：历史对话是 Runtime 按它自己的索引给的，
- * 标题里未必逐字含有查询词，再过一遍模糊打分只会把对的条目筛掉。
+ * 落点：工作空间 → 切过去；画布 → 需要时先切工作空间再选画布；节点与白板对象 →
+ * 再居中并选中；文件 → 编辑器节点；历史对话 → 以 `--resume` 起一个新终端节点
+ * （与命令面板同一条路径）。
  */
-import { useMemo, useState } from "react";
-import { useQueries } from "@tanstack/react-query";
-import { Bot, LayoutGrid } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Bot } from "lucide-react";
 
 import { basename } from "../agent/sessions";
 import { useT } from "../app/preferences-store";
-import { runtimeApi } from "../api/client";
+import { useOpenWorkspace } from "../app/workspace-actions";
 import { nodeDropPosition } from "../canvas/placement";
 import { formatRelativeTime } from "../lib/format";
 import {
@@ -26,7 +26,6 @@ import {
   useConversations,
   type Conversation,
 } from "../meta/conversations";
-import { sk } from "../sources/scope";
 import { useCanvasStore } from "../store/canvas-store";
 import {
   Command,
@@ -35,6 +34,7 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
+  CommandMeta,
 } from "@/ui/command";
 import {
   ResponsiveDialog,
@@ -42,10 +42,13 @@ import {
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
 } from "@/panels/ResponsiveDialog";
-import { gotoNode } from "./goto-node";
-import { searchBoards, type SearchBoard, type SearchHit } from "./search-index";
-import { displayName } from "./display-name";
+import { openFileInEditor } from "@/files/open-editor";
 import { revealCreatedNode } from "@/canvas/created-node";
+import { searchEntries } from "@/search";
+import { navigateTo } from "@/search/navigate";
+import { EntryGroup, FileGroup } from "@/search/SearchGroups";
+import { useFileHits } from "@/search/use-file-hits";
+import { useSearchEntries } from "@/search/use-search-entries";
 
 export interface SidebarSearchProps {
   open: boolean;
@@ -55,56 +58,32 @@ export interface SidebarSearchProps {
 export function SidebarSearch({ open, onOpenChange }: SidebarSearchProps) {
   const t = useT();
   const workspace = useCanvasStore((state) => state.workspace);
-  const boards = useCanvasStore((state) => state.boards);
   const boardId = useCanvasStore((state) => state.boardId);
-  const document = useCanvasStore((state) => state.document);
-  const selectBoard = useCanvasStore((state) => state.selectBoard);
   const addNode = useCanvasStore((state) => state.addNode);
+  const openWorkspace = useOpenWorkspace();
   const [query, setQuery] = useState("");
+  // 关掉就清空：下次打开从空白开始，不带着上一次的查询词。
+  useEffect(() => {
+    if (!open) setQuery("");
+  }, [open]);
   const conversations = useConversations(query, open);
+  const { entries, workspaces } = useSearchEntries(open, query);
+  const files = useFileHits(open, query);
 
-  /**
-   * 每块板的文档。查询键与 `use-board-sync` 里的那条一模一样，所以当前这块板
-   * 通常直接命中缓存，只有别的板才真的发请求——而且只在面板开着时发。
-   */
-  const documents = useQueries({
-    queries: boards.map((board) => ({
-      queryKey: sk("board", workspace?.id, board.id),
-      queryFn: () => runtimeApi.loadBoard(workspace!.id, board.id),
-      enabled: open && Boolean(workspace),
-      staleTime: 30_000,
-      retry: false,
-    })),
-  });
-
-  // `documents` 每次渲染都是新数组，用各块板数据的更新时间做依赖足够稳。
-  const documentStamp = documents.map((item) => item.dataUpdatedAt).join();
-  const indexed = useMemo<SearchBoard[]>(
+  const groups = useMemo(
     () =>
-      boards.map((board, index) => ({
-        id: board.id,
-        name: displayName(board.name, t),
-        // 当前这块板用 store 里的文档：它包含还没落盘的编辑。
-        nodes:
-          board.id === boardId && document?.board.id === board.id
-            ? document.nodes
-            : (documents[index]?.data?.nodes ?? []),
-      })),
-    // 依赖 `documentStamp` 而不是 `documents` 本身，见上。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [boardId, boards, document, documentStamp, t],
+      searchEntries(entries, query, {
+        workspaceId: workspace?.id ?? null,
+        boardId,
+      }),
+    [boardId, entries, query, workspace?.id],
   );
-
-  const hits = useMemo(() => searchBoards(indexed, query), [indexed, query]);
-  const boardHits = hits.filter((hit) => hit.kind === "board");
-  const nodeHits = hits.filter((hit) => hit.kind === "node");
 
   const close = () => onOpenChange(false);
 
-  const openHit = (hit: SearchHit) => {
+  const pick = (entry: Parameters<typeof navigateTo>[0]) => {
     close();
-    if (hit.kind === "board") selectBoard(hit.id);
-    else gotoNode(hit.boardId, hit.id);
+    navigateTo(entry, { workspaces, openWorkspace });
   };
 
   /** 选中一条历史对话：在视口中心开一个以 `--resume` 启动的终端节点。 */
@@ -131,6 +110,7 @@ export function SidebarSearch({ open, onOpenChange }: SidebarSearchProps) {
     if (id) revealCreatedNode(id);
   };
 
+  const currentWorkspaceId = workspace?.id ?? null;
   return (
     <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
       <ResponsiveDialogContent
@@ -150,42 +130,38 @@ export function SidebarSearch({ open, onOpenChange }: SidebarSearchProps) {
           <CommandList>
             <CommandEmpty>{t("search.empty")}</CommandEmpty>
 
-            {boardHits.length > 0 && (
-              <CommandGroup heading={t("search.boards")}>
-                {boardHits.map((hit) => (
-                  <CommandItem
-                    key={`board:${hit.id}`}
-                    value={`board:${hit.id}`}
-                    onSelect={() => openHit(hit)}
-                  >
-                    <LayoutGrid />
-                    <span className="min-w-0 flex-1 truncate">{hit.title}</span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            )}
-
-            {nodeHits.length > 0 && (
-              <CommandGroup heading={t("search.nodes")}>
-                {nodeHits.map((hit) => (
-                  <CommandItem
-                    key={`node:${hit.id}`}
-                    value={`node:${hit.id}`}
-                    onSelect={() => openHit(hit)}
-                  >
-                    <span className="shrink-0 truncate">{hit.title}</span>
-                    {hit.snippet && (
-                      <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                        {hit.snippet}
-                      </span>
-                    )}
-                    <span className="ml-auto truncate text-meta text-muted-foreground">
-                      {hit.boardName}
-                    </span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            )}
+            <EntryGroup
+              heading={t("search.workspaces")}
+              hits={groups.workspaces}
+              currentWorkspaceId={currentWorkspaceId}
+              onPick={pick}
+            />
+            <EntryGroup
+              heading={t("search.boards")}
+              hits={groups.boards}
+              currentWorkspaceId={currentWorkspaceId}
+              onPick={pick}
+            />
+            <EntryGroup
+              heading={t("search.nodes")}
+              hits={groups.nodes}
+              currentWorkspaceId={currentWorkspaceId}
+              onPick={pick}
+            />
+            <EntryGroup
+              heading={t("search.items")}
+              hits={groups.items}
+              currentWorkspaceId={currentWorkspaceId}
+              onPick={pick}
+            />
+            <FileGroup
+              heading={t("search.files")}
+              files={files}
+              onPick={(file) => {
+                close();
+                openFileInEditor(file.path);
+              }}
+            />
 
             {workspace && (conversations.data?.length ?? 0) > 0 && (
               <CommandGroup heading={t("meta.conversations")}>
@@ -199,9 +175,9 @@ export function SidebarSearch({ open, onOpenChange }: SidebarSearchProps) {
                     <span className="min-w-0 flex-1 truncate">
                       {conversation.title}
                     </span>
-                    <span className="ml-auto truncate text-meta text-muted-foreground">
+                    <CommandMeta className="ml-0">
                       {basename(conversation.cwd)}
-                    </span>
+                    </CommandMeta>
                     <span className="shrink-0 text-meta tabular-nums text-muted-foreground">
                       {formatRelativeTime(conversation.updatedAt)}
                     </span>
