@@ -102,7 +102,7 @@ TLS、准入、CSP 与页面托管不在 `apps/server` 里，而在 core 的 Gat
 （整段是本机路径，不随账号走），`PUT /api/gateway` 写设置并当场开、关或重开。
 桌面缺省的证书来源是 `<数据目录>/tls/` 的**本地 CA**（`ca.key` 0600）加它签的叶证书，
 叶证书的 SAN 覆盖主机名与当前私网地址，地址变了只重签叶证书；`GET /ca.crt` 匿名发出 CA，
-`POST /api/gateway/pairing` 给出 `#pair=<票>&fp=<指纹>` 的网页链接与 `armadra://pair` 深链。
+`connect.offer`（`POST /api/rpc/connect/offer`，契约 §99）给出一张二维码，文本是 `<网页来源>/#c=2&…` 的网页链接；`direct.webUrl` 是浏览器用的 `#pair=<票>&fp=<指纹>`。
 原生 App 走 Bearer 模式（来源 `capacitor://localhost` / `https://localhost`），WebSocket 先
 `POST /api/identity/ws-ticket` 换 30 秒一次性票，经 `Sec-WebSocket-Protocol: armadra-ticket.<票>` 升级。
 桌面壳的页面产物按 `ARMADRA_GATEWAY_WEB_ROOT`、core 旁的 `../renderer`、检出里的 `apps/web/dist` 依次找，
