@@ -15,7 +15,7 @@
 //      E2 之前 member 打开 `/h/` 停在待确认，owner 的信任页对这行给「在此浏览器打开主机」；E2 里 owner
 //      的 `/h/` 进了主机，信任页不刷新就改给「信任」（`armadra.e2e.trust` 广播）；owner 在信任页输入
 //      member 屏幕上的码 → member 自动进入，host1 记成 `endorse:`、owner 的 `/h/` 弹背书通知；
-//      owner 另一个浏览器的待确认，owner 的受信浏览器批它答 forbidden；经它「配对新设备」答 forbidden。
+//      owner 另一个浏览器的待确认，owner 的受信浏览器批它答 forbidden；设备页没有「配对新设备」入口。
 //      E7c（#607）背书进需要人处理，见 saas-host-e2e-notices.mjs。
 //   E10（只在点名时跑；会让 host1 登出 Armadra 云，别与 E5、E6 同跑）控制台「新建链接」，见 saas-host-e2e-link.mjs。
 //   E8 host1 经 SaaS 路线建一条只读链接；没登录的新 browser context 打开：落地页「加入」后地址是
@@ -1100,27 +1100,15 @@ try {
     }
     await sleep(1_000);
     s.check(ownerPending() === 1, "owner 的新浏览器仍待确认", ownerPending());
-    // 上一步的提示可能还在：按出现次数认这一步新弹出的那条。
-    const refusals =
-      "(document.body.innerText.match(/没有权限执行这个操作|不能在浏览器里/g) ?? []).length";
-    const before = await ownerTab.evaluate(`return ${refusals};`);
-    await ownerTab.clickOn(
-      `return [...document.querySelectorAll('[role="dialog"] button')].find((b) => b.innerText.trim() === "配对新设备")`,
-      "「配对新设备」",
-    );
-    await ownerTab.until(
-      `return ${refusals} > ${before} ? true : null;`,
-      "配对新设备答 forbidden",
-      { timeout: 30_000 },
-    );
+    // 浏览器不签配对秘密（契约 §88.7、§99.1）由 core 的集成测试验（e2e.pairingSecret 与
+    // connect.offer 对浏览器通道都答 403）；设备页也不再有「配对新设备」入口。
     s.check(
       !(await ownerTab.evaluate(
-        `return document.body.innerText.includes("用新设备扫码");`,
+        `return [...document.querySelectorAll('[role="dialog"] button')].some((b) => b.innerText.trim() === "配对新设备");`,
       )),
-      "没有出二维码",
+      "设备页没有「配对新设备」入口",
     );
-    s.ok("经 owner 的受信浏览器调 e2e.pairingSecret：forbidden");
-    await s.shot(ownerTab, "e7b-pairing-forbidden");
+    await s.shot(ownerTab, "e7b-no-pairing-entry");
     await ownerTab.key("Escape");
     await owner2Tab.close();
     s.entry.status = "passed";
