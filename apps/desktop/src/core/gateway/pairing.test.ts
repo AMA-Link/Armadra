@@ -27,6 +27,7 @@ describe("配对载荷", () => {
       ticket: "t",
       expiresAtMs: Date.UTC(2026, 9, 3),
       origin: "https://127.0.0.1:8443",
+      origins: ["https://127.0.0.1:8443"],
       fingerprint: FP,
       ...pairingLinks("https://127.0.0.1:8443", "t", FP),
     });

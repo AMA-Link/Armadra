@@ -361,6 +361,14 @@ export const workspaceEventSchema = z.discriminatedUnion("type", [
     endorserDeviceId: z.string(),
     endorserPrincipalId: z.string(),
   }),
+  /**
+   * 「连接手机」的二维码被兑换了（契约 §99.4）：`route` 是被兑掉的那一半。不进 outbox，
+   * 只扇给主机 owner；不带票、秘密与任何设备信息。
+   */
+  z.object({
+    type: z.literal("connect.used"),
+    route: z.enum(["direct", "relay"]),
+  }),
   /** 一个会话的资源用量越过阈值（契约 §27）；`metric` 今天只有 `memory`（字节）。 */
   z.object({
     type: z.literal("resources.threshold"),

@@ -111,7 +111,12 @@ export interface Gateway {
   origins(): readonly string[];
   tls(): TlsMaterial;
   /** 铸一张配对票（两分钟、一次性），连同网页链接与原生深链。 */
-  pair(input?: { origin?: string; deviceName?: string }): PairingTicket;
+  pair(input?: {
+    origin?: string;
+    /** 票绑定一组来源（契约 §99.3）；给了就不看 `origin`。 */
+    origins?: readonly string[];
+    deviceName?: string;
+  }): PairingTicket;
   /**
    * 重新问一遍主机与地址：变了就更新来源白名单，本地 CA 来源时重签叶证书并
    * 热换给监听（已有连接不断）。返回有没有变化。
@@ -242,14 +247,16 @@ export async function openGateway(
     origins: () => origins,
     tls: () => tls,
     pair: (input = {}) => {
-      const origin = input.origin ?? (origins[0] as string);
-      if (!origins.includes(origin)) {
+      const set = input.origins ?? [input.origin ?? (origins[0] as string)];
+      const origin = set[0];
+      if (origin === undefined || !set.every((one) => origins.includes(one))) {
         throw new GatewayError("invalid_origin", "这个来源不是本 Gateway 的");
       }
       const issued = service.issueBootstrap({
         hostId,
         instanceId: identityInstanceId(),
         origin,
+        ...(input.origins === undefined ? {} : { origins: [...set] }),
         deviceName: input.deviceName ?? options.deviceName,
         // 配对是 owner 在本机发起的：配出来的设备拿全套授权。成员走邀请。
         scopes: allScopes(),
@@ -257,6 +264,7 @@ export async function openGateway(
       return {
         ...issued,
         origin,
+        origins: [...set],
         fingerprint: tls.fingerprint,
         ...pairingLinks(origin, issued.ticket, tls.fingerprint),
       };

@@ -91,6 +91,7 @@ describe("契约树", () => {
       "mail",
       "credentials",
       "gateway",
+      "connect",
       "diagnostics",
       "updates",
       "traffic",

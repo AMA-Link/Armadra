@@ -33,9 +33,10 @@ import {
   bindHost,
   gatewayHosts,
   interfaceAddresses,
+  loopbackHost,
   privateAddresses,
 } from "./network";
-import { pairingJson } from "./pairing";
+import { pairingJson, pairingLinks } from "./pairing";
 import {
   PairingCodes,
   formatPairingCode,
@@ -140,6 +141,27 @@ export async function startAcme(
   }
 }
 
+/** 「连接手机」二维码的直连半（契约 §99）：一张绑定来源集合的配对票。 */
+export interface GatewayConnectHalf {
+  readonly sourceId: string;
+  /** 去掉回环、最多 3 个，与 Gateway 的 `origins` 同序。 */
+  readonly origins: readonly string[];
+  readonly ticket: string;
+  readonly expiresAtMs: number;
+  /** 信任锚 SHA-256，小写十六进制。 */
+  readonly fingerprint: string;
+  /** `XXXX-XXXX`；公网档位上是 `null`。 */
+  readonly code: string | null;
+  /** 浏览器用的 `https://<来源>/#pair=…`。 */
+  readonly webUrl: string;
+  /** Gateway 自己有没有页面产物可服务。 */
+  readonly servesWeb: boolean;
+  /** 作废这张票（与它的短码）。 */
+  revoke(): void;
+  /** 票被兑换时回调；返回退订函数。 */
+  onUsed(listener: () => void): () => void;
+}
+
 export class GatewayDomain {
   private current: Gateway | undefined;
   private acme: AcmeManager | undefined;
@@ -229,6 +251,41 @@ export class GatewayDomain {
     return undefined;
   }
 
+  /**
+   * 铸「连接手机」的直连半（契约 §99.1）。Gateway 没开、或没有非回环来源时答
+   * `undefined`。票绑定这组来源，私网档位上连同一枚短码；票与短码都不进审计。
+   */
+  connectHalf(): GatewayConnectHalf | undefined {
+    const gateway = this.current;
+    if (gateway === undefined) return undefined;
+    const origins = gateway
+      .origins()
+      .filter((origin) => !loopbackHost(new URL(origin).hostname))
+      .slice(0, 3);
+    if (origins.length === 0) return undefined;
+    const issued = gateway.pair({ origins });
+    const code = this.codesOpen(gateway) ? this.codes.issue(issued) : null;
+    const ticketId = parseToken(issued.ticket);
+    return {
+      sourceId: gateway.hostId,
+      origins,
+      ticket: issued.ticket,
+      expiresAtMs: issued.expiresAtMs,
+      fingerprint: issued.fingerprint,
+      code: code === null ? null : formatPairingCode(code),
+      webUrl: issued.webUrl,
+      servesWeb: gateway.webRoot !== undefined,
+      revoke: () => {
+        gateway.service.revokeBootstrap(issued.ticket);
+        this.codes.revokeTicket(issued.ticket);
+      },
+      onUsed: (listener) =>
+        gateway.service.onBootstrapConsumed((id) => {
+          if (id === ticketId) listener();
+        }),
+    };
+  }
+
   pair(input: {
     origin?: string;
     deviceName?: string;
@@ -276,7 +333,9 @@ export class GatewayDomain {
           ? undefined
           : store.transaction((tx) => tx.ticket(ticketId));
       if (row === undefined || row.consumedAtMs !== 0) return "dead";
-      return input.origin === ticket.origin ? "ok" : "origin_mismatch";
+      return input.origin !== undefined && ticket.origins.includes(input.origin)
+        ? "ok"
+        : "origin_mismatch";
     });
     if (!result.ok) {
       if (result.reason === "rate_limited") {
@@ -303,7 +362,20 @@ export class GatewayDomain {
       action: "gateway.pairing.code.exchange",
       detail: { origin: result.ticket.origin, remoteIp: input.remoteIp },
     });
-    return { status: 200, body: pairingJson(result.ticket) };
+    // 票绑一组来源时，答回请求实际来的那个：手机接着就在这个来源上兑换。
+    const origin = input.origin ?? result.ticket.origin;
+    return {
+      status: 200,
+      body: pairingJson({
+        ...result.ticket,
+        origin,
+        ...pairingLinks(
+          origin,
+          result.ticket.ticket,
+          result.ticket.fingerprint,
+        ),
+      }),
+    };
   }
 
   /**

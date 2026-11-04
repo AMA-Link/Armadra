@@ -63,6 +63,7 @@ import { install as installWorkflow } from "./workflow";
 import { install as installRealtime, realtimeDomain } from "./realtime";
 import { install as installPush } from "./push";
 import { gatewayDomainOf, install as installGateway } from "./gateway";
+import { install as installConnect } from "./connect";
 import { install as installForge } from "./forge";
 import { install as installMail } from "./mail";
 import { install as installDiagnostics } from "./diagnostics";
@@ -261,6 +262,10 @@ export const DOMAINS: readonly ((context: CoreContext) => void)[] = [
   // 所以在每个域之后。装配不联网，真正连中继在回环监听开始之后（`run` 的第 5 步
   // 之后），而且不等。
   installRelay,
+  // 连接手机的二维码（契约 §99）：Gateway 域与中继是调用时才取的，不挡装配顺序。
+  (context) => {
+    installConnect(context);
+  },
   // The hook service publishes an endpoint file, and nothing may be advertised
   // before the domains that answer a hook report exist.
   installHooks,

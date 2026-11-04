@@ -2656,9 +2656,9 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 
 <!-- rpc:begin contract=§35.4 -->
 
-| procedure           | kind         | input                                                | output                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | errors                                                                                     | scope         | 自  | 原路径 |
-| ------------------- | ------------ | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------- | --- | ------ |
-| `workspaces.events` | subscription | `{ workspaceId: string, cursor?: "now" \| integer }` | 迭代：`agent.context`、`agent.status`、`agent.subagent`、`agent.approval`、`agent.delivery`、`acp.turn`、`acp.driver`、`acp.starting`、`terminal.exit`、`terminal.lease`、`terminal.hibernation`、`terminal.program`、`timeline.delta`、`timeline.activity`、`board.changed`、`canvas.presence`、`board.comment`、`node.created`、`ssh.prompt`、`workspace.updated`、`control.confirm`、`resource.sample`、`browser.session`、`browser.download`、`browser.lease`、`browser.tabs`、`browser.dialog`、`browser.fileChooser`、`browser.activity`、`language.session`、`language.server`、`file.changed`、`workflow.draft`、`workflow.run`、`workflow.gate`、`workflow.task`、`schedule.fired`、`schedule.failed`、`schedule.attention`、`cloud.tunnel`、`devices.pending`、`devices.changed`、`devices.endorsed`、`resources.threshold`、`cursor` | `forbidden`、`not_found`、`snapshot_required`、`cursor_ahead`、`overflow`、`limit_reached` | `events:read` | 1.4 | —      |
+| procedure           | kind         | input                                                | output                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | errors                                                                                     | scope         | 自  | 原路径 |
+| ------------------- | ------------ | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------- | --- | ------ |
+| `workspaces.events` | subscription | `{ workspaceId: string, cursor?: "now" \| integer }` | 迭代：`agent.context`、`agent.status`、`agent.subagent`、`agent.approval`、`agent.delivery`、`acp.turn`、`acp.driver`、`acp.starting`、`terminal.exit`、`terminal.lease`、`terminal.hibernation`、`terminal.program`、`timeline.delta`、`timeline.activity`、`board.changed`、`canvas.presence`、`board.comment`、`node.created`、`ssh.prompt`、`workspace.updated`、`control.confirm`、`resource.sample`、`browser.session`、`browser.download`、`browser.lease`、`browser.tabs`、`browser.dialog`、`browser.fileChooser`、`browser.activity`、`language.session`、`language.server`、`file.changed`、`workflow.draft`、`workflow.run`、`workflow.gate`、`workflow.task`、`schedule.fired`、`schedule.failed`、`schedule.attention`、`cloud.tunnel`、`devices.pending`、`devices.changed`、`devices.endorsed`、`connect.used`、`resources.threshold`、`cursor` | `forbidden`、`not_found`、`snapshot_required`、`cursor_ahead`、`overflow`、`limit_reached` | `events:read` | 1.4 | —      |
 
 <!-- rpc:end -->
 
@@ -5077,3 +5077,85 @@ ACP 会话经 `session/new.mcpServers` 拿到 `armadra-hook mcp`（§14、`core/
 - 工具条目多 `mcp?: { server: string, tool: string }`（各 ≤200 字符），由时间线归约按 §98.2 的同一套来源规则写入；认定后不再改（后续帧缺 `_meta` 也保留）。
 - 有 `mcp` 时入参摘要（`input`）取自模型给的参数（Codex 写法的 `rawInput.arguments`），不再是 `server` / `tool` 两个键值。
 - 页面按它显示：Armadra 自己的工具用本地化名称与图标（`acp.mcp.tool.<工具名>`，与 `VERB_TOOLS` 逐项对应，`@armadra/shared` 的 `ARMADRA_MCP_TOOLS` 是同序的名字表），不带「有风险」；别家的写「服务器 · 工具」配插头图标。原始的 `mcp.<server>.<tool>` 标题不再显示。
+
+## 99. 连接手机：一张二维码
+
+> 状态：实施契约（AMA-Link/Armadra#749）。迁移 0060 `identity_bootstrap_tickets.origins`；一条新 procedure（`connect.offer`）和一个新事件（`connect.used`），协议 1.54。
+
+### 99.1 `connect.offer`
+
+<!-- rpc:begin contract=§99.1 -->
+
+| procedure       | kind | input     | output                                                                                                                                                                                                                         | errors                                                | scope            | 自   | 原路径 |
+| --------------- | ---- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- | ---------------- | ---- | ------ |
+| `connect.offer` | call | 可省 `{}` | `{ sourceId: string, expiresAtMs: integer, uri: string, direct: { origins: string[], fingerprint: string, code: string \| null, webUrl: string } \| null, relay: { issuers: string[], identityFingerprint: string } \| null }` | `unauthenticated`、`forbidden`、`connect_unavailable` | `settings:write` | 1.54 | —      |
+
+<!-- rpc:end -->
+
+- **只有 owner**（`settings:write`）。经中继来的浏览器（含不走通道的明文中继路径）答 `403 forbidden`，与 §88.7 的配对秘密同一条规则；桌面或手机的受信设备经通道照常。线上路径是 RPC 的 `POST /api/rpc/connect/offer`，没有旧 REST 路径。
+- **两半都由 core 拼**，页面不再分别调两个接口：
+
+| 状态                                       | 直连半                                | 中转半 |
+| ------------------------------------------ | ------------------------------------- | ------ |
+| 只开局域网（Gateway 在跑，且有非回环来源） | 有                                    | 无     |
+| 只开互联网（登记了签发方，隧道开关开着）   | 无                                    | 有     |
+| 两者都开                                   | 有                                    | 有     |
+| 都没开                                     | 409 `connect_unavailable`，入口不出现 |        |
+
+- **答案** `{ sourceId, expiresAtMs, uri, direct, relay }`：`uri` 是二维码文本（§99.2）；`direct` 是 `{ origins, fingerprint, code, webUrl }` 或 `null`——`origins` 是去掉回环、最多 3 个的 Gateway 来源（与 §17.1 的 `origins` 同序），`fingerprint` 是信任锚 SHA-256 的十六进制，`code` 是私网档位上的 8 位配对码（§24，与票同生同灭，公网档位是 `null`），`webUrl` 是「复制链接」用的浏览器链接 `https://<来源>/#pair=…&fp=…`；`relay` 是 `{ issuers, identityFingerprint }` 或 `null`。
+- **点开对话框才铸**。同一时刻整台 core 只活一枚 offer：再次调用（「新配对码」、重新打开对话框）先作废上一枚还没用的——票、短码和配对秘密都作废。core 停下时同样作废。
+- **审计** `connect.offer.issue`，`detail` 只有 `{ direct, relay, code }` 三个布尔值；票、秘密、短码、地址都不进审计、日志与事件。
+
+### 99.2 二维码文本与载荷 v2
+
+二维码里放的是网页链接，手机相机扫到能直接打开网页，App 内的扫码器解析同一串，只有这一种形状（不再有 `armadra://` 深链）：
+
+```
+<网页来源>/#c=2&s=<源>&e=<截止>&o=<来源…>&t=<票>&f=<锚>&k=<身份公钥>&p=<秘密>&i=<签发方…>
+```
+
+载荷在片段里：片段不上请求行，所以不进任何访问日志，也不进 `Referer`。`c` 是载荷版本（固定 `2`，取代 `v`），键直写，不套 base64(JSON)。
+
+| 键  | 含义                                                                                   |
+| --- | -------------------------------------------------------------------------------------- |
+| `c` | 载荷版本，固定 `2`                                                                     |
+| `s` | 源标识，core 的 `hostId`（32 位十六进制）；直连和中转是同一个连接                      |
+| `e` | 扫码截止时刻（ms）：在场各半里最早的到期                                               |
+| `o` | 直连：Gateway 的 `host:port`，逗号分隔，最多 3 个，去掉回环，端口必写（IPv6 带方括号） |
+| `t` | 直连：一次性配对票                                                                     |
+| `f` | 直连：信任锚 SHA-256，base64url，43 字符                                               |
+| `k` | 中转：身份公钥，base64url，43 字符（32 字节）                                          |
+| `p` | 中转：一次性配对秘密，base64url，22 字符（16 字节）                                    |
+| `i` | 中转：签发方来源，逐个百分号编码，逗号分隔，最多 2 个                                  |
+
+`o/t/f` 同进同出（直连半），`k/p/i` 同进同出（中转半），至少要有一半。缺键、多出不认识的键、重复的键、长度或取值不对，一律拒绝。最大载荷（3 个来源、2 个签发方）连网页来源不超过 412 字节，QR 版本不超过 15·M。编解码在 `@armadra/shared` 的 `connect-link.ts`。
+
+**网页来源的选择**：有直连半且 Gateway 自己带着页面产物时，取 `origins[0]`（手机相机打开的就是这台电脑自己服务的网页）；否则有中转半时取 `issuers[0]`（远程服务的网页）；两者都没有页面时仍取 `origins[0]`（App 内扫码只读片段，不请求这个来源）。
+
+**拒绝与文案码**（手机端，见 §99.5）：`armadra://pair?…`、`armadra://pair-e2e?…` 与 `c` 小于 2 是 `older`；`c` 大于 2 是 `newer`；超过截止时刻加 60 秒误差是 `expired`；其余不合规矩的是 `invalid`。
+
+### 99.3 寿命与兑换
+
+- **票**两分钟、一次性；**秘密**五分钟、一次性，只在内存里；`e` 取在场各半里最早的到期。
+- **票绑定 Gateway 的来源集合**。迁移 0060 给 `identity_bootstrap_tickets` 加 `origins`（换行分隔的来源，空串 = 只认 `origin`，旧票照旧）。兑换时请求来源必须在集合里，不在是 401（与票错、过期、用过同一个 401）；会话绑定实际来的那个来源，不是集合里的第一个。短码换票（§24）同样按集合判，答回请求实际来的来源。
+- **两半各自一次性、互不作废**：直连半离开局域网就没用，中转半没有能挂这台源的远程服务账号也没用。任何一半被兑换都发 `connect.used`（§99.4），另一半留着直到过期或被新的 offer 作废。
+- **二维码泄露时暴露的**：两分钟内能连上这个 Gateway 的人可以拿到 owner 会话（与 §17.3 相同）；五分钟内持有能挂这台源的远程账号的人，可以让自己的设备免核对受信（与 §80.1 相同），设备钥绑的是他自己的主体；另外会暴露局域网地址、主机名、身份公钥和签发方。总的暴露面等于旧的两张码之和。
+
+### 99.4 事件 `connect.used`
+
+工作空间事件 `{ type: "connect.used", route: "direct" | "relay" }`（`workspaces.events` 与旧事件流都有）：offer 的某一半被兑换时发，不进 outbox，**只扇给主机 owner**（同 §81.1 的 `devices.endorsed`），不带票、秘密和设备信息。桌面对话框收到后收起并提示已连接。
+
+### 99.5 手机选路
+
+1. 解析载荷（§99.2），检查版本和截止时刻（手机时钟允许 60 秒误差，最终以 core 的判定为准）。
+2. **有直连半**：对每个来源先钉住信任锚 `f`，再并行请求 `GET /api/identity/hello`，单次超时 1.5 秒；只有答回 `hostId === s` 才算通。窗口结束后，在答了的来源里取顺序最靠前的那个，用 `t` 配对（超时 10 秒）。配对答 401 或 410 报 `expired`，不改走中转；传输层失败按不可达处理。
+3. **直连不通、有中转半**：先把 offer 记下（到期即丢）。钥匙串里已有 `i[0]` 的登录就直接挂源 `s`；没有就走现有登录，登录后自动挂 `s`，不再弹源列表。通道钉住 `k`，握手 m3 带 `proof`，设备直接受信，不必核对校验码；秘密已过期时退回 §77 的校验码核对。
+4. **直连成功、有中转半**：同样记下 offer；钥匙串里已有 `i[0]` 的登录时，后台顺带挂上中转路线（同一连接多一条路由）。
+5. 两条路都不通：`unreachable`（没有中转半时）。运行期选路照旧，直连优先（§55）。
+6. **在手机浏览器里**：网页读片段 `#c=`，走同一套选路；页面所在的来源就是直连半里的一个来源，浏览器不能钉信任锚，所以证书不被系统信任的 Gateway 仍要先装本地 CA（与 `#pair=` 链接相同）。
+
+文案码与中英文案：`connectOlder`、`connectNewer`、`expired`、`unreachable`、`wrongAccount`、`invalid`，在 `apps/web/src/i18n/mobile-connect.ts`。
+
+### 99.6 取代关系
+
+`connect.offer` 取代三样旧东西，它们在 #749 的最后一个包里删除，节号保留：`gateway.pair` / `POST /api/gateway/pairing`（§17.3）、`e2e.pairingSecret` / `POST /api/e2e/pairing-secret`（§80.1）以及 §24.2 与 §73 回答里的 `deepLink`。`armadra://pair?` 与 `armadra://pair-e2e?` 两种链接形状同时不再被认。浏览器用的 `#pair=` 链接保留（「复制链接」与服务器壳的打印仍在用）。

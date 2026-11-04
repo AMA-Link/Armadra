@@ -27,7 +27,7 @@ import type { DeviceKey } from "./device-key";
 import { DeviceError, type DeviceRegistry, type DeviceView } from "./devices";
 import type { EndorsementStore } from "./endorsements";
 import type { PairingSecrets } from "./pairing";
-import { channelPeerOf } from "./peer";
+import { channelPeerOf, e2eDevices } from "./peer";
 
 /** 等候一次最长多久。 */
 export const WAIT_TIMEOUT_MS = 25_000;
@@ -207,7 +207,7 @@ const NATIVE_PLATFORMS: ReadonlySet<string> = new Set([
  * 3. 明文中继路径（没有通道）拿不出任何设备证明，按浏览器算——否则绕开通道就绕开了这条规则。
  */
 function relayedWithoutNativeDevice(
-  deps: E2eRouteDeps,
+  deps: Pick<E2eRouteDeps, "devices">,
   request: CoreRequest | undefined,
 ): boolean {
   const socket: unknown = request?.raw.socket;
@@ -223,6 +223,18 @@ function relayedWithoutNativeDevice(
     !NATIVE_PLATFORMS.has(row.platform) ||
     !NATIVE_PLATFORMS.has(peer.platform)
   );
+}
+
+/**
+ * 同一条规则给别的域用（`connect.offer`，契约 §99.1）：这个请求是不是经中继来的浏览器。
+ * 设备登记没装时，只要是隧道流就按浏览器算。
+ */
+export function relayedBrowserRequest(
+  request: CoreRequest | undefined,
+): boolean {
+  const devices = e2eDevices();
+  if (devices === undefined) return request?.raw.socket instanceof TunnelDuplex;
+  return relayedWithoutNativeDevice({ devices }, request);
 }
 
 /** 旧路径与 procedure 共用的那一份；拒绝抛 {@link CoreFailure}。 */

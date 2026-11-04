@@ -123,6 +123,11 @@ export interface BootstrapRequest {
   readonly hostId: string;
   readonly instanceId: string;
   readonly origin: string;
+  /**
+   * 票能在哪些来源兑换（契约 §99.3），含 `origin`；缺省只有 `origin`。会话绑定兑换时
+   * 实际来的那个来源。
+   */
+  readonly origins?: readonly string[];
   readonly deviceName: string;
   readonly scopes: readonly Scope[];
 }
@@ -263,6 +268,9 @@ export class IdentityService {
   /** 清理闲置壳会话时记一行数目（不带任何 id 或密钥）。 */
   private readonly log: SweepLog | undefined;
 
+  /** 票被兑换成会话之后的回调（契约 §99.4）：只带票标识，不带票值。 */
+  private readonly bootstrapListeners = new Set<(ticketId: string) => void>();
+
   constructor(
     private readonly store: IdentityStore,
     private readonly instanceId: string,
@@ -362,8 +370,11 @@ export class IdentityService {
     ticket: string;
     expiresAtMs: number;
   } {
+    const origins = request.origins ?? [request.origin];
     if (
       !this.audience(request.hostId, request.origin) ||
+      !origins.includes(request.origin) ||
+      !origins.every((origin) => this.audience(request.hostId, origin)) ||
       request.instanceId !== this.instanceId ||
       !validName(request.deviceName)
     ) {
@@ -383,6 +394,7 @@ export class IdentityService {
         hostId: request.hostId,
         instanceId: request.instanceId,
         origin: request.origin,
+        origins: request.origins === undefined ? [] : [...request.origins],
         deviceName: request.deviceName,
         scopes,
         createdAtMs: now,
@@ -390,6 +402,26 @@ export class IdentityService {
         consumedAtMs: 0,
       });
       return { ticket: value, expiresAtMs };
+    });
+  }
+
+  /** 订阅「票被兑换」；返回退订函数。回调抛错不影响兑换。 */
+  onBootstrapConsumed(listener: (ticketId: string) => void): () => void {
+    this.bootstrapListeners.add(listener);
+    return () => this.bootstrapListeners.delete(listener);
+  }
+
+  /**
+   * 作废一张还没用的票（契约 §99.3：新的 offer 作废旧的）。已用、已过期、不认识的什么
+   * 也不做。
+   */
+  revokeBootstrap(ticket: string): void {
+    const ticketId = parseToken(ticket);
+    if (ticketId === undefined) return;
+    this.store.transaction((tx) => {
+      const row = tx.ticket(ticketId);
+      if (row === undefined || row.consumedAtMs !== 0) return;
+      tx.consumeTicket(ticketId, this.now());
     });
   }
 
@@ -421,7 +453,9 @@ export class IdentityService {
         ticket === undefined ||
         ticket.hostId !== request.hostId ||
         ticket.instanceId !== this.instanceId ||
-        ticket.origin !== request.origin ||
+        !(ticket.origins.length === 0
+          ? ticket.origin === request.origin
+          : ticket.origins.includes(request.origin)) ||
         ticket.consumedAtMs !== 0 ||
         now < ticket.createdAtMs ||
         now >= ticket.expiresAtMs ||
@@ -438,7 +472,7 @@ export class IdentityService {
       // 桌面壳的页面与托盘每次启动都配一次对（来源是内核分配的回环端口，每次
       // 都不同）。原来每次都新建一台「本机桌面」，设备列表越积越多；现在回环
       // 明文来源的票复用同一台本机设备，只多一条会话。
-      const device: IdentityDevice = (nativeOrigin(ticket.origin)
+      const device: IdentityDevice = (nativeOrigin(request.origin)
         ? reusableLocalDevice(tx, owner.principalId, ticket.deviceName)
         : undefined) ?? {
         deviceId,
@@ -456,7 +490,7 @@ export class IdentityService {
         sessionId,
         deviceId: device.deviceId,
         deviceEpoch: device.epoch,
-        origin: ticket.origin,
+        origin: request.origin,
         scopes: ticket.scopes,
         accessHash: digest("access", secrets.accessToken),
         refreshHash: digest("refresh", secrets.refreshToken),
@@ -499,6 +533,13 @@ export class IdentityService {
         revoked: swept,
       });
       accessChanged();
+    }
+    for (const listener of [...this.bootstrapListeners]) {
+      try {
+        listener(ticketId);
+      } catch {
+        /* 通知失败不影响已经换出的会话。 */
+      }
     }
     return paired;
   }

@@ -61,11 +61,11 @@ test("标记块的节号在契约里没有 procedure 是错误；契约里的节
   assert.throws(
     () =>
       applyBlocks(
-        "<!-- rpc:begin contract=§99.1 -->\n<!-- rpc:end -->",
+        "<!-- rpc:begin contract=§999.1 -->\n<!-- rpc:end -->",
         entries,
         document,
       ),
-    /§99\.1/,
+    /§999\.1/,
   );
   assert.throws(() => applyBlocks("", entries, document), /没有标记块/);
 });

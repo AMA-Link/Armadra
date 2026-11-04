@@ -23,6 +23,7 @@ function ticket(expiresAtMs: number, suffix = "a"): PairingTicket {
     ticket: `${suffix.repeat(32)}.${"b".repeat(43)}`,
     expiresAtMs,
     origin: ORIGIN,
+    origins: [ORIGIN],
     fingerprint: ANCHOR,
     webUrl: `${ORIGIN}/#pair=x`,
     deepLink: "armadra://pair?host=x&ticket=x&fp=x",

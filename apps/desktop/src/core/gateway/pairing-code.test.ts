@@ -16,6 +16,7 @@ function ticket(expiresAtMs: number, origin = "https://192.168.1.20:8443") {
     ticket: `${"a".repeat(32)}.${"b".repeat(43)}`,
     expiresAtMs,
     origin,
+    origins: [origin],
     fingerprint: "f".repeat(64),
     webUrl: `${origin}/#pair=x`,
     deepLink: "armadra://pair?host=x&ticket=x&fp=x",
@@ -127,6 +128,18 @@ describe("配对短码", () => {
     }
     expect(codes.size).toBe(PAIRING_CODE_LIMIT);
     expect(codes.exchange(first, "10.0.0.2").ok).toBe(false);
+  });
+
+  it("revokeTicket 只删这张票的短码（契约 §99.3）", () => {
+    const codes = new PairingCodes();
+    const keep = ticket(Date.now() + 60_000);
+    const gone = { ...keep, ticket: `${"c".repeat(32)}.${"d".repeat(43)}` };
+    const kept = codes.issue(keep);
+    const revoked = codes.issue(gone);
+    codes.revokeTicket(gone.ticket);
+    expect(codes.size).toBe(1);
+    expect(codes.exchange(revoked, "10.0.0.1").ok).toBe(false);
+    expect(codes.exchange(kept, "10.0.0.1").ok).toBe(true);
   });
 
   it("生成器撞上活着的码时重抽", () => {
