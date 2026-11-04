@@ -165,6 +165,10 @@ ACP 一列以 [tools/release/compatibility.json](tools/release/compatibility.jso
 
 分层、数据模型与安全边界见 [架构](docs/guides/architecture.md)。
 
+## macOS 首次打开
+
+官方 macOS 安装包是 ad-hoc 签名、未经公证，第一次打开会被系统拦下。macOS 15 及更新：先打开一次，再到「系统设置 → 隐私与安全性」点「仍要打开」（旧的右键打开已失效）；或执行 `xattr -dr com.apple.quarantine /Applications/Armadra.app`。Homebrew 安装同样需要这一步。应用内更新目前只下载不替换，需手动装新版。详见 [macOS 首次打开](docs/guides/macos-first-launch.md)。
+
 ## 快速开始
 
 需要 Node.js ≥ 24 与项目锁定的 pnpm，没有别的工具链。建议安装 tmux（缺失时退回直连 PTY）；

@@ -36,6 +36,10 @@ The ACP column follows [tools/release/compatibility.json](tools/release/compatib
 
 Download the package for your platform from [GitHub Releases](https://github.com/AMA-Link/Armadra/releases/latest). macOS requires 13.3 or newer. Installation steps and system requirements are on [armadra.com/docs](https://armadra.com/docs/).
 
+### First launch on macOS
+
+Official macOS packages are ad-hoc signed and not notarized, so macOS blocks the first launch. On macOS 15 and later, open the app once, then go to System Settings → Privacy & Security and click "Open Anyway" (the old right-click → Open bypass no longer works); or run `xattr -dr com.apple.quarantine /Applications/Armadra.app`. A Homebrew install needs the same step. In-app updates currently download but do not replace the app, so install new versions manually. See [macOS first launch](docs/guides/macos-first-launch.md) (Chinese).
+
 ## Run from source
 
 Requires Node.js ≥ 24 and the pnpm version pinned by the project. tmux is recommended (falls back to a direct PTY when missing); macOS needs the Xcode Command Line Tools.
