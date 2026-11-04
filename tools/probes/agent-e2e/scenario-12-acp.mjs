@@ -912,6 +912,20 @@ export default async function run12() {
         }).catch((error) => note("切回 acceptEdits 失败", error.message));
         // 页面松手：别让人的输入租约挡住随后沿环投来的那一条。
         await page.evaluate(`document.activeElement?.blur?.(); return true;`);
+        // 失焦的「交还」是页面发的异步请求，下面的 send 不等它：核心还认着人的接
+        // 管就会拒绝投递（409，不排队），投递行都不会有。所以自己再交还一次——
+        // 空闲时是空操作——确认租约空了再往下。
+        await waitFor(
+          "claude 会话的人类租约已交还",
+          async () =>
+            (
+              await api(`/api/terminals/${sessions.claude}/drive`, {
+                method: "POST",
+                body: { action: "release" },
+              })
+            ).state === "free",
+          { timeout: 15_000, interval: 200 },
+        );
       } catch (error) {
         await page.capture("12-claude-approval-failed").catch(() => undefined);
         note(
