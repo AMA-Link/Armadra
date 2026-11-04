@@ -378,7 +378,9 @@ describe("粗状态（没有活动，终端驱动）", () => {
   });
 });
 
-describe("全组合不变量", () => {
+// 一万多种输入逐个断言，本机约 0.4 s；慢的 macOS runner 上越过默认的 5 s。
+// 这是枚举用例而不是性能用例，超时给足，不影响判断本身。
+describe("全组合不变量", { timeout: 30_000 }, () => {
   const statuses: (DisplayStatus | undefined)[] = [
     undefined,
     { state: "working" },

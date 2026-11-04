@@ -30,10 +30,20 @@ beforeAll(() => {
   }
 });
 
-afterEach(() => {
+/**
+ * sonner 关一条提示时，`deleteToast` 先播退场、再 `setTimeout(removeToast, 200)` 才真正移除，
+ * 这个计时器没有清理。用例一结束就 `cleanup()` 卸掉 Toaster 的话，文件里最后几条用例留下的
+ * 计时器会在 vitest 拆掉 jsdom 之后才触发，`setState` 读 `window.event` 抛
+ * 「window is not defined」，算作未处理错误让整个包失败（CI 上偶发，取决于拆环境与计时器谁先）。
+ * 所以先 dismiss，等 Toaster 还挂着时把全部提示移完，再卸载。
+ */
+afterEach(async () => {
   act(() => {
     sonner.dismiss();
   });
+  await waitFor(() =>
+    expect(document.querySelectorAll("[data-sonner-toast]")).toHaveLength(0),
+  );
   cleanup();
   vi.restoreAllMocks();
 });
