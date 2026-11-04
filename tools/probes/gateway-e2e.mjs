@@ -470,52 +470,21 @@ async function fromThePage(base, origin) {
 
   // 开关与配对码在「远程访问 → 允许其他设备访问这台电脑」（#301）。
   await page.click('nav button[aria-label="远程访问"]');
-  // 二维码收进「手机扫码连接」对话框（#675）：开关开着之后点开它。
+  // 「连接手机」的入口只在有路可连时出现（#749）：这个 Gateway 只在回环上，没有
+  // 非回环来源，二维码里没有可放的地址，所以入口不画；二维码与配对码的内容由 core 的
+  // 集成测试（connect.offer）验过。
   await page.waitFor(
-    `const on = document.querySelector('[role="switch"][aria-label="允许其他设备访问这台电脑"]')
-       ?.getAttribute("aria-checked") === "true";
-     const open = [...document.querySelectorAll("button")]
-       .find((node) => node.textContent.trim() === "手机扫码连接");
-     if (!on || !open) return false;
-     open.click();
-     return true;`,
-    { what: "允许其他设备访问开着、点开「手机扫码连接」" },
+    `return document.querySelector('[role="switch"][aria-label="允许其他设备访问这台电脑"]')
+       ?.getAttribute("aria-checked") === "true";`,
+    { what: "允许其他设备访问开着" },
   );
-  const qr = await page.waitFor(
-    `return [...document.querySelectorAll('[role="dialog"]')]
-       .map((node) => node.querySelector("svg[data-qr-text]"))
-       .find(Boolean)?.getAttribute("data-qr-text");`,
-    { what: "扫码对话框里的二维码" },
+  const phoneEntry = await page.evaluate(
+    `return [...document.querySelectorAll("button")]
+       .some((node) => node.textContent.trim() === "连接手机");`,
   );
-  check(
-    typeof qr === "string" && qr.startsWith(`${origin}/#pair=`),
-    "页面上的二维码是这个 Gateway 的配对链接",
-    String(qr).slice(0, 48),
-  );
-  const shownCode = await page.waitFor(
-    `return document.querySelector("[data-pairing-code]")?.textContent ?? null;`,
-    { what: "配对卡上的配对码" },
-  );
-  check(
-    /^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(String(shownCode)),
-    "配对卡上有 XXXX-XXXX 的配对码",
-    String(shownCode),
-  );
+  check(phoneEntry === false, "只在回环上时不出现「连接手机」入口");
   await page.capture("gateway-page-on");
 
-  // 关掉扫码对话框再去点开关。设置页本身也是对话框（还带着「手机扫码连接」按钮），所以按里面有二维码认这一个。
-  const scanDialog = `[...document.querySelectorAll('[role="dialog"]')]
-     .find((node) => node.querySelector("svg[data-qr-text]"))`;
-  await page.waitFor(
-    `const close = ${scanDialog}?.querySelector('[data-slot="dialog-close"]');
-     if (!close) return false;
-     close.click();
-     return true;`,
-    { what: "点扫码对话框的关闭" },
-  );
-  await page.waitFor(`return ${scanDialog} === undefined;`, {
-    what: "扫码对话框关上",
-  });
   // 对话框淡出时遮罩还在，坐标点击会落在遮罩上：直接点开关元素。
   await page.evaluate(
     `document.querySelector('[role="switch"][aria-label="允许其他设备访问这台电脑"]').click(); return true;`,

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ConnectOffer } from "@armadra/shared";
 
 import { usePreferencesStore } from "../../../../app/preferences-store";
 import { CaInstallGuide, defaultPlatform, PageCaGuide } from "./CaInstallGuide";
@@ -7,13 +8,19 @@ import { countdown, groupFingerprint, PairingCard } from "./PairingCard";
 
 const FP = "ab".repeat(32);
 const EXPIRES = Date.UTC(2026, 9, 3, 8, 2);
-const pairing = {
-  origin: "https://192.168.1.20:8443",
-  ticket: "t.k",
-  fingerprint: FP,
-  expiresAt: new Date(EXPIRES).toISOString(),
-  webUrl: `https://192.168.1.20:8443/#pair=t.k&fp=${FP}`,
-  deepLink: `armadra://pair?host=192.168.1.20%3A8443&ticket=t.k&fp=${FP}`,
+const SOURCE = "0123456789abcdef0123456789abcdef";
+const ORIGIN = "https://192.168.1.20:8443";
+const offer: ConnectOffer = {
+  sourceId: SOURCE,
+  expiresAtMs: EXPIRES,
+  uri: `${ORIGIN}/#c=2&s=${SOURCE}&e=${EXPIRES}`,
+  direct: {
+    origins: [ORIGIN],
+    fingerprint: FP,
+    code: null,
+    webUrl: `${ORIGIN}/#pair=t.k&fp=${FP}`,
+  },
+  relay: null,
 };
 
 beforeEach(() => usePreferencesStore.setState({ locale: "zh-CN" }));
@@ -23,16 +30,24 @@ afterEach(() => {
 });
 
 describe("PairingCard", () => {
+  it("二维码文本就是 offer.uri", () => {
+    const { container } = render(
+      <PairingCard
+        offer={offer}
+        busy={false}
+        caHref={null}
+        onNewOffer={vi.fn()}
+        now={EXPIRES - 60_000}
+      />,
+    );
+    expect(container.querySelector("svg")?.getAttribute("data-qr-text")).toBe(
+      offer.uri,
+    );
+  });
+
   it("counts down, and once expired dims the code and promotes the new-code button", () => {
-    const onNewPairing = vi.fn();
-    const props = {
-      pairing,
-      busy: false,
-      origins: [pairing.origin],
-      fingerprint: FP,
-      caHref: null,
-      onNewPairing,
-    };
+    const onNewOffer = vi.fn();
+    const props = { offer, busy: false, caHref: null, onNewOffer };
     const { rerender } = render(
       <PairingCard {...props} now={EXPIRES - 61_000} />,
     );
@@ -50,19 +65,17 @@ describe("PairingCard", () => {
         .disabled,
     ).toBe(true);
     fireEvent.click(renew);
-    expect(onNewPairing).toHaveBeenCalledWith(pairing.origin);
+    expect(onNewOffer).toHaveBeenCalledTimes(1);
     // 没有 CA 可发时不给下载。
     expect(screen.queryByRole("link", { name: "下载 CA" })).toBeNull();
   });
 
   it("私网档位上画「配对码 XXXX-XXXX 倒计时」，过期时收起配对码", () => {
     const props = {
-      pairing: { ...pairing, code: "3F7K-9Q2M" },
+      offer: { ...offer, direct: { ...offer.direct!, code: "3F7K-9Q2M" } },
       busy: false,
-      origins: [pairing.origin],
-      fingerprint: FP,
       caHref: null,
-      onNewPairing: vi.fn(),
+      onNewOffer: vi.fn(),
     };
     const { rerender } = render(
       <PairingCard {...props} now={EXPIRES - 179_000} />,
@@ -73,6 +86,49 @@ describe("PairingCard", () => {
     rerender(<PairingCard {...props} now={EXPIRES + 1} />);
     expect(screen.queryByText("3F7K-9Q2M")).toBeNull();
     expect(screen.getByText("已过期")).toBeTruthy();
+  });
+
+  it("没有来源下拉：直连半只画一行地址", () => {
+    render(
+      <PairingCard
+        offer={{
+          ...offer,
+          direct: {
+            ...offer.direct!,
+            origins: [ORIGIN, "https://mac.local:8443"],
+          },
+        }}
+        busy={false}
+        caHref={null}
+        onNewOffer={vi.fn()}
+        now={EXPIRES - 60_000}
+      />,
+    );
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.getByText(ORIGIN)).toBeTruthy();
+  });
+
+  it("只开互联网：只有二维码与新配对码，没有地址、复制链接、指纹", () => {
+    render(
+      <PairingCard
+        offer={{
+          ...offer,
+          direct: null,
+          relay: {
+            issuers: ["https://app.armadra.com"],
+            identityFingerprint: "FP",
+          },
+        }}
+        busy={false}
+        caHref={null}
+        onNewOffer={vi.fn()}
+        now={EXPIRES - 60_000}
+      />,
+    );
+    expect(screen.queryByText(ORIGIN)).toBeNull();
+    expect(screen.queryByRole("button", { name: "复制链接" })).toBeNull();
+    expect(screen.queryByText("指纹")).toBeNull();
+    expect(screen.getByRole("button", { name: "新配对码" })).toBeTruthy();
   });
 
   it("formats the clock and the fingerprint the way certificate dialogs do", () => {

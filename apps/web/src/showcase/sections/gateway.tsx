@@ -14,7 +14,7 @@ import {
   FAILED,
   NOW,
   OFF,
-  PAIRING,
+  OFFER,
   RENEW_FAILED,
   RUNNING,
   STARTING,
@@ -66,12 +66,10 @@ export default function GatewaySection() {
         </Sample>
         <Sample caption={t("gateway.pair.expired")}>
           <PairingCard
-            pairing={PAIRING}
+            offer={OFFER}
             busy={false}
-            origins={[PAIRING.origin]}
-            fingerprint={PAIRING.fingerprint}
             caHref={null}
-            onNewPairing={noop}
+            onNewOffer={noop}
             now={EXPIRED_NOW}
           />
         </Sample>
@@ -91,12 +89,10 @@ export default function GatewaySection() {
             />
           </GatewayPanel>
           <PairingCard
-            pairing={PAIRING}
+            offer={OFFER}
             busy={false}
-            origins={RUNNING.origins}
-            fingerprint={PAIRING.fingerprint}
             caHref={CA_HREF}
-            onNewPairing={noop}
+            onNewOffer={noop}
             now={NOW}
           />
           <GatewayDevices

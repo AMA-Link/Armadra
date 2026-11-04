@@ -8,8 +8,8 @@ import {
 import { PairingCard, type PairingCardProps } from "./PairingCard";
 
 /**
- * 「手机扫码连接」（#675）：点开才铸配对码、才显示二维码；地址选择、新配对码、复制
- * 链接、指纹与 CA 下载都在 {@link PairingCard} 里。
+ * 「连接手机」（#675、#749）：点开才铸二维码；新配对码、复制链接、指纹与 CA 下载都在
+ * {@link PairingCard} 里。
  */
 export function PairingDialog({
   open,

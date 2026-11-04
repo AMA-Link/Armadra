@@ -112,7 +112,7 @@ export async function endorsementNotices({
     "点「本机」里的一条背书",
   );
   await ownerTab.until(
-    `return [...document.querySelectorAll('[role="dialog"] button')].some((b) => b.innerText.trim() === "配对新设备") ? true : null;`,
+    `return document.querySelector('[role="dialog"]')?.innerText.includes("经中转的设备") ? true : null;`,
     "打开设置的设备页",
     { timeout: 30_000 },
   );
