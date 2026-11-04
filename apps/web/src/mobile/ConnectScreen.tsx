@@ -1,5 +1,4 @@
 import * as React from "react";
-import { parsePairingUri, storagePairings } from "../sources/e2e/pairing";
 import {
   type OfferOutcome,
   looksLikeConnect,
@@ -556,14 +555,6 @@ export function ConnectScreen({
       const read = readConnect(value);
       if (!read.ok) setFailure(read.failure);
       else await runOffer(read.payload);
-      return;
-    }
-    // 别的设备上的「配对新设备」二维码（契约 §80.1）：记下身份与一次性秘密，接着用
-    // 那台电脑登记的中转登录；之后连它时不必等主人核对。
-    const offer = parsePairingUri(value);
-    if (offer !== null) {
-      storagePairings().remember(offer);
-      signInTo(offer.issuers[0] ?? "");
       return;
     }
     if (relay && isJoinLink(value)) {

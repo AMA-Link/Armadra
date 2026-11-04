@@ -8,7 +8,7 @@ import {
 } from "@armadra/platform-protocol/e2e";
 
 import { E2eChannels, resetE2eChannels } from "./manager";
-import { parsePairingUri, storagePairings } from "./pairing";
+import { offerFromConnect, storagePairings } from "./pairing";
 import { storagePins } from "./pins";
 
 /** 配对二维码与访客链接的钉扎（契约 §80）。 */
@@ -17,17 +17,13 @@ const SOURCE = "a".repeat(32);
 const IDENTITY = new Uint8Array(32).fill(4);
 const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString("base64url");
 
-function uri(over: Record<string, unknown> = {}) {
-  const data = {
-    v: 1,
-    s: SOURCE,
-    k: b64(IDENTITY),
-    p: b64(new Uint8Array(16).fill(9)),
-    i: ["https://relay.test"],
-    e: Date.now() + 60_000,
-    ...over,
-  };
-  return `armadra://pair-e2e?d=${b64(new TextEncoder().encode(JSON.stringify(data)))}`;
+/** 连接手机二维码的中转半（契约 §99.2）。 */
+function offer(over: { expiresAtMs?: number; identityPub?: string } = {}) {
+  return offerFromConnect(SOURCE, over.expiresAtMs ?? Date.now() + 60_000, {
+    identityPub: over.identityPub ?? b64(IDENTITY),
+    secret: b64(new Uint8Array(16).fill(9)),
+    issuers: ["https://relay.test"],
+  });
 }
 
 function memory(): Pick<Storage, "getItem" | "setItem"> {
@@ -55,20 +51,24 @@ afterEach(() => {
 });
 
 describe("配对二维码", () => {
-  it("解析出源、身份、秘密与远程服务；过期、别的链接与坏载荷都不认", () => {
-    const offer = parsePairingUri(uri())!;
-    expect(offer.sourceId).toBe(SOURCE);
-    expect(offer.identityPub).toEqual(IDENTITY);
-    expect(offer.secret).toHaveLength(16);
-    expect(offer.issuers).toEqual(["https://relay.test"]);
-    expect(parsePairingUri(uri({ e: Date.now() - 1 }))).toBeNull();
-    expect(parsePairingUri(uri({ k: "short" }))).toBeNull();
-    expect(parsePairingUri("https://relay.test/j/abc#x.y")).toBeNull();
+  it("解码出源、身份、秘密与远程服务；长度不对的不认", () => {
+    const parsed = offer()!;
+    expect(parsed.sourceId).toBe(SOURCE);
+    expect(parsed.identityPub).toEqual(IDENTITY);
+    expect(parsed.secret).toHaveLength(16);
+    expect(parsed.issuers).toEqual(["https://relay.test"]);
+    expect(offer({ identityPub: "short" })).toBeNull();
+  });
+
+  it("到期的配对记不住：取不到", () => {
+    const pairings = storagePairings(memory(), () => Date.now());
+    pairings.remember(offer({ expiresAtMs: Date.now() - 1 })!);
+    expect(pairings.get(SOURCE)).toBeNull();
   });
 
   it("扫过的配对：连那台时钉住二维码里的身份、带 proof，用过即删", async () => {
     const pairings = storagePairings(memory());
-    pairings.remember(parsePairingUri(uri())!);
+    pairings.remember(offer()!);
     const signer = await ed25519SignerFromSeed(new Uint8Array(32).fill(1));
     const channels = new E2eChannels({
       pins: storagePins(null),

@@ -333,10 +333,9 @@ export function removeSource(sourceId: string) {
   return localClient().sources.remove({ sourceId });
 }
 
-/** 输入框里的是一条配对链接（`#pair=` 或 `armadra://pair`），还是一个地址。 */
+/** 输入框里的是一条配对链接（浏览器用的 `#pair=`，契约 §17），还是一个地址。 */
 export function isPairLink(value: string): boolean {
-  const text = value.trim();
-  return /^armadra:\/\/pair\b/i.test(text) || /#pair=/.test(text);
+  return /#pair=/.test(value.trim());
 }
 
 /* ------------------------- 直接调远程服务（/v1） ------------------------- */

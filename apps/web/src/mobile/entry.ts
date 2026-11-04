@@ -81,8 +81,7 @@ export type Entry =
       /** 上次记下的来源（会话失效时回到这里）。 */
       readonly origin?: string;
       /**
-       * 原生收到的 `armadra://pair` 深链：连接页输入框的初值，人点「连接」才配；
-       * `armadra://join` 分享深链：`join` 为真，连接页收到就直接挂载。
+       * 原生收到的 `armadra://join` 分享深链：`join` 为真，连接页收到就直接挂载。
        */
       readonly link?: string;
       readonly join?: boolean;
@@ -115,7 +114,7 @@ export type Entry =
 const LINK_FRAGMENT = /^#link=(.+)$/;
 
 /**
- * 原生 App 收到 `armadra://pair?…`（配对）或 `armadra://oauth?…`（原生 OAuth 的
+ * 原生 App 收到 `armadra://join?…`（分享）或 `armadra://oauth?…`（原生 OAuth 的
  * 回调，R-56）深链时把它写进 `#link=` 再重载（入口在挂载前就定了）。取走即从
  * 地址栏抹掉；认不出是 `null`。`armadra://cloud/device-approved`（设备码批准后的回跳，#666）
  * 原生不会写进来（它只发插件事件、不重载），万一出现也不是任何一种链接，一律忽略。
@@ -135,9 +134,7 @@ export function takeLinkFragment(): string | null {
   }
   try {
     const link = decodeURIComponent(found[1]!);
-    return link.startsWith("armadra://pair?") ||
-      link.startsWith("armadra://join?") ||
-      isNativeOAuthLink(link)
+    return link.startsWith("armadra://join?") || isNativeOAuthLink(link)
       ? link
       : null;
   } catch {
