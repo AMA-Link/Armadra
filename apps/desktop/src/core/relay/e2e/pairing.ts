@@ -24,6 +24,7 @@ export interface PairingSecret {
 
 export class PairingSecrets {
   private live: PairingSecret[] = [];
+  private readonly watchers = new Set<(entry: PairingSecret) => void>();
 
   constructor(private readonly now: () => number = Date.now) {}
 
@@ -38,6 +39,17 @@ export class PairingSecrets {
     return issued;
   }
 
+  /** 订阅「某一枚被取走」（契约 §99.4）；返回退订函数。回调抛错不影响取走。 */
+  watch(listener: (entry: PairingSecret) => void): () => void {
+    this.watchers.add(listener);
+    return () => this.watchers.delete(listener);
+  }
+
+  /** 作废一枚还没用的（新的 offer 取代了它，契约 §99.3）。 */
+  revoke(entry: PairingSecret): void {
+    this.live = this.live.filter((one) => one !== entry);
+  }
+
   /** 找一枚让 `verify` 成立的、取走它；没有答 `false`。 */
   async consume(
     verify: (secret: Uint8Array) => Promise<boolean>,
@@ -46,6 +58,13 @@ export class PairingSecrets {
     for (const entry of [...this.live]) {
       if (await verify(entry.secret)) {
         this.live = this.live.filter((one) => one !== entry);
+        for (const watcher of [...this.watchers]) {
+          try {
+            watcher(entry);
+          } catch {
+            /* 通知失败不影响已经取走的秘密。 */
+          }
+        }
         return true;
       }
     }

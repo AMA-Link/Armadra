@@ -17,6 +17,7 @@ import { e2e } from "./e2e.js";
 import { identity } from "./identity.js";
 import { files } from "./files.js";
 import { forge } from "./forge.js";
+import { connect } from "./connect.js";
 import { gateway } from "./gateway.js";
 import { git } from "./git.js";
 import { github } from "./github.js";
@@ -65,6 +66,7 @@ export const contract = {
   mail,
   credentials,
   gateway,
+  connect,
   diagnostics,
   updates,
   traffic,
@@ -273,6 +275,8 @@ export type {
   WorkspaceEventsCursor,
   WorkspaceEventsItem,
 } from "./workspaces.js";
+export { connectOfferSchema } from "./connect.js";
+export type { ConnectOffer } from "./connect.js";
 export {
   DEVICES_PATH,
   DEVICE_STATUSES,

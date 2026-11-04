@@ -148,9 +148,9 @@ describe("WorkspaceEventStream", () => {
     expect(changed.mtime).toBeNull();
   });
 
-  it("carries the 21 contractual type strings, plus node.created, terminal.lease, canvas.presence, terminal.hibernation, terminal.program, the four workflow events, the four G5 schedule / resources events, cloud.tunnel and the three device events, and no others", () => {
-    expect(WORKSPACE_EVENT_TYPES).toHaveLength(38);
-    expect(new Set(WORKSPACE_EVENT_TYPES).size).toBe(38);
+  it("carries the 21 contractual type strings, plus node.created, terminal.lease, canvas.presence, terminal.hibernation, terminal.program, the four workflow events, the four G5 schedule / resources events, cloud.tunnel and the three device events, connect.used and no others", () => {
+    expect(WORKSPACE_EVENT_TYPES).toHaveLength(39);
+    expect(new Set(WORKSPACE_EVENT_TYPES).size).toBe(39);
     // A rename here is a break in `packages/shared`'s discriminated union and
     // in every front-end reducer that switches on it (contract §5).
     expect([...WORKSPACE_EVENT_TYPES]).toEqual([
@@ -192,11 +192,15 @@ describe("WorkspaceEventStream", () => {
       "devices.pending",
       "devices.changed",
       "devices.endorsed",
+      "connect.used",
     ]);
   });
 
   it("背书通知只扇给 owner 的订阅（契约 §81.1）：成员的 socket 与控制面订阅都收不到", () => {
-    expect([...OWNER_ONLY_EVENTS]).toEqual(["devices.endorsed"]);
+    expect([...OWNER_ONLY_EVENTS]).toEqual([
+      "devices.endorsed",
+      "connect.used",
+    ]);
     const stream = new WorkspaceEventStream();
     const owner = immediate();
     const member = immediate();

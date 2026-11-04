@@ -17,6 +17,7 @@ import {
 } from "../core.fixture";
 import type { FakeTunnel } from "../fake-relay.fixture";
 import { E2eTestClient } from "./client.fixture";
+import { install as installConnect } from "../../connect";
 
 // 背书通知的推送（契约 §81.1）：relay 缺省交给推送域，这里换成一个探针。
 const push = vi.hoisted(() => ({ notifyEndorsement: vi.fn() }));
@@ -35,7 +36,9 @@ let sourceId: string;
 let identityPub: Uint8Array;
 
 beforeEach(async () => {
-  world = await relayCore();
+  world = await relayCore({
+    domains: [(context) => void installConnect(context)],
+  });
   world.core.database
     .prepare(
       "INSERT INTO workspaces (id, name, root_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
@@ -137,6 +140,78 @@ describe("扫码配对", () => {
     expect(Buffer.from(body.secret, "base64url")).toHaveLength(16);
     expect(body.issuers).toEqual([ISSUER]);
     expect(body.uri.startsWith("armadra://pair-e2e?d=")).toBe(true);
+  });
+});
+
+describe("连接手机的中转半（契约 §99）", () => {
+  it("connectHalf：这台电脑的身份与一枚新秘密；兑掉时通知，之后同一枚不能再用", async () => {
+    const half = (await world.tunnels.connectHalf())!;
+    expect(half.sourceId).toBe(sourceId);
+    expect(Buffer.from(half.identityPub, "base64url")).toEqual(
+      Buffer.from(identityPub),
+    );
+    expect(Buffer.from(half.secret, "base64url")).toHaveLength(16);
+    expect(half.issuers).toEqual([ISSUER]);
+    expect(half.expiresAtMs).toBeGreaterThan(Date.now() + 4 * 60_000);
+    let used = 0;
+    half.onUsed(() => (used += 1));
+    const client = await connect(31, Buffer.from(half.secret, "base64url"));
+    const answer = await login(
+      client,
+      signAssertion({ aud: sourceId, nowMs: Date.now() }),
+    );
+    expect(answer.status, answer.body.toString()).toBe(200);
+    expect(used).toBe(1);
+    expect(e2eDevices()!.list()[0]).toMatchObject({
+      status: "trusted",
+      approvedBy: "pairing",
+    });
+    client.close();
+  });
+
+  it("revoke 之后那一枚秘密换不出信任，也不通知", async () => {
+    const half = (await world.tunnels.connectHalf())!;
+    let used = 0;
+    half.onUsed(() => (used += 1));
+    half.revoke();
+    const client = await connect(32, Buffer.from(half.secret, "base64url"));
+    const answer = await login(
+      client,
+      signAssertion({ aud: sourceId, nowMs: Date.now() }),
+    );
+    expect(answer.status).toBe(403);
+    expect(answer.json()).toMatchObject({ code: "device_pending" });
+    expect(used).toBe(0);
+    client.close();
+  });
+
+  it("互联网访问没开：没有中转半，也不签秘密", async () => {
+    world.settings = { ...world.settings, enabled: false };
+    const issue = vi.spyOn(e2ePairing()!, "issue");
+    expect(await world.tunnels.connectHalf()).toBeUndefined();
+    expect(issue).not.toHaveBeenCalled();
+  });
+
+  it("connect.offer 在只开互联网时答中转半，二维码指向签发方", async () => {
+    const token = world.session(LOOPBACK_ORIGIN);
+    const answer = await fetch(`${world.base}/api/rpc/connect/offer`, {
+      method: "POST",
+      headers: {
+        origin: LOOPBACK_ORIGIN,
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+    expect(answer.status).toBe(200);
+    const body = (
+      (await answer.json()) as {
+        json: { uri: string; direct: unknown; relay: { issuers: string[] } };
+      }
+    ).json;
+    expect(body.direct).toBeNull();
+    expect(body.relay.issuers).toEqual([ISSUER]);
+    expect(body.uri.startsWith(`${ISSUER}/#c=2&s=${sourceId}&e=`)).toBe(true);
   });
 });
 
@@ -765,6 +840,28 @@ describe("浏览器不批主人的设备、不签配对秘密（契约 §88.7）
       expect(answer.body.toString()).not.toContain("secret");
     }
     expect(issue).not.toHaveBeenCalled();
+  });
+
+  it("浏览器通道调 connect.offer：403，不签秘密；桌面受信设备照常", async () => {
+    const browser = await ownerDevice(85, "browser");
+    const desktop = await ownerDevice(86, "desktop");
+    const issue = vi.spyOn(e2ePairing()!, "issue");
+    const offerVia = (by: { client: Client; token: string }) =>
+      by.client.request({
+        method: "POST",
+        path: "/api/rpc/connect/offer",
+        headers: {
+          authorization: `Bearer ${by.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      });
+    const refused = await offerVia(browser);
+    expect(refused.status, refused.body.toString()).toBe(403);
+    expect(issue).not.toHaveBeenCalled();
+    const allowed = await offerVia(desktop);
+    expect(allowed.status, allowed.body.toString()).toBe(200);
+    expect(issue).toHaveBeenCalledTimes(1);
   });
 
   it("明文中继路径调 e2e.pairingSecret：403", async () => {

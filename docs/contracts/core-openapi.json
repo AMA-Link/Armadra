@@ -1,7 +1,7 @@
 {
   "info": {
     "title": "Armadra core",
-    "version": "1.53",
+    "version": "1.54",
     "description": "契约 procedure 的入参与出参（docs/contracts/core-json-api.md §34）。线上是 `POST /api/rpc/<域>/<动词>`，体按 `{ json }` 编码，下列 schema 是 `json` 那一格；失败一律是 `CoreError`。由 tools/contract/generate.mjs 生成，不要手改。"
   },
   "openapi": "3.1.1",
@@ -6927,6 +6927,19 @@
                                     "endorserDeviceId",
                                     "endorserPrincipalId"
                                   ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "type": {
+                                      "const": "connect.used"
+                                    },
+                                    "route": {
+                                      "enum": ["direct", "relay"],
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": ["type", "route"]
                                 },
                                 {
                                   "type": "object",
@@ -77240,6 +77253,150 @@
             "method": "POST",
             "path": "/api/gateway/pairing-code/pake/finish"
           }
+        }
+      }
+    },
+    "/api/rpc/connect/offer": {
+      "post": {
+        "operationId": "connect.offer",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sourceId": {
+                      "type": "string"
+                    },
+                    "expiresAtMs": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "uri": {
+                      "type": "string"
+                    },
+                    "direct": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "origins": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "fingerprint": {
+                              "type": "string"
+                            },
+                            "code": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "webUrl": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "origins",
+                            "fingerprint",
+                            "code",
+                            "webUrl"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "relay": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "issuers": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "identityFingerprint": {
+                              "type": "string"
+                            }
+                          },
+                          "required": ["issuers", "identityFingerprint"]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "sourceId",
+                    "expiresAtMs",
+                    "uri",
+                    "direct",
+                    "relay"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "401",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "409",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          }
+        },
+        "x-armadra": {
+          "contract": "§99.1",
+          "scope": "settings:write",
+          "since": "1.54"
         }
       }
     },

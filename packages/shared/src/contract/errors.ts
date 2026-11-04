@@ -87,6 +87,8 @@ export const ERROR_CODES = {
   forge_not_configured: { status: 409 },
   gateway_managed_by_shell: { status: 409 },
   gateway_not_running: { status: 409 },
+  /** 局域网与互联网访问都没开，没有可以放进二维码的路（契约 §99.1）。 */
+  connect_unavailable: { status: 409 },
   /**
    * 邮件的一次性链接与分享链接（§33.7，远程服务答的「链接不存在或已撤销」）共用；
    * 状态沿用邮件域的 409（协议包注册表里是 404，页面只按码取文案）。

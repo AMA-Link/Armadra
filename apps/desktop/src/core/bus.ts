@@ -357,6 +357,8 @@ export interface WorkspaceEventPayloads {
   };
   /** 设备钥登记变了（契约 §77）；不进 outbox。 */
   "devices.changed": { readonly deviceId: string };
+  /** 「连接手机」的二维码被兑换了（契约 §99.4）；只扇给 owner，不进 outbox。 */
+  "connect.used": { readonly route: "direct" | "relay" };
   /** 一台设备经别的受信设备背书放行（契约 §88.7）；只带标识，不进 outbox。 */
   "devices.endorsed": {
     readonly deviceId: string;
@@ -436,6 +438,7 @@ export const WORKSPACE_EVENT_TYPES = [
   "devices.pending",
   "devices.changed",
   "devices.endorsed",
+  "connect.used",
 ] as const satisfies readonly WorkspaceEventType[];
 
 export interface CoreEvents {

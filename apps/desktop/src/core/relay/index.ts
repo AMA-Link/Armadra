@@ -49,7 +49,7 @@ import { TrustReporter } from "./e2e/trust-report";
 import { PairingSecrets, ShareLinkStore } from "./e2e/pairing";
 import { setE2eDevices, setE2ePairing } from "./e2e/peer";
 import { EndorsementStore } from "./e2e/endorsements";
-import { installE2eRoutes } from "./e2e/routes";
+import { installE2eRoutes, keyFingerprint } from "./e2e/routes";
 import type { TunnelDuplex } from "./streams";
 import { TunnelClient, type TunnelState } from "./client";
 import { NodeDirectory } from "./nodes";
@@ -67,7 +67,27 @@ export { sessionOriginOf } from "./admission";
 /** 取 CA 的超时（与登记的外呼同一档）。 */
 const ANCHOR_TIMEOUT_MS = 10_000;
 
+/** 「连接手机」二维码的中转半（契约 §99）：一枚新签的配对秘密与这台电脑的身份。 */
+export interface RelayConnectHalf {
+  readonly sourceId: string;
+  /** 身份公钥，base64url。 */
+  readonly identityPub: string;
+  readonly identityFingerprint: string;
+  /** 配对秘密，base64url（16 字节）。只在内存里，不进日志与审计。 */
+  readonly secret: string;
+  readonly issuers: readonly string[];
+  readonly expiresAtMs: number;
+  /** 作废这一枚（新的 offer 取代了它）。 */
+  revoke(): void;
+  /** 这一枚被兑掉时回调；返回退订函数。 */
+  onUsed(listener: () => void): () => void;
+}
+
 export interface RelayService extends CloudRelay {
+  /**
+   * 签一枚中转半。互联网访问没开（隧道开关关着）或没有登记的签发方时答 `undefined`。
+   */
+  connectHalf(): Promise<RelayConnectHalf | undefined>;
   /** 按全部有效登记起隧道（不等）。没有登记行时什么都不做。 */
   startAll(): void;
   stopAll(): void;
@@ -405,6 +425,26 @@ export function installRelay(
   };
 
   const relay: RelayService = {
+    connectHalf: async () => {
+      if (!settings().enabled) return undefined;
+      const issuers = cloud.registrations().map((row) => row.issuer);
+      if (issuers.length === 0) return undefined;
+      const { publicKey } = await identitySigner();
+      const issued = pairing.issue();
+      return {
+        sourceId: identity.hostId(),
+        identityPub: Buffer.from(publicKey).toString("base64url"),
+        identityFingerprint: keyFingerprint(publicKey),
+        secret: Buffer.from(issued.secret).toString("base64url"),
+        issuers,
+        expiresAtMs: issued.expiresAtMs,
+        revoke: () => pairing.revoke(issued),
+        onUsed: (listener) =>
+          pairing.watch((entry) => {
+            if (entry === issued) listener();
+          }),
+      };
+    },
     start: (issuer) => {
       if (!settings().enabled) return;
       if (cloud.registration(issuer) === undefined) return;

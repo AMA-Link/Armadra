@@ -52,6 +52,8 @@ export const EPHEMERAL_EVENTS: ReadonlySet<string> = new Set([
   "devices.changed",
   // 契约 §88.7：背书的通知；错过的从 `devices.list` 的 `approvedBy` 查。
   "devices.endorsed",
+  // 契约 §99.4：二维码被兑换的通知，一次性的瞬时事件。
+  "connect.used",
   // 契约 §53：程序自报的状态在内存里，重连从会话列表补；进度一秒几帧，补发
   // 过去的进度只会让节点头倒着跑。
   "terminal.program",
@@ -68,6 +70,7 @@ export const EPHEMERAL_EVENTS: ReadonlySet<string> = new Set([
  */
 export const OWNER_ONLY_EVENTS: ReadonlySet<string> = new Set([
   "devices.endorsed",
+  "connect.used",
 ]);
 
 /**
