@@ -13,8 +13,10 @@
 export interface PairingTicket {
   readonly ticket: string;
   readonly expiresAtMs: number;
-  /** 票绑定的 Gateway 来源。 */
+  /** 票绑定的 Gateway 来源（集合里的第一个）。 */
   readonly origin: string;
+  /** 票能在哪些来源兑换（契约 §99.3）；`origin` 是其中第一个。 */
+  readonly origins: readonly string[];
   /** 信任锚 DER 的 SHA-256，小写十六进制。 */
   readonly fingerprint: string;
   readonly webUrl: string;

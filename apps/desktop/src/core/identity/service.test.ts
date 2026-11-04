@@ -1242,3 +1242,113 @@ describe("清理本机设备上闲置的壳会话（#770）", () => {
     expect(revoked(fix, b.principal.sessionId)).toBe(false);
   });
 });
+
+describe("配对票绑定来源集合（契约 §99.3）", () => {
+  const A = "https://192.168.1.20:8443";
+  const B = "https://mac.local:8443";
+  const OTHER = "https://192.168.1.99:8443";
+
+  function issue(fix: ReturnType<typeof fixture>, origins: string[]) {
+    return fix.service.issueBootstrap({
+      hostId: fix.hostId,
+      instanceId: INSTANCE,
+      origin: origins[0] as string,
+      origins,
+      deviceName: "手机",
+      scopes: allScopes(),
+    });
+  }
+  function consume(
+    fix: ReturnType<typeof fixture>,
+    ticket: string,
+    origin: string,
+  ) {
+    return fix.service.consumeBootstrap({
+      ticket,
+      hostId: fix.hostId,
+      instanceId: INSTANCE,
+      origin,
+    });
+  }
+  function sessionOrigin(fix: ReturnType<typeof fixture>, sessionId: string) {
+    return (
+      fix.database
+        .prepare("SELECT origin FROM identity_sessions WHERE session_id = ?")
+        .get(sessionId) as { origin: string }
+    ).origin;
+  }
+
+  it("集合里每个来源都能兑，会话绑实际来的那个", () => {
+    const fix = fixture();
+    for (const origin of [A, B]) {
+      const { ticket } = issue(fix, [A, B]);
+      const credentials = consume(fix, ticket, origin);
+      expect(sessionOrigin(fix, credentials.principal.sessionId)).toBe(origin);
+    }
+  });
+
+  it("集合外的来源 401，票没被烧掉；兑过一次就不能再兑", () => {
+    const fix = fixture();
+    const { ticket } = issue(fix, [A, B]);
+    expect(kind(() => consume(fix, ticket, OTHER))).toBe("unauthenticated");
+    consume(fix, ticket, B);
+    expect(kind(() => consume(fix, ticket, A))).toBe("unauthenticated");
+  });
+
+  it("旧形状的票（没有集合）仍只认签发时的来源", () => {
+    const fix = fixture();
+    const { ticket } = fix.service.issueBootstrap({
+      hostId: fix.hostId,
+      instanceId: INSTANCE,
+      origin: A,
+      deviceName: "手机",
+      scopes: allScopes(),
+    });
+    expect(kind(() => consume(fix, ticket, B))).toBe("unauthenticated");
+    consume(fix, ticket, A);
+  });
+
+  it("签发时集合里有不合规的来源，或不含 origin：拒绝", () => {
+    const fix = fixture();
+    expect(kind(() => issue(fix, [A, "http://evil.example"]))).toBe("invalid");
+    expect(
+      kind(() =>
+        fix.service.issueBootstrap({
+          hostId: fix.hostId,
+          instanceId: INSTANCE,
+          origin: A,
+          origins: [B],
+          deviceName: "手机",
+          scopes: allScopes(),
+        }),
+      ),
+    ).toBe("invalid");
+  });
+
+  it("revokeBootstrap 作废没用的票，已用的什么也不做", () => {
+    const fix = fixture();
+    const stale = issue(fix, [A]);
+    fix.service.revokeBootstrap(stale.ticket);
+    expect(kind(() => consume(fix, stale.ticket, A))).toBe("unauthenticated");
+    const used = issue(fix, [A]);
+    consume(fix, used.ticket, A);
+    fix.service.revokeBootstrap(used.ticket);
+    fix.service.revokeBootstrap("not a ticket");
+  });
+
+  it("兑换成功才通知订阅者，通知里没有票值；退订后不再通知", () => {
+    const fix = fixture();
+    const seen: string[] = [];
+    const off = fix.service.onBootstrapConsumed((id) => seen.push(id));
+    const { ticket } = issue(fix, [A]);
+    kind(() => consume(fix, ticket, OTHER));
+    expect(seen).toEqual([]);
+    consume(fix, ticket, A);
+    expect(seen).toHaveLength(1);
+    expect(ticket.startsWith(seen[0] as string)).toBe(true);
+    expect(seen[0]).not.toBe(ticket);
+    off();
+    consume(fix, issue(fix, [A]).ticket, A);
+    expect(seen).toHaveLength(1);
+  });
+});

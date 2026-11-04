@@ -61,6 +61,8 @@ export interface IdentityTicket {
   readonly hostId: string;
   readonly instanceId: string;
   readonly origin: string;
+  /** 票能在哪些来源兑换（契约 §99.3）；空 = 只有 `origin`（旧票）。 */
+  readonly origins: readonly string[];
   readonly deviceName: string;
   readonly scopes: Buffer;
   readonly createdAtMs: number;
@@ -833,7 +835,7 @@ export class IdentityTx {
   ticket(ticketId: string): IdentityTicket | undefined {
     const row = this.database
       .prepare(
-        "SELECT ticket_id, ticket_hash, host_id, instance_id, origin, device_name, scopes, " +
+        "SELECT ticket_id, ticket_hash, host_id, instance_id, origin, origins, device_name, scopes, " +
           "created_at_ms, expires_at_ms, consumed_at_ms FROM identity_bootstrap_tickets WHERE ticket_id = ?",
       )
       .get(ticketId) as Record<string, unknown> | undefined;
@@ -843,8 +845,8 @@ export class IdentityTx {
   createTicket(ticket: IdentityTicket): void {
     this.database
       .prepare(
-        "INSERT INTO identity_bootstrap_tickets(ticket_id, ticket_hash, host_id, instance_id, origin, " +
-          "device_name, scopes, created_at_ms, expires_at_ms, consumed_at_ms) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+        "INSERT INTO identity_bootstrap_tickets(ticket_id, ticket_hash, host_id, instance_id, origin, origins, " +
+          "device_name, scopes, created_at_ms, expires_at_ms, consumed_at_ms) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
       )
       .run(
         ticket.ticketId,
@@ -852,6 +854,7 @@ export class IdentityTx {
         ticket.hostId,
         ticket.instanceId,
         ticket.origin,
+        ticket.origins.join("\n"),
         ticket.deviceName,
         new Uint8Array(ticket.scopes),
         ticket.createdAtMs,
@@ -963,6 +966,9 @@ function toTicket(row: Record<string, unknown>): IdentityTicket {
     hostId: String(row.host_id),
     instanceId: String(row.instance_id),
     origin: String(row.origin),
+    origins: String(row.origins ?? "")
+      .split("\n")
+      .filter((one) => one !== ""),
     deviceName: String(row.device_name),
     scopes: blob(row.scopes),
     createdAtMs: Number(row.created_at_ms),

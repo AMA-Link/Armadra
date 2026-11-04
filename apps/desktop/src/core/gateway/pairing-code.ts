@@ -188,6 +188,13 @@ export class PairingCodes {
     return check(ticket) === "ok" ? ticket : undefined;
   }
 
+  /** 票被作废（新的 offer 取代了它，契约 §99.3）：配的短码跟着删。 */
+  revokeTicket(ticket: string): void {
+    for (const [code, one] of this.codes) {
+      if (one.ticket === ticket) this.codes.delete(code);
+    }
+  }
+
   /** 关掉 Gateway 或换档时：全部作废。 */
   clear(): void {
     this.codes.clear();
