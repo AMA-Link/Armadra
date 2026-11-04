@@ -64,7 +64,7 @@ describe("连接页 · 原生 App", () => {
 
   it("能扫码时多一个扫码钮，扫到即连", async () => {
     const onConnect = vi.fn(async () => null);
-    const onScan = vi.fn(async () => "armadra://pair?host=h:1&ticket=t&fp=0");
+    const onScan = vi.fn(async () => "https://h:1/#pair=t&fp=0");
     render(
       <ConnectScreen
         mode="native"
@@ -75,9 +75,7 @@ describe("连接页 · 原生 App", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "扫码" }));
     await waitFor(() =>
-      expect(onConnect).toHaveBeenCalledWith(
-        "armadra://pair?host=h:1&ticket=t&fp=0",
-      ),
+      expect(onConnect).toHaveBeenCalledWith("https://h:1/#pair=t&fp=0"),
     );
   });
 

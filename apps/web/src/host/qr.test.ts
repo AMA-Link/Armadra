@@ -1,20 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { connectUrl, gatewayPairingPayloadSchema } from "@armadra/shared";
+import { connectUrl } from "@armadra/shared";
 
-import { encodeQr, pairingQrText, parsePairingQr, qrPath } from "./qr";
+import { encodeQr, parsePairingQr, qrPath } from "./qr";
 
 const FP = "5f1c".padEnd(64, "0");
 const TICKET =
   "0123456789abcdef0123456789abcdef.AbCdEfGhIjKlMnOpQrStUvWxYz012345678";
 
-const payload = gatewayPairingPayloadSchema.parse({
-  origin: "https://192.168.1.20:8443",
-  ticket: TICKET,
-  fingerprint: FP,
-  expiresAt: "2026-10-03T08:02:00.000Z",
-  webUrl: `https://192.168.1.20:8443/#pair=${TICKET}&fp=${FP}`,
-  deepLink: `armadra://pair?host=192.168.1.20%3A8443&ticket=${TICKET}&fp=${FP}`,
-});
+const WEB_URL = `https://192.168.1.20:8443/#pair=${TICKET}&fp=${FP}`;
 
 /** 三个定位图形：7×7 外框深、内圈浅、3×3 实心。 */
 function finderAt(modules: boolean[][], left: number, top: number): boolean {
@@ -29,7 +22,7 @@ function finderAt(modules: boolean[][], left: number, top: number): boolean {
 
 describe("encodeQr", () => {
   it("encodes a full pairing link, which the old version-6 encoder could not hold", () => {
-    const text = pairingQrText(payload);
+    const text = WEB_URL;
     expect(new TextEncoder().encode(text).length).toBeGreaterThan(134);
     const code = encodeQr(text);
     expect(code).not.toBeNull();
@@ -42,7 +35,7 @@ describe("encodeQr", () => {
   });
 
   it("is deterministic and empty text has no code", () => {
-    const text = pairingQrText(payload, "app");
+    const text = WEB_URL;
     expect(qrPath(encodeQr(text)!)).toBe(qrPath(encodeQr(text)!));
     expect(encodeQr("")).toBeNull();
   });
@@ -60,20 +53,13 @@ describe("encodeQr", () => {
   });
 });
 
-describe("pairing QR payload", () => {
-  it("phones' cameras get the web link, the app scanner the deep link", () => {
-    expect(pairingQrText(payload)).toBe(payload.webUrl);
-    expect(pairingQrText(payload, "app")).toBe(payload.deepLink);
-  });
-
-  it("reads both shapes back to the same pairing", () => {
-    const expected = {
+describe("browser pairing link", () => {
+  it("reads the web link back to the pairing", () => {
+    expect(parsePairingQr(WEB_URL)).toEqual({
       origin: "https://192.168.1.20:8443",
       ticket: TICKET,
       fingerprint: FP,
-    };
-    expect(parsePairingQr(payload.webUrl)).toEqual(expected);
-    expect(parsePairingQr(payload.deepLink)).toEqual(expected);
+    });
     // 服务器壳打印的链接没有指纹。
     expect(parsePairingQr(`https://mac.local:8443/#pair=${TICKET}`)).toEqual({
       origin: "https://mac.local:8443",
@@ -89,8 +75,8 @@ describe("pairing QR payload", () => {
       `http://192.168.1.20:8443/#pair=${TICKET}`,
       `https://192.168.1.20:8443/other#pair=${TICKET}`,
       `https://192.168.1.20:8443/#pair=${TICKET}&fp=XYZ`,
-      `armadra://pair?host=192.168.1.20%3A8443&ticket=${TICKET}`,
-      `armadra://pair?host=a/b&ticket=${TICKET}&fp=${FP}`,
+      // 旧的深链不再认（契约 §99.6）。
+      `armadra://pair?host=192.168.1.20%3A8443&ticket=${TICKET}&fp=${FP}`,
       `armadra://other?host=h%3A1&ticket=${TICKET}&fp=${FP}`,
     ]) {
       expect(parsePairingQr(text), text).toBeNull();

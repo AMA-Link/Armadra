@@ -5,7 +5,6 @@ import { GatewayDomain } from "./index";
 import type { Gateway } from "./listener";
 import {
   parseConfig,
-  postPairing,
   postPairingCodeExchange,
   postPairingPakeFinish,
   postPairingPakeStart,
@@ -104,7 +103,6 @@ describe("服务器壳托管的 Gateway", () => {
     const deps = {
       status: () => domain.status(),
       configure: (patch: Record<string, never>) => domain.configure(patch),
-      pair: (input: { origin?: string }) => domain.pair(input),
       exchangeCode: noExchange,
       ...noPake,
     };
@@ -118,39 +116,6 @@ describe("服务器壳托管的 Gateway", () => {
     expect(status.running).toBe(true);
     expect((status.address as { port: number }).port).toBe(9443);
   });
-
-  it("没在运行时铸票答 409", () => {
-    const domain = new GatewayDomain(context);
-    const answer = postPairing(
-      {
-        status: () => ({}),
-        configure: async () => undefined,
-        pair: (input) => domain.pair(input),
-        exchangeCode: noExchange,
-        ...noPake,
-        ...noPake,
-      },
-      request({}),
-    );
-    expect(answer.status).toBe(409);
-    expect((answer.body as { code: string }).code).toBe("gateway_not_running");
-  });
-
-  it("铸票的请求体：deviceName 限长、origin 必须是字符串", () => {
-    const deps = {
-      status: () => ({}),
-      configure: async () => undefined,
-      pair: () => ({ ok: true }),
-      exchangeCode: noExchange,
-      ...noPake,
-    };
-    expect(postPairing(deps, request({ deviceName: "" })).status).toBe(400);
-    expect(
-      postPairing(deps, request({ deviceName: "x".repeat(65) })).status,
-    ).toBe(400);
-    expect(postPairing(deps, request({ origin: 1 })).status).toBe(400);
-    expect(postPairing(deps, request({ deviceName: "手机" })).status).toBe(200);
-  });
 });
 
 describe("POST /api/gateway/pairing-code/exchange 的请求体", () => {
@@ -159,7 +124,6 @@ describe("POST /api/gateway/pairing-code/exchange 的请求体", () => {
     const deps = {
       status: () => ({}),
       configure: async () => undefined,
-      pair: () => ({}),
       exchangeCode: (input: unknown) => {
         seen.push(input);
         return { status: 200, body: {} };
@@ -203,27 +167,30 @@ describe("POST /api/gateway/pairing-code/exchange 的请求体", () => {
 
 describe("配对短码的档位（Gateway 域）", () => {
   const issued = {
-    ticket: `${"a".repeat(32)}.${"b".repeat(43)}`,
+    ticket: `${"a".repeat(32)}.${"A".repeat(43)}`,
     expiresAtMs: Date.now() + 120_000,
     origin: "https://192.168.1.20:8443",
+    origins: ["https://192.168.1.20:8443"],
     fingerprint: "f".repeat(64),
     webUrl: "https://192.168.1.20:8443/#pair=x",
-    deepLink: "armadra://pair?host=x&ticket=x&fp=x",
   };
   const gatewayOn = (mode: string, publicOrigins: string[] = []) =>
     ({
       address: { host: "0.0.0.0", port: 8443 },
+      hostId: "0".repeat(32),
       mode,
       publicOrigins,
+      origins: () => issued.origins,
       pair: () => issued,
+      service: {},
     }) as unknown as Gateway;
 
-  it("私网档：配对载荷带 XXXX-XXXX 的短码", () => {
+  it("私网档：连接手机的直连半带 XXXX-XXXX 的短码", () => {
     const domain = new GatewayDomain({} as CoreContext);
     domain.adopt(gatewayOn("private"));
-    const payload = domain.pair({}) as Record<string, unknown>;
-    expect(payload.code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
-    expect(payload.ticket).toBe(issued.ticket);
+    const half = domain.connectHalf()!;
+    expect(half.code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    expect(half.ticket).toBe(issued.ticket);
   });
 
   it("公网 all 档与配了对外来源：不签短码，兑换答 403", () => {
@@ -233,7 +200,7 @@ describe("配对短码的档位（Gateway 域）", () => {
     ]) {
       const domain = new GatewayDomain({} as CoreContext);
       domain.adopt(gateway);
-      expect((domain.pair({}) as Record<string, unknown>).code).toBeNull();
+      expect(domain.connectHalf()!.code).toBeNull();
       const answer = domain.exchangeCode({
         code: "AAAAAAAA",
         remoteIp: "203.0.113.9",
@@ -269,7 +236,6 @@ describe("POST /api/gateway/pairing-code/pake/* 的请求体（契约 §73）", 
     const deps = {
       status: () => ({}),
       configure: async () => undefined,
-      pair: () => ({}),
       exchangeCode: noExchange,
       pakeStart: (input: unknown) => {
         seen.push(input);

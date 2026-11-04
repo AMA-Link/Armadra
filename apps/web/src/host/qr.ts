@@ -1,14 +1,13 @@
 import { correction, generate } from "lean-qr";
-import type { GatewayPairingPayload } from "@armadra/shared";
 
 /**
- * 对外服务那一页的二维码。
+ * 二维码的矩阵与浏览器配对链接的解析。
  *
  * 以前这里自己实现了一个只到版本 6（L 级 134 字节）的编码器，够装一个
  * `https://192.168.1.20:8443`；Gateway 的配对链接还要带一张票和 64 位的
  * 信任锚指纹（契约 §17.3），放不下。编码交给 `lean-qr`（MIT、无依赖、
- * 支持到版本 40），这里只管两件事：编出一张 SVG 用的路径，以及配对载荷
- * 与二维码文本之间的来回。
+ * 支持到版本 40），这里只管两件事：编出一张 SVG 用的路径，以及浏览器配对链接
+ * 的解析。
  */
 
 export interface QrCode {
@@ -54,17 +53,6 @@ export function qrPath(code: QrCode): string {
   return parts.join("");
 }
 
-/** 二维码给谁扫：手机相机（打开网页）或 App 内的扫码（深链）。 */
-export type PairingTarget = "web" | "app";
-
-/** 配对载荷 → 二维码里的文本。 */
-export function pairingQrText(
-  payload: Pick<GatewayPairingPayload, "webUrl" | "deepLink">,
-  target: PairingTarget = "web",
-): string {
-  return target === "app" ? payload.deepLink : payload.webUrl;
-}
-
 /** 从二维码里读出来的配对信息。 */
 export interface ScannedPairing {
   /** `https://<host>:<port>`。 */
@@ -74,16 +62,11 @@ export interface ScannedPairing {
   fingerprint: string;
 }
 
-const TICKET = /^[A-Za-z0-9._~-]+$/;
-const FINGERPRINT = /^[0-9a-f]{64}$/;
-
 /**
- * 反过来：扫到的文本 → 配对信息。认两种形状（契约 §17.3）：
- *
- *  - `https://<host>:<port>/#pair=<票>[&fp=<指纹>]`
- *  - `armadra://pair?host=<host:port>&ticket=<票>&fp=<指纹>`
- *
- * 其余一律 `null`，不猜。
+ * 反过来：扫到的文本 → 配对信息。只认浏览器用的网页链接（契约 §17）：
+ * `https://<host>:<port>/#pair=<票>[&fp=<指纹>]`。「连接手机」的二维码是 `#c=` 的另一种
+ * 形状，见 `@armadra/shared` 的 `parseConnect`（契约 §99）；旧的 `armadra://pair` 深链
+ * 不再认。其余一律 `null`，不猜。
  */
 export function parsePairingQr(text: string): ScannedPairing | null {
   let url: URL;
@@ -92,34 +75,14 @@ export function parsePairingQr(text: string): ScannedPairing | null {
   } catch {
     return null;
   }
-  if (url.protocol === "https:") {
-    const match = /^#pair=([A-Za-z0-9._~-]+)(?:&fp=([0-9a-f]{64}))?$/.exec(
-      url.hash,
-    );
-    if (!match || (url.pathname !== "/" && url.pathname !== "")) return null;
-    return {
-      origin: url.origin,
-      ticket: match[1]!,
-      fingerprint: match[2] ?? "",
-    };
-  }
-  if (url.protocol === "armadra:") {
-    // `armadra://pair?…`：URL 把 `pair` 解析成主机。
-    if (url.host !== "pair" && url.pathname.replace(/^\/+/, "") !== "pair")
-      return null;
-    const host = url.searchParams.get("host") ?? "";
-    const ticket = url.searchParams.get("ticket") ?? "";
-    const fingerprint = url.searchParams.get("fp") ?? "";
-    if (!TICKET.test(ticket) || !FINGERPRINT.test(fingerprint)) return null;
-    let origin: string;
-    try {
-      const parsed = new URL(`https://${host}`);
-      if (parsed.host !== host || host === "") return null;
-      origin = parsed.origin;
-    } catch {
-      return null;
-    }
-    return { origin, ticket, fingerprint };
-  }
-  return null;
+  if (url.protocol !== "https:") return null;
+  const match = /^#pair=([A-Za-z0-9._~-]+)(?:&fp=([0-9a-f]{64}))?$/.exec(
+    url.hash,
+  );
+  if (!match || (url.pathname !== "/" && url.pathname !== "")) return null;
+  return {
+    origin: url.origin,
+    ticket: match[1]!,
+    fingerprint: match[2] ?? "",
+  };
 }

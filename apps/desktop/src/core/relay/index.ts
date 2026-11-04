@@ -286,8 +286,6 @@ export function installRelay(
     deviceKey: new DeviceKey(
       deps.secrets ?? (() => secretsFor(context).backend),
     ),
-    pairing,
-    issuers: () => cloud.registrations().map((row) => row.issuer),
     teamRole: (principalId, provider) =>
       teamRoleOf(context.db.database, principalId, { provider }),
     issuerActive: (issuer) => cloud.registered(issuer),

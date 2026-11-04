@@ -189,7 +189,7 @@ describe("补全计划新面的 scope", () => {
   });
 
   it("Gateway 与节点凭据只有 owner：全局的设置那一档", () => {
-    for (const path of ["/api/gateway", "/api/gateway/pairing"]) {
+    for (const path of ["/api/gateway"]) {
       expect(routeScope("GET", path)).toEqual({
         permission: "settings:read",
         workspaceId: "",

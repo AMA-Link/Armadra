@@ -1,6 +1,6 @@
 /**
- * 扫到的配对二维码（契约 §80.1）：`armadra://pair-e2e?d=<base64url(JSON)>`，载荷是
- * 这台电脑的 sourceId、身份公钥、一次性配对秘密、登记到的远程服务与到期。
+ * 连接手机的二维码里的中转半（契约 §99.2）：这台电脑的 sourceId、身份公钥、一次性配对
+ * 秘密、登记到的远程服务与到期。
  *
  * 扫到之后先记下（`localStorage`，到期即丢，用过即删）；之后经中继连这台电脑时，
  * 通道管理用它钉住身份（不走 TOFU）并在握手里带 proof，于是不必等主人核对校验码。
@@ -39,52 +39,6 @@ function toBase64url(bytes: Uint8Array): string {
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
-}
-
-/** 认不出（含不是配对二维码、已过期）是 `null`。 */
-export function parsePairingUri(
-  text: string,
-  now: number = Date.now(),
-): PairingOffer | null {
-  let url: URL;
-  try {
-    url = new URL(text.trim());
-  } catch {
-    return null;
-  }
-  if (url.protocol !== "armadra:" || url.hostname !== "pair-e2e") return null;
-  const raw = fromBase64url(url.searchParams.get("d") ?? "");
-  if (raw === null) return null;
-  let value: unknown;
-  try {
-    value = JSON.parse(new TextDecoder().decode(raw));
-  } catch {
-    return null;
-  }
-  const data = value as {
-    v?: unknown;
-    s?: unknown;
-    k?: unknown;
-    p?: unknown;
-    i?: unknown;
-    e?: unknown;
-  };
-  if (
-    data.v !== 1 ||
-    typeof data.s !== "string" ||
-    !/^[0-9a-f]{32}$/.test(data.s)
-  )
-    return null;
-  const identityPub = typeof data.k === "string" ? fromBase64url(data.k) : null;
-  const secret = typeof data.p === "string" ? fromBase64url(data.p) : null;
-  if (identityPub?.length !== 32 || secret === null || secret.length < 16)
-    return null;
-  const issuers = Array.isArray(data.i)
-    ? data.i.filter((one): one is string => typeof one === "string")
-    : [];
-  const expiresAtMs = typeof data.e === "number" ? data.e : 0;
-  if (expiresAtMs <= now) return null;
-  return { sourceId: data.s, identityPub, secret, issuers, expiresAtMs };
 }
 
 /**

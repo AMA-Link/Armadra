@@ -34,20 +34,6 @@ final class ConnectFlowUITests: XCTestCase {
         }
     }
 
-    /// 深链预填了连接页的链接输入框（`armadra://pair` → `#link=`）。等不到就留一张截图。
-    private func assertPrefilled(_ app: XCUIApplication, _ name: String) {
-        let field = app.webViews.textFields.firstMatch
-        let filled = NSPredicate(format: "value BEGINSWITH %@", "armadra://pair?")
-        let result = XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: filled, object: field)], timeout: 60)
-        if result != .completed {
-            let shot = XCTAttachment(screenshot: app.screenshot())
-            shot.name = name
-            shot.lifetime = .keepAlways
-            add(shot)
-            XCTFail("\(name): pairing link not prefilled (state \(app.state.rawValue))")
-        }
-    }
-
     /// 还没有连接时，连接页先列出添加方式（扫码、配对链接、个人中转），输入框在「配对链接」后面。
     private func pairingLink(_ app: XCUIApplication) -> XCUIElement {
         button(app, ["配对链接", "Pairing link"])
@@ -68,8 +54,8 @@ final class ConnectFlowUITests: XCTestCase {
         XCTAssertTrue(button(app, ["连接", "Connect"]).exists)
     }
 
-    /// 向探针现铸一张配对票，返回深链。票只有两分钟，所以在用之前才取，不在用例开头取。
-    private func freshPairLink(from source: URL) throws -> URL {
+    /// 向探针现铸一张二维码，返回它的文本。票只有两分钟，所以在用之前才取，不在用例开头取。
+    private func freshPairLink(from source: URL) throws -> String {
         var minted: String?
         var failure = "no answer"
         let done = expectation(description: "pairing link minted")
@@ -84,7 +70,7 @@ final class ConnectFlowUITests: XCTestCase {
         }.resume()
         wait(for: [done], timeout: 30)
         let link = try XCTUnwrap(minted, "pairing link from \(source): \(failure)")
-        return try XCTUnwrap(URL(string: link.trimmingCharacters(in: .whitespacesAndNewlines)))
+        return link.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func test2PairsThroughThePinnedGatewayAndOpensTheCanvas() throws {
@@ -94,20 +80,17 @@ final class ConnectFlowUITests: XCTestCase {
         }
         let app = launched()
         XCTAssertTrue(pairingLink(app).waitForExistence(timeout: 60), "connect screen")
-        let url = try freshPairLink(from: source)
-        // 链接走深链交给 App（`armadra://pair` → `#link=` 预填、直接落在链接输入框）；连接页由人点
-        // 「连接」。两条路都走（#281）：
-        //  - 热启动：经系统打开，App 还在跑，场景收到 `openURLContexts`，改写地址重载。
-        //    （`XCUIApplication.open` 不是这条：它先结束正在跑的 App 再带着链接冷启动。）
-        //  - 冷启动：App 不在跑，带着链接启动，链接直接写进第一个文档（`LaunchLink`）。
-        XCUIDevice.shared.system.open(url)
-        confirmOpenIfAsked()
-        assertPrefilled(app, "deep link while running")
-        XCTAssertEqual(app.state, .runningForeground, "the app keeps running when a link arrives")
-        app.terminate()
-        app.open(url)
-        confirmOpenIfAsked()
-        assertPrefilled(app, "deep link on a cold launch")
+        let text = try freshPairLink(from: source)
+        // 二维码文本填进连接页的链接输入框（App 内扫码器解析的就是这一串，契约 §99.2）：先点「配对链接」
+        // 出输入框；页面刚出现时的第一下点按偶尔被 WKWebView 吞掉，输入框没出来就再点，最多三次。
+        let field = app.webViews.textFields.firstMatch
+        for _ in 0..<3 {
+            pairingLink(app).coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            if field.waitForExistence(timeout: 15) { break }
+        }
+        XCTAssertTrue(field.exists, "pairing link input")
+        field.tap()
+        field.typeText(text)
         let connect = button(app, ["连接", "Connect"])
         XCTAssertTrue(connect.waitForExistence(timeout: 10))
         // WKWebView 里的元素常报「不可点」（无障碍树的可点判定跟不上页面布局），按坐标点。

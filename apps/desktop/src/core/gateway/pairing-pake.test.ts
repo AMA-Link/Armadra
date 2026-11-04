@@ -26,7 +26,6 @@ function ticket(expiresAtMs: number, suffix = "a"): PairingTicket {
     origins: [ORIGIN],
     fingerprint: ANCHOR,
     webUrl: `${ORIGIN}/#pair=x`,
-    deepLink: "armadra://pair?host=x&ticket=x&fp=x",
   };
 }
 

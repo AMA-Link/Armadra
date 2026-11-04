@@ -5,7 +5,7 @@ import { contractEntries } from "@armadra/shared";
 import { EventBus } from "../bus";
 import { openFreshDatabase } from "../db/fresh.fixture";
 import { GatewayDomain, gatewayDomainOf, install } from "../gateway";
-import { GatewayError, type Gateway } from "../gateway/listener";
+import type { Gateway } from "../gateway/listener";
 import { PairingCodes } from "../gateway/pairing-code";
 import { routeScope } from "../http/route-scopes";
 import { type RpcHandle, installContract } from "../http/rpc";
@@ -61,14 +61,7 @@ let logged: unknown[];
 
 const closing: (() => void | Promise<void>)[] = [];
 
-const ISSUED = {
-  ticket: `${"a".repeat(32)}.${"b".repeat(43)}`,
-  expiresAtMs: Date.now() + 600_000,
-  origin: "https://192.168.1.20:8443",
-  fingerprint: "f".repeat(64),
-  webUrl: "https://192.168.1.20:8443/#pair=x",
-  deepLink: "armadra://pair?host=x&ticket=x&fp=x",
-};
+const TICKET = `${"a".repeat(32)}.${"A".repeat(43)}`;
 
 function fakeGateway(mode: string): Gateway {
   return {
@@ -85,12 +78,16 @@ function fakeGateway(mode: string): Gateway {
       notAfter: "Oct  3 00:00:00 2027 GMT",
       anchor: "pem",
     }),
-    pair: (input: { origin?: string }) => {
-      if (input.origin === "https://elsewhere.example") {
-        throw new GatewayError("invalid_origin", "这个来源不是本 Gateway 的");
-      }
-      return ISSUED;
-    },
+    hostId: "0".repeat(32),
+    pair: (input: { origins?: readonly string[] }) => ({
+      ticket: TICKET,
+      expiresAtMs: Date.now() + 600_000,
+      origin: "https://192.168.1.20:8443",
+      origins: input.origins ?? ["https://192.168.1.20:8443"],
+      fingerprint: "f".repeat(64),
+      webUrl: "https://192.168.1.20:8443/#pair=x",
+    }),
+    service: { revokeBootstrap: () => undefined },
   } as unknown as Gateway;
 }
 
@@ -151,8 +148,6 @@ afterAll(async () => {
   for (const close of closing.splice(0)) await close();
 });
 
-const VOLATILE = new Set(["code"]);
-const PAIRING = "/api/gateway/pairing";
 const EXCHANGE = "/api/gateway/pairing-code/exchange";
 
 async function three(
@@ -173,8 +168,7 @@ async function three(
 /** 配对票与短码不进审计与日志。 */
 function expectNoTicket(): void {
   const trail = JSON.stringify([events, logged]);
-  expect(trail).not.toContain(ISSUED.ticket);
-  expect(trail).not.toContain(ISSUED.webUrl);
+  expect(trail).not.toContain(TICKET);
 }
 
 describe("Gateway 没在运行（设置托管）", () => {
@@ -195,13 +189,6 @@ describe("Gateway 没在运行（设置托管）", () => {
       });
       expectParity(answers);
     }
-  });
-
-  it("pair：没在运行 409 gateway_not_running，三处一样", async () => {
-    const answers = await three("owner", "POST", PAIRING, "gateway.pair", {});
-    expect(answers[0].status).toBe(409);
-    expect(answers[0].body).toMatchObject({ code: "gateway_not_running" });
-    expectParity(answers);
   });
 
   it("exchange：没在运行 409，路由表与旧路径逐字节一样", async () => {
@@ -306,49 +293,6 @@ describe("Gateway 在运行（服务器壳托管）", () => {
     expectParity(answers);
   });
 
-  it("pair：私网档答配对票与 XXXX-XXXX 短码（短码每次不同），三处一样；票不进审计与日志", async () => {
-    const answers = await three("owner", "POST", PAIRING, "gateway.pair", {
-      deviceName: "手机",
-    });
-    expect(answers[0].status).toBe(200);
-    expect(answers[0].body).toMatchObject({
-      origin: ISSUED.origin,
-      ticket: ISSUED.ticket,
-      fingerprint: ISSUED.fingerprint,
-    });
-    expect((answers[0].body as { code: string }).code).toMatch(
-      /^[A-Z2-9]{4}-[A-Z2-9]{4}$/,
-    );
-    expectParity(answers, { volatile: VOLATILE });
-    expect(
-      new Set(answers.map((a) => (a.body as { code: string }).code)).size,
-    ).toBe(3);
-    expectNoTicket();
-    expect(
-      events.filter((event) => event.action === "gateway.pairing.issue"),
-    ).toHaveLength(3);
-  });
-
-  it("pair 的拒绝：来源不是本 Gateway 的 400 invalid_origin；deviceName 空或太长 400", async () => {
-    const cases: readonly [object, string][] = [
-      [{ origin: "https://elsewhere.example" }, "invalid_origin"],
-      [{ deviceName: "  " }, "bad_request"],
-      [{ deviceName: "x".repeat(65) }, "bad_request"],
-    ];
-    for (const [input, code] of cases) {
-      const answers = await three(
-        "owner",
-        "POST",
-        PAIRING,
-        "gateway.pair",
-        input,
-      );
-      expect(answers[0].status, JSON.stringify(input)).toBe(400);
-      expect(answers[0].body).toMatchObject({ code });
-      expectParity(answers);
-    }
-  });
-
   it("exchange：不对的短码 404，扣令牌；用多了 429 带 Retry-After；路由表与旧路径一样", async () => {
     const attempt = { code: "ZZZZ-ZZZZ" };
     const old = await kit.table("POST", EXCHANGE, attempt);
@@ -368,6 +312,8 @@ describe("Gateway 在运行（服务器壳托管）", () => {
     }
     expect(limited?.body).toMatchObject({ code: "rate_limited" });
     expect(Number(limited?.retryAfter)).toBeGreaterThan(0);
+    // 失败的兑换也不把票写进审计与日志。
+    expectNoTicket();
   });
 
   it("exchange 的体不对 400；公网 all 档与配了对外来源时 403 pairing_code_disabled", async () => {
@@ -392,9 +338,8 @@ describe("Gateway 在运行（服务器壳托管）", () => {
     expect(old.status).toBe(403);
     expect(old.body).toMatchObject({ code: "pairing_code_disabled" });
     expect(text(rest)).toBe(text(old));
-    // 公网档的配对票不带短码。
-    const pair = await kit.procedure("gateway.pair", {}, "owner");
-    expect(pair.body).toMatchObject({ code: null });
+    // 公网档的直连半不带短码。
+    expect(domain.connectHalf()?.code).toBeNull();
     domain.adopt(fakeGateway("private"));
   });
 });
@@ -444,17 +389,13 @@ describe("匿名面不经 RPC", () => {
 });
 
 describe("拒绝路径：只有 owner", () => {
-  it("成员读状态、改配置、铸票一律 403，配置与配对表原样没动", async () => {
+  it("成员读状态、改配置一律 403，配置原样没动", async () => {
     const before = text(
       await kit.procedure("gateway.status", undefined, "owner"),
     );
-    const issued = events.filter(
-      (e) => e.action === "gateway.pairing.issue",
-    ).length;
     const attempts: readonly [string, string, string, unknown][] = [
       ["GET", "/api/gateway", "gateway.status", undefined],
       ["PUT", "/api/gateway", "gateway.configure", { enabled: true }],
-      ["POST", PAIRING, "gateway.pair", {}],
     ];
     for (const [method, path, name, input] of attempts) {
       // 路由门在 HTTP 服务器上，路由表直接派发的那一路不经它。
@@ -473,9 +414,6 @@ describe("拒绝路径：只有 owner", () => {
     expect(
       text(await kit.procedure("gateway.status", undefined, "owner")),
     ).toBe(before);
-    expect(
-      events.filter((e) => e.action === "gateway.pairing.issue"),
-    ).toHaveLength(issued);
   });
 });
 
@@ -485,7 +423,6 @@ describe("入参形状错：procedure 与旧路径由契约先答 bad_request", 
       ["PUT", "/api/gateway", { enabled: "yes" }, "gateway.configure"],
       ["PUT", "/api/gateway", { surprise: true }, "gateway.configure"],
       ["PUT", "/api/gateway", { tls: { source: 3 } }, "gateway.configure"],
-      ["POST", PAIRING, { origin: 1 }, "gateway.pair"],
     ];
     for (const [method, path, input, name] of cases) {
       const old = await kit.table(method, path, input, "owner");
@@ -506,11 +443,10 @@ describe("契约与 core 的两张表（gateway）", () => {
     entry.name.startsWith("gateway."),
   );
 
-  it("6 条都在契约里，每条都有旧路径；只有换票与它的 PAKE 是匿名的", () => {
+  it("5 条都在契约里，每条都有旧路径；只有换票与它的 PAKE 是匿名的", () => {
     expect(entries.map((entry) => entry.name).sort()).toEqual([
       "gateway.configure",
       "gateway.exchangePairingCode",
-      "gateway.pair",
       "gateway.pakeFinish",
       "gateway.pakeStart",
       "gateway.status",

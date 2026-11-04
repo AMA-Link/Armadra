@@ -81,13 +81,15 @@ describe("原生 App 连接", () => {
     expect(d.save).toHaveBeenCalledWith("https://192.168.1.8:8443");
   });
 
-  it("深链同样认", async () => {
+  it("旧的 armadra://pair 深链不再认（契约 §99.6）", async () => {
     const d = deps();
-    await connectNative(
-      `armadra://pair?host=10.0.0.2:9000&ticket=abc&fp=${FP}`,
-      d,
-    );
-    expect(d.pair).toHaveBeenCalledWith("https://10.0.0.2:9000", "abc");
+    expect(
+      await connectNative(
+        `armadra://pair?host=10.0.0.2:9000&ticket=abc&fp=${FP}`,
+        d,
+      ),
+    ).toBe("invalid");
+    expect(d.pair).not.toHaveBeenCalled();
   });
 
   it("认不出、缺指纹、钉不上、过期、连不上各有各的原因", async () => {

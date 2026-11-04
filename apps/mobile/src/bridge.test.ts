@@ -74,7 +74,7 @@ describe("plugin bridge", () => {
             ],
           }
         : method === "scan"
-          ? { text: "armadra://pair?host=h&ticket=t&fp=f" }
+          ? { text: "https://h:1/#pair=t&fp=f" }
           : {},
     );
     const bridge = nativeBridge();
@@ -90,9 +90,7 @@ describe("plugin bridge", () => {
         expiresAtMs: 1_000,
       },
     ]);
-    await expect(bridge.scan()).resolves.toBe(
-      "armadra://pair?host=h&ticket=t&fp=f",
-    );
+    await expect(bridge.scan()).resolves.toBe("https://h:1/#pair=t&fp=f");
     await bridge.pin("https://192.168.1.20:8443", "c".repeat(64));
     expect(calls).toHaveBeenCalledWith("ArmadraNative", "pin", {
       origin: "https://192.168.1.20:8443",

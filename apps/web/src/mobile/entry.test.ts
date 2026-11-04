@@ -413,17 +413,22 @@ describe("入口分支", () => {
     );
   });
 
-  it("原生 App：配对深链（#link=）→ 连接页预填链接，片段随即抹掉", async () => {
+  it("原生 App：分享深链（#link=）→ 连接页预填链接，片段随即抹掉；旧的配对深链不再收", async () => {
     mocks.app = true;
     mocks.saved = "https://h:8443";
     mocks.restored = true;
-    const link = "armadra://pair?host=192.168.1.20%3A8443&ticket=t&fp=f";
+    const stale = "armadra://pair?host=192.168.1.20%3A8443&ticket=t&fp=f";
+    history.replaceState(null, "", `/#link=${encodeURIComponent(stale)}`);
+    await expect(prepareEntry()).resolves.toEqual({ kind: "app" });
+    mocks.install.mockClear();
+    const link = "armadra://join?link=l1&issuer=https%3A%2F%2Fr.example&s=x";
     history.replaceState(null, "", `/#link=${encodeURIComponent(link)}`);
     await expect(prepareEntry()).resolves.toEqual({
       kind: "connect",
       mode: "native",
       origin: "https://h:8443",
       link,
+      join: true,
     });
     expect(location.hash).toBe("");
     expect(mocks.install).not.toHaveBeenCalled();

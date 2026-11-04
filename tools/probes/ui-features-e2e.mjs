@@ -102,6 +102,8 @@ try {
       // 手机场景经 Gateway 打开页面：它托管构建好的页面产物（没有就跳过那一场）。
       ARMADRA_GATEWAY_WEB_ROOT: WEB_DIST,
       ARMADRA_SECRET_BACKEND: "file",
+      // 手机场景在回环上起 Gateway，连接手机的二维码里也放回环来源（契约 §99.6）。
+      ARMADRA_CONNECT_INCLUDE_LOOPBACK: "1",
     },
   });
   stack.cleanups.push(() => home.remove());

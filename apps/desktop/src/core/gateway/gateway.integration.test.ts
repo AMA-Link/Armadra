@@ -33,6 +33,7 @@ import {
 } from "../testing/loopback-session";
 import { fingerprintOf } from "./tls";
 import {
+  parseConnect,
   fromBase64Url,
   newPakeSid,
   pairingPakeOffersSchema,
@@ -170,16 +171,42 @@ function person(answer: Answer): Person {
   };
 }
 
+/**
+ * 铸一张配对票：经 `connect.offer`（契约 §99.1）。Gateway 在回环上，测试把回环来源放进
+ * 二维码（`ARMADRA_CONNECT_INCLUDE_LOOPBACK`），票、锚与短码取自直连半。
+ */
 async function pairing(): Promise<{
   origin: string;
   ticket: string;
   fingerprint: string;
   webUrl: string;
-  deepLink: string;
+  uri: string;
+  code?: string | null;
 }> {
-  const answer = await local("POST", "/api/gateway/pairing", {});
-  expect(answer.status).toBe(200);
-  return JSON.parse(answer.body);
+  const answer = await local("POST", "/api/rpc/connect/offer", {});
+  expect(answer.status, answer.body).toBe(200);
+  const offer = (
+    JSON.parse(answer.body) as {
+      json: {
+        uri: string;
+        direct: {
+          origins: string[];
+          fingerprint: string;
+          code: string | null;
+          webUrl: string;
+        };
+      };
+    }
+  ).json;
+  const ticket = /#pair=([^&]+)/.exec(offer.direct.webUrl)?.[1] as string;
+  return {
+    origin: offer.direct.origins[0] as string,
+    ticket,
+    fingerprint: offer.direct.fingerprint,
+    webUrl: offer.direct.webUrl,
+    uri: offer.uri,
+    code: offer.direct.code,
+  };
 }
 
 function stream(
@@ -211,6 +238,7 @@ beforeAll(async () => {
   const webRoot = tempDir("armadra-gateway-web-");
   writeFileSync(join(webRoot, "index.html"), "<!doctype html>");
   vi.stubEnv("ARMADRA_GATEWAY_WEB_ROOT", webRoot);
+  vi.stubEnv("ARMADRA_CONNECT_INCLUDE_LOOPBACK", "1");
   const dataDir = tempDir("armadra-gateway-core-");
   core = await run({
     argv: ["--listen", "tcp:127.0.0.1:0", "--data-dir", dataDir],
@@ -289,11 +317,14 @@ describe("桌面 Gateway：设置驱动、本地 CA、配对", () => {
     expect(payload.webUrl).toBe(
       `${origin}/#pair=${payload.ticket}&fp=${payload.fingerprint}`,
     );
-    const deep = new URL(payload.deepLink);
-    expect(deep.protocol).toBe("armadra:");
-    expect(deep.searchParams.get("host")).toBe(new URL(origin).host);
-    expect(deep.searchParams.get("ticket")).toBe(payload.ticket);
-    expect(deep.searchParams.get("fp")).toBe(payload.fingerprint);
+    // 二维码文本是网页链接 `<来源>/#c=2&…`，票与锚在片段里（契约 §99.2）。
+    const scanned = parseConnect(payload.uri);
+    expect(scanned.ok && scanned.webOrigin).toBe(origin);
+    expect(scanned.ok && scanned.payload.direct).toEqual({
+      origins: [origin],
+      ticket: payload.ticket,
+      fingerprint: payload.fingerprint,
+    });
   });
 
   it("配对成 owner，成员访问被共享的画布，但改 Gateway 是 403", async () => {
@@ -353,7 +384,7 @@ describe("桌面 Gateway：设置驱动、本地 CA、配对", () => {
     ).toBe(403);
     expect(
       (
-        await remote("/api/gateway/pairing", {
+        await remote("/api/rpc/connect/offer", {
           method: "POST",
           person: member,
           body: {},
@@ -1004,9 +1035,9 @@ describe("安全收尾（G3-8）", () => {
     }
   });
 
-  it("对外服务的改动与配对票进审计，票本身不进（安全审查 M5）", async () => {
+  it("对外服务的改动与连接手机的二维码进审计，票本身不进（安全审查 M5）", async () => {
     const payload = await pairing();
-    const audit = await remote("/api/identity/audit?action=gateway&limit=100", {
+    const audit = await remote("/api/identity/audit?limit=100", {
       person: owner,
     });
     expect(audit.status).toBe(200);
@@ -1017,7 +1048,8 @@ describe("安全收尾（G3-8）", () => {
     ).entries;
     const actions = entries.map((entry) => entry.action);
     expect(actions).toContain("gateway.configure");
-    expect(actions).toContain("gateway.pairing.issue");
+    expect(actions).toContain("connect.offer.issue");
     expect(audit.body).not.toContain(payload.ticket);
+    expect(audit.body).not.toContain(payload.code ?? "no-code");
   });
 });

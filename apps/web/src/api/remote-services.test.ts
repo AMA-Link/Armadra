@@ -151,7 +151,7 @@ describe("首次指纹（契约 §33.6）", () => {
 
   it("配对链接与地址分得清", () => {
     expect(isPairLink("https://gw.test:8443/#pair=abc&fp=x")).toBe(true);
-    expect(isPairLink("armadra://pair?host=a&ticket=b")).toBe(true);
+    expect(isPairLink("armadra://pair?host=a&ticket=b")).toBe(false);
     expect(isPairLink("https://gw.test:8443")).toBe(false);
   });
 });

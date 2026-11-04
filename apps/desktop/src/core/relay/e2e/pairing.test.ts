@@ -117,30 +117,6 @@ describe("扫码配对", () => {
     first.close();
     second.close();
   });
-
-  it("e2e.pairingSecret 答二维码载荷（身份公钥、秘密、远程服务）", async () => {
-    const token = world.session("http://127.0.0.1:1420");
-    const answer = await fetch(`${world.base}/api/e2e/pairing-secret`, {
-      method: "POST",
-      headers: {
-        origin: "http://127.0.0.1:1420",
-        authorization: `Bearer ${token}`,
-      },
-    });
-    expect(answer.status).toBe(200);
-    const body = (await answer.json()) as {
-      identityPub: string;
-      secret: string;
-      issuers: string[];
-      uri: string;
-    };
-    expect(Buffer.from(body.identityPub, "base64url")).toEqual(
-      Buffer.from(identityPub),
-    );
-    expect(Buffer.from(body.secret, "base64url")).toHaveLength(16);
-    expect(body.issuers).toEqual([ISSUER]);
-    expect(body.uri.startsWith("armadra://pair-e2e?d=")).toBe(true);
-  });
 });
 
 describe("连接手机的中转半（契约 §99）", () => {
@@ -630,7 +606,7 @@ describe("cloud/login 的只判定模式 probe", () => {
   });
 });
 
-describe("浏览器不批主人的设备、不签配对秘密（契约 §88.7）", () => {
+describe("浏览器不批主人的设备、不签配对秘密（契约 §88.7、§99.1）", () => {
   type Client = Awaited<ReturnType<typeof connect>>;
   const open: Client[] = [];
   // Armadra 云的团队主机：成员经断言免邀请准入（契约 §60.2）。
@@ -700,17 +676,6 @@ describe("浏览器不批主人的设备、不签配对秘密（契约 §88.7）
         "content-type": "application/json",
       },
       body: JSON.stringify(target),
-    });
-
-  const pairingVia = (by: { client: Client; token: string }, rpc = false) =>
-    by.client.request({
-      method: "POST",
-      path: rpc ? "/api/rpc/e2e/pairingSecret" : "/api/e2e/pairing-secret",
-      headers: {
-        authorization: `Bearer ${by.token}`,
-        "content-type": "application/json",
-      },
-      body: rpc ? JSON.stringify({}) : "",
     });
 
   /** 不走通道的明文中继路径：主人照样能 `cloud/login` 拿到原生会话。 */
@@ -829,19 +794,6 @@ describe("浏览器不批主人的设备、不签配对秘密（契约 §88.7）
     ).toBe(`endorse:${browser.deviceId}`);
   });
 
-  // 旧地址 `/api/e2e/pairing-secret` 由 RPC 层按契约表接管（`legacy: true`），与 `/api/rpc/…` 走同一个 procedure。
-  it("浏览器通道调 e2e.pairingSecret：旧地址与 /api/rpc 两个入口都 403，不签秘密", async () => {
-    const browser = await ownerDevice(83, "browser");
-    const issue = vi.spyOn(e2ePairing()!, "issue");
-    for (const rpc of [false, true]) {
-      const answer = await pairingVia(browser, rpc);
-      expect(answer.status, answer.body.toString()).toBe(403);
-      expect(answer.body.toString()).toContain("forbidden");
-      expect(answer.body.toString()).not.toContain("secret");
-    }
-    expect(issue).not.toHaveBeenCalled();
-  });
-
   it("浏览器通道调 connect.offer：403，不签秘密；桌面受信设备照常", async () => {
     const browser = await ownerDevice(85, "browser");
     const desktop = await ownerDevice(86, "desktop");
@@ -864,22 +816,21 @@ describe("浏览器不批主人的设备、不签配对秘密（契约 §88.7）
     expect(issue).toHaveBeenCalledTimes(1);
   });
 
-  it("明文中继路径调 e2e.pairingSecret：403", async () => {
+  it("明文中继路径调 connect.offer：403，不签秘密", async () => {
     const token = await plaintextOwner();
+    const issue = vi.spyOn(e2ePairing()!, "issue");
     const answer = await tunnel.request({
       method: "POST",
-      path: "/api/e2e/pairing-secret",
-      headers: { origin: ISSUER, authorization: `Bearer ${token}` },
+      path: "/api/rpc/connect/offer",
+      headers: {
+        origin: ISSUER,
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({}),
     });
     expect(answer.status).toBe(403);
-  });
-
-  it("桌面受信设备经通道调 e2e.pairingSecret 照常", async () => {
-    const desktop = await ownerDevice(84, "desktop");
-    for (const rpc of [false, true]) {
-      const answer = await pairingVia(desktop, rpc);
-      expect(answer.status, answer.body.toString()).toBe(200);
-    }
+    expect(issue).not.toHaveBeenCalled();
   });
 
   it("每次背书在主机上发 devices.endorsed（背书设备、主体、设备）；本机放行不发", async () => {

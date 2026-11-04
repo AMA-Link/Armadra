@@ -18,8 +18,8 @@ import { meta, oc } from "./meta.js";
  *
  * 入参只校形状（字段的类型与有没有多余的键），取值（`listen` 的选项、端口范围、
  * `publicOrigin` 必须是 https 来源、证书来源）仍在域里判，拒绝的原话与旧路径一样。
- * 配对票（`pair` 的答案）是两分钟内能换出一台 owner 设备的凭据：只答给调用方，
- * 不进审计与日志。
+ * 配对票是两分钟内能换出一台 owner 设备的凭据：铸票的入口是 `connect.offer`（§99），
+ * 这里只剩短码换票与 PAKE 的答案，凭据只答给调用方，不进审计与日志。
  *
  * **匿名面不经 RPC**：配对短码换票（`exchangePairingCode`）发生在手机还没有任何
  * 身份的时候，短码本身就是凭据，所以只经旧路径 `POST /api/gateway/pairing-code/
@@ -80,27 +80,6 @@ export const gateway = {
         contract: section,
         scope: "settings:write",
         legacy: { method: "PUT", path: "/api/gateway" },
-      }),
-    ),
-  /** 铸一张两分钟的一次性配对票：网页链接、原生深链，私网档位上还有 8 位短码。 */
-  pair: oc
-    .input(
-      z.object({
-        origin: z.string().optional(),
-        deviceName: z.string().optional(),
-      }),
-    )
-    .output(gatewayPairingPayloadSchema)
-    .errors({
-      ...denied,
-      ...errors.pick("bad_request", "gateway_not_running", "invalid_origin"),
-    })
-    .meta(
-      meta({
-        ...base,
-        contract: section,
-        scope: "settings:write",
-        legacy: { method: "POST", path: "/api/gateway/pairing" },
       }),
     ),
   /** 匿名：配对短码换出与 `#pair=` 同一张票。只经旧路径，RPC 上不登记。 */

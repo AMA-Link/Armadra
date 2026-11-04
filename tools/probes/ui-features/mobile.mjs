@@ -83,10 +83,14 @@ export default async function mobile({ stack, output, report, scenario }) {
     gateway.origin,
   );
   const origin = gateway.origin;
-  const pairing = await stack.api("/api/gateway/pairing", {
-    method: "POST",
-    body: "{}",
-  });
+  // 经 `connect.offer`（契约 §99.1）铸；回环来源靠 `ARMADRA_CONNECT_INCLUDE_LOOPBACK` 放进去。
+  const offer = (
+    await stack.api("/api/rpc/connect/offer", {
+      method: "POST",
+      body: "{}",
+    })
+  ).json;
+  const pairing = { webUrl: offer.direct.webUrl };
 
   // 只对这台无头浏览器忽略证书错误：本地 CA 没装进系统。
   await stack.browser.call("Security.setIgnoreCertificateErrors", {

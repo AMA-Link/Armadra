@@ -1187,7 +1187,7 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
 
 ## 17. Gateway：`/api/gateway*`
 
-> 自协议 1.14 起 `GET /api/gateway`、`PUT /api/gateway`、`POST /api/gateway/pairing` 同时是 `gateway.*` procedure（§43.7），旧路径与 procedure 调同一份实现；配对短码换票（§24）是匿名面，只经旧路径。
+> 自协议 1.14 起 `GET /api/gateway`、`PUT /api/gateway` 同时是 `gateway.*` procedure（§43.7；`POST /api/gateway/pairing` 已由 §99 取代并删除），旧路径与 procedure 调同一份实现；配对短码换票（§24）是匿名面，只经旧路径。
 
 Gateway 是 core 对外的 HTTPS 面（`apps/desktop/src/core/gateway/`，[补全架构](../design/completion-architecture.md) §7）。服务器壳的 `serve` 用命令行参数打开它；桌面壳按设置 `gateway.*` 打开它。下面三条路由在 core 的主监听器上与 Gateway 上都答，路由门按 `settings:read` / `settings:write` 判——只有 owner，成员一律 403 `forbidden`。字段名 camelCase，时间是带时区的 ISO 8601，错误 `{ code, message }`。
 
@@ -1268,25 +1268,14 @@ Gateway 是 core 对外的 HTTPS 面（`apps/desktop/src/core/gateway/`，[补�
 - 回答是写入并对账之后的 §17.1。开着时改了任何键会重开监听；`enabled: false` 即刻停止监听并断开经它进来的每一条连接（升级过的流也在内）。没能开启不算请求失败：200，原因在 `error`。
 - 服务器壳上答 409 `gateway_managed_by_shell`。
 
-### 17.3 `POST /api/gateway/pairing`
+### 17.3 `POST /api/gateway/pairing`（已由 §99 取代）
 
-请求体可选：`{ "origin"?: string, "deviceName"?: string }`。`origin` 必须在 `origins` 里（否则 400 `invalid_origin`），缺省用首选来源；`deviceName` 1–64 字符，缺省「Gateway 配对」。没在运行时 409 `gateway_not_running`。
+> 已由 §99 取代并删除（#749）：铸票的入口是 `connect.offer`（§99.1），二维码里是 `<网页来源>/#c=2&…` 的网页链接（§99.2），不再有 `armadra://pair` 深链。节号保留。仍然成立的部分如下。
 
-```json
-{
-  "origin": "https://192.168.1.20:8443",
-  "ticket": "0123…ef.AbC…",
-  "fingerprint": "5f1c…",
-  "expiresAt": "2026-10-03T08:02:00.000Z",
-  "webUrl": "https://192.168.1.20:8443/#pair=0123…ef.AbC…&fp=5f1c…",
-  "deepLink": "armadra://pair?host=192.168.1.20%3A8443&ticket=0123…&fp=5f1c…"
-}
-```
-
-- 票两分钟、一次性，绑在 `origin` 上；兑换走 `POST /api/identity/pair`（§3），配出来的设备拿 owner 的全套授权。成员走邀请。
-- 网页链接把票与指纹放在片段里（不上请求行、不进日志）；页面认 `#pair=<票>` 与 `#pair=<票>&fp=<64 位十六进制>` 两种。
+- 票两分钟、一次性，绑在 Gateway 的来源上（自 §99.3 起是一组来源）；兑换走 `POST /api/identity/pair`（§3），配出来的设备拿 owner 的全套授权。成员走邀请。
+- 网页链接 `https://<来源>/#pair=<票>[&fp=<64 位十六进制>]` 把票与指纹放在片段里（不上请求行、不进日志），页面认这两种；「复制链接」与服务器壳启动时的打印仍给这一种。
 - 原生 App 按 `fp` 钉信任锚，不装 CA；锚变了（重置 CA、换证书文件）就重新扫码，不自动信任新证书。
-- 私网档位上回答多一个 `code`（8 位配对码，`XXXX-XXXX`），其余档位为 `null`，见 §24。
+- 私网档位上有一枚 `code`（8 位配对码，`XXXX-XXXX`），其余档位为 `null`，见 §24；现在随 `connect.offer` 的 `direct.code` 给出。
 
 ### 17.4 Gateway 上的匿名面与原生 App
 
@@ -1845,12 +1834,12 @@ CSV 按 RFC 4180：`\r\n` 换行，首行表头 `id,time,principalId,deviceId,ac
 
 二维码与配对链接之外的第三条路：手机上手输 8 位配对码，换出与 `#pair=` 同一张票（§17.3），再照常 `POST /api/identity/pair`。实现在 `core/gateway/pairing-code.ts`。
 
-### 24.1 签发：`POST /api/gateway/pairing` 多一个 `code`
+### 24.1 签发：`connect.offer` 的 `direct.code`
 
-§17.3 的回答多一个键：
+铸票的入口自 §99 起是 `connect.offer`（原来的 `POST /api/gateway/pairing` 已删除）；直连半多一个键：
 
 ```json
-{ "…": "§17.3 的其余键", "code": "3F7K-9Q2M" }
+{ "…": "§99.1 的其余键", "code": "3F7K-9Q2M" }
 ```
 
 - 字母表 `[A-Z2-9]`（34 个字符，没有 `0` / `1`），8 位，显示成 `XXXX-XXXX`。与票同生同灭：过期时刻就是票的 `expiresAt`（两分钟）；一次性；票先被扫码兑掉，配对码跟着作废；Gateway 关掉、重开或换档时全部作废。只在 core 内存里，不落库、不进日志与审计（审计 `gateway.pairing.issue` 只多一个布尔 `code`）。
@@ -1866,8 +1855,7 @@ CSV 按 RFC 4180：`\r\n` 换行，首行表头 `id,time,principalId,deviceId,ac
   "ticket": "0123…ef.AbC…",
   "fingerprint": "5f1c…",
   "expiresAt": "2026-10-03T08:02:00.000Z",
-  "webUrl": "https://192.168.1.20:8443/#pair=0123…ef.AbC…&fp=5f1c…",
-  "deepLink": "armadra://pair?host=192.168.1.20%3A8443&ticket=0123…&fp=5f1c…"
+  "webUrl": "https://192.168.1.20:8443/#pair=0123…ef.AbC…&fp=5f1c…"
 }
 ```
 
@@ -2412,7 +2400,7 @@ GitLab（自托管与 gitlab.com 同一套 `/api/v4`）记作 `gitlab`，经 §2
 
 - **对端的身份**：core 对别的 core 自称原生 App（`Origin: https://localhost`，Bearer 模式，§17.4），密钥在响应体的 `native` 里；经中继时加 `Armadra-Relay-Token` 头（armadra-cloud 契约 §7）。
 - **钉扎**：给了指纹的地址，先从对端发来的链里找指纹相符的那张，链里没有就取 `GET /ca.crt` 比对；再以那一张作为唯一信任锚照常验证链与主机名。对不上、或拿公开的 CA 配别的叶证书，都答 `fingerprint_mismatch`。不给指纹就用系统信任。经中继时，中继就是远程服务本身（个人中转）才沿用它的指纹。
-- **`addDirect`**：`pairLink` 认 `https://<来源>/#pair=<票>&fp=<指纹>` 与 `armadra://pair?host=…&ticket=…&fp=…`；也可以给 `origin` + `code`（8 位配对码，先 `POST /api/gateway/pairing-code/exchange` 换票，§24）。随后 `GET /api/identity/hello` 取 `hostId`（就是 `sourceId`；是本机则 `conflict`），`POST /api/identity/pair` 换会话，存刷新令牌。已有同一 `sourceId` 的行时合并（经中继挂上的行保留 `relayed`）。
+- **`addDirect`**：`pairLink` 认 `https://<来源>/#pair=<票>&fp=<指纹>`（旧的 `armadra://pair` 深链不再认）；也可以给 `origin` + `code`（8 位配对码，先 `POST /api/gateway/pairing-code/exchange` 换票，§24）。随后 `GET /api/identity/hello` 取 `hostId`（就是 `sourceId`；是本机则 `conflict`），`POST /api/identity/pair` 换会话，存刷新令牌。已有同一 `sourceId` 的行时合并（经中继挂上的行保留 `relayed`）。
 - **`remoteAdd`**：`personal` 先读 `/.well-known/armadra-platform`（`mode` 不是 `personal` 答 `bad_request`），再 `POST /v1/auth/login { account, password, device }`；同一个 `issuer` 再加是重新登录，不多一行。`saas` 与 `remoteDevicePoll` 的 SaaS 行为见 §33.11。
 - **`mount`**：用远程服务会话取断言（`POST /v1/sources/{sourceId}/assertion`），`online: false` 答 `source_offline`；经 `relayBaseUrl` `POST /api/identity/cloud/login`（§31），存刷新令牌，建或合并 `relayed` 行（`cloudIssuer` = 远程服务，`relayOrigin` = 中继来源；`label` 缺省取远程服务目录里的名字）。源的拒绝（如 `cloud_account_unlinked`）透传。
 - **`session` 选路（D27）**：`via` 省略时并行问直连的 `GET <baseUrl>/api/identity/hello`（1.5 秒）与远程服务的断言；直连成功且 `hostId === sourceId` 就用直连的刷新令牌换票，否则走中继；都不行答 `source_unreachable`（某一路是明确的拒绝时答那一路的码，如 `source_unauthorized`）。经中继时先用存着的刷新令牌，对端答 401 就用断言重新 `cloud/login` 并写回；远程服务的会话也失效答 `source_unauthorized`（页面提示重新登录远程服务）。每次成功换票更新 `lastOkAtMs`。
@@ -3492,7 +3480,7 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 实现在 `core/gateway/routes.ts`（`gatewayOperations`）与 `core/gateway/index.ts`：状态、改配置、铸票收成一份操作，旧 handler 与 `registerProcedures(server, "gateway", …)` 调同一份。形状见 §17、§24。
 
 - 读与写只有 owner（全局 `settings:*`），成员一律 `403`。入参只校形状（字段类型与多余的键），取值（`listen` 的选项、端口范围、`publicOrigin` 必须是 https 来源、证书来源）仍在域里判，原话与旧路径一样；服务器壳托管时改配置 `409 gateway_managed_by_shell`，Gateway 没在运行时铸票 `409 gateway_not_running`，来源不是本 Gateway 的 `400 invalid_origin`（新登记进注册表）。
-- 配对票（`gateway.pair` 的答案）是两分钟内能换出一台 owner 设备的凭据：只答给调用方，不进审计与日志；私网档附带 8 位短码（`code`，公网 `all` 档与配了对外来源时为 `null`）。证书与私钥的文件路径不进审计。
+- 配对票（`connect.offer` 的直连半，§99）是两分钟内能换出一台 owner 设备的凭据：只答给调用方，不进审计与日志；私网档附带 8 位短码（`code`，公网 `all` 档与配了对外来源时为 `null`）。证书与私钥的文件路径不进审计。
 - **匿名面不经 RPC**：配对短码换票（§24.2）发生在手机还没有任何身份的时候，短码本身就是凭据，所以只经旧路径 `POST /api/gateway/pairing-code/exchange`（Gateway 的准入里放行、路由门不判；限流与档位在 Gateway 域里判）。它在契约里登记了形状、错误与权限（`gateway.exchangePairingCode`，`scope: null`，与 `identity.cloud.login` 同一种做法），**RPC 路径不实现**：答 `501 not_implemented`，不在 `system.hello` 的 procedure 表里，门面也不接管它的旧路径（仍由路由表里那条 handler 答）。`GET /ca.crt` 等 Gateway 上的其余匿名面（§17.4）不是 core 的 JSON 面，不在契约里。
 
 <!-- rpc:begin contract=§43.7 -->
@@ -3501,8 +3489,7 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 | ----------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------- | ---- | ----------------------------------------- |
 | `gateway.status`              | query    | 可省 `{}`                                                                                                                                                          | `{ enabled: boolean, running: boolean, managedBy: "settings" \| "shell", listen: "loopback" \| "private" \| "all", port: integer, publicOrigin: string, address: { host: string, port: integer } \| null, origin: string \| null, origins: string[], tls: { source: "localCa" \| "file" \| "acme" \| "selfSigned", certFile: string, keyFile: string, acmeEmail: string, fingerprint: string \| null, subject: string \| null, names: string[], notAfter: string \| null, caAvailable: boolean, acme?: {…} \| null }, error: { code: string, message: string } \| null }` | `unauthenticated`、`forbidden`                                                                                           | `settings:read`  | 1.14 | `GET /api/gateway`                        |
 | `gateway.configure`           | mutation | `{ enabled?: boolean, listen?: string, port?: number, publicOrigin?: string, tls?: { source?: string, certFile?: string, keyFile?: string, acmeEmail?: string } }` | `{ enabled: boolean, running: boolean, managedBy: "settings" \| "shell", listen: "loopback" \| "private" \| "all", port: integer, publicOrigin: string, address: { host: string, port: integer } \| null, origin: string \| null, origins: string[], tls: { source: "localCa" \| "file" \| "acme" \| "selfSigned", certFile: string, keyFile: string, acmeEmail: string, fingerprint: string \| null, subject: string \| null, names: string[], notAfter: string \| null, caAvailable: boolean, acme?: {…} \| null }, error: { code: string, message: string } \| null }` | `unauthenticated`、`forbidden`、`bad_request`、`gateway_managed_by_shell`、`settings_unavailable`                        | `settings:write` | 1.14 | `PUT /api/gateway`                        |
-| `gateway.pair`                | mutation | `{ origin?: string, deviceName?: string }`                                                                                                                         | `{ origin: string, ticket: string, fingerprint: string, expiresAt: string, webUrl: string, deepLink: string, code?: string \| null }`                                                                                                                                                                                                                                                                                                                                                                                                                                     | `unauthenticated`、`forbidden`、`bad_request`、`gateway_not_running`、`invalid_origin`                                   | `settings:write` | 1.14 | `POST /api/gateway/pairing`               |
-| `gateway.exchangePairingCode` | mutation | `{ code: string }`                                                                                                                                                 | `{ origin: string, ticket: string, fingerprint: string, expiresAt: string, webUrl: string, deepLink: string, code?: string \| null }`                                                                                                                                                                                                                                                                                                                                                                                                                                     | `bad_request`、`gateway_not_running`、`pairing_code_disabled`、`pairing_code_invalid`、`origin_mismatch`、`rate_limited` | 匿名             | 1.14 | `POST /api/gateway/pairing-code/exchange` |
+| `gateway.exchangePairingCode` | mutation | `{ code: string }`                                                                                                                                                 | `{ origin: string, ticket: string, fingerprint: string, expiresAt: string, webUrl: string, code?: string \| null }`                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `bad_request`、`gateway_not_running`、`pairing_code_disabled`、`pairing_code_invalid`、`origin_mismatch`、`rate_limited` | 匿名             | 1.14 | `POST /api/gateway/pairing-code/exchange` |
 
 <!-- rpc:end -->
 
@@ -4238,9 +4225,9 @@ App 对每个候选算 `ISK_i` 并核对 `confirm_i(server)`；一个都对不�
 
 <!-- rpc:begin contract=§73.2 -->
 
-| procedure            | kind     | input                                                  | output                                                                                                                                | errors                                                                                | scope | 自   | 原路径                                       |
-| -------------------- | -------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ----- | ---- | -------------------------------------------- |
-| `gateway.pakeFinish` | mutation | `{ session: string, index: integer, confirm: string }` | `{ origin: string, ticket: string, fingerprint: string, expiresAt: string, webUrl: string, deepLink: string, code?: string \| null }` | `bad_request`、`gateway_not_running`、`pairing_code_disabled`、`pairing_code_invalid` | 匿名  | 1.43 | `POST /api/gateway/pairing-code/pake/finish` |
+| procedure            | kind     | input                                                  | output                                                                                                              | errors                                                                                | scope | 自   | 原路径                                       |
+| -------------------- | -------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ----- | ---- | -------------------------------------------- |
+| `gateway.pakeFinish` | mutation | `{ session: string, index: integer, confirm: string }` | `{ origin: string, ticket: string, fingerprint: string, expiresAt: string, webUrl: string, code?: string \| null }` | `bad_request`、`gateway_not_running`、`pairing_code_disabled`、`pairing_code_invalid` | 匿名  | 1.43 | `POST /api/gateway/pairing-code/pake/finish` |
 
 <!-- rpc:end -->
 
@@ -4505,26 +4492,18 @@ owner：本机作为客户端连别的电脑（`sources.session`，§33）时，
 
 新设备不必都等主人核对校验码（§77.1）。三条路之外，8 位配对码只用于局域网 Gateway（§24、§73），不用于中继路径。
 
-- **扫码配对**：本机（或已信任设备经它的通道）签一枚 16 字节、5 分钟、一次性的配对秘密（`e2e.pairingSecret`，§80.1），连同身份公钥做成二维码。新设备扫了就钉住这把公钥（不走 TOFU），握手 m3 带 `proof = HMAC(HKDF(秘密), 转录)`；登录时 core 找一枚对得上的活秘密并取走 → 直接 `trusted`，`approved_by = pairing`。秘密只在 core 内存里，最多同时 16 枚。
+- **扫码配对**：本机（或已信任设备经它的通道）签一枚 16 字节、5 分钟、一次性的配对秘密（随 `connect.offer` 的中转半铸，§99.1；§80.1 已由 §99 取代），连同身份公钥做成二维码。新设备扫了就钉住这把公钥（不走 TOFU），握手 m3 带 `proof = HMAC(HKDF(秘密), 转录)`；登录时 core 找一枚对得上的活秘密并取走 → 直接 `trusted`，`approved_by = pairing`。秘密只在 core 内存里，最多同时 16 枚。
 - **已信任设备背书**：主人在已信任的设备上（经它自己的通道、owner 会话）对另一台待确认设备 `devices.approve`，校验码照样要对上，记成 `approved_by = endorse:<那台设备的 id>`；SaaS 团队的 owner / admin 与成员本人（自己的设备）也可以背书，条件见 §60.4。`sources.list` 的每一行多 `identityPub`（本机经通道连过那台时钉住的身份公钥，base64url；没有是空串），别的设备经本机读它就不必对那台电脑做 TOFU。
 - **访客链接**：分享链接片段多第三段 `<secret>.<邀请令牌>.<身份指纹前 16 位>`（`shareLinks.create` 答的 `url`）。访客的页面与 App 按它核对握手里 core 的身份（对不上即 `identity_changed`，不 TOFU）；第一次加入时 m3 的 `proof` 用邀请令牌（UTF-8 字节）作秘密，`cloud/login` 兑换邀请之后对得上 → 绑到访客主体，`approved_by = link:<linkId>`。之后访客每次用同一把设备钥，中继伪造访客断言换不到会话；清掉站点数据 = 丢钥 = 要再点一次链接（占一个名额）。
 - **名额**：`share_links.max_devices`（迁移 0049，缺省等于 `maxUses`，`null` 不限），按 `approved_by = link:<linkId>` 的已信任与待确认行计；用完 `403 device_limit`。旧链接（没有记录）不限。
 - **撤链接**：`shareLinks.revoke`（以及列表时发现远程服务那边已撤销）把经它绑定的设备钥全部 `revoked`、吊销会话、断开通道。
 - `shareLinks.list` 的每条多 `devices`（绑定数）与 `maxDevices`。
 
-### 80.1 `POST /api/e2e/pairing-secret`
+### 80.1 `POST /api/e2e/pairing-secret`（已由 §99 取代）
 
-owner（本机会话，或已信任设备经通道的 owner 会话）：`{ sourceId, identityPub, fingerprint, secret, issuers, expiresAtMs, uri }`。`secret` 是 base64url 的 16 字节，`issuers` 是这台电脑登记到的远程服务；`uri` 是二维码里那一串 `armadra://pair-e2e?d=<base64url(JSON {v:1,s,k,p,i,e})>`。秘密 5 分钟、一次性，不进日志与审计。
+> 已由 §99 取代并删除（#749）：配对秘密随 `connect.offer` 的中转半一起铸（§99.1），二维码是网页链接（§99.2），不再有 `armadra://pair-e2e` 形状。节号保留。仍然成立的部分如下。
 
-<!-- rpc:begin contract=§80.1 -->
-
-| procedure           | kind     | input     | output                                                                                                                                 | errors                                        | scope            | 自   | 原路径                         |
-| ------------------- | -------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | ---------------- | ---- | ------------------------------ |
-| `e2e.pairingSecret` | mutation | 可省 `{}` | `{ sourceId: string, identityPub: string, fingerprint: string, secret: string, issuers: string[], expiresAtMs: integer, uri: string }` | `unauthenticated`、`forbidden`、`unsupported` | `settings:write` | 1.47 | `POST /api/e2e/pairing-secret` |
-
-<!-- rpc:end -->
-
-经中继却拿不出原生设备钥的请求（浏览器的端到端通道、明文中继路径）调它答 `403 forbidden`，见 §88.7。
+配对秘密是 16 字节（base64url）、5 分钟、一次性、只在内存里。经中继却拿不出原生设备钥的请求（浏览器的端到端通道、明文中继路径）调 `connect.offer` 答 `403 forbidden`，见 §88.7。
 
 ## 81. 需要人处理：通知、徽标与推送的同一套分类
 
@@ -5080,7 +5059,7 @@ ACP 会话经 `session/new.mcpServers` 拿到 `armadra-hook mcp`（§14、`core/
 
 ## 99. 连接手机：一张二维码
 
-> 状态：实施契约（AMA-Link/Armadra#749）。迁移 0060 `identity_bootstrap_tickets.origins`；一条新 procedure（`connect.offer`）和一个新事件（`connect.used`），协议 1.54。
+> 状态：实施契约（AMA-Link/Armadra#749）。迁移 0060 `identity_bootstrap_tickets.origins`；一条新 procedure（`connect.offer`）和一个新事件（`connect.used`），协议 1.54。同一个 issue 删除了 `gateway.pair` 与 `e2e.pairingSecret`（§99.6）。
 
 ### 99.1 `connect.offer`
 
@@ -5158,4 +5137,6 @@ ACP 会话经 `session/new.mcpServers` 拿到 `armadra-hook mcp`（§14、`core/
 
 ### 99.6 取代关系
 
-`connect.offer` 取代三样旧东西，它们在 #749 的最后一个包里删除，节号保留：`gateway.pair` / `POST /api/gateway/pairing`（§17.3）、`e2e.pairingSecret` / `POST /api/e2e/pairing-secret`（§80.1）以及 §24.2 与 §73 回答里的 `deepLink`。`armadra://pair?` 与 `armadra://pair-e2e?` 两种链接形状同时不再被认。浏览器用的 `#pair=` 链接保留（「复制链接」与服务器壳的打印仍在用）。
+`connect.offer` 取代了三样旧东西，随 #749 的最后一个包删除，节号保留：`gateway.pair` / `POST /api/gateway/pairing`（§17.3）、`e2e.pairingSecret` / `POST /api/e2e/pairing-secret`（§80.1）以及 §24.2 与 §73 回答里的 `deepLink`。`armadra://pair?` 与 `armadra://pair-e2e?` 两种链接形状同时不再被认：网页（`parsePairingQr`）、core（`sources/pair-link.ts`）、iOS 与 Android 的深链都只剩分享（`join`）、`oauth` 和工作空间跳转；App 内扫到旧形状报 `connectOlder`。浏览器用的 `#pair=` 链接保留（「复制链接」与服务器壳的打印仍在用）。
+
+探针与集成测试在回环上起 Gateway，回环来源默认不进二维码；它们设环境变量 `ARMADRA_CONNECT_INCLUDE_LOOPBACK=1` 放开（页面与 App 不读这个变量，也没有对应的 API）。

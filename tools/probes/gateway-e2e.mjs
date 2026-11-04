@@ -168,6 +168,25 @@ const hasPage = existsSync(join(webDist, "index.html"));
 /** 第 4、4b 步共用一个无头 Chrome（在顶层 await 之前声明）。 */
 let chrome;
 
+/**
+ * 经 `connect.offer`（契约 §99.1）铸一张配对票，整理成旧载荷的样子：直连半的来源、票、
+ * 信任锚、网页链接和 8 位配对码。
+ */
+async function mintPairing(base) {
+  const offer = JSON.parse(
+    (await local(base, "POST", "/api/rpc/connect/offer", {})).body,
+  ).json;
+  const direct = offer.direct;
+  return {
+    origin: direct.origins[0],
+    ticket: /#pair=([^&]+)/.exec(direct.webUrl)[1],
+    fingerprint: direct.fingerprint,
+    webUrl: direct.webUrl,
+    code: direct.code,
+    uri: offer.uri,
+  };
+}
+
 async function startCore(dataDir) {
   const entry = join(root, "apps/desktop/out/core/main.js");
   const child = spawn(
@@ -182,6 +201,8 @@ async function startCore(dataDir) {
         ARMADRA_GATEWAY_WEB_ROOT: hasPage
           ? webDist
           : temp("armadra-gateway-web-"),
+        // 回环上起的 Gateway：让连接手机的二维码里也放回环来源（契约 §99.6，只给探针）。
+        ARMADRA_CONNECT_INCLUDE_LOOPBACK: "1",
       }),
     },
   );
@@ -297,9 +318,7 @@ await h.run(async () => {
   const caAnswer = await stranger.call("/ca.crt", { sendOrigin: false });
   check(caAnswer.status === 200, "GET /ca.crt 匿名");
   const ca = caAnswer.body;
-  const pairing = JSON.parse(
-    (await local(base, "POST", "/api/gateway/pairing", {})).body,
-  );
+  const pairing = await mintPairing(base);
   check(
     fingerprint(ca) === pairing.fingerprint &&
       pairing.webUrl.endsWith(`&fp=${pairing.fingerprint}`),
@@ -429,9 +448,7 @@ await h.run(async () => {
  * 只为本地 CA；页面经 Gateway 打开，所有请求走 Gateway 的 Cookie 模式。
  */
 async function fromThePage(base, origin) {
-  const pairing = JSON.parse(
-    (await local(base, "POST", "/api/gateway/pairing", {})).body,
-  );
+  const pairing = await mintPairing(base);
   chrome ??= await startChrome(h);
   const page = await chrome.open({ name: "gateway-page" });
   await page.navigate(pairing.webUrl);
@@ -518,9 +535,7 @@ async function fromThePage(base, origin) {
  * 地址的样子。
  */
 async function codeFromThePhone(base, origin) {
-  const pairing = JSON.parse(
-    (await local(base, "POST", "/api/gateway/pairing", {})).body,
-  );
+  const pairing = await mintPairing(base);
   check(
     /^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(pairing.code ?? ""),
     "回环档位的配对载荷带 8 位配对码",

@@ -1,7 +1,7 @@
 import { fail } from "../http/errors";
 import { normalizeOrigin } from "./http-client";
 
-/** `#pair=<票>&fp=<指纹>` 的网页链接，或 `armadra://pair?host=…&ticket=…&fp=…`。 */
+/** `#pair=<票>&fp=<指纹>` 的网页链接（契约 §17）。 */
 export function parsePairLink(link: string): {
   origin: string;
   ticket: string;
@@ -12,18 +12,6 @@ export function parsePairLink(link: string): {
     url = new URL(link.trim());
   } catch {
     throw fail("bad_request", "配对链接不是一个合法的地址");
-  }
-  if (url.protocol === "armadra:") {
-    const host = url.searchParams.get("host") ?? "";
-    const ticket = url.searchParams.get("ticket") ?? "";
-    if (host === "" || ticket === "") {
-      throw fail("bad_request", "配对链接缺少地址或票");
-    }
-    return {
-      origin: normalizeOrigin(`https://${host}`),
-      ticket,
-      fingerprint: url.searchParams.get("fp") ?? "",
-    };
   }
   const fragment = new URLSearchParams(url.hash.replace(/^#/, ""));
   const ticket = fragment.get("pair") ?? "";

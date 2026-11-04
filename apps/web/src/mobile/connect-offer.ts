@@ -59,9 +59,16 @@ export function rejectionFailure(reason: ConnectRejection): ConnectFailure {
   }
 }
 
-/** 文本是不是连接手机的二维码（带 `#c=`，不论合不合规矩）；其余形状走原来的解析。 */
+/**
+ * 文本是不是连接手机的二维码（带 `#c=`，不论合不合规矩），或是已经不再认的旧版二维码
+ * （`armadra://pair?`、`armadra://pair-e2e?`，报「旧版」）；其余形状走原来的解析。
+ */
 export function looksLikeConnect(text: string): boolean {
-  return /^https?:\/\/[^#]*#c=/i.test(text.trim());
+  const value = text.trim();
+  return (
+    /^https?:\/\/[^#]*#c=/i.test(value) ||
+    /^armadra:\/\/pair(?:-e2e)?(?:[?/]|$)/i.test(value)
+  );
 }
 
 export interface OfferDeps {

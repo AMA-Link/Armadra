@@ -233,7 +233,9 @@ describe("读二维码文本", () => {
   it("只有带 #c= 的才按连接二维码处理，其余形状走原来的解析", () => {
     expect(looksLikeConnect(text)).toBe(true);
     expect(looksLikeConnect(`${A}/#pair=abc`)).toBe(false);
-    expect(looksLikeConnect("armadra://pair?host=x")).toBe(false);
+    // 旧版二维码也交给 readConnect，报「旧版」。
+    expect(looksLikeConnect("armadra://pair?host=x")).toBe(true);
+    expect(looksLikeConnect("armadra://pair-e2e?d=abc")).toBe(true);
     expect(looksLikeConnect("https://relay.example.com/j/abc#s.t")).toBe(false);
   });
 });

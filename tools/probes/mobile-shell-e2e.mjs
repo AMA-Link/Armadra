@@ -1,8 +1,9 @@
 // 手机壳冒烟（补全计划 G3-1，B 档）：模拟器里的原生 App 走「连接 → 配对 → 画布」。
 //
 // 真进程：`apps/desktop/out/core/main.js` 以桌面模式起在临时数据目录上，经回环的
-// `PUT /api/gateway` 打开 Gateway（本地 CA，只在回环上监听），铸一张配对票，把原生
-// 深链 `armadra://pair?host=127.0.0.1%3A<端口>&ticket=…&fp=…` 交给模拟器里的 UI 用例：
+// `PUT /api/gateway` 打开 Gateway（本地 CA，只在回环上监听），经 `connect.offer` 铸一张二维码
+// （回环来源靠 `ARMADRA_CONNECT_INCLUDE_LOOPBACK` 放进去），把它的文本
+// `https://127.0.0.1:<端口>/#c=2&…`（契约 §99.2）交给模拟器里的 UI 用例，由用例填进连接页：
 //
 //   * iOS：`xcodebuild test` 跑 `AppUITests`（XCUITest），模拟器与宿主共用回环；
 //     用例要用链接时才经 `TEST_RUNNER_ARMADRA_PAIR_LINK_SOURCE`（回环上的一个地址）
@@ -142,6 +143,7 @@ async function startCore(dataDir) {
         ARMADRA_NO_GLOBAL_WRITES: "1",
         ARMADRA_SECRET_BACKEND: "file",
         ARMADRA_GATEWAY_WEB_ROOT: webDist,
+        ARMADRA_CONNECT_INCLUDE_LOOPBACK: "1",
       }),
     },
   );
@@ -415,7 +417,7 @@ async function ios(mint) {
   );
   check(
     second === 0,
-    "XCUITest：深链 → 钉扎 → 配对 → 画布 → 重开落在选择服务 → 选它进画布 → 原生 OAuth 深链",
+    "XCUITest：填二维码链接 → 钉扎 → 配对 → 画布 → 重开落在选择服务 → 选它进画布 → 原生 OAuth 深链",
     `exit ${second}`,
   );
 }
@@ -630,21 +632,17 @@ await h.run(async () => {
   const origin = new URL(opened.origin);
 
   const mint = async () => {
-    const pairing = JSON.parse(
-      (
-        await local(base, "POST", "/api/gateway/pairing", {
-          deviceName: `mobile-shell-e2e ${platform}`,
-        })
-      ).body,
-    );
+    const offer = JSON.parse(
+      (await local(base, "POST", "/api/rpc/connect/offer", {})).body,
+    ).json;
     check(
-      typeof pairing.deepLink === "string" &&
-        pairing.deepLink.startsWith("armadra://pair?") &&
-        pairing.deepLink.includes(`fp=${pairing.fingerprint}`),
-      "配对载荷带原生深链与信任锚指纹（现铸，两分钟内用）",
-      pairing.fingerprint,
+      typeof offer.uri === "string" &&
+        offer.uri.startsWith(`${offer.direct.origins[0]}/#c=2&`) &&
+        /&f=[A-Za-z0-9_-]{43}(&|$)/.test(offer.uri),
+      "二维码是带信任锚的网页链接（现铸，两分钟内用）",
+      offer.direct?.fingerprint,
     );
-    return pairing.deepLink;
+    return offer.uri;
   };
 
   // 一张 1×1 的 PNG：页面经 Gateway 取它时要带 Bearer（R-55）。
