@@ -18,6 +18,7 @@
 | [产品说明](guides/product-overview.md)                 | 产品出发点、成本分工、需求证据与应用场景         |
 | [开发指南](guides/development.md)                      | 依赖、启动、检查、打包与环境变量                 |
 | [CI 与发布](guides/ci-release.md)                      | 三平台矩阵、发布矩阵与密钥清单                   |
+| [macOS 首次打开](guides/macos-first-launch.md)         | ad-hoc 签名包的首次打开、Homebrew 与更新         |
 | [架构](guides/architecture.md)                         | 当前结构、数据模型与安全边界                     |
 | [Agent 协作](guides/agent-collaboration.md)            | CLI 能力、消息与投递、ACP 模式、协调者与 runners |
 | [界面规范](guides/ui-refinement.md)                    | 布局、交互与验收范围                             |
