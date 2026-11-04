@@ -2,6 +2,38 @@
 
 每个版本一节，按发布倒序。括号里是合入的 PR 编号（github.com/AMA-Link/Armadra，2026-10-11 前为 Owlbay/Armadra，旧编号照常跳转）。兼容范围以 `tools/release/compatibility.json` 为准，发布说明里的 `armadra-compatibility` 围栏由它渲染。桌面、服务器与手机 / 平板 App 共用一条版本线和一个标签 `vX.Y.Z`（规则见 `docs/guides/ci-release.md`「版本规则」）；有手机端改动的版本，在「手机与平板」小节里写，其余写在「桌面 / 服务器」下。2026-10-10 之前手机端曾单独编号（1.0.0、1.1.0），内容并入对应的 0.2.5、0.2.6。
 
+## 0.13.0（2026-11-04）
+
+版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.13.0。随包 `@armadra/agent` 0.13.0（维护版，没有用户可见的变化）与平台协议包 0.13.0（协议仍是 1.4，没有形状变化）；配套镜像 `armadra-cloud` / `armadra-relay` 0.13.0。本版主题：设置整理（「账号与设备」合并页、每家 Agent 的启用开关、快捷键页与全选）、登录会话去重与清扫、ACP 会话视图改版与补齐（两行输入区、计划条、内联审批、自家画布工具免审批）、侧栏搜索与 ⌘K 共用内容索引、画布多选拖动与一键整理、手机布局（横屏铺满、竖屏一行 Dock、视口与触屏手势）、缺陷审计的修复批次与夜间 CI。
+
+Version aligned with armadra-cloud and armadra-agent (all three ship 0.13.0), with `@armadra/agent` 0.13.0 (a maintenance release with no user-visible changes) and platform protocol 0.13.0 (still protocol 1.4, no shape changes). Themes: settings consolidation (a merged Account & devices page, per-agent enable switches, a compact shortcuts page and select-all), sign-in session dedupe and sweep, the ACP session view redesign and gap filling (two-row composer, plan bar, inline approvals, Armadra's own canvas tools auto-approved), one content index shared by sidebar search and ⌘K, canvas multi-drag and tidy, phone layout (full-screen landscape, one-row portrait Dock, viewport and touch gestures), and the bug-audit fix batches plus the nightly CI fix.
+
+### 桌面 / 服务器
+
+- 设置整理：「设备与会话」与「账号与安全」合并为「账号与设备」，「远程访问」只管主机，服务器壳的「账号与共享」改名「成员与共享」，每个概念只留一处；旧分区 `devices`、`#pair=` 与各抽屉的跳转都落到合并页，搜索命中会滚到对应分块（#725）。设置页按钮按下只降不透明度、不缩放，加载与检查连接时宽高不变（#728）。「默认」页在 Agent 列表到达前不改写权限模式，默认 Agent 下拉只列启用的 Agent；窄屏下设置行可换行（#756）。
+- Agent 启用开关：设置 → Agent 里每家（含自定义 Agent）一个开关，关掉后不出现在画布右键、派生子菜单、Dock、命令面板、空画布与拖线菜单，配置保留（#709）。关掉的 Agent 对 Agent 也不可见、不可派发：core 设置新增 `agents.disabled`（契约 §97，只加字段），`canvas help`、`armadra-hook mcp` 的说明与 `open-agent` / `team` 的可用名单只列没关的；「接管会话」从新建菜单移到该 Agent 的设置子页；画布技能修订号 23（#775）。
+- 快捷键：快捷键页改为按区域分组的紧凑列表；新增画布全选 `Mod+A`（`canvas.selectAll`，可改键）（#722）。弹层开着时挂起画布快捷键，Delete 与全选不再作用到弹层背后的画布（#752）。
+- 登录会话：修复桌面页面每个访问期新建一条会话（core 回环 CORS 放行 `x-armadra-csrf`，刷新只允许一次在途），会话列表按设备归并并分页（#719）；整页重载后撤掉上一条会话，登出后在途刷新的结果作废（#762）；为本机设备配新会话时撤掉同种客户端闲置超过一个访问期的旧会话，core 启动时按同一规则清掉已有堆积，每种客户端留最近用过的一条（#774）。
+- ACP 会话视图改版：两行输入区，模型与思考强度合成一个控件，去掉「⋯」菜单，工具行、思考、活动组与正文排版整理（#721）；计划条移到输入框上方，只有连续的只读读搜才归组，审批内联到工具行，位置标签与代码块复制按钮（#763）。
+- ACP 补齐：Pi 会话起不来的修复（核对 CLI 最低版本 0.81.0，安装改用现行包，会话映射读对）（#720）；「接管会话」的列表限定在工作空间根目录内（此前服务器壳上的成员可列出主机上所有项目的会话），终端登录取消与超时必落定，装 Pi 前先卸旧包（#758）；Armadra 自己的 `armadra` MCP 画布工具在 ACP 会话里按来源免审批（契约 §98），工具行与审批卡本地化，输入框操作行的配置项不再连读（#773）。
+- 搜索：侧栏搜索与 ⌘K 共用一份内容索引，别的工作空间、画布、节点、白板文字、文件与设置都搜得到（多词、拼音首字母与模糊匹配），回车跳过去并聚焦，每行带类型图标与右对齐标签（#771）。
+- 画布：多选拖动整组跟着走，一键整理按视口横竖排成方正网格（#724）；双击空白不再留下空文字对象，空文字提交即丢弃，撤销栈里的「新建」一并抹掉（#723，实时板 #761）；资源面板的会话组用节点标题命名，进程树标出 Armadra 自己的进程（#718）。
+- 协调者：跟进不再虚报「已转给」、不再转给已结束的成员，转不过去时给协调者补一行失败说明，点名多个工作项时每个成员只收点名它的句子（#755）。
+- 界面细节：不自动消失的提示加关闭按钮，可用键盘关闭（#754）；窄屏布局（配对码、节点头标签、数据列表、两步验证密钥）与日期格式统一（#759）；浏览器节点启动失败按原因提示（#765）。
+- 测试与 CI：夜间 Android 插桩加上限与现场抓取，被取消或超时的夜间也开 issue（#753）；高负载下偶发失败的用例改成等确定状态，镜像校验不再取外部地址（#764）；eslint 警告清零，未用变量与丢精度字面量升为错误（#765）；设计展示页拆分分区并补探针断言（#760）；发布流程的本地 tap 先 `brew trust`（#703）。
+
+### 手机与平板
+
+- 横屏铺满整屏、工具栏一个不缺：手机横屏走电脑布局（#726），根容器不再让出两侧安全区，侧栏改用覆盖式抽屉、默认收起（#769）。
+- 竖屏 Dock 一行、从左到右横向滚动，与桌面工具一个不少（#769，取代 #726 的两行 Dock）。
+- 打开画布时缩放可读（屏幕字号不低于 12px），触屏长按与双击新建（#726）；「适应」在内容放不下时对准选中的节点并保持可读缩放，打开时的视口适配不再写回文档；第二根手指、取消与长按菜单后的点击不再误建或误触（#757）。
+
+### 部署说明
+
+- 没有新的数据库迁移（最新仍是 0.12.0 的 0059）。core 启动时会按新规则撤掉一次本机设备上闲置的登录会话（每种客户端留最近用过的一条），日志只记数目。
+- 契约只加不改：§94 资源采样的 `ProcessSample.origin`，§95 ACP 健壮性补丁，§96 桌面壳闲置会话的自动清理，§97 core 设置 `agents.disabled`，§98 自家 MCP 工具免审批与工具条目的 `mcp` 字段；§93 补跟进的措辞与失败行。
+- 配套镜像 `ghcr.io/ama-link/armadra-cloud:0.13.0`、`ghcr.io/ama-link/armadra-relay:0.13.0` 与协议包 0.13.0 同号；推送中继镜像 `ghcr.io/ama-link/armadra-push-relay:0.13.0` 与服务器壳镜像同号。发版顺序沿用 0.12.0：先打 Armadra `v0.13.0`，再打 armadra-cloud `v0.13.0`。
+
 ## 0.12.0（2026-11-02）
 
 版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.12.0。随包 `@armadra/agent` 0.12.0 与平台协议包 0.12.0（协议仍是 1.4，只加了 OAuth 能力位与字段）；配套镜像 `armadra-cloud` / `armadra-relay` 0.12.0，新增 `armadra-push-relay` 镜像。本版主题：手机端补齐（云主机挂载走端到端通道、横屏手机布局）、画布节点按黄金比例与点阵创建、ACP 补齐（模型与权限模式选择、登录流程、`elicitation/complete`、会话列表与接管）、协调者的工作项账本、统一事件队列与进展看门狗、远程访问以 Armadra 云为缺省、工作空间归档、推送中继镜像。
