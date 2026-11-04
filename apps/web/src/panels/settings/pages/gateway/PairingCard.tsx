@@ -1,19 +1,12 @@
 import * as React from "react";
 import { Copy, Download, RefreshCw } from "lucide-react";
 import { toast } from "@/ui/toast";
-import type { GatewayPairingPayload } from "@armadra/shared";
+import type { ConnectOffer } from "@armadra/shared";
 
 import { useT } from "../../../../app/preferences-store";
-import { encodeQr, pairingQrText, qrPath } from "../../../../host/qr";
+import { encodeQr, qrPath } from "../../../../host/qr";
 import { Button } from "@/ui/button";
 import { Kbd } from "@/ui/kbd";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/ui/select";
 import { Spinner } from "@/ui/spinner";
 
 /** 二维码四周留四个模块的静区（规范要求），否则贴着卡片边扫不出来。 */
@@ -26,10 +19,13 @@ export function QrImage({
   text,
   label,
   dimmed = false,
+  size = 200,
 }: {
   text: string;
   label: string;
   dimmed?: boolean;
+  /** 边长（px）；连接手机的码放大到 240，装得下三个来源加两个签发方。 */
+  size?: number;
 }) {
   const code = React.useMemo(() => encodeQr(text), [text]);
   if (!code) return null;
@@ -41,7 +37,9 @@ export function QrImage({
       data-qr-text={text}
       viewBox={`${-QUIET} ${-QUIET} ${extent} ${extent}`}
       shapeRendering="crispEdges"
-      className={`size-[200px] shrink-0 rounded-control transition-opacity ${dimmed ? "opacity-20" : ""}`}
+      width={size}
+      height={size}
+      className={`shrink-0 rounded-control transition-opacity ${dimmed ? "opacity-20" : ""}`}
     >
       <rect x={-QUIET} y={-QUIET} width={extent} height={extent} fill="white" />
       <path d={qrPath(code)} fill="black" />
@@ -68,41 +66,38 @@ function useNow(active: boolean, initial?: number): number {
 }
 
 export interface PairingCardProps {
-  pairing: GatewayPairingPayload | null;
-  /** 正在铸票。 */
+  /** 刚铸的 offer（契约 §99）；还没有是 `null`。 */
+  offer: ConnectOffer | null;
+  /** 正在铸。 */
   busy: boolean;
-  /** 可选的来源；多于一个时给一个下拉框。 */
-  origins: readonly string[];
-  fingerprint: string | null;
   /** `GET /ca.crt` 的地址；没有 CA 可发时为 `null`。 */
   caHref: string | null;
-  onNewPairing(origin?: string): void;
+  onNewOffer(): void;
   /** 展示页用：钉住时钟。 */
   now?: number;
 }
 
 /**
- * 配对内容（在「手机扫码连接」对话框里，{@link PairingDialog}）：二维码 · 地址 · 复制链接 / 新配对码 · 配对码与倒计时 · 指纹与 CA
- * 下载（设计系统 §5.12）。
+ * 「连接手机」的内容（对话框 {@link PairingDialog}）：一张二维码 · 地址 · 复制链接 /
+ * 新配对码 · 配对码与倒计时 · 指纹与 CA 下载（设计系统 §5.12）。
  *
- * 票两分钟一次性（契约 §17.3）；私网档位上同时有一枚 8 位配对码（§24），与票
- * 同生同灭，过期时随倒计时一起收起。归零后图变淡、按钮变成主按钮；不自动续，
- * 免得一张开着没人看的页面每两分钟铸一张票。
+ * 一张码装直连与中转两半（契约 §99），哪一半在场由核心定；二维码文本就是 `offer.uri`。
+ * 票两分钟一次性，私网档位上同时有一枚 8 位配对码（§24），与票同生同灭，过期时随倒计
+ * 时一起收起。归零后图变淡、按钮变成主按钮；不自动续，免得一张开着没人看的页面每
+ * 两分钟铸一张票。
  */
 export function PairingCard({
-  pairing,
+  offer,
   busy,
-  origins,
-  fingerprint,
   caHref,
-  onNewPairing,
+  onNewOffer,
   now: fixedNow,
 }: PairingCardProps) {
   const t = useT();
-  const expiresAt = pairing ? Date.parse(pairing.expiresAt) : 0;
-  const now = useNow(pairing !== null, fixedNow);
-  const remaining = expiresAt - now;
-  const expired = pairing !== null && remaining <= 0;
+  const direct = offer?.direct ?? null;
+  const now = useNow(offer !== null, fixedNow);
+  const remaining = (offer?.expiresAtMs ?? 0) - now;
+  const expired = offer !== null && remaining <= 0;
 
   const [copied, setCopied] = React.useState(false);
   React.useEffect(() => {
@@ -112,9 +107,9 @@ export function PairingCard({
   }, [copied]);
 
   async function copy() {
-    if (!pairing) return;
+    if (direct === null) return;
     try {
-      await navigator.clipboard.writeText(pairing.webUrl);
+      await navigator.clipboard.writeText(direct.webUrl);
       // 文字替换式反馈：按钮上的字换成「已复制」，不弹 toast。
       setCopied(true);
     } catch {
@@ -124,76 +119,54 @@ export function PairingCard({
 
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-      <div className="flex size-[200px] shrink-0 items-center justify-center self-center sm:self-start">
-        {pairing ? (
+      <div className="flex size-[240px] shrink-0 items-center justify-center self-center sm:self-start">
+        {offer ? (
           <QrImage
-            text={pairingQrText(pairing)}
+            text={offer.uri}
             label={t("gateway.pair.qr")}
             dimmed={expired}
+            size={240}
           />
         ) : busy ? (
           <Spinner aria-label={t("gateway.pairCode.new")} />
         ) : null}
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-3">
-        {origins.length > 1 ? (
-          <Select
-            value={pairing?.origin ?? origins[0]}
-            disabled={busy}
-            onValueChange={(origin) => onNewPairing(origin)}
-          >
-            <SelectTrigger
-              size="sm"
-              aria-label={t("gateway.pair.origin")}
-              className="w-full max-w-full font-mono text-meta"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="z-[var(--z-dialog)]">
-              {origins.map((origin) => (
-                <SelectItem
-                  key={origin}
-                  value={origin}
-                  className="font-mono text-meta"
-                >
-                  {origin}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ) : (
+        {direct && (
           <p className="break-all font-mono text-body select-text">
-            {pairing?.origin ?? origins[0]}
+            {direct.origins[0]}
           </p>
         )}
         <div className="flex flex-wrap gap-2">
+          {direct && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={expired}
+              onClick={() => void copy()}
+            >
+              <Copy data-icon="inline-start" />
+              {copied ? t("gateway.pair.copied") : t("gateway.pair.copy")}
+            </Button>
+          )}
           <Button
             type="button"
             size="sm"
-            variant="outline"
-            disabled={!pairing || expired}
-            onClick={() => void copy()}
-          >
-            <Copy data-icon="inline-start" />
-            {copied ? t("gateway.pair.copied") : t("gateway.pair.copy")}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={expired || !pairing ? "default" : "outline"}
+            variant={expired || !offer ? "default" : "outline"}
             disabled={busy}
-            onClick={() => onNewPairing(pairing?.origin)}
+            onClick={onNewOffer}
           >
             <RefreshCw data-icon="inline-start" />
             {t("gateway.pairCode.new")}
           </Button>
         </div>
-        {pairing && (
+        {offer && (
           <div
             className="flex flex-wrap items-center gap-2 text-meta tabular-nums"
             aria-live="off"
           >
-            {pairing.code && !expired && (
+            {direct?.code && !expired && (
               <>
                 <span className="text-muted-foreground">
                   {t("gateway.pairCode.label")}
@@ -203,7 +176,7 @@ export function PairingCard({
                   data-pairing-code
                   className="h-5 px-1.5 font-mono text-body tracking-[0.12em] text-foreground select-text"
                 >
-                  {pairing.code}
+                  {direct.code}
                 </Kbd>
               </>
             )}
@@ -212,7 +185,7 @@ export function PairingCard({
             >
               {expired
                 ? t("gateway.pair.expired")
-                : pairing.code
+                : direct?.code
                   ? countdown(remaining)
                   : t("gateway.pair.expiresIn", {
                       time: countdown(remaining),
@@ -220,14 +193,14 @@ export function PairingCard({
             </span>
           </div>
         )}
-        {fingerprint && (
+        {direct && (
           <div className="mt-auto flex min-w-0 flex-col gap-2 border-t border-border/60 pt-3">
             <div className="min-w-0 text-meta">
               <span className="text-muted-foreground">
                 {t("gateway.fingerprint")}
               </span>
               <p className="mt-1 break-all font-mono text-caption leading-4 select-text">
-                {groupFingerprint(fingerprint)}
+                {groupFingerprint(direct.fingerprint)}
               </p>
             </div>
             {caHref && (

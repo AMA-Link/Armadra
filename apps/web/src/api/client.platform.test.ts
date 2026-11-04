@@ -284,31 +284,17 @@ describe("gateway", () => {
     error: null,
   };
 
-  it("状态、改配置、铸票各是一条 procedure", async () => {
+  it("状态、改配置各是一条 procedure", async () => {
     ok(status);
     await expect(gatewayApi.status()).resolves.toMatchObject({
       running: false,
     });
     await gatewayApi.configure({ enabled: true });
-    ok({
-      origin: "https://192.168.1.20:8443",
-      ticket: "t",
-      fingerprint: "f",
-      expiresAt: "2026-10-06T00:02:00.000Z",
-      webUrl: "https://192.168.1.20:8443/#pair=t&fp=f",
-      deepLink: "armadra://pair?host=h&ticket=t&fp=f",
-    });
-    await gatewayApi.pair("https://192.168.1.20:8443");
-    await gatewayApi.pair();
     expect(calls.map((_, index) => procedure(index))).toEqual([
       "gateway/status",
       "gateway/configure",
-      "gateway/pair",
-      "gateway/pair",
     ]);
     expect(sent(1)).toEqual({ json: { enabled: true } });
-    expect(sent(2)).toEqual({ json: { origin: "https://192.168.1.20:8443" } });
-    expect(sent(3)).toEqual({ json: {} });
   });
 
   it("成员 403，壳托管时改配置 409 gateway_managed_by_shell", async () => {

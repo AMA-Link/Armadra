@@ -30,11 +30,6 @@ export const gatewayApi = {
         gatewayConfigPatchSchema.parse(patch),
       ),
     ),
-  /** 铸一张两分钟的一次性配对票；`origin` 缺省用首选来源。 */
-  pair: async (origin?: string) =>
-    gatewayPairingPayloadSchema.parse(
-      await currentClient().gateway.pair(origin ? { origin } : {}),
-    ),
 };
 
 /**

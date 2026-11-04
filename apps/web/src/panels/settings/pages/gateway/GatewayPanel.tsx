@@ -84,7 +84,9 @@ export interface GatewayPanelProps {
    */
   inUse?: boolean;
   onToggle(on: boolean): void;
-  /** 「手机扫码连接」：打开配对对话框（二维码、地址、配对码）。 */
+  /** 有路可连（局域网可达或互联网开着）才画「连接手机」，缺省不画。 */
+  connectable?: boolean;
+  /** 「连接手机」：打开对话框（一张二维码，契约 §99）。 */
   onScan(): void;
   /** 「互联网访问」那一行；开关开着才画。 */
   children?: React.ReactNode;
@@ -94,7 +96,7 @@ export interface GatewayPanelProps {
  * 设置 → 远程访问 → 这台电脑（#301、#675，设计系统 §5.12）：只有三行。
  *
  * 「允许其他设备访问这台电脑」开关；开着时「互联网访问」一行（{@link children}，
- * 登记到 Armadra 云即互联网可达）；对外服务在跑时「手机扫码连接」，二维码、地址、
+ * 登记到 Armadra 云即互联网可达）；有路可连时「连接手机」，一张二维码、地址、
  * 配对码、指纹与 CA 下载都在它打开的对话框里（{@link PairingDialog}）。端口、证书、
  * 监听所有网络在「高级」（{@link GatewayAdvanced}）。服务器壳托管时（`managedBy: shell`）
  * 局域网那一半只读，配对照常。
@@ -104,6 +106,7 @@ export function GatewayPanel({
   internet,
   busy,
   inUse = false,
+  connectable = false,
   onToggle,
   onScan,
   children,
@@ -136,7 +139,7 @@ export function GatewayPanel({
           </div>
         </SettingsRow>
         {on && children}
-        {status !== null && lan && status.running && (
+        {connectable && (
           <SettingsRow label={null}>
             <Button size="sm" variant="secondary" onClick={onScan}>
               {t("remote.scan")}

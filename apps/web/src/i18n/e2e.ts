@@ -59,8 +59,6 @@ export const e2e: MessageModule = {
     "e2e.platform.desktop": "桌面",
     "e2e.platform.browser": "浏览器",
     "e2e.browserNotice": "在浏览器中访问时，托管页面的服务器必须可信",
-    "e2e.pair.open": "配对新设备",
-    "e2e.pair.title": "用新设备扫码",
     "e2e.link.devices": "设备 {count}/{max}",
   },
   en: {
@@ -119,8 +117,6 @@ export const e2e: MessageModule = {
     "e2e.platform.browser": "Browser",
     "e2e.browserNotice":
       "In a browser, the server hosting this page must be trusted",
-    "e2e.pair.open": "Pair a device",
-    "e2e.pair.title": "Scan with the new device",
     "e2e.link.devices": "Devices {count}/{max}",
   },
 };

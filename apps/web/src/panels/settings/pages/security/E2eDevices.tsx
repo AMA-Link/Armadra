@@ -1,11 +1,7 @@
 import { Loadable } from "@/loading/Loadable";
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type {
-  DeviceEndorsement,
-  E2ePairingPayload,
-  TrustedDevice,
-} from "@armadra/shared";
+import type { DeviceEndorsement, TrustedDevice } from "@armadra/shared";
 import { MoreHorizontal } from "lucide-react";
 import { toast } from "@/ui/toast";
 
@@ -24,7 +20,6 @@ import {
   markEndorsementsRead,
 } from "../../../../notifications/use-host-needs";
 import { useNeedsStore } from "../../../../notifications/needs-store";
-import { QrImage } from "../gateway/PairingCard";
 import { StatusPill } from "@/ui/status-pill";
 import {
   NativeOwnerHint,
@@ -261,10 +256,7 @@ export function E2eDevices() {
       skeleton={<SecuritySectionSkeleton title={t("e2e.devices.title")} />}
     >
       <section className="flex min-w-0 flex-col gap-2">
-        <SettingsTableCard
-          title={t("e2e.devices.title")}
-          actions={<PairDeviceButton />}
-        >
+        <SettingsTableCard title={t("e2e.devices.title")}>
           {rows.length > 0 && compact && (
             <ItemGroup className="gap-0" data-slot="e2e-devices-list">
               {rows.map((device, index) => (
@@ -401,63 +393,6 @@ export function E2eDevices() {
         </ResponsiveDialog>
       </section>
     </Loadable>
-  );
-}
-
-/** 指纹分组显示前 16 位（与服务器壳 CLI 一致）。 */
-function shortFingerprint(fingerprint: string): string {
-  return (fingerprint.slice(0, 16).match(/.{1,4}/g) ?? []).join(" ");
-}
-
-/**
- * 「配对新设备」（契约 §80.1）：签一枚 5 分钟、一次性的配对秘密，二维码里是这台电脑
- * 的身份公钥与秘密；新设备扫了就钉住身份、不必再核对校验码。下面是指纹前 16 位，
- * 供人对照新设备上显示的那一串。
- */
-function PairDeviceButton() {
-  const t = useT();
-  const [payload, setPayload] = React.useState<E2ePairingPayload | null>(null);
-  const [busy, setBusy] = React.useState(false);
-  const open = async () => {
-    setBusy(true);
-    try {
-      setPayload(await devicesApi.pairingSecret());
-    } catch (error) {
-      toast.error(failureText(t, error));
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <>
-      <Button
-        type="button"
-        size="sm"
-        variant="ghost"
-        disabled={busy}
-        onClick={() => void open()}
-      >
-        {t("e2e.pair.open")}
-      </Button>
-      <ResponsiveDialog
-        open={payload !== null}
-        onOpenChange={(next) => !next && setPayload(null)}
-      >
-        <ResponsiveDialogContent className="sm:max-w-sm">
-          <ResponsiveDialogHeader>
-            <ResponsiveDialogTitle>{t("e2e.pair.title")}</ResponsiveDialogTitle>
-          </ResponsiveDialogHeader>
-          {payload !== null && (
-            <div className="flex flex-col items-center gap-3">
-              <QrImage text={payload.uri} label={t("e2e.pair.title")} />
-              <div className="font-mono text-body text-muted-foreground tabular-nums">
-                {shortFingerprint(payload.fingerprint)}
-              </div>
-            </div>
-          )}
-        </ResponsiveDialogContent>
-      </ResponsiveDialog>
-    </>
   );
 }
 

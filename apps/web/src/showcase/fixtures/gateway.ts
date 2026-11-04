@@ -1,4 +1,5 @@
-import type { GatewayPairingPayload, GatewayStatus } from "@armadra/shared";
+import type { ConnectOffer, GatewayStatus } from "@armadra/shared";
+import { connectUrl } from "@armadra/shared";
 
 /**
  * `gateway` 分区的假数据（设计展示页 §2.1）。纯对象，无副作用；名字是数据
@@ -86,14 +87,22 @@ export const FAILED: GatewayStatus = {
   error: { code: "port_in_use", message: "" },
 };
 
-export const PAIRING: GatewayPairingPayload = {
-  origin: ORIGIN,
-  ticket: TICKET,
-  fingerprint: FINGERPRINT,
-  expiresAt: new Date(NOW + 179_000).toISOString(),
-  webUrl: `${ORIGIN}/#pair=${TICKET}&fp=${FINGERPRINT}`,
-  deepLink: `armadra://pair?host=192.168.1.8%3A8443&ticket=${TICKET}&fp=${FINGERPRINT}`,
-  code: "3F7K-9Q2M",
+export const OFFER: ConnectOffer = {
+  sourceId: "0123456789abcdef0123456789abcdef",
+  expiresAtMs: NOW + 179_000,
+  uri: connectUrl(ORIGIN, {
+    sourceId: "0123456789abcdef0123456789abcdef",
+    expiresAtMs: NOW + 179_000,
+    direct: { origins: [ORIGIN], ticket: TICKET, fingerprint: FINGERPRINT },
+    relay: null,
+  }),
+  direct: {
+    origins: [ORIGIN],
+    fingerprint: FINGERPRINT,
+    code: "3F7K-9Q2M",
+    webUrl: `${ORIGIN}/#pair=${TICKET}&fp=${FINGERPRINT}`,
+  },
+  relay: null,
 };
 
 /** 已过期的那张：时钟走过了 `expiresAt`。 */

@@ -9,7 +9,7 @@ import {
   within,
 } from "@testing-library/react";
 import type { ReactElement } from "react";
-import type { GatewayStatus } from "@armadra/shared";
+import { type GatewayStatus, connectUrl, parseConnect } from "@armadra/shared";
 
 const probe = vi.fn();
 vi.mock("../../../../host/connection", async (importOriginal) => ({
@@ -56,7 +56,6 @@ import {
   type IdentitySession,
 } from "../../../../api/identity";
 import { TestProviders } from "../../../../app/test-harness";
-import { parsePairingQr } from "../../../../host/qr";
 
 /** 远程访问页的开关一块与账号与设备页放在一起：配置与设备表各一份。 */
 function HostPage() {
@@ -75,6 +74,7 @@ function render(element: ReactElement) {
 /* ------------------------- 对外服务：假的 core 一份 ------------------------- */
 
 const FP = "ab".repeat(32);
+const SOURCE = "0123456789abcdef0123456789abcdef";
 const TICKET = "0123456789abcdef.AbCdEfGhIjKlMnOpQrStUvWxYz0123456789";
 
 function gatewayStatus(overrides: Partial<GatewayStatus> = {}): GatewayStatus {
@@ -146,13 +146,12 @@ function fakeCore(options: {
       const url = new URL(String(input), "http://127.0.0.1");
       const method = init?.method ?? "GET";
       const sent = init?.body ? JSON.parse(String(init.body)) : undefined;
-      const rpc = /^\/api\/rpc\/gateway\/(status|configure|pair)$/.exec(
+      const rpc = /^\/api\/rpc\/gateway\/(status|configure)$/.exec(
         url.pathname,
       )?.[1];
       const legacy = {
         status: { method: "GET", path: "/api/gateway" },
         configure: { method: "PUT", path: "/api/gateway" },
-        pair: { method: "POST", path: "/api/gateway/pairing" },
       } as const;
       const route =
         rpc === undefined
@@ -177,16 +176,27 @@ function fakeCore(options: {
         }
         return reply(200, status);
       }
-      if (route.path === "/api/gateway/pairing") {
-        const origin =
-          (body as { origin?: string }).origin ?? "https://192.168.1.20:8443";
-        return reply(200, {
-          origin,
-          ticket: TICKET,
-          fingerprint: FP,
-          expiresAt: new Date(Date.now() + 120_000).toISOString(),
-          webUrl: `${origin}/#pair=${TICKET}&fp=${FP}`,
-          deepLink: `armadra://pair?host=${encodeURIComponent(new URL(origin).host)}&ticket=${TICKET}&fp=${FP}`,
+      if (route.path === "/api/rpc/connect/offer") {
+        const origin = "https://192.168.1.20:8443";
+        const expiresAtMs = Date.now() + 120_000;
+        return answer(200, {
+          json: {
+            sourceId: SOURCE,
+            expiresAtMs,
+            uri: connectUrl(origin, {
+              sourceId: SOURCE,
+              expiresAtMs,
+              direct: { origins: [origin], ticket: TICKET, fingerprint: FP },
+              relay: null,
+            }),
+            direct: {
+              origins: [origin],
+              fingerprint: FP,
+              code: null,
+              webUrl: `${origin}/#pair=${TICKET}&fp=${FP}`,
+            },
+            relay: null,
+          },
         });
       }
       // 设备经 procedure（契约 §42.1）：体是 `{ json }`，答案也是。
@@ -389,7 +399,7 @@ describe("允许其他设备访问与已配对设备", () => {
     ).toBeNull();
   });
 
-  it("off shows only the switch; turning it on PUTs /api/gateway, the QR only shows once 手机扫码连接 is opened", async () => {
+  it("off shows only the switch; turning it on PUTs /api/gateway, the QR only shows once 连接手机 is opened", async () => {
     const calls = fakeCore({});
     render(<HostPage />);
     const toggle = await screen.findByRole("switch", {
@@ -397,15 +407,15 @@ describe("允许其他设备访问与已配对设备", () => {
     });
     expect(toggle.getAttribute("aria-checked")).toBe("false");
     expect(screen.queryByText("互联网访问")).toBeNull();
-    expect(screen.queryByRole("button", { name: "手机扫码连接" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "连接手机" })).toBeNull();
     expect(screen.queryByRole("img", { name: "配对二维码" })).toBeNull();
 
     fireEvent.click(toggle);
-    const scan = await screen.findByRole("button", { name: "手机扫码连接" });
-    // 三行：开关、互联网访问、手机扫码连接；点开对话框之前不铸配对码。
+    const scan = await screen.findByRole("button", { name: "连接手机" });
+    // 三行：开关、互联网访问、连接手机；点开对话框之前不铸配对码。
     expect(screen.getByText("互联网访问")).toBeTruthy();
     expect(screen.queryByRole("img", { name: "配对二维码" })).toBeNull();
-    expect(calls.some((call) => call.path === "/api/gateway/pairing")).toBe(
+    expect(calls.some((call) => call.path === "/api/rpc/connect/offer")).toBe(
       false,
     );
     fireEvent.click(scan);
@@ -418,11 +428,13 @@ describe("允许其他设备访问与已配对设备", () => {
       body: { enabled: true },
     });
     expect(
-      calls.find((call) => call.path === "/api/gateway/pairing")?.method,
+      calls.find((call) => call.path === "/api/rpc/connect/offer")?.method,
     ).toBe("POST");
-    // 二维码里是网页配对链接：同一个来源、票与指纹都在片段里。
-    expect(parsePairingQr(qr.getAttribute("data-qr-text") ?? "")).toEqual({
-      origin: "https://192.168.1.20:8443",
+    // 二维码里是连接手机的网页链接（契约 §99.2）：同一个来源，票与指纹在片段里。
+    const scanned = parseConnect(qr.getAttribute("data-qr-text") ?? "");
+    expect(scanned.ok && scanned.webOrigin).toBe("https://192.168.1.20:8443");
+    expect(scanned.ok && scanned.payload.direct).toEqual({
+      origins: ["https://192.168.1.20:8443"],
       ticket: TICKET,
       fingerprint: FP,
     });
@@ -447,14 +459,14 @@ describe("允许其他设备访问与已配对设备", () => {
       devices: [{ deviceId: "d-phone", name: "iPhone", role: "owner" }],
     });
     render(<HostPage />);
-    await screen.findByRole("button", { name: "手机扫码连接" });
+    await screen.findByRole("button", { name: "连接手机" });
     expect(await screen.findByText("iPhone")).toBeTruthy();
 
     fireEvent.click(
       screen.getByRole("switch", { name: "允许其他设备访问这台电脑" }),
     );
     await waitFor(() =>
-      expect(screen.queryByRole("button", { name: "手机扫码连接" })).toBeNull(),
+      expect(screen.queryByRole("button", { name: "连接手机" })).toBeNull(),
     );
     expect(calls.filter((call) => call.method === "PUT").at(-1)?.body).toEqual({
       enabled: false,
@@ -481,7 +493,7 @@ describe("允许其他设备访问与已配对设备", () => {
   it("a shell-managed gateway is read-only but still pairs", async () => {
     fakeCore({ status: { ...runningStatus(), managedBy: "shell" } });
     render(<HostPage />);
-    const scan = await screen.findByRole("button", { name: "手机扫码连接" });
+    const scan = await screen.findByRole("button", { name: "连接手机" });
     expect(
       (
         screen.getByRole("switch", {

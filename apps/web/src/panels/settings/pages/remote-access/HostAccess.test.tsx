@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -10,6 +11,8 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { usePreferencesStore } from "@/app/preferences-store";
+import { dispatchWorkspaceEvent } from "../../../../api/events";
+import { localSource } from "../../../../api/source";
 import { installDomPolyfills } from "@/app/test-harness";
 
 const api = vi.hoisted(() => ({
@@ -52,8 +55,9 @@ vi.mock("../../remote-access", async (original) => ({
 const gateway = vi.hoisted(() => ({
   status: vi.fn(),
   configure: vi.fn(),
-  pair: vi.fn(),
 }));
+const connect = vi.hoisted(() => ({ offer: vi.fn() }));
+vi.mock("../../../../api/connect", () => ({ connectApi: connect }));
 vi.mock("../../../../api/gateway", async (original) => ({
   ...(await original<typeof import("../../../../api/gateway")>()),
   gatewayApi: gateway,
@@ -62,7 +66,7 @@ vi.mock("../../../../api/gateway", async (original) => ({
 import { HostAccess } from "./HostAccess";
 
 /**
- * 「这台电脑」三行（#675）：开关、互联网访问、手机扫码连接。互联网访问以 Armadra 云
+ * 「这台电脑」三行（#675）：开关、互联网访问、连接手机。互联网访问以 Armadra 云
  * 为缺省：已登记 / 登录着没登记 / 没登录三种状态各走一遍，只有个人中转时不变，
  * 取消任何一步都退回仅局域网。
  */
@@ -202,7 +206,7 @@ const signInButton = () =>
   within(row()).findByRole("button", { name: "Sign in to Armadra Cloud" });
 
 describe("三行", () => {
-  it("开关、互联网访问、手机扫码连接；没有可达范围下拉与旧的中转账号表单", async () => {
+  it("开关、互联网访问、连接手机；没有可达范围下拉与旧的中转账号表单", async () => {
     await mount([]);
     expect(
       await screen.findByRole("switch", {
@@ -217,27 +221,56 @@ describe("三行", () => {
     expect(screen.queryByLabelText("Password")).toBeNull();
   });
 
-  it("二维码、地址、指纹要点开「手机扫码连接」才有；地址下拉照对外服务给的顺序", async () => {
-    gateway.pair.mockResolvedValue({
-      ticket: "t",
-      expiresAt: new Date(Date.now() + 120_000).toISOString(),
-      origin: "https://192.168.1.8:8443",
-      fingerprint: "ab".repeat(32),
-      webUrl: "https://192.168.1.8:8443/#pair=t",
-      appUrl: "armadra://pair?x",
+  it("二维码、地址、指纹要点开「连接手机」才有；一张码，没有来源下拉", async () => {
+    const expiresAtMs = Date.now() + 120_000;
+    connect.offer.mockResolvedValue({
+      sourceId: local.sourceId,
+      expiresAtMs,
+      uri: `https://192.168.1.8:8443/#c=2&s=${local.sourceId}&e=${expiresAtMs}`,
+      direct: {
+        origins: ["https://192.168.1.8:8443", "https://100.67.25.43:8443"],
+        fingerprint: "ab".repeat(32),
+        code: null,
+        webUrl: "https://192.168.1.8:8443/#pair=t",
+      },
+      relay: null,
     });
     await mount([]);
     const scan = await screen.findByRole("button", { name: "Connect a phone" });
     expect(screen.queryByRole("img")).toBeNull();
-    expect(gateway.pair).not.toHaveBeenCalled();
+    expect(connect.offer).not.toHaveBeenCalled();
     fireEvent.click(scan);
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Connect a phone")).toBeTruthy();
-    await waitFor(() => expect(gateway.pair).toHaveBeenCalled());
+    await waitFor(() => expect(connect.offer).toHaveBeenCalledTimes(1));
     expect(within(dialog).getByRole("img")).toBeTruthy();
-    expect(within(dialog).getByRole("combobox").textContent).toContain(
-      "192.168.1.8",
+    expect(within(dialog).queryByRole("combobox")).toBeNull();
+    expect(within(dialog).getByText("https://192.168.1.8:8443")).toBeTruthy();
+  });
+
+  it("手机把码用掉了：对话框收起并提示已连接", async () => {
+    const expiresAtMs = Date.now() + 120_000;
+    connect.offer.mockResolvedValue({
+      sourceId: local.sourceId,
+      expiresAtMs,
+      uri: `https://192.168.1.8:8443/#c=2&s=${local.sourceId}&e=${expiresAtMs}`,
+      direct: null,
+      relay: { issuers: [CLOUD], identityFingerprint: "FP" },
+    });
+    await mount([]);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Connect a phone" }),
     );
+    await screen.findByRole("dialog");
+    await waitFor(() => expect(connect.offer).toHaveBeenCalled());
+    act(() =>
+      dispatchWorkspaceEvent(
+        { type: "connect.used", route: "direct" },
+        localSource.sourceId,
+      ),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(toasts.success).toHaveBeenCalledWith("Phone connected");
   });
 });
 

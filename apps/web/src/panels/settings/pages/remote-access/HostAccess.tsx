@@ -1,9 +1,11 @@
 import * as React from "react";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "@/ui/toast";
-import type { GatewayPairingPayload } from "@armadra/shared";
+import type { ConnectOffer } from "@armadra/shared";
 
-import { gatewayApi } from "../../../../api/gateway";
+import { connectApi } from "../../../../api/connect";
+import { onWorkspaceEvent } from "../../../../api/events";
+import { localSource } from "../../../../api/source";
 import { useT } from "../../../../app/preferences-store";
 import { useAccess } from "../../../../app/use-access";
 import {
@@ -24,12 +26,22 @@ import { InternetRow, type InternetState } from "./InternetRow";
 import { useGateway, useInternetRoute, useRegisteredSpace } from "./hooks";
 import { hostOf, useSourceTableChanged } from "./keys";
 
+/** 回环来源（本机自己用）不进二维码，没有别的来源就没有直连这条路。 */
+function isLoopbackOrigin(origin: string): boolean {
+  try {
+    const host = new URL(origin).hostname;
+    return host === "localhost" || host === "[::1]" || host.startsWith("127.");
+  } catch {
+    return false;
+  }
+}
+
 /** 关掉之前要确认的：整个关掉，或只停互联网路线。 */
 type Confirming = "off" | "internet" | null;
 
 /**
  * 远程访问页「这台电脑」（#301、#675）：「允许其他设备访问」开关、「互联网访问」、
- * 「手机扫码连接」三行。「互联网访问」以 Armadra 云为缺省：登记过就是开着（行上是
+ * 「连接手机」三行。「互联网访问」以 Armadra 云为缺省：登记过就是开着（行上是
  * 空间与「更换」）；登录着、没登记的接着选空间登记；没登录的先走设备码登录再登记；
  * 只有个人中转账号的一键开。取消任何一步都停在仅局域网。
  */
@@ -55,27 +67,49 @@ function HostAccessBody() {
   const [scanning, setScanning] = React.useState(false);
   const [confirming, setConfirming] = React.useState<Confirming>(null);
 
-  const [pairing, setPairing] = React.useState<GatewayPairingPayload | null>(
-    null,
-  );
-  const pair = useMutation({
-    mutationFn: (origin?: string) => gatewayApi.pair(origin),
-    onSuccess: (payload) => setPairing(payload),
-    onError: () => toast.error(t("gateway.pair.failed")),
+  const [offer, setOffer] = React.useState<ConnectOffer | null>(null);
+  const mint = useMutation({
+    mutationFn: () => connectApi.offer(),
+    onSuccess: (payload) => setOffer(payload),
+    onError: () => {
+      setScanning(false);
+      toast.error(t("gateway.pair.failed"));
+    },
   });
-  const running = Boolean(status?.enabled && status.running);
   const origin = status?.origin ?? null;
   const fingerprint = status?.tls.fingerprint ?? null;
-  // 点开「手机扫码连接」才铸一张（来源、信任锚变了重铸）；关掉就丢。票只活两分钟，
-  // 过期后不自动续，等人点「新配对码」。
-  const { mutate: mint } = pair;
+  // 有路可连：局域网在跑且有非回环地址，或互联网路线开着（契约 §99.1）。
+  const connectable =
+    internet.on ||
+    Boolean(
+      status?.enabled &&
+        status.running &&
+        status.origins.some((one) => !isLoopbackOrigin(one)),
+    );
+  // 点开「连接手机」才铸一枚（来源、信任锚变了重铸）；关掉就丢。票只活两分钟，过期后
+  // 不自动续，等人点「新配对码」。
+  const { mutate: mintOffer } = mint;
   React.useEffect(() => {
-    if (!running) setScanning(false);
-  }, [running]);
+    if (!connectable) setScanning(false);
+  }, [connectable]);
   React.useEffect(() => {
-    setPairing(null);
-    if (scanning && running) mint(undefined);
-  }, [scanning, running, origin, fingerprint, mint]);
+    setOffer(null);
+    if (scanning && connectable) mintOffer();
+  }, [scanning, connectable, origin, fingerprint, mintOffer]);
+  // 手机把码用掉了：收起对话框，提示已连接（契约 §99.4）。
+  React.useEffect(
+    () =>
+      onWorkspaceEvent(
+        "connect.used",
+        (_event, sourceId) => {
+          if (sourceId !== localSource.sourceId) return;
+          setScanning(false);
+          toast.success(t("remote.connected"));
+        },
+        { allSources: true },
+      ),
+    [t],
+  );
 
   const shellManaged = status?.managedBy === "shell";
   const lanEditable = status !== null && !shellManaged;
@@ -168,6 +202,7 @@ function HostAccessBody() {
           internet={internet.on}
           busy={gateway.configure.isPending || internet.busy}
           inUse={internetInUse}
+          connectable={connectable}
           onToggle={toggle}
           onScan={() => setScanning(true)}
         >
@@ -182,18 +217,16 @@ function HostAccessBody() {
         </GatewayPanel>
       </SettingsLoadable>
       <PairingDialog
-        open={scanning && running}
+        open={scanning && connectable}
         onClose={() => setScanning(false)}
-        pairing={pairing}
-        busy={pair.isPending}
-        origins={status?.origins ?? []}
-        fingerprint={fingerprint}
+        offer={offer}
+        busy={mint.isPending}
         caHref={
           status?.tls.caAvailable && status.origin
             ? `${status.origin}/ca.crt`
             : null
         }
-        onNewPairing={(next) => pair.mutate(next)}
+        onNewOffer={() => mint.mutate()}
       />
       <AddCloudDialog
         initialIssuer={cloud?.issuer ?? null}
