@@ -748,8 +748,7 @@ export function install(
       // 前面只有一个人，他敲键与他按钮是同一个人。Agent 的租约不在此列，它仍然
       // 只能由 Agent 自己放掉，或者由人「接管」撤销。
       const lease = manager.driveLease(sessionId);
-      // 没人握着时交还是空操作：页面失焦与提交各发一次交还，后到的那次碰上的
-      // 已经是空闲，不是错误（原先落成 500）。
+      // 没人握着时交还是空操作（失焦与提交各发一次，后到的碰上空闲不是错误）。
       if (action === "release" && lease.state === "free") return lease;
       const held = lease.holder;
       const actor =
