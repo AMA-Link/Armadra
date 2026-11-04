@@ -19,7 +19,6 @@ function ticket(expiresAtMs: number, origin = "https://192.168.1.20:8443") {
     origins: [origin],
     fingerprint: "f".repeat(64),
     webUrl: `${origin}/#pair=x`,
-    deepLink: "armadra://pair?host=x&ticket=x&fp=x",
   } satisfies PairingTicket;
 }
 

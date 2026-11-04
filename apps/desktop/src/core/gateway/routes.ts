@@ -21,20 +21,18 @@ import {
 } from "@armadra/shared";
 
 /**
- * `/api/gateway*` 的三条（契约 §17）。owner 才进得来——路由门按
+ * `/api/gateway*` 的几条（契约 §17、§24、§73）。owner 才进得来——路由门按
  * `route-scopes.ts` 的 `settings:*` 判，成员只有工作空间授权，一律 403。
  *
  *   * `GET /api/gateway`：状态。
  *   * `PUT /api/gateway`：改配置（`gateway.*` 的子集，未给的键不动），然后
  *     按新配置开、关或重开；关掉即刻停止监听并断开经它进来的流。
- *   * `POST /api/gateway/pairing`：铸一张配对票，回网页链接与原生深链；私网
- *     档位上连同一枚 8 位短码。
  *   * `POST /api/gateway/pairing-code/exchange`：短码换票（契约 §24）。匿名——
  *     手机还没有身份，短码就是凭据；档位与限流在 Gateway 域里判。
  *   * `POST /api/gateway/pairing-code/pake/{start,finish}`：原生 App 首次连接时
  *     用短码做口令认证的密钥交换（契约 §73），同样匿名。
  *
- * 前三条收成一份操作（{@link gatewayOperations}），旧路径的 handler 与
+ * 前两条收成一份操作（{@link gatewayOperations}），旧路径的 handler 与
  * `registerProcedures(server, "gateway", …)`（契约 §43.7）调同一份，拒绝都是
  * {@link CoreFailure}：码、状态与原话一样。**短码换票不经 RPC**：它是匿名面，
  * 契约里登记了它的形状（`scope: null`），实现只在旧路径上（Gateway 的准入里放行、
@@ -60,10 +58,6 @@ export interface GatewayRouteDeps {
   status(): Record<string, unknown>;
   /** 写进设置并对账；壳托管（服务器壳）时答 409。 */
   configure(patch: JsonObject): Promise<ErrorResponse | undefined>;
-  pair(input: {
-    origin?: string;
-    deviceName?: string;
-  }): Record<string, unknown> | ErrorResponse;
   exchangeCode(input: PairingCodeExchange): HandlerResult;
   pakeStart(input: PairingPakeStartInput): HandlerResult;
   pakeFinish(input: PairingPakeFinishInput): HandlerResult;
@@ -74,7 +68,7 @@ function refusal(answer: ErrorResponse): CoreFailure {
   return new CoreFailure(answer.status, answer.body.code, answer.body.message);
 }
 
-/** 状态、改配置、铸票：旧路径与 procedure 共用；拒绝抛 {@link CoreFailure}。 */
+/** 状态与改配置：旧路径与 procedure 共用；拒绝抛 {@link CoreFailure}。 */
 export function gatewayOperations(deps: GatewayRouteDeps) {
   return {
     status: () => deps.status(),
@@ -84,15 +78,6 @@ export function gatewayOperations(deps: GatewayRouteDeps) {
       const refused = await deps.configure(parsed.patch);
       if (refused !== undefined) throw refusal(refused);
       return deps.status();
-    },
-    pair: (body: unknown): Record<string, unknown> => {
-      const input = parsePairingBody(body);
-      if ("status" in input) throw refusal(input);
-      const answer = deps.pair(input);
-      if ("status" in answer && "body" in answer) {
-        throw refusal(answer as ErrorResponse);
-      }
-      return answer;
     },
   };
 }
@@ -120,48 +105,6 @@ export async function putGateway(
   } catch (error) {
     return failed(error);
   }
-}
-
-export function postPairing(
-  deps: GatewayRouteDeps,
-  request: CoreRequest,
-): HandlerResult {
-  try {
-    return {
-      status: 200,
-      body: gatewayOperations(deps).pair(
-        request.body.length === 0 ? {} : request.json(),
-      ),
-    };
-  } catch (error) {
-    return failed(error);
-  }
-}
-
-function parsePairingBody(
-  body: unknown,
-): { origin?: string; deviceName?: string } | ErrorResponse {
-  if (typeof body !== "object" || body === null || Array.isArray(body)) {
-    return badRequest("请求体必须是对象");
-  }
-  const input = body as Record<string, unknown>;
-  const out: { origin?: string; deviceName?: string } = {};
-  if (input.origin !== undefined) {
-    if (typeof input.origin !== "string")
-      return badRequest("origin 必须是字符串");
-    out.origin = input.origin;
-  }
-  if (input.deviceName !== undefined) {
-    if (
-      typeof input.deviceName !== "string" ||
-      input.deviceName.trim() === "" ||
-      input.deviceName.length > 64
-    ) {
-      return badRequest("deviceName 必须是 1–64 个字符");
-    }
-    out.deviceName = input.deviceName.trim();
-  }
-  return out;
 }
 
 export function postPairingCodeExchange(

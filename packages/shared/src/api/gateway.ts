@@ -90,7 +90,7 @@ export const gatewayConfigPatchSchema = z
 
 export type GatewayConfigPatch = z.infer<typeof gatewayConfigPatchSchema>;
 
-/** `POST /api/gateway/pairing` — what the pairing QR code carries (§17.3). */
+/** What a pairing-code exchange hands back: a ticket for the `#pair=` browser link (§24, §73). */
 export const gatewayPairingPayloadSchema = z.object({
   origin: z.string().url(),
   ticket: z.string().min(1),
@@ -99,8 +99,6 @@ export const gatewayPairingPayloadSchema = z.object({
   expiresAt: z.string().datetime({ offset: true }),
   /** `https://<host>:<port>/#pair=<ticket>&fp=<fingerprint>`. */
   webUrl: z.string().url(),
-  /** `armadra://pair?host=…&ticket=…&fp=…`. */
-  deepLink: z.string().startsWith("armadra://pair?"),
   /**
    * 8-character pairing code shown as `XXXX-XXXX` (§24). `null` when the
    * gateway is on the public `all` tier or has a public origin; absent on the

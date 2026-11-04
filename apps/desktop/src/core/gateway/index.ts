@@ -53,7 +53,6 @@ import {
   type PairingPakeStartInput,
   gatewayOperations,
   getGateway,
-  postPairing,
   postPairingCodeExchange,
   postPairingPakeFinish,
   postPairingPakeStart,
@@ -95,6 +94,8 @@ export interface GatewayDomainOptions {
   readonly pairingCodes?: PairingCodes;
   /** 测试用：PAKE 会话的时钟。 */
   readonly now?: () => number;
+  /** 测试用：连接手机的二维码里也放回环来源（缺省看环境变量，见 `connectHalf`）。 */
+  readonly includeLoopback?: boolean;
 }
 
 /**
@@ -258,9 +259,16 @@ export class GatewayDomain {
   connectHalf(): GatewayConnectHalf | undefined {
     const gateway = this.current;
     if (gateway === undefined) return undefined;
+    // 回环来源只有本机自己连得上，不进二维码。探针和集成测试在回环上起 Gateway，
+    // 用 `ARMADRA_CONNECT_INCLUDE_LOOPBACK=1` 放开（只给它们，页面与 App 不读）。
+    const includeLoopback =
+      this.options.includeLoopback ??
+      process.env.ARMADRA_CONNECT_INCLUDE_LOOPBACK === "1";
     const origins = gateway
       .origins()
-      .filter((origin) => !loopbackHost(new URL(origin).hostname))
+      .filter(
+        (origin) => includeLoopback || !loopbackHost(new URL(origin).hostname),
+      )
       .slice(0, 3);
     if (origins.length === 0) return undefined;
     const issued = gateway.pair({ origins });
@@ -284,36 +292,6 @@ export class GatewayDomain {
           if (id === ticketId) listener();
         }),
     };
-  }
-
-  pair(input: {
-    origin?: string;
-    deviceName?: string;
-  }): Record<string, unknown> | ErrorResponse {
-    const gateway = this.current;
-    if (gateway === undefined) return GATEWAY_NOT_RUNNING;
-    try {
-      const issued = gateway.pair(input);
-      const code = this.codesOpen(gateway) ? this.codes.issue(issued) : null;
-      // 票与短码都不进审计：两分钟内它们都能换出一台 owner 设备。
-      audit({
-        action: "gateway.pairing.issue",
-        detail: {
-          origin: issued.origin,
-          expiresAtMs: issued.expiresAtMs,
-          code: code !== null,
-        },
-      });
-      return {
-        ...pairingJson(issued),
-        code: code === null ? null : formatPairingCode(code),
-      };
-    } catch (error) {
-      if (error instanceof GatewayError) {
-        return coreError(400, error.code, error.message);
-      }
-      throw error;
-    }
   }
 
   /**
@@ -671,8 +649,6 @@ export function install(
   const deps = {
     status: () => domain.status(),
     configure: (patch: JsonObject) => domain.configure(patch),
-    pair: (input: { origin?: string; deviceName?: string }) =>
-      domain.pair(input),
     exchangeCode: (input: PairingCodeExchange) => domain.exchangeCode(input),
     pakeStart: (input: PairingPakeStartInput) => domain.pakeStart(input),
     pakeFinish: (input: PairingPakeFinishInput) => domain.pakeFinish(input),
@@ -684,7 +660,6 @@ export function install(
   const procedures = {
     status: () => run.status() as never,
     configure: async (body) => (await run.configure(body)) as never,
-    pair: (body) => run.pair(body) as never,
   } satisfies Omit<
     DomainHandlers<"gateway">,
     "exchangePairingCode" | "pakeStart" | "pakeFinish"
@@ -697,9 +672,6 @@ export function install(
   router.handle("GET", "/api/gateway", () => getGateway(deps));
   router.handle("PUT", "/api/gateway", (_match, request) =>
     putGateway(deps, request),
-  );
-  router.handle("POST", "/api/gateway/pairing", (_match, request) =>
-    postPairing(deps, request),
   );
   router.handle(
     "POST",

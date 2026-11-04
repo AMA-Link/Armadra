@@ -90,17 +90,17 @@ async function addRemote() {
 }
 
 describe("配对链接", () => {
-  it("网页链接与深链都认", () => {
+  it("只认网页链接；旧的 armadra://pair 深链不再认", () => {
     expect(parsePairLink(pairLink)).toEqual({
       origin: GATEWAY,
       ticket: "ticket-1",
       fingerprint: GATEWAY_FP,
     });
-    expect(
+    expect(() =>
       parsePairLink(
         `armadra://pair?host=gw.test%3A8443&ticket=ticket-1&fp=${GATEWAY_FP}`,
       ),
-    ).toEqual({ origin: GATEWAY, ticket: "ticket-1", fingerprint: GATEWAY_FP });
+    ).toThrow();
     expect(() => parsePairLink("https://gw.test/")).toThrow();
     expect(() => parsePairLink("http://192.168.1.2/#pair=x")).toThrow();
   });

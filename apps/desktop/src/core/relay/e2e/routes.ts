@@ -26,7 +26,6 @@ import { TunnelDuplex } from "../streams";
 import type { DeviceKey } from "./device-key";
 import { DeviceError, type DeviceRegistry, type DeviceView } from "./devices";
 import type { EndorsementStore } from "./endorsements";
-import type { PairingSecrets } from "./pairing";
 import { channelPeerOf, e2eDevices } from "./peer";
 
 /** 等候一次最长多久。 */
@@ -97,10 +96,6 @@ export interface E2eRouteDeps {
   /** 这台 core 的 `sourceId` 与身份公钥（源钥）。 */
   readonly identity: () => Promise<{ sourceId: string; publicKey: Uint8Array }>;
   readonly deviceKey: DeviceKey;
-  /** 配对秘密（契约 §80.1）；不给不签。 */
-  readonly pairing?: PairingSecrets;
-  /** 这台电脑登记到的远程服务（二维码里交给新设备）。 */
-  readonly issuers?: () => string[];
 }
 
 function refusal(error: DeviceError): CoreFailure {
@@ -358,35 +353,6 @@ export function e2eOperations(deps: E2eRouteDeps) {
         fingerprint: keyFingerprint(publicKey),
       };
     },
-    pairingSecret: async (request?: CoreRequest) => {
-      // 配对秘密不绑主体，拿到就能让一台新设备直接受信：浏览器不签（契约 §88.7）。
-      if (relayedWithoutNativeDevice(deps, request))
-        throw fail("forbidden", "配对二维码不能在浏览器里生成");
-      if (deps.pairing === undefined)
-        throw fail("unsupported", "这台电脑没有装中继");
-      const { sourceId, publicKey } = await deps.identity();
-      const issued = deps.pairing.issue();
-      const payload = {
-        sourceId,
-        identityPub: Buffer.from(publicKey).toString("base64url"),
-        fingerprint: keyFingerprint(publicKey),
-        secret: Buffer.from(issued.secret).toString("base64url"),
-        issuers: deps.issuers?.() ?? [],
-        expiresAtMs: issued.expiresAtMs,
-      };
-      const compact = {
-        v: 1,
-        s: payload.sourceId,
-        k: payload.identityPub,
-        p: payload.secret,
-        i: payload.issuers,
-        e: payload.expiresAtMs,
-      };
-      return {
-        ...payload,
-        uri: `armadra://pair-e2e?d=${Buffer.from(JSON.stringify(compact)).toString("base64url")}`,
-      };
-    },
     sign: async (input: { transcript: unknown }) => {
       const encoded = text(input.transcript, "transcript", 64);
       const transcript = Buffer.from(encoded, "base64url");
@@ -464,7 +430,6 @@ export function installE2eRoutes(server: CoreServer, deps: E2eRouteDeps): void {
   const procedures = {
     sign: (input) => run.sign(input),
     waitSource: (input) => run.waitSource(input),
-    pairingSecret: (_input, call) => run.pairingSecret(call.request),
   } satisfies Omit<DomainHandlers<"e2e">, "identity" | "wait">;
   registerProcedures(
     server,
@@ -492,9 +457,6 @@ export function installE2eRoutes(server: CoreServer, deps: E2eRouteDeps): void {
   );
   router.handle("POST", "/api/e2e/sign", (_match, request) =>
     answer(() => run.sign(body(request) as never)),
-  );
-  router.handle("POST", "/api/e2e/pairing-secret", (_match, request) =>
-    answer(() => run.pairingSecret(request)),
   );
   router.handle("POST", "/api/e2e/sources/wait", (_match, request) =>
     answer(() => run.waitSource(body(request) as never)),

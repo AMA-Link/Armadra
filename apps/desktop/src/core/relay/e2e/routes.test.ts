@@ -5,9 +5,8 @@ import { runAs, type RequestIdentity } from "../../identity/gate";
 import { TunnelDuplex } from "../streams";
 import type { DeviceRegistry, TrustedDeviceRow } from "./devices";
 import type { ChannelPeer } from "./peer";
-import { markChannelSocket } from "./peer";
-import type { PairingSecrets } from "./pairing";
-import { type E2eRouteDeps, e2eOperations } from "./routes";
+import { markChannelSocket, setE2eDevices } from "./peer";
+import { type E2eRouteDeps, relayedBrowserRequest } from "./routes";
 
 /**
  * 「经中继却拿不出原生设备钥」的判定（契约 §88.7）里，集成测试走不到的两条：登记行不是
@@ -49,9 +48,6 @@ function deps(row: Partial<TrustedDeviceRow> | undefined): E2eRouteDeps {
               } as TrustedDeviceRow),
       },
     } as unknown as DeviceRegistry,
-    pairing: {
-      issue: () => ({ secret: new Uint8Array(16), expiresAtMs: 1 }),
-    } as unknown as PairingSecrets,
     identity: async () => ({ sourceId: "src", publicKey: new Uint8Array(32) }),
     deviceKey: {} as E2eRouteDeps["deviceKey"],
   };
@@ -63,17 +59,18 @@ const asOwner = <T>(work: () => T) =>
     work,
   );
 
+/** 经这条通道来的请求，按 §88.7 算不算浏览器（`connect.offer` 用的就是这一条）。 */
 async function pairing(
   row: Partial<TrustedDeviceRow> | undefined,
   claimed: string,
 ) {
+  setE2eDevices(deps(row).devices);
   try {
-    await asOwner(() =>
-      e2eOperations(deps(row)).pairingSecret(channelRequest(claimed)),
-    );
-    return "ok";
-  } catch (error) {
-    return (error as { code?: string }).code;
+    return asOwner(() => relayedBrowserRequest(channelRequest(claimed)))
+      ? "forbidden"
+      : "ok";
+  } finally {
+    setE2eDevices(undefined);
   }
 }
 

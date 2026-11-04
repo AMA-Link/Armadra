@@ -98,7 +98,6 @@ describe("gateway api (contract §17)", () => {
         fingerprint: "ab".repeat(32),
         expiresAt: "2026-10-03T00:02:00.000Z",
         webUrl: `https://127.0.0.1:8443/#pair=t&fp=${"ab".repeat(32)}`,
-        deepLink: "armadra://pair?host=127.0.0.1%3A8443&ticket=t&fp=ab",
       }).success,
     ).toBe(true);
     expect(
