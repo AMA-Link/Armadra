@@ -310,14 +310,17 @@ app-builder-lib 只要看到 `APPLE_ID` 就走 Apple ID 分支，所以**两套�
 `node apps/desktop/scripts/signing-electron.mjs verify-mac`，对每个 `.app` 做
 `codesign --verify --deep --strict`，挡住「有签名目录但 Gatekeeper 不认」的包。更新器的
 `signatureState` 在运行时也跑同一条 `codesign --verify --deep --strict`（每进程一次），ad-hoc
-签名答 `unknown`，与未签名一样不装。
+签名答 `unknown`，与未签名一样不走 electron-updater，改走发布公钥那条路（`installPath`）：下载包对上
+资产摘要并用 `armadra-release.pub` 验过 `.sig` 后，退出时由辅助脚本替换 `.app`（只在从「应用程序」运行时可装，
+从挂载的 dmg 运行答 `unsupported`）。
 
 证书选 **Developer ID Application（G2 链）**：旧的 Developer ID Sub-CA 2027-02-01 到期，
 之后签出的东西必须来自 G2 链证书。
 
 本地演练：`ARMADRA_MAC_ADHOC_SIGN=1 ARMADRA_DIST_RELEASE=1 pnpm --filter @armadra/desktop dist`
 用 ad-hoc 身份 `-` 签，`verify-mac` 能过；Gatekeeper（`spctl --assess`）与 Squirrel.Mac 只认
-Developer ID 签名加公证，所以 ad-hoc 包能走到「暂存」，装不上（`tools/probes/README.md` 的自动更新端到端）。
+Developer ID 签名加公证，所以 ad-hoc 包不经 Squirrel.Mac，由发布公钥验签后经辅助脚本安装（见上文与
+`tools/probes/README.md` 的自动更新端到端）。
 没有用自签的 codesign 身份演练：那要往用户的钥匙串搜索列表里加钥匙串，属于改本机安全设置。
 
 ### 2.6.1 Windows 签名
@@ -628,7 +631,7 @@ pnpm release:dry-run   # 把一次完整发布落到临时目录并校验
 - Apple 证书导入、`notarytool --validate`（API key 与 Apple ID 两条）与 electron-builder 的公证（要真 secret）；
 - Windows Authenticode 的 Azure / 证书文件 / 自托管令牌三条路（要真 secret 或订阅）；
 - 签名包的「安装 → 重启 → 版本号变」（`tools/probes/update-e2e.mjs --install`，要真证书；
-  未签名包的「检查 → 下载 → 验签 → 暂存 → 拒装」已在本机打包版上走通）；
+  未签名包经发布公钥验签、辅助脚本替换的安装路径见 `shell-core/updates/availability.ts` 的 `installPath`）；
 - Windows 便携 zip 解压后 core 能不能在 `resources/` 里找到 hook 客户端、
   session-host 与 `migrations/`。
 
