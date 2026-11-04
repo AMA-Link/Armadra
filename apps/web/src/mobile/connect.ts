@@ -42,6 +42,7 @@ import {
   cloudDeviceStart,
   cloudLogin,
   cloudPlatformInfo,
+  cloudRefresh,
   cloudSources,
   coreCloudLogin,
   thisDevice,
@@ -101,7 +102,7 @@ export interface NativeConnectDeps {
   readonly reload: () => void;
 }
 
-const nativeDeps = (): NativeConnectDeps => ({
+export const nativeDeps = (): NativeConnectDeps => ({
   bridge: nativeBridge(),
   pair: pairWithGateway,
   save: saveRuntimeOrigin,
@@ -619,7 +620,21 @@ export interface RelayEnrollment {
   /** 人确认了指纹：钉住，接着刚才的步骤。 */
   trust(): Promise<RelayOutcome>;
   /** 勾选的源逐个挂载。 */
-  mount(sourceIds: readonly string[]): Promise<RelayOutcome>;
+  mount(
+    sourceIds: readonly string[],
+    options?: { readonly quiet?: boolean },
+  ): Promise<RelayOutcome>;
+  /**
+   * 连接手机的二维码走中转（契约 §99.5）：钥匙串里已有这些签发方之一的登录就直接挂上
+   * 源 `sourceId`，不弹源列表；没有就答 `login`，由界面走登录，登录后再 `mount`。
+   * `quiet` 是后台顺带挂中转路线：不切换当前连接、不重载页面。
+   */
+  attach(
+    target: { readonly sourceId: string; readonly issuers: readonly string[] },
+    options?: { readonly quiet?: boolean },
+  ): Promise<
+    RelayOutcome | { readonly kind: "login"; readonly issuer: string }
+  >;
   /** 放弃：口令与会话不再留在内存里。 */
   reset(): void;
 }
@@ -999,7 +1014,7 @@ export function createRelayEnrollment(
       resume = null;
       return next();
     },
-    async mount(sourceIds) {
+    async mount(sourceIds, options) {
       const current = session;
       if (current === null) return failed("failed");
       const deviceInfo = thisDevice();
@@ -1057,10 +1072,51 @@ export function createRelayEnrollment(
       } catch (error) {
         return cloudFailed(error);
       }
-      enterNext(mounted);
+      if (options?.quiet !== true) enterNext(mounted);
       reset();
-      deps.reload();
+      if (options?.quiet !== true) deps.reload();
       return { kind: "done" };
+    },
+    async attach(target, options) {
+      const remotes = await deps.bridge.getRemotes();
+      let login: string | null = null;
+      for (const candidate of target.issuers) {
+        const origin = issuerOrigin(candidate);
+        if (origin === null) continue;
+        login ??= origin;
+        // 主人的那一槽；访客槽（`guest.<源>`）只管它加入的那台，不拿来挂别的源。
+        const stored = remotes.find(
+          (item) =>
+            item.issuer === origin &&
+            item.refreshToken !== "" &&
+            !item.serviceId.includes(":guest."),
+        );
+        if (stored === undefined) continue;
+        try {
+          session = await cloudRefresh(origin, stored.refreshToken, deps.cloud);
+        } catch (error) {
+          session = null;
+          if (error instanceof CloudTransportError)
+            return failed("unreachable");
+          // 刷新令牌失效：当没登录过，走登录。
+          continue;
+        }
+        issuer = origin;
+        fingerprint = stored.fingerprint;
+        saas = stored.kind === "saas";
+        const listed = await listSources(session).catch((error: unknown) =>
+          cloudFailed(error),
+        );
+        if (listed.kind !== "sources") return listed;
+        if (!listed.sources.some((one) => one.sourceId === target.sourceId)) {
+          reset();
+          return failed("wrongAccount");
+        }
+        return this.mount([target.sourceId], options);
+      }
+      return login === null
+        ? failed("invalid")
+        : { kind: "login", issuer: login };
     },
   };
 }

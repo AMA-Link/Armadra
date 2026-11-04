@@ -1,5 +1,6 @@
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { connectUrl } from "@armadra/shared";
 import {
   act,
   cleanup,
@@ -284,6 +285,7 @@ describe("连接页 · 多连接（添加连接）", () => {
       join: vi.fn(),
       trust: vi.fn(),
       mount: vi.fn(),
+      attach: vi.fn(),
       reset: vi.fn(),
     };
     return relay;
@@ -523,6 +525,171 @@ describe("连接页 · 多连接（添加连接）", () => {
     expect(relay.join).toHaveBeenCalledTimes(1);
   });
 
+  describe("连接手机的二维码（契约 §99）", () => {
+    const SOURCE = "0123456789abcdef0123456789abcdef";
+    const text = connectUrl("https://192.168.1.20:8443", {
+      sourceId: SOURCE,
+      expiresAtMs: Date.now() + 120_000,
+      direct: {
+        origins: ["https://192.168.1.20:8443"],
+        ticket: `${"a1".repeat(16)}.${"Qz3".repeat(14)}_-`,
+        fingerprint: "ab".repeat(32),
+      },
+      relay: {
+        identityPub: "A".repeat(43),
+        secret: "B".repeat(22),
+        issuers: ["https://app.armadra.com"],
+      },
+    });
+    const scanWith = (
+      onOffer: NonNullable<
+        React.ComponentProps<typeof ConnectScreen>["onOffer"]
+      >,
+      relay = outcomes(),
+    ) => {
+      render(
+        <ConnectScreen
+          {...base}
+          relay={relay}
+          onScan={async () => text}
+          onOffer={onOffer}
+        />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "扫码" }));
+      return relay;
+    };
+
+    it("扫到：按载荷调 onOffer，不当配对链接处理", async () => {
+      const onOffer = vi.fn(async () => ({ kind: "done" as const }));
+      scanWith(onOffer);
+      await waitFor(() => expect(onOffer).toHaveBeenCalledTimes(1));
+      expect(onOffer).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceId: SOURCE }),
+      );
+      expect(base.onConnect).not.toHaveBeenCalled();
+    });
+
+    it("失败原因按文案显示：过期、旧版、新版", async () => {
+      const onOffer = vi.fn(async () => ({
+        kind: "failure" as const,
+        failure: "offerExpired" as const,
+      }));
+      scanWith(onOffer);
+      await waitFor(() =>
+        expect(
+          screen.getByText("二维码已过期，请在电脑上点「新配对码」"),
+        ).toBeTruthy(),
+      );
+    });
+
+    it("旧版二维码在 App 里不发任何请求，直接说明", async () => {
+      const onOffer = vi.fn();
+      render(
+        <ConnectScreen
+          {...base}
+          relay={outcomes()}
+          onScan={async () => text.replace("#c=2", "#c=1")}
+          onOffer={onOffer}
+        />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "扫码" }));
+      await waitFor(() =>
+        expect(
+          screen.getByText(
+            "这是旧版 Armadra 的二维码，请把电脑升级到与 App 相同的版本",
+          ),
+        ).toBeTruthy(),
+      );
+      expect(onOffer).not.toHaveBeenCalled();
+    });
+
+    it("直连不通走中转：钥匙串里有登录就直接挂，不弹源列表", async () => {
+      const relay = outcomes();
+      relay.attach.mockResolvedValue({ kind: "done" });
+      scanWith(
+        vi.fn(async () => ({
+          kind: "relay" as const,
+          sourceId: SOURCE,
+          issuers: ["https://app.armadra.com"],
+        })),
+        relay,
+      );
+      await waitFor(() =>
+        expect(relay.attach).toHaveBeenCalledWith({
+          sourceId: SOURCE,
+          issuers: ["https://app.armadra.com"],
+        }),
+      );
+      expect(screen.queryByText("选择主机")).toBeNull();
+    });
+
+    it("没有登录：去登录，登录出了源列表就自动挂那一台", async () => {
+      const relay = outcomes();
+      relay.attach.mockResolvedValue({
+        kind: "login",
+        issuer: "https://relay.example.com",
+      });
+      relay.begin.mockResolvedValue({
+        kind: "sources",
+        sources: [
+          { sourceId: "other", name: "Studio", online: true },
+          { sourceId: SOURCE, name: "MacBook", online: true },
+        ],
+      });
+      relay.mount.mockResolvedValue({ kind: "done" });
+      scanWith(
+        vi.fn(async () => ({
+          kind: "relay" as const,
+          sourceId: SOURCE,
+          issuers: ["https://relay.example.com"],
+        })),
+        relay,
+      );
+      await waitFor(() => expect(screen.getByLabelText("账号")).toBeTruthy());
+      fireEvent.change(screen.getByLabelText("账号"), {
+        target: { value: "owner" },
+      });
+      fireEvent.change(screen.getByLabelText("口令"), {
+        target: { value: "pw" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "登录" }));
+      await waitFor(() => expect(relay.mount).toHaveBeenCalledWith([SOURCE]));
+      expect(screen.queryByText("选择主机")).toBeNull();
+    });
+
+    it("登录的账号下没有这台电脑：wrongAccount，不挂别的", async () => {
+      const relay = outcomes();
+      relay.attach.mockResolvedValue({
+        kind: "login",
+        issuer: "https://relay.example.com",
+      });
+      relay.begin.mockResolvedValue({
+        kind: "sources",
+        sources: [{ sourceId: "other", name: "Studio", online: true }],
+      });
+      scanWith(
+        vi.fn(async () => ({
+          kind: "relay" as const,
+          sourceId: SOURCE,
+          issuers: ["https://relay.example.com"],
+        })),
+        relay,
+      );
+      await waitFor(() => expect(screen.getByLabelText("账号")).toBeTruthy());
+      fireEvent.change(screen.getByLabelText("账号"), {
+        target: { value: "owner" },
+      });
+      fireEvent.change(screen.getByLabelText("口令"), {
+        target: { value: "pw" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "登录" }));
+      await waitFor(() =>
+        expect(screen.getByText("这个账号下没有这台电脑")).toBeTruthy(),
+      );
+      expect(relay.mount).not.toHaveBeenCalled();
+    });
+  });
+
   it("连接列表：点一行进入；移除要先确认", async () => {
     const onOpen = vi.fn();
     const onRemove = vi.fn();
@@ -733,6 +900,7 @@ describe("连接页 · Armadra 云（设备码）", () => {
       join: vi.fn(),
       trust: vi.fn(),
       mount: vi.fn(),
+      attach: vi.fn(),
       reset: vi.fn(),
     };
     relay.pollDevice.mockResolvedValue({ kind: "pending" });

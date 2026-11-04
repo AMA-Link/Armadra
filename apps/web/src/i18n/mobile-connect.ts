@@ -7,7 +7,7 @@ export const mobileConnect: MessageModule = {
     "mobileConnect.link": "配对链接",
     "mobileConnect.connect": "连接",
     "mobileConnect.scan": "扫码",
-    "mobileConnect.error.invalid": "这不是配对链接",
+    "mobileConnect.error.invalid": "这不是配对二维码",
     "mobileConnect.error.noFingerprint": "链接缺少证书指纹",
     "mobileConnect.error.pin": "无法校验证书",
     "mobileConnect.error.expired": "配对链接已失效，请重新扫码",
@@ -57,6 +57,15 @@ export const mobileConnect: MessageModule = {
     "mobileConnect.error.denied": "已在浏览器中拒绝",
     "mobileConnect.error.deviceExpired": "设备码已过期",
     "mobileConnect.error.notCloud": "这个地址不是 Armadra 云",
+    "mobileConnect.error.connectOlder":
+      "这是旧版 Armadra 的二维码，请把电脑升级到与 App 相同的版本",
+    "mobileConnect.error.connectNewer":
+      "这是新版 Armadra 的二维码，请先升级 App",
+    "mobileConnect.error.offerExpired":
+      "二维码已过期，请在电脑上点「新配对码」",
+    "mobileConnect.error.offerUnreachable":
+      "连不上这台电脑。请让手机与电脑在同一网络，或在电脑上打开互联网访问",
+    "mobileConnect.error.wrongAccount": "这个账号下没有这台电脑",
     "mobileConnect.error.withDetail": "{message}（{detail}）",
     "mobileConnect.relay.address": "地址",
     "mobileConnect.relay.account": "账号",
@@ -87,7 +96,7 @@ export const mobileConnect: MessageModule = {
     "mobileConnect.link": "Pairing link",
     "mobileConnect.connect": "Connect",
     "mobileConnect.scan": "Scan QR code",
-    "mobileConnect.error.invalid": "This isn't a pairing link",
+    "mobileConnect.error.invalid": "This isn't a pairing code",
     "mobileConnect.error.noFingerprint":
       "The link has no certificate fingerprint",
     "mobileConnect.error.pin": "Couldn't verify the certificate",
@@ -142,6 +151,16 @@ export const mobileConnect: MessageModule = {
     "mobileConnect.error.denied": "Denied in the browser",
     "mobileConnect.error.deviceExpired": "The device code expired",
     "mobileConnect.error.notCloud": "This address isn't Armadra Cloud",
+    "mobileConnect.error.connectOlder":
+      "This code is from an older Armadra. Update the computer to match the app.",
+    "mobileConnect.error.connectNewer":
+      "This code is from a newer Armadra. Update the app first.",
+    "mobileConnect.error.offerExpired":
+      "This code has expired. Tap New code on the computer.",
+    "mobileConnect.error.offerUnreachable":
+      "Can't reach this computer. Join the same network, or turn on Internet access on the computer.",
+    "mobileConnect.error.wrongAccount":
+      "This computer isn't under this account.",
     "mobileConnect.error.withDetail": "{message} ({detail})",
     "mobileConnect.relay.address": "Address",
     "mobileConnect.relay.account": "Account",

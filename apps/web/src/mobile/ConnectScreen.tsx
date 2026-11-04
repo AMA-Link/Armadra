@@ -1,6 +1,11 @@
 import * as React from "react";
 import { parsePairingUri, storagePairings } from "../sources/e2e/pairing";
 import {
+  type OfferOutcome,
+  looksLikeConnect,
+  readConnect,
+} from "./connect-offer";
+import {
   ChevronLeft,
   Cloud,
   KeyRound,
@@ -44,6 +49,7 @@ import type { ServiceRow } from "../services/rows";
 import { ServicePicker } from "../services/ServicePicker";
 import { SourceTraffic, useMonthTraffic } from "../traffic/SourceTraffic";
 import { isJoinLink, issuerOrigin, parseJoinLink } from "./join-link";
+import type { ConnectPayload } from "@armadra/shared";
 
 /** 连接失败的原因；文案键是 `mobileConnect.error.<原因>`。 */
 export type ConnectFailure =
@@ -74,7 +80,12 @@ export type ConnectFailure =
   | "codeUpgrade"
   | "denied"
   | "deviceExpired"
-  | "notCloud";
+  | "notCloud"
+  | "connectOlder"
+  | "connectNewer"
+  | "offerExpired"
+  | "offerUnreachable"
+  | "wrongAccount";
 
 /** 原生 App 里「添加连接」的几个视图（多连接）。 */
 export type ConnectView =
@@ -103,6 +114,11 @@ export interface ConnectScreenProps {
   readonly onConnect: (link: string) => Promise<ConnectFailure | null>;
   /** 调相机扫码，取消返回 `null`。 */
   readonly onScan?: () => Promise<string | null>;
+  /**
+   * 连接手机的二维码（契约 §99）：按载荷选路并连接。直连通了页面会重载；直连不通接着
+   * 走中转（`relay` outcome），界面据此登录并自动挂上那台电脑。
+   */
+  readonly onOffer?: (payload: ConnectPayload) => Promise<OfferOutcome>;
   /** 网页模式下的 CA 安装引导（`PageCaGuide`）；原生 App 按指纹钉扎，不装 CA。 */
   readonly caGuide?: React.ReactNode;
   /**
@@ -224,6 +240,7 @@ export function ConnectScreen({
   initialLink = "",
   onConnect,
   onScan,
+  onOffer,
   caGuide,
   busy: pinnedBusy,
   failure: pinnedFailure,
@@ -365,6 +382,9 @@ export function ConnectScreen({
     readonly password: string;
   } | null>(null);
 
+  /** 连接手机的二维码要挂的那台电脑：登录出源列表后自动挂它（契约 §99.5）。 */
+  const pendingSource = React.useRef<string | null>(null);
+
   const apply = (outcome: RelayOutcome) => {
     switch (outcome.kind) {
       case "challenge": {
@@ -393,12 +413,27 @@ export function ConnectScreen({
         setFingerprint(outcome.fingerprint);
         setView("fingerprint");
         break;
-      case "sources":
+      case "sources": {
         signInView.current = view === "relay" ? "relay" : "cloud";
+        // 连接手机的二维码走中转：登录之后直接挂那台电脑，不弹源列表；这个账号下没有它
+        // 是 `wrongAccount`。
+        const wanted = pendingSource.current;
+        if (wanted !== null && relay !== undefined) {
+          pendingSource.current = null;
+          if (outcome.sources.some((one) => one.sourceId === wanted)) {
+            void step(() => relay.mount([wanted]));
+          } else {
+            relay.reset();
+            setFailure("wrongAccount");
+          }
+          break;
+        }
         setSources(outcome.sources);
         setView("sources");
         break;
+      }
       case "failure":
+        pendingSource.current = null;
         setFailure(outcome.failure);
         setFailureInfo(
           outcome.detail
@@ -479,8 +514,50 @@ export function ConnectScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [waitingForDevice, device?.userCode, relay]);
 
+  /** 连接手机的二维码：选路连接；直连不通就走中转。 */
+  const runOffer = async (payload: ConnectPayload) => {
+    if (shownBusy || onOffer === undefined) return;
+    setBusy(true);
+    setFailure(null);
+    let outcome: OfferOutcome;
+    try {
+      outcome = await onOffer(payload);
+    } catch {
+      outcome = { kind: "failure", failure: "failed" };
+    }
+    if (outcome.kind === "failure") {
+      setBusy(false);
+      setFailure(outcome.failure);
+      return;
+    }
+    if (outcome.kind === "done" || relay === undefined) {
+      setBusy(false);
+      return;
+    }
+    // 钥匙串里已有登录就直接挂；没有就登录，登录后自动挂（`apply` 的 sources）。
+    pendingSource.current = outcome.sourceId;
+    let next: Awaited<ReturnType<typeof relay.attach>>;
+    try {
+      next = await relay.attach({
+        sourceId: outcome.sourceId,
+        issuers: outcome.issuers,
+      });
+    } catch {
+      next = { kind: "failure", failure: "failed" };
+    }
+    setBusy(false);
+    if (next.kind === "login") signInTo(next.issuer);
+    else apply(next);
+  };
+
   /** 链接 / 二维码：个人中转的分享链接直接挂载，其余按配对链接处理。 */
   const submitLink = async (value: string) => {
+    if (looksLikeConnect(value)) {
+      const read = readConnect(value);
+      if (!read.ok) setFailure(read.failure);
+      else await runOffer(read.payload);
+      return;
+    }
     // 别的设备上的「配对新设备」二维码（契约 §80.1）：记下身份与一次性秘密，接着用
     // 那台电脑登记的中转登录；之后连它时不必等主人核对。
     const offer = parsePairingUri(value);
@@ -514,6 +591,7 @@ export function ConnectScreen({
   }, []);
 
   const back = () => {
+    pendingSource.current = null;
     relay?.reset();
     setDevice(null);
     setFailure(null);
@@ -522,6 +600,7 @@ export function ConnectScreen({
 
   /** 选择主机页的「返回」：放弃这次登录，回到登录那一步。 */
   const backToSignIn = () => {
+    pendingSource.current = null;
     relay?.reset();
     setDevice(null);
     setFailure(null);

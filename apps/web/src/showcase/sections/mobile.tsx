@@ -53,6 +53,7 @@ const relayStub: RelayEnrollment = {
   join: pendingOutcome,
   trust: pendingOutcome,
   mount: pendingOutcome,
+  attach: pendingOutcome,
   reset: noop,
 };
 const sent = async () => true;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gatewayPairingPayloadSchema } from "@armadra/shared";
+import { connectUrl, gatewayPairingPayloadSchema } from "@armadra/shared";
 
 import { encodeQr, pairingQrText, parsePairingQr, qrPath } from "./qr";
 
@@ -95,5 +95,32 @@ describe("pairing QR payload", () => {
     ]) {
       expect(parsePairingQr(text), text).toBeNull();
     }
+  });
+});
+
+describe("连接手机的二维码（契约 §99.2）", () => {
+  it("最大载荷（3 个来源、2 个签发方）编出来不超过版本 15·M，图放大到 240px 仍可扫", () => {
+    const text = connectUrl("https://192.168.100.100:65535", {
+      sourceId: "0123456789abcdef0123456789abcdef",
+      expiresAtMs: 1_800_000_000_000,
+      direct: {
+        origins: [
+          "https://192.168.100.100:65535",
+          "https://[fd00::1]:8443",
+          "https://host.example.com:443",
+        ],
+        ticket: TICKET,
+        fingerprint: FP,
+      },
+      relay: {
+        identityPub: "A".repeat(43),
+        secret: "B".repeat(22),
+        issuers: ["https://app.armadra.com", "http://127.0.0.1:8787"],
+      },
+    });
+    const code = encodeQr(text);
+    expect(code).not.toBeNull();
+    // 版本 v 的边长是 17 + 4v。
+    expect((code!.size - 17) / 4).toBeLessThanOrEqual(15);
   });
 });
