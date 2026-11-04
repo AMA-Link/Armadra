@@ -747,7 +747,10 @@ export function install(
       // 不发生——真机上就是这么撞出来的。所以这里认的是**当前持有者**：这台壳
       // 前面只有一个人，他敲键与他按钮是同一个人。Agent 的租约不在此列，它仍然
       // 只能由 Agent 自己放掉，或者由人「接管」撤销。
-      const held = manager.driveLease(sessionId).holder;
+      const lease = manager.driveLease(sessionId);
+      // 没人握着时交还是空操作（失焦与提交各发一次，后到的碰上空闲不是错误）。
+      if (action === "release" && lease.state === "free") return lease;
+      const held = lease.holder;
       const actor =
         held?.kind === "human"
           ? humanActor(held.id, held.displayName)

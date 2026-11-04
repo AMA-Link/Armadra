@@ -341,18 +341,35 @@ export function PromptBox({
     localRef.current?.focus();
   };
 
+  // 接管与交还各是一个 HTTP 请求。前一个还在路上时后一个不能先到：交还先于接
+  // 管落地，核心把交还当成「放别人的租约」拒掉，随后到的接管就永远留在那里，
+  // Agent 的投递一律收到「有人接管了」。所以有请求在飞时，后来的排在它后面。
+  const inflight = React.useRef<Promise<unknown> | null>(null);
+  const drive = React.useCallback(
+    (id: string, action: "takeover" | "release") => {
+      const run = () => acpApi.drive(id, action).catch(() => undefined);
+      const previous = inflight.current;
+      const next = previous ? previous.then(run) : run();
+      inflight.current = next;
+      void next.then(() => {
+        if (inflight.current === next) inflight.current = null;
+      });
+    },
+    [],
+  );
+
   const take = React.useCallback(() => {
     if (!sessionId || holding.current === sessionId) return;
     holding.current = sessionId;
-    void acpApi.drive(sessionId, "takeover").catch(() => undefined);
-  }, [sessionId]);
+    drive(sessionId, "takeover");
+  }, [sessionId, drive]);
 
   const release = React.useCallback(() => {
     const held = holding.current;
     if (!held) return;
     holding.current = null;
-    void acpApi.drive(held, "release").catch(() => undefined);
-  }, []);
+    drive(held, "release");
+  }, [drive]);
 
   // 卸载或换了会话时把租约交回去，不留一个没人坐的驾驶位。
   React.useEffect(() => release, [sessionId, release]);

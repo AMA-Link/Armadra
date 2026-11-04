@@ -342,6 +342,12 @@ describeUnix("the terminal routes", () => {
     });
     expect(handedBack.status).toBe(200);
     expect((handedBack.body as { state: string }).state).toBe("free");
+    // 已经空闲时再交还是空操作，不是 500。
+    const again = await core_.call("POST", `/api/terminals/${id}/drive`, {
+      action: "release",
+    });
+    expect(again.status).toBe(200);
+    expect((again.body as { state: string }).state).toBe("free");
     expect(
       (
         await core_.call("POST", "/api/terminals/nobody/drive", {

@@ -107,11 +107,14 @@ describe("PromptBox", () => {
     fireEvent.focus(input);
     expect(api.drive).toHaveBeenLastCalledWith("s1", "takeover");
     fireEvent.blur(input);
-    expect(api.drive).toHaveBeenLastCalledWith("s1", "release");
+    await waitFor(() =>
+      expect(api.drive).toHaveBeenLastCalledWith("s1", "release"),
+    );
 
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "go" } });
     fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(api.drive).toHaveBeenCalledTimes(4));
     expect(api.drive).toHaveBeenLastCalledWith("s1", "release");
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
     expect(api.drive.mock.calls).toEqual([
@@ -122,11 +125,39 @@ describe("PromptBox", () => {
     ]);
   });
 
-  it("releases the lease when unmounted while focused", () => {
+  it("never lets the release overtake a takeover still in flight", async () => {
+    let landTakeover: () => void = () => undefined;
+    const landed: string[] = [];
+    api.drive.mockImplementation(
+      (_id: string, action: string) =>
+        new Promise<object>((resolve) => {
+          const land = () => {
+            landed.push(action);
+            resolve({});
+          };
+          if (action === "takeover") landTakeover = land;
+          else land();
+        }),
+    );
+    renderBox();
+    const input = screen.getByLabelText("消息");
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "go" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    // 接管还没落地，交还不能发出去。
+    expect(api.drive).toHaveBeenCalledTimes(1);
+    landTakeover();
+    await waitFor(() => expect(landed).toEqual(["takeover", "release"]));
+  });
+
+  it("releases the lease when unmounted while focused", async () => {
     const { unmount } = renderBox();
     fireEvent.focus(screen.getByLabelText("消息"));
     unmount();
-    expect(api.drive).toHaveBeenLastCalledWith("s1", "release");
+    await waitFor(() =>
+      expect(api.drive).toHaveBeenLastCalledWith("s1", "release"),
+    );
   });
 
   it("turns the send button into stop during a turn, and Esc stops too", () => {
