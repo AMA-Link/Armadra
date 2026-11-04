@@ -101,6 +101,9 @@ export function MobileRoot({ entry: initial }: { entry: Entry }) {
       <ConnectScreen
         mode="web"
         origin={entry.origin}
+        {...(entry.failure === undefined
+          ? {}
+          : { initialFailure: entry.failure })}
         caGuide={<PageCaGuide />}
         onConnect={async () => done(await connectWeb())}
         {...(entry.via === "code"
