@@ -8,9 +8,12 @@ import org.junit.Test;
 
 public class DeepLinkTest {
     @Test
-    public void classifiesTheTwoKinds() {
+    public void classifiesTheKinds() {
+        // 旧的配对深链不再认（#749）：连接手机的二维码是网页链接，由页面的扫码器解析。
         String pair = "armadra://pair?host=192.168.1.20%3A8443&ticket=abc_DEF-123&fp=" + "a".repeat(64);
-        assertEquals(DeepLink.Kind.PAIR, DeepLink.parse(pair).kind);
+        assertNull(DeepLink.parse(pair));
+        assertNull(DeepLink.parse("armadra://pair-e2e?d=abc"));
+        assertNull(DeepLink.parse("https://192.168.1.20:8443/#c=2&s=" + "0".repeat(32)));
         assertEquals(DeepLink.Kind.NODE, DeepLink.parse("armadra://w/ws_1/n/node_1").kind);
         assertEquals(DeepLink.Kind.NODE, DeepLink.parse("armadra://w/ws_1").kind);
         assertNull(DeepLink.parse("armadra://w/ws_1/x/y"));
@@ -20,13 +23,12 @@ public class DeepLinkTest {
         assertNull(DeepLink.parse("armadra://w/ws_1?x=h"));
         assertNull(DeepLink.parse("armadra://w/ws_1?s=h&x=1"));
         assertNull(DeepLink.parse("https://armadra.dev/pair"));
-        assertNull(DeepLink.parse("armadra://pair?host=a&x=<script>"));
         assertNull(DeepLink.parse("armadra://w/a'+alert(1)+'"));
         assertNull(DeepLink.parse("armadra://w/" + "a".repeat(3000)));
     }
 
     @Test
-    public void oauthCallbacksReloadLikePairing() {
+    public void oauthCallbacksReload() {
         DeepLink link = DeepLink.parse("armadra://oauth?state=s_T-1&code=a*b.c%2Fd");
         assertEquals(DeepLink.Kind.OAUTH, link.kind);
         assertEquals(DeepLink.Kind.OAUTH, DeepLink.parse("armadra://oauth?state=s&error=access_denied").kind);
@@ -38,7 +40,7 @@ public class DeepLinkTest {
     }
 
     @Test
-    public void joinLinksReloadLikePairing() {
+    public void joinLinksReload() {
         String link = "armadra://join?link=" + "0".repeat(32) + "&issuer=https%3A%2F%2Frelay.example.com&s="
                 + "S".repeat(43) + "." + "c".repeat(32) + "." + "D".repeat(43);
         DeepLink parsed = DeepLink.parse(link);
@@ -55,9 +57,9 @@ public class DeepLinkTest {
     public void scriptsMatchTheIosSpelling() {
         assertEquals("location.hash='#push='+encodeURIComponent(\"armadra:\\/\\/w\\/ws_1\\/n\\/node_1\");",
                 DeepLink.parse("armadra://w/ws_1/n/node_1").script());
-        String pair = DeepLink.parse("armadra://pair?host=h%3A1&ticket=t&fp=f").script();
-        assertTrue(pair.startsWith("history.replaceState(null,'',location.pathname+'#link='+encodeURIComponent("));
-        assertTrue(pair.endsWith("location.reload();"));
+        String join = DeepLink.parse("armadra://join?link=" + "0".repeat(32) + "&issuer=https%3A%2F%2Fr.example&s=x").script();
+        assertTrue(join.startsWith("history.replaceState(null,'',location.pathname+'#link='+encodeURIComponent("));
+        assertTrue(join.endsWith("location.reload();"));
         assertEquals("\"a\\u2028\\\"\"", DeepLink.literal("a" + (char) 0x2028 + "\""));
     }
 

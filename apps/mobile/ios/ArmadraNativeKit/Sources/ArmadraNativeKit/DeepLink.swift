@@ -1,14 +1,14 @@
 import Foundation
 
-/// 原生收到的三种深链（外部服务 §5.3、契约 §17.3 / §19.4 / §18.5），以及把它交给页面的那一行 JS。
+/// 原生收到的几种深链（外部服务 §5.3、契约 §19.4 / §18.5），以及把它交给页面的那一行 JS。
 ///
-///  - `armadra://pair?host=…&ticket=…&fp=…`：配对。页面的入口在挂载前就定了，所以
-///    写进 `#link=` 再重载，连接页拿它当输入框初值，人点「连接」才配。
+///  - 连接手机的二维码是网页链接 `<网页来源>/#c=2&…`（契约 §99.2），在 App 里由页面的扫码器解析，
+///    不走深链；旧的 `armadra://pair?…` 不再认（#749）。
 ///  - `armadra://join?link=<id>&issuer=<签发方>&s=<片段>`：个人中转的分享链接（cloud 契约 §10）。
-///    与配对一样写进 `#link=` 再重载，连接页收到就直接挂载。
+///    页面的入口在挂载前就定了，所以写进 `#link=` 再重载，连接页收到就直接挂载。
 ///  - `armadra://w/<工作空间>[/n/<节点>][?s=<源>]`：通知点开（`s` 是签发它的主机，契约 §19.4）。
 ///    写进 `#push=`，页面 `mobile/push-open.ts` 认 `hashchange`，不用重载；连着别的主机时页面自己切。
-///  - `armadra://oauth?state=…&code=…`（或 `error=`）：原生 OAuth 的回调（R-56）。与配对一样
+///  - `armadra://oauth?state=…&code=…`（或 `error=`）：原生 OAuth 的回调（R-56）。与分享链接一样
 ///    写进 `#link=` 再重载，入口在挂载前收尾。
 ///  - `armadra://cloud/device-approved`：控制台批准页批准了手机的设备码登录后带人回来（#666）。
 ///    只让 App 回前台并经插件事件 `cloudDeviceApproved` 通知页面，不写 `#link=`、不重载（重载会丢掉
@@ -16,14 +16,12 @@ import Foundation
 ///
 /// 其余一律不认。链接按 JSON 字符串字面量嵌进脚本，不拼接原文。
 public enum DeepLink: Equatable {
-    case pair(String)
     case join(String)
     case node(String)
     case oauth(String)
     case cloudDeviceApproved(String)
 
     private static let maxLength = 2048
-    private static let pairPattern = "^armadra://pair\\?[A-Za-z0-9._~%&=:+-]+$"
     private static let joinPattern = "^armadra://join\\?[A-Za-z0-9._~%&=:+-]+$"
     private static let oauthPattern = "^armadra://oauth\\?[A-Za-z0-9._~%&=:+*-]+$"
     private static let cloudDeviceApprovedPattern = "^armadra://cloud/device-approved/?$"
@@ -31,9 +29,7 @@ public enum DeepLink: Equatable {
 
     public init?(_ link: String) {
         guard link.count <= Self.maxLength else { return nil }
-        if link.range(of: Self.pairPattern, options: .regularExpression) != nil {
-            self = .pair(link)
-        } else if link.range(of: Self.joinPattern, options: .regularExpression) != nil {
+        if link.range(of: Self.joinPattern, options: .regularExpression) != nil {
             self = .join(link)
         } else if link.range(of: Self.nodePattern, options: .regularExpression) != nil {
             self = .node(link)
@@ -48,11 +44,11 @@ public enum DeepLink: Equatable {
 
     public var link: String {
         switch self {
-        case let .pair(link), let .join(link), let .node(link), let .oauth(link), let .cloudDeviceApproved(link): return link
+        case let .join(link), let .node(link), let .oauth(link), let .cloudDeviceApproved(link): return link
         }
     }
 
-    /// 写进 `#link=` 再重载才生效的三种（配对、分享链接、OAuth 回调）；通知点开只改 `#push=`，不重载；
+    /// 写进 `#link=` 再重载才生效的两种（分享链接、OAuth 回调）；通知点开只改 `#push=`，不重载；
     /// 设备码批准后的回跳只发插件事件。
     public var reloadsPage: Bool {
         switch self {
@@ -69,7 +65,7 @@ public enum DeepLink: Equatable {
 
     /// 冷启动时在第一个文档开头执行的那一段（`WKUserScript`，`atDocumentStart`）：入口还没跑，
     /// 直接把链接写进 `#link=`，不必等页面载完再重载一遍。`token` 记进 `sessionStorage`，同一
-    /// 个 WebView 之后的重载不会再写一次；只对需要重载的三种给脚本。
+    /// 个 WebView 之后的重载不会再写一次；只对需要重载的两种给脚本。
     public func launchScript(token: String) -> String? {
         guard reloadsPage else { return nil }
         let key = Self.literal("armadra.launchLink")
@@ -82,7 +78,7 @@ public enum DeepLink: Equatable {
     public var script: String {
         let literal = Self.literal(link)
         switch self {
-        case .pair, .join, .oauth:
+        case .join, .oauth:
             return "history.replaceState(null,'',location.pathname+'#link='+encodeURIComponent(\(literal)));location.reload();"
         case .node:
             return "location.hash='#push='+encodeURIComponent(\(literal));"

@@ -26,7 +26,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- 深链：armadra://pair?host=…&ticket=…&fp=…、armadra://w/<工作空间>/n/<节点> 与 armadra://oauth?state=…&code=… -->
+            <!-- 深链：armadra://join?…、armadra://w/<工作空间>/n/<节点> 与 armadra://oauth?state=…&code=… -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

@@ -3,15 +3,16 @@ package dev.armadra.mobile.core;
 import java.util.regex.Pattern;
 
 /**
- * 原生收到的三种深链与交给页面的那一行 JS（与 iOS {@code DeepLink.swift} 同义）：
+ * 原生收到的几种深链与交给页面的那一行 JS（与 iOS {@code DeepLink.swift} 同义）。连接手机的二维码是网页链接
+ * {@code <网页来源>/#c=2&…}（契约 §99.2），在 App 里由页面的扫码器解析，不走深链；旧的
+ * {@code armadra://pair?…} 不再认（#749）。
  *
  * <ul>
- *   <li>{@code armadra://pair?…}：写进 {@code #link=} 再重载，连接页拿它当初值，人点「连接」才配；
- *   <li>{@code armadra://join?link=<id>&issuer=<签发方>&s=<片段>}：个人中转的分享链接（cloud 契约 §10），与配对一样
+ *   <li>{@code armadra://join?link=<id>&issuer=<签发方>&s=<片段>}：个人中转的分享链接（cloud 契约 §10），
  *       写进 {@code #link=} 再重载，连接页收到就直接挂载；
  *   <li>{@code armadra://w/<工作空间>[/n/<节点>][?s=<源>]}：写进 {@code #push=}，页面认 {@code hashchange}
  *       （{@code s} 是签发通知的主机，契约 §19.4，连着别的主机时页面自己切）；
- *   <li>{@code armadra://oauth?state=…&code=…}（或 {@code error=}）：原生 OAuth 的回调（R-56），与配对一样
+ *   <li>{@code armadra://oauth?state=…&code=…}（或 {@code error=}）：原生 OAuth 的回调（R-56），与分享链接一样
  *       写进 {@code #link=} 再重载，入口在挂载前收尾；
  *   <li>{@code armadra://cloud/device-approved}：控制台批准页在浏览器里批准了手机的设备码登录后带人回来
  *       （#666）。只让 App 回前台并通知页面（插件事件 {@code cloudDeviceApproved}），不写 {@code #link=}、不重载——
@@ -21,10 +22,9 @@ import java.util.regex.Pattern;
  * 其余一律不认；链接按 JSON 字符串字面量嵌进脚本。
  */
 public final class DeepLink {
-    public enum Kind { PAIR, JOIN, NODE, OAUTH, CLOUD_DEVICE_APPROVED }
+    public enum Kind { JOIN, NODE, OAUTH, CLOUD_DEVICE_APPROVED }
 
     private static final int MAX_LENGTH = 2048;
-    private static final Pattern PAIR = Pattern.compile("^armadra://pair\\?[A-Za-z0-9._~%&=:+-]+$");
     private static final Pattern JOIN = Pattern.compile("^armadra://join\\?[A-Za-z0-9._~%&=:+-]+$");
     private static final Pattern OAUTH = Pattern.compile("^armadra://oauth\\?[A-Za-z0-9._~%&=:+*-]+$");
     private static final Pattern CLOUD_DEVICE_APPROVED = Pattern.compile("^armadra://cloud/device-approved/?$");
@@ -42,7 +42,6 @@ public final class DeepLink {
     /** 认不出是 {@code null}。 */
     public static DeepLink parse(String link) {
         if (link == null || link.length() > MAX_LENGTH) return null;
-        if (PAIR.matcher(link).matches()) return new DeepLink(Kind.PAIR, link);
         if (JOIN.matcher(link).matches()) return new DeepLink(Kind.JOIN, link);
         if (NODE.matcher(link).matches()) return new DeepLink(Kind.NODE, link);
         if (OAUTH.matcher(link).matches()) return new DeepLink(Kind.OAUTH, link);
@@ -59,7 +58,7 @@ public final class DeepLink {
     public String script() {
         if (notifiesOnly()) return null;
         String literal = literal(link);
-        if (kind == Kind.PAIR || kind == Kind.JOIN || kind == Kind.OAUTH) {
+        if (kind == Kind.JOIN || kind == Kind.OAUTH) {
             return "history.replaceState(null,'',location.pathname+'#link='+encodeURIComponent("
                     + literal + "));location.reload();";
         }

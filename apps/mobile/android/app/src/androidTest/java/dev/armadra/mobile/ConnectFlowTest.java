@@ -23,8 +23,8 @@ import org.junit.runners.MethodSorters;
 /**
  * B 档 UI 用例「连接 → 配对 → 画布」（补全计划 G3-1），由
  * {@code tools/probes/mobile-shell-e2e.mjs} 驱动：探针起 core、在回环上开 Gateway、
- * {@code adb reverse} 把模拟器的回环端口接到宿主，再把原生深链
- * {@code armadra://pair?host=…&ticket=…&fp=…} 作为插桩参数 {@code armadraPairLink} 传进来。
+ * {@code adb reverse} 把模拟器的回环端口接到宿主，再把连接手机的二维码文本
+ * {@code https://127.0.0.1:<端口>/#c=2&…}（契约 §99.2）作为插桩参数 {@code armadraPairLink} 传进来，用例填进连接页。
  *
  * <p>页面在 WebView 里，按页面自己的标记判断（{@code data-slot}），不依赖文案语言。按名字顺序跑：
  * 还没有连接时连接页先列出添加方式（扫码、配对链接、个人中转），输入框要点「配对链接」才出来
