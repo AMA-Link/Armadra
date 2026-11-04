@@ -29,6 +29,7 @@ import { activeConnection, loadConnections } from "./connections";
 import { setMobileRelayRoute } from "./relay-status";
 import { mobileCredentialProvider } from "./credentials";
 import { isNativeApp } from "./native-bridge";
+import { adoptConnectFragment } from "./connect-fragment";
 import {
   completeNativeOAuth,
   isNativeOAuthLink,
@@ -107,6 +108,8 @@ export type Entry =
        * 打开、还没有会话，先是配对码（契约 §24）。
        */
       readonly via: "ticket" | "code";
+      /** 手机相机扫了连接二维码但用不了（过期、新旧版本、走不通，契约 §99.5）。 */
+      readonly failure?: ConnectFailure;
     };
 
 const LINK_FRAGMENT = /^#link=(.+)$/;
@@ -351,6 +354,10 @@ function consoleEntry(path: string): Entry {
  *    由设置页「后台服务」那一页配对。
  */
 export async function prepareEntry(): Promise<Entry> {
+  // 手机相机扫了连接二维码（`#c=…`）：先接到原有的 `#pair=` / `/h/<源>` 上（契约 §99.5）。
+  const fragment = isNativeApp()
+    ? { kind: "none" as const }
+    : adoptConnectFragment();
   const joinLinkId = joinPageLinkId();
   if (joinLinkId !== null) {
     // SaaS 云端托管的 `/j/`：控制台里的落地页（要登录的链接可以带着片段去登录再回来，
@@ -445,6 +452,15 @@ export async function prepareEntry(): Promise<Entry> {
     if (path !== null) return consoleEntry(path);
   }
   if (!RUNTIME_VIA_SERVER_SHELL || !isCompactLayout()) return { kind: "app" };
+  if (fragment.kind === "failure") {
+    return {
+      kind: "connect",
+      mode: "web",
+      origin: localSource.httpBase,
+      via: "code",
+      failure: fragment.failure,
+    };
+  }
   if (hasPairingFragment()) {
     return {
       kind: "connect",

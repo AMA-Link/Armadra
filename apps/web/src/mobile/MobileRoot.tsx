@@ -16,6 +16,7 @@ import {
   forgetConnection,
   openConnection,
 } from "./connect";
+import { connectOffer } from "./connect-offer";
 import { loadConnections, renameConnection } from "./connections";
 import type { Entry } from "./entry";
 import { nativeBridge } from "./native-bridge";
@@ -100,6 +101,9 @@ export function MobileRoot({ entry: initial }: { entry: Entry }) {
       <ConnectScreen
         mode="web"
         origin={entry.origin}
+        {...(entry.failure === undefined
+          ? {}
+          : { initialFailure: entry.failure })}
         caGuide={<PageCaGuide />}
         onConnect={async () => done(await connectWeb())}
         {...(entry.via === "code"
@@ -192,6 +196,7 @@ function NativeConnect({
       canScan={bridge.canScan}
       onScan={() => bridge.scan()}
       onDeviceApproved={(listener) => bridge.onCloudDeviceApproved(listener)}
+      onOffer={(payload) => connectOffer(payload, relay)}
       onConnect={(link) => connectNative(link)}
       // 配对码（契约 §24、§73）：人输配对卡上的地址；没钉过锚的首次连接走 PAKE。
       codeAddress

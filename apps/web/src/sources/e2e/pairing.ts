@@ -87,6 +87,26 @@ export function parsePairingUri(
   return { sourceId: data.s, identityPub, secret, issuers, expiresAtMs };
 }
 
+/**
+ * 连接手机二维码的中转半（契约 §99.2）→ 要记下的配对：身份公钥与秘密解码，签发方照抄。
+ * 载荷已经由 `parseConnect` 校过长度；解不出来（理论上不会）是 `null`。
+ */
+export function offerFromConnect(
+  sourceId: string,
+  expiresAtMs: number,
+  relay: {
+    readonly identityPub: string;
+    readonly secret: string;
+    readonly issuers: readonly string[];
+  },
+): PairingOffer | null {
+  const identityPub = fromBase64url(relay.identityPub);
+  const secret = fromBase64url(relay.secret);
+  if (identityPub?.length !== 32 || secret === null || secret.length < 16)
+    return null;
+  return { sourceId, identityPub, secret, issuers: relay.issuers, expiresAtMs };
+}
+
 type Stored = Record<
   string,
   { k: string; p: string; i: readonly string[]; e: number }
