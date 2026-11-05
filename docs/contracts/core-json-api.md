@@ -5198,6 +5198,13 @@ ACP 会话经 `session/new.mcpServers` 拿到 `armadra-hook mcp`（§14、`core/
 - **`GET /health` 的 `hook.secret`**（追加在 `ok` 之后，旧页面忽略）：`keychain` / `dpapi` / `libsecret` / `file-encrypted` / `file`（后端种类）、`legacy-file`、`ephemeral`。从不带值。
 - **威胁模型**：防的是数据目录被拷贝、备份、同步、打诊断包时泄露实例密钥，以及别的账户读取；**不防同用户的恶意进程**（`security` 条目信任 `/usr/bin/security`，DPAPI CurrentUser 按用户授权），门槛与 0600 文件相同。
 
+### 102.2 Windows 的访问控制工具与数据目录收紧（P2）
+
+- **`cli/armadra-winsec.exe`**：构建期用系统 `csc.exe` 编出的小工具（`src/cli/armadra-winsec/winsec.cs`、`scripts/winsec-exe.mjs`，随包放在 `resources/cli/`，开发树在 `out/cli/`），沿用 `armadra-hook.exe` 的先例，不加原生模块与工具链。`harden-pipe <\\.\pipe\名字> <SID>` 以客户端身份带 `WRITE_DAC` 打开管道，设受保护 DACL `D:P(D;;GA;;;NU)(A;;GA;;;SY)(A;;GA;;;<用户 SID>)`（拒绝网络登录、只允许 SYSTEM 与本用户）并读回打印；`read-pipe` 只读回。
+- **核对**：`core/windows/acl.ts` 的 `verifyPipeSddl` 是纯函数，要求受保护、NETWORK 拒绝在最前、恰好 SYSTEM 与本用户两条允许、没有别的 ACE。core 在它通过之前不对该管道提供任何服务，核对前已经接受的连接（包括工具自己的那一条）全部断开。
+- **兜底**：没有 `.exe` 的开发树改用 Windows PowerShell 5.1 调同样的 .NET 类（管道名与 SDDL 经环境变量传入）。受限语言模式、AMSI 或策略拦截时按收紧失败处理；`.exe` 存在却失败不会再转 PowerShell，免得把一次策略拦截变成静默绕过。`ARMADRA_WINSEC_EXE` 可指定工具，指到的不是文件就等于没有。
+- **数据目录根**（win32）：启动时用 `icacls` 去掉继承，只授权 SYSTEM 与本用户（按 SID），每个 SID 一次（根目录下 `.acl-owner-only` 记 SID）；失败只告警，管道转而只靠握手。`protectKeyFile`（会话宿主密钥）与 `currentSid` 从 session-host 迁入同一个模块。
+
 ## 101. 协调者的回复闸门、重启恢复与记忆约定（`#704`，R3）
 
 > 状态：实施契约（AMA-Link/Armadra#704）。迁移 0061 新增 `router_replies`；`canvas` 多一个动词 `notify`；多一种工作空间事件 `workflow.reply`；协议版本不变，只加字段与种类。
