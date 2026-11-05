@@ -123,6 +123,7 @@ async function connect(
   await link.handshake(
     "armadra-core/integration",
     signHello(harness.key, harness.endpoint),
+    { key: harness.key, endpoint: harness.endpoint },
   );
   return { link, events, ids: new RequestIds() };
 }

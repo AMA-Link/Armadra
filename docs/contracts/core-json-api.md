@@ -5234,6 +5234,14 @@ ACP 会话经 `session/new.mcpServers` 拿到 `armadra-hook mcp`（§14、`core/
 - **客户端**：`armadra-hook`（含 `armadra-hook.exe` 启动的那份）候选里有管道且有 bearer 时先走管道，再走 socket / 端口；`doctor` 的 `endpoint load` 行多一个 `pipe=`。Claude Code 的 mod 与 pi / opencode 的扩展在仅有管道时没有可用的直连，沿用已有的 `armadra-hook` 进程回退（与此前 Windows 上的行为相同，没有新增功能损失）。Codex 的 MCP 服务器转发的环境变量名多一个 `ARMADRA_HOOK_PIPE`。
 - `HOOK_CLIENT_REVISION` 由 5 升到 6（注入给 Codex 的配置变了，各 CLI 重新装一次）。
 
+### 102.6 会话宿主的服务端证明与 `PROTOCOL_MAJOR` 2（P6）
+
+- **问题**：会话宿主（`session-host`）用 `<data>/session-host.key` 做客户端 HMAC 证明，但 `welcome` 不带服务端证明；抢占 Windows 管道名的进程会收到随后的 `create`（含环境变量与凭据）。
+- **服务端证明**：`welcome` 增加 `proof`（十六进制 HMAC-SHA256，同一把 `session-host.key`）。输入为 `"armadra-session-host/server" ‖ \n ‖ major ‖ \n ‖ 端点名 ‖ \n ‖ hello 的 nonce`，域前缀与客户端证明（`armadra-session-host/auth`）不同，所以两种证明不能互相冒充；绑定客户端 `hello` 里的 nonce，从另一条连接截获的证明无效。宿主只在客户端证明通过之后才回 `welcome`。
+- **客户端**：`Link.handshake` 收到 `welcome` 后先核对 major，再用常量时间比较核对 `proof`；不过就关闭连接并报「会话宿主无法证明它持有密钥」。除 `hello` 之外，核对通过前客户端不发任何东西（`create`、`attach`、`shutdownIfIdle` 都在 `handshake` 返回之后）。缺少 `proof` 与证明错误同样处理。宿主的 `unauthorized` 拒绝仍不带证明，也不泄露哪一步错了。
+- **`PROTOCOL_MAJOR` 1 → 2**：管道名与启动互斥量都带 `-v<major>`，所以新 core 找的是 `-v2` 管道，旧宿主（major 1）不会被连上，core 照常启动新宿主；没有旧协议的兼容路径。
+- **一次性代价**：升级当次，Windows 上还活着的终端会话丢失一次——旧宿主及其会话留在旧管道上，新 core 看不到也接不回。之后会话照常跨 core 重启保留。其余平台不受影响（它们没有会话宿主）。
+
 ## 101. 协调者的回复闸门、重启恢复与记忆约定（`#704`，R3）
 
 > 状态：实施契约（AMA-Link/Armadra#704）。迁移 0061 新增 `router_replies`；`canvas` 多一个动词 `notify`；多一种工作空间事件 `workflow.reply`；协议版本不变，只加字段与种类。

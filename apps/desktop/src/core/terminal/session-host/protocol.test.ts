@@ -310,12 +310,12 @@ describe("the output tracker", () => {
 });
 
 describe("where the host listens", () => {
-  it("derives the same pipe name the Rust host binds", () => {
+  it("derives the pipe name from the user, directory and major", () => {
     expect(pipeEndpoint(SID, DATA_DIR)).toBe(
-      String.raw`\\.\pipe\armadra-session-${SID}-37f614153a749bbd-v1`,
+      String.raw`\\.\pipe\armadra-session-${SID}-37f614153a749bbd-v2`,
     );
     expect(startupMutex(SID, DATA_DIR)).toBe(
-      "armadra-session-host-37f614153a749bbd-v1",
+      "armadra-session-host-37f614153a749bbd-v2",
     );
   });
 
