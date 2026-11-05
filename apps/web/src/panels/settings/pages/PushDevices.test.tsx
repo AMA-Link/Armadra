@@ -77,6 +77,29 @@ beforeEach(() => {
 });
 
 describe("推送设备", () => {
+  it("设备行与种类行共用随密度变化的水平内边距，不用会被裁掉的负外边距", async () => {
+    devices.mockResolvedValue({
+      devices: [device({ deviceId: "d1", deviceName: "我的 iPhone" })],
+    });
+    const view = mount();
+    await open("我的 iPhone");
+    const trigger = view.container.querySelector(
+      '[data-slot="accordion-trigger"]',
+    );
+    expect(trigger?.className).toContain("px-4");
+    expect(trigger?.className).toContain(
+      "[.settings-layout[data-narrow=true]_&]:px-(--space-inset)",
+    );
+    // 内容外层 overflow-hidden：负外边距会把行首文字裁掉（窄屏行内边距只有 12px）。
+    const content = view.container.querySelector(
+      '[data-slot="accordion-content"]',
+    );
+    expect(content?.innerHTML).not.toContain("-mx-4");
+    expect(
+      view.container.querySelector('[data-slot="accordion"]')?.className ?? "",
+    ).not.toContain("px-4");
+  });
+
   it("没有登记的设备时整组不画", async () => {
     devices.mockResolvedValue({ devices: [] });
     const view = mount();

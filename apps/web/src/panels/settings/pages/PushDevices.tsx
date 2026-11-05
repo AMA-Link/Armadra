@@ -93,7 +93,7 @@ export function PushDevices() {
       }
     >
       <SettingsGroup title={t("push.devices.title")}>
-        <Accordion type="multiple" className="px-4">
+        <Accordion type="multiple">
           {devices.map((device) => {
             const kinds = device.kinds ?? PUSH_PREFERENCE_KINDS;
             const editable = device.editable === true;
@@ -105,7 +105,7 @@ export function PushDevices() {
                 value={device.deviceId}
                 data-push-device={device.deviceId}
               >
-                <AccordionTrigger className="items-center gap-3 py-3 font-normal hover:no-underline">
+                <AccordionTrigger className="items-center gap-3 px-4 py-3 font-normal hover:no-underline [.settings-layout[data-compact=true]_&]:px-(--space-inset) [.settings-layout[data-narrow=true]_&]:px-(--space-inset)">
                   <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
                     <span className="truncate text-body text-foreground">
                       {name}
@@ -120,7 +120,7 @@ export function PushDevices() {
                     )}
                   </span>
                 </AccordionTrigger>
-                <AccordionContent className="-mx-4">
+                <AccordionContent>
                   {shown.map((kind) => (
                     <SettingsRow key={kind} label={t(`push.kind.${kind}`)}>
                       <Switch
