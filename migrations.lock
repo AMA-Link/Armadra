@@ -61,6 +61,7 @@
     "0059_router_events.sql": "2e12dbd0cb84c639e5675f30489099e6624396c3bf82bc6ecc9b1b772f299f04",
     "0060_bootstrap_ticket_origins.sql": "f816c7f307f6d553bb25e79c5b802d0252b105db35a22d3be80e82af0c69e433",
     "0061_router_replies.sql": "c77cb23fed7376e7fdd7214e7d6818e7d728314ed84a05e925088c2646d82a9b",
-    "0062_recovery_pending.sql": "285271ea992f88aca8c706418d6753e30da86dc262e1724b2d3045ac4ff61096"
+    "0062_recovery_pending.sql": "285271ea992f88aca8c706418d6753e30da86dc262e1724b2d3045ac4ff61096",
+    "0063_pr_threads.sql": "6a7306dd2178ada9f3030b51378845a74f0ed186b620ebdcfe2742eafbeca657"
   }
 }
