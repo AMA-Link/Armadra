@@ -347,7 +347,10 @@ If you are a coordinator, members' reports, handbacks, stalls, finished tasks, a
 \`\`\`sh
 armadra-hook canvas events [--limit N]        # 只读：未确认的事件，最早的在前
 armadra-hook canvas ack --event <事件 id>     # 处理完一条就确认
+armadra-hook canvas notify --purpose result --item <工作项 id> --text '登录改好了，请验收'
 \`\`\`
+
+- 对人说话只走 \`notify\`（至多 100 字），三种用途：\`result\` 要求那一项在 \`person/review\`；\`attention\` 的 \`--text\` 要原样包含那一项当前的待决问题（上限 300 字）；\`answer\` 要带 \`--followup <追问事件 id>\`，回答人刚追问的那一条。没有 \`progress\`：进度会被 409 拒绝；同一个目标只能发一次（\`already_notified\`）。
 
 - 卡片每行是「事件 id · 工作项 id · 种类 · 一行内容」，详情读 \`canvas items --item <工作项 id>\`；确认的意思是「我处理了」，不是「我看到了」。
 - 种类为 \`followup\` 的行是人对某个工作项的追问：画布已经把原话直接转给了成员，你只能决定停掉那一项，不要再派一份；没点名工作项的话是新请求，由你决定接新项还是挂到已有项（需要明确的引用，话题相近不算）。

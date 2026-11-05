@@ -91,6 +91,7 @@ export const ARMADRA_TOOL_ICONS = {
   canvas_handback: Undo2,
   canvas_items: ListTodo,
   canvas_events: Bell,
+  canvas_notify: MessageSquare,
   context_list: ListOrdered,
   context_summary: ScanText,
   context_transcript: ScrollText,

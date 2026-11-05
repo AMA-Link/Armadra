@@ -96,6 +96,12 @@ export const CANVAS_USAGE = `CANVAS:
                                       (reason <= 100 chars, once per item)
   events [--limit N]                   read the coordinator's unacknowledged events
                                       (oldest first, default 20, max 50)
+  notify --purpose answer|result|attention --item ID --text TEXT
+         [--followup EVENT-ID]       coordinator only: tell the person one thing
+                                      (text <= 100 chars; result needs the item
+                                      in person/review, attention must carry the
+                                      open question verbatim, answer needs
+                                      --followup; progress is refused; once each)
   items [--stage STAGE] [--item ID] [--limit N] [--offset N]
                                       read the work-item ledger: one line per
                                       item, person/* stages first; --item gives
