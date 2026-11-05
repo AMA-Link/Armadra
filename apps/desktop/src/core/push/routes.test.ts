@@ -293,6 +293,8 @@ describe("种类偏好与 UnifiedPush（契约 §27）", () => {
         "resources",
         "comment",
         "workflowGate",
+        "result",
+        "attention",
       ],
     });
     // 端点和令牌一样不出接口。
@@ -319,7 +321,7 @@ describe("种类偏好与 UnifiedPush（契约 §27）", () => {
     const all = await call(identityOf(someone), "PATCH", path, {
       kinds: registered.body.device.kinds,
     });
-    expect(all.body.device.kinds).toHaveLength(10);
+    expect(all.body.device.kinds).toHaveLength(12);
   });
 });
 

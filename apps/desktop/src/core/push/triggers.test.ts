@@ -165,6 +165,34 @@ const EVENTS: readonly [string, EventFrame, string][] = [
     },
     "workflowGate",
   ],
+  [
+    "协调者交付结果",
+    {
+      type: "workflow.reply",
+      replyId: "result:i1:abc",
+      taskId: "i1",
+      boardId: "b1",
+      coordinatorNodeId: "n0",
+      nodeId: "n8",
+      purpose: "result",
+      text: "TERMINAL-OUTPUT-SECRET",
+    },
+    "result",
+  ],
+  [
+    "协调者转达待决问题",
+    {
+      type: "workflow.reply",
+      replyId: "attention:i1:abc",
+      taskId: "i1",
+      boardId: "b1",
+      coordinatorNodeId: "n0",
+      nodeId: "n8",
+      purpose: "attention",
+      text: "TERMINAL-OUTPUT-SECRET",
+    },
+    "attention",
+  ],
 ];
 
 describe("每种事件一条通知", () => {
@@ -256,6 +284,45 @@ describe("每种事件一条通知", () => {
       tag: "status:n2",
     });
     expect(inbox(ownerDeviceId)[0]?.body).toBe("Claude Code 在等你回答");
+  });
+});
+
+describe("协调者的回复（契约 §101）", () => {
+  const reply = (purpose: string) => ({
+    type: "workflow.reply",
+    replyId: `${purpose}:i1:x`,
+    taskId: "i1",
+    nodeId: "n8",
+    purpose,
+  });
+
+  it("answer 不推，result 与 attention 带写死的一句并深链到成员节点", () => {
+    const rules = new TriggerRules();
+    expect(rules.draft("w1", reply("answer"))).toBeUndefined();
+    const result = rules.draft("w1", reply("result"));
+    expect(result).toMatchObject({ kind: "result", nodeId: "n8" });
+    const attention = rules.draft("w1", reply("attention"));
+    expect(attention).toMatchObject({ kind: "attention", nodeId: "n8" });
+    const names = { workspace: "支付服务", agent: () => "X" };
+    expect(render(result!, "zh-CN", names).body).toBe("有一项等你验收");
+    expect(render(attention!, "en", names).body).toBe(
+      "An item needs your decision",
+    );
+    expect(render(result!, "en", names).url).toBe("armadra://w/w1/n/n8");
+  });
+
+  it("设备可以按种类关掉，没存过偏好的设备缺省收", () => {
+    const { push, ownerDeviceId, viewer, inbox } = setup();
+    push.devices.setKinds(viewer.deviceId, ["approval"]);
+    expect(push.handleEvent("w1", reply("result"))).toBe(1);
+    expect(inbox(ownerDeviceId).map((item) => item.kind)).toEqual(["result"]);
+    expect(inbox(viewer.deviceId)).toEqual([]);
+  });
+
+  it("对那块画布没有 canvas:read 的人收不到", () => {
+    const { push, outsider, inbox } = setup();
+    push.handleEvent("w1", reply("attention"));
+    expect(inbox(outsider.deviceId)).toEqual([]);
   });
 });
 

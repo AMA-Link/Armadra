@@ -211,6 +211,20 @@ export class TriggerRules {
           tag: `gate:${str(event.runId) ?? ""}:${str(event.stepId) ?? ""}`,
         };
       }
+      case "workflow.reply": {
+        // 协调者经 `canvas notify` 对人说话（契约 §101）：交付结果与需要决定叫人，
+        // 正文是写死的一句。`answer` 是对人刚说的话的回应，人就在画布前，不推。
+        // 帧里没有 `--text`，这里也不读任何文字。
+        const purpose = str(event.purpose);
+        if (purpose !== "result" && purpose !== "attention") return undefined;
+        const nodeId = str(event.nodeId);
+        return {
+          kind: purpose,
+          workspaceId,
+          ...(nodeId === undefined ? {} : { nodeId }),
+          tag: `${purpose}:${str(event.taskId) ?? str(event.replyId) ?? ""}`,
+        };
+      }
       case "schedule.fired":
       case "schedule.failed":
       case "schedule.attention": {
@@ -290,6 +304,8 @@ const BODIES: Record<Locale, Record<BodyKey, string>> = {
     resources: "资源用量超过了阈值",
     comment: "有人在评论里提到了你",
     workflowGate: "工作流在等待确认",
+    result: "有一项等你验收",
+    attention: "有一项要你决定",
     deviceEndorsed: "有设备经背书获得了信任",
     test: "推送已连通",
   },
@@ -308,6 +324,8 @@ const BODIES: Record<Locale, Record<BodyKey, string>> = {
     resources: "A resource threshold was crossed",
     comment: "You were mentioned in a comment",
     workflowGate: "A workflow is waiting at a gate",
+    result: "An item is waiting for your review",
+    attention: "An item needs your decision",
     deviceEndorsed: "A device was approved by endorsement",
     test: "Push notifications are working",
   },
