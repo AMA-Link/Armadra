@@ -613,6 +613,8 @@ export async function startAcp(
             { authMethods: capabilitiesWire(capabilities).authMethods },
           );
         }
+        const bridge = bridgeErrorOf(error);
+        if (bridge !== undefined) throw bridge;
         throw new AcpError("acp_session_failed", messageOf(error));
       }
     }
@@ -976,6 +978,28 @@ function reportedModes(
   return modes ?? null;
 }
 
+/** ama 的 pi 桥在 `error.data.code` 里给的三种起不来的原因。 */
+const PI_BRIDGE_CODES = ["pi_outdated", "pi_missing", "pi_no_model"] as const;
+
+/**
+ * `session/new` 的 JSON-RPC 错误若带桥的 `error.data.code`，原样作为错误码交给页面，
+ * `details` 只留字符串字段（已装版本、最低版本、应装的包）。
+ */
+function bridgeErrorOf(error: unknown): AcpError | undefined {
+  const data = (error as { data?: unknown } | null)?.data;
+  if (typeof data !== "object" || data === null) return undefined;
+  const code = (PI_BRIDGE_CODES as readonly unknown[]).find(
+    (candidate) => candidate === (data as { code?: unknown }).code,
+  ) as (typeof PI_BRIDGE_CODES)[number] | undefined;
+  if (code === undefined) return undefined;
+  const details: Record<string, unknown> = { agentId: "pi" };
+  for (const key of ["installed", "minimum", "package"]) {
+    const value = (data as Record<string, unknown>)[key];
+    if (typeof value === "string") details[key] = value;
+  }
+  return new AcpError(code, messageOf(error), details);
+}
+
 function rpcCode(error: unknown): number | undefined {
   const code = (error as { code?: unknown } | null)?.code;
   return typeof code === "number" ? code : undefined;
@@ -1065,7 +1089,7 @@ export function adapterStartOptions(
       ? launchTargetOf(resolved, ambient)
       : undefined;
   // `armadra-hook` 在 PATH 末尾、路径也在 `ARMADRA_HOOK_BIN`，与终端节点一样：
-  // 不走 MCP 的家（pi-acp）和模型自己选 shell 的时候，技能说明里的
+  // 模型自己选 shell 的时候，技能说明里的
   // `armadra-hook canvas …` 靠它找得到。垫片目录不在里面（一个节点一个状态来源）。
   const hookBin = hookClient();
   const env: NodeJS.ProcessEnv =

@@ -89,6 +89,10 @@ export type AcpErrorCode =
   | "acp_not_installed"
   // CLI 本体低于适配器要求的最低版本（`@armadra/shared` 的 `ACP_CLI_FLOOR`）。
   | "acp_cli_outdated"
+  // ama 的 pi 桥在 `session/new` 里答的 `error.data.code`：Pi 过旧、没装、没有可用模型。
+  | "pi_outdated"
+  | "pi_missing"
+  | "pi_no_model"
   // prompt 的附件（契约 §56）。
   | "acp_image_unsupported"
   | "acp_attachment_unsupported"

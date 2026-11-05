@@ -408,7 +408,7 @@ describe("canvasAgents", () => {
     () => {
       const bin = join(root, "path-bin");
       mkdirSync(bin, { recursive: true });
-      for (const name of ["claude", "claude-agent-acp", "pi", "pi-acp"]) {
+      for (const name of ["claude", "claude-agent-acp", "pi", "ama"]) {
         writeFileSync(join(bin, name), "#!/bin/sh\nexit 0\n");
         chmodSync(join(bin, name), 0o755);
       }
@@ -426,8 +426,8 @@ describe("canvasAgents", () => {
       install("pi", withPath("pi"));
       expect(state("pi", withPath("pi")).canvasAgents).toEqual({
         terminal: "available",
-        acp: "limited",
-        reasons: ["mcp_not_wired"],
+        acp: "available",
+        reasons: [],
       });
     },
   );

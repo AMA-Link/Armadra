@@ -55,7 +55,7 @@ describe("candidateModes", () => {
     expect(ids("omp")).toEqual(["default", "plan"]);
     expect(ids("ama")).toEqual(["default", "auto-edit", "full-auto", "plan"]);
     // 没有可切的模式：不出选择，而不是出一个空的。
-    expect(ids("pi")).toBeNull();
+    expect(ids("pi")).toEqual(["default", "auto-edit", "full-auto", "plan"]);
     expect(ids("copilot")).toBeNull();
     expect(ids("custom:unknown")).toBeNull();
   });
@@ -233,6 +233,14 @@ describe("splitConfigOptions", () => {
     // 分类说了不是，就不按 id 猜。
     expect(isEffortOption(select("effort", "_custom"))).toBe(false);
     expect(isEffortOption(select("style"))).toBe(false);
+  });
+
+  it("puts the pi bridge's thought_level into the model picker next to the model", () => {
+    const level = select("thought_level", "thought_level");
+    const model = select("model", "model");
+    const split = splitConfigOptions(extraConfigOptions([model, level]));
+    expect(split.effort?.id).toBe("thought_level");
+    expect(split.rest).toEqual([]);
   });
 
   it("takes the first level for the model picker and leaves the rest inline", () => {

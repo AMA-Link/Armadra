@@ -110,7 +110,7 @@ export async function checkCliFloor(
   if (outdated === undefined) return undefined;
   return new AcpError(
     "acp_cli_outdated",
-    `${launchCmd} ${outdated.installed} is older than the ${outdated.minimum} the ACP adapter needs; install ${outdated.package}`,
+    `${launchCmd} ${outdated.installed} is older than the ${outdated.minimum} the ACP bridge needs; install ${outdated.package}`,
     {
       agentId: outdated.agentId,
       installed: outdated.installed,

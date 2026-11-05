@@ -168,17 +168,14 @@ describe("startAcp", () => {
   });
 
   it("drops the modes of an agent whose `modes` are not permission modes", async () => {
-    // pi 的适配器把推理强度放进 `modes`（同时以 thought_level 配置项给出）。
+    // 当前没有哪家的 `modes` 不是权限模式；表里标 `ignore` 的才丢（含接回时）。
     const pi = await start({ agentId: "pi" });
-    expect(pi.modes).toBeNull();
-    const other = await start({ agentId: "opencode" });
-    expect(other.modes).not.toBeNull();
-    // 接回时同样丢掉。
+    expect(pi.modes).not.toBeNull();
     const resumed = await start({
       agentId: "pi",
       resume: { sessionId: "fake-3", method: "load" },
     });
-    expect(resumed.modes).toBeNull();
+    expect(resumed.modes).not.toBeNull();
   });
 
   it("resumes with session/resume when the table prefers it: no replay", async () => {
@@ -486,9 +483,9 @@ describe.skipIf(process.platform === "win32")("startAdapter", () => {
   describe("a CLI older than the adapter needs (#710)", () => {
     const pi = acpAdapter("pi") as AcpAdapter;
 
-    /** PATH 上有假的 `pi-acp`（假 Agent）和一个只打印版本的假 `pi`。 */
+    /** PATH 上有假的 `ama`（假 Agent，桥的入口）和一个只打印版本的假 `pi`。 */
     function withPi(banner: string): NodeJS.ProcessEnv {
-      const env = onPath("pi-acp");
+      const env = onPath("ama");
       const bin = env.PATH as string;
       const script = join(bin, "pi");
       writeFileSync(script, `#!/bin/sh\necho "${banner}"\n`, "utf8");
@@ -498,10 +495,10 @@ describe.skipIf(process.platform === "win32")("startAdapter", () => {
 
     it("fails at once with the versions and the package to install", async () => {
       // 适配器程序一旦被起来就会留下这个标记：版本过旧要在起进程之前拒掉。
-      const env = withPi("0.73.1");
+      const env = withPi("1.0.4");
       const marker = join(env.PATH as string, "adapter-started");
       writeFileSync(
-        join(env.PATH as string, "pi-acp"),
+        join(env.PATH as string, "ama"),
         `#!/bin/sh\ntouch "${marker}"\nexec "${process.execPath}" "${fakeAcpAgentPath()}" "$@"\n`,
         "utf8",
       );
@@ -514,8 +511,8 @@ describe.skipIf(process.platform === "win32")("startAdapter", () => {
         code: "acp_cli_outdated",
         details: {
           agentId: "pi",
-          installed: "0.73.1",
-          minimum: "0.81.0",
+          installed: "1.0.4",
+          minimum: "1.1.0",
           package: "@earendil-works/pi-coding-agent",
         },
       });
@@ -524,13 +521,13 @@ describe.skipIf(process.platform === "win32")("startAdapter", () => {
       expect(rememberedAcpVersion("pi")).toBeUndefined();
     });
 
-    it("starts when the CLI is new enough, and shows no modes for pi", async () => {
+    it("starts when the CLI is new enough, and shows the bridge's modes for pi", async () => {
       const session = await startAdapter(pi, {
         cwd: tmpdir(),
         env: withPi("1.5.0"),
       });
       sessions.push(session);
-      expect(session.modes).toBeNull();
+      expect(session.modes).not.toBeNull();
     });
 
     it("does not block when the version cannot be read", async () => {
@@ -577,6 +574,74 @@ function hangingAgent(): { program: string; args: string[]; cwd: string } {
   );
   return { program: process.execPath, args: [script], cwd: tmpdir() };
 }
+
+/** 桥式的 Agent：`initialize` 照答，`session/new` 答带 `error.data` 的 JSON-RPC 错误。 */
+function bridgeRefusing(data: Record<string, unknown>): {
+  program: string;
+  args: string[];
+  cwd: string;
+} {
+  const dir = mkdtempSync(join(tmpdir(), "armadra-acp-bridge-"));
+  cleanup.push(dir);
+  const script = join(dir, "bridge.cjs");
+  writeFileSync(
+    script,
+    [
+      'const rl = require("node:readline").createInterface({ input: process.stdin });',
+      "const send = (value) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...value }) + '\\n');",
+      'rl.on("line", (line) => {',
+      "  const message = JSON.parse(line);",
+      '  if (message.method === "initialize") {',
+      "    send({ id: message.id, result: { protocolVersion: 1, agentCapabilities: {} } });",
+      '  } else if (message.method === "session/new") {',
+      `    send({ id: message.id, error: { code: -32603, message: "refused", data: ${JSON.stringify(data)} } });`,
+      "  }",
+      "});",
+      'process.stdin.on("end", () => process.exit(0));',
+    ].join("\n"),
+  );
+  return { program: process.execPath, args: [script], cwd: tmpdir() };
+}
+
+describe("the pi bridge's refusals (error.data.code)", () => {
+  it("passes pi_outdated through with the versions and the package", async () => {
+    const error = await startError(
+      bridgeRefusing({
+        code: "pi_outdated",
+        installed: "1.0.4",
+        minimum: "1.1.0",
+        package: "@earendil-works/pi-coding-agent",
+        secret: "dropped",
+      }),
+    );
+    expect(error.code).toBe("pi_outdated");
+    expect(error.details).toEqual({
+      agentId: "pi",
+      installed: "1.0.4",
+      minimum: "1.1.0",
+      package: "@earendil-works/pi-coding-agent",
+    });
+  });
+
+  it("passes pi_missing and pi_no_model through; other codes stay acp_session_failed", async () => {
+    expect(
+      (
+        await startError(
+          bridgeRefusing({
+            code: "pi_missing",
+            package: "@earendil-works/pi-coding-agent",
+          }),
+        )
+      ).code,
+    ).toBe("pi_missing");
+    expect(
+      (await startError(bridgeRefusing({ code: "pi_no_model" }))).code,
+    ).toBe("pi_no_model");
+    expect((await startError(bridgeRefusing({ code: "other" }))).code).toBe(
+      "acp_session_failed",
+    );
+  });
+});
 
 describe("startAcp: phases, timings and the session/new deadline (contract §51)", () => {
   it("reports the four phases in order and only numbers as timings", async () => {

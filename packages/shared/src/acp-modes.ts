@@ -18,8 +18,8 @@ import { PERMISSION_MODES, type PermissionMode } from "./domain/primitives.js";
  *   * opencode：agent 名 `build` / `plan`，没有 auto-edit / full-auto；
  *   * omp：`default` / `plan`，`write` / `yolo` 只能走启动旗标；
  *   * copilot：不报，三个模式都只能走启动旗标；
- *   * pi：适配器报的 `modes` 是推理强度（同时以 `thought_level` 配置项给出），不是权限
- *     模式，按 {@link ACP_REPORTED_MODES} 忽略；Pi 本身没有权限模型，没有任何模式；
+ *   * pi：ama 的桥（`--bridge pi`）用审批闸实现四个模式，id 与 ama 相同；推理强度
+ *     只以 `thought_level` 配置项给出，不进 `modes`；
  *   * ama：`default` / `auto-edit` / `full-auto` / `plan`，id 就是 Armadra 的名字。
  * 各家都可能晚报或不报；Agent 报了以它为准，这张表只在报回之前顶上。
  */
@@ -55,11 +55,12 @@ export const ACP_MODE_TABLE: Readonly<Record<BuiltinAgentId, AcpModeTable>> = {
     "full-auto": null,
     plan: { modeId: "plan" },
   },
+  // ama 的 pi 桥：模式 id 与 ama 相同，由桥里的审批闸逐次执行。
   pi: {
-    default: NONE,
-    "auto-edit": null,
-    "full-auto": null,
-    plan: null,
+    default: { modeId: "default" },
+    "auto-edit": { modeId: "auto-edit" },
+    "full-auto": { modeId: "full-auto" },
+    plan: { modeId: "plan" },
   },
   omp: {
     default: { modeId: "default" },
@@ -85,7 +86,7 @@ export const ACP_MODE_TABLE: Readonly<Record<BuiltinAgentId, AcpModeTable>> = {
 
 /**
  * 这家在 `session/new` 答复里报的 `modes` 是不是权限模式：`permission` 照常当模式
- * 用；`ignore` 是这家把别的东西（pi：推理强度）塞在 `modes` 里，core 丢掉它，
+ * 用；`ignore` 是这家把别的东西（如推理强度）塞在 `modes` 里，core 丢掉它，
  * 页面不画模式选择器，那一项只以配置项出现。
  */
 export const ACP_REPORTED_MODES: Readonly<
@@ -94,7 +95,7 @@ export const ACP_REPORTED_MODES: Readonly<
   claude: "permission",
   codex: "permission",
   opencode: "permission",
-  pi: "ignore",
+  pi: "permission",
   omp: "permission",
   copilot: "permission",
   ama: "permission",

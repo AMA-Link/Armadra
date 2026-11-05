@@ -126,15 +126,15 @@ AI Coding 画布覆盖软件开发、算法开发、数据分析与科研编程�
 
 每个 CLI 有两种驱动方式：**终端模式**（真实 CLI 跑在终端节点里，状态经 Hook / 扩展 / 插件上报）与 **ACP 会话视图**（经各家 ACP 适配器以对话视图驱动）。「已实测」指在真实 CLI 上跑过端到端场景并留下记录，「未实测」指代码与假 Agent 测过、还没在真实 CLI 上跑过。
 
-| CLI            | 状态通道   | 恢复会话               | 非默认权限模式               | 终端模式                         | ACP 会话视图                        |
-| -------------- | ---------- | ---------------------- | ---------------------------- | -------------------------------- | ----------------------------------- |
-| Claude Code    | 命令 Hook  | `--resume ID`          | auto-edit / full-auto / plan | 已实测                           | 已实测（claude-agent-acp ≥ 0.85.1） |
-| Codex          | 命令 Hook  | `resume ID`            | auto-edit / full-auto / plan | 已实测                           | 未实测（codex-acp）                 |
-| OpenCode       | 插件       | `--session ID`         | CLI 默认                     | 已实测注入与状态；端到端场景未跑 | 未实测                              |
-| Pi             | 进程内扩展 | `--session PATH_OR_ID` | CLI 默认                     | 已实测                           | 已实测（pi-acp ≥ 0.0.34）           |
-| Oh My Pi       | 进程内扩展 | `--resume ID`          | auto-edit / full-auto        | 已实测注入与状态；端到端场景未跑 | 未实测                              |
-| GitHub Copilot | 命令 Hook  | `--resume ID`          | auto-edit / full-auto / plan | 已实测注入与状态；端到端场景未跑 | 未实测；不能接回会话                |
-| ama            | 宿主适配器 | `--resume ID`          | auto-edit / full-auto / plan | 随桌面壳打包                     | 未实测                              |
+| CLI            | 状态通道   | 恢复会话               | 非默认权限模式               | 终端模式                         | ACP 会话视图                                                 |
+| -------------- | ---------- | ---------------------- | ---------------------------- | -------------------------------- | ------------------------------------------------------------ |
+| Claude Code    | 命令 Hook  | `--resume ID`          | auto-edit / full-auto / plan | 已实测                           | 已实测（claude-agent-acp ≥ 0.85.1）                          |
+| Codex          | 命令 Hook  | `resume ID`            | auto-edit / full-auto / plan | 已实测                           | 未实测（codex-acp）                                          |
+| OpenCode       | 插件       | `--session ID`         | CLI 默认                     | 已实测注入与状态；端到端场景未跑 | 未实测                                                       |
+| Pi             | 进程内扩展 | `--session PATH_OR_ID` | CLI 默认                     | 已实测                           | 开会话与切模式已实测（ama 的 pi 桥，Pi 1.5.0）；完整回合未跑 |
+| Oh My Pi       | 进程内扩展 | `--resume ID`          | auto-edit / full-auto        | 已实测注入与状态；端到端场景未跑 | 未实测                                                       |
+| GitHub Copilot | 命令 Hook  | `--resume ID`          | auto-edit / full-auto / plan | 已实测注入与状态；端到端场景未跑 | 未实测；不能接回会话                                         |
+| ama            | 宿主适配器 | `--resume ID`          | auto-edit / full-auto / plan | 随桌面壳打包                     | 未实测                                                       |
 
 ACP 一列以 [tools/release/compatibility.json](tools/release/compatibility.json) 为准（`verified` 为 `null` 即未实测，真跑通过后由探针写入）；终端模式一列以[功能预期总表 §4](docs/status/feature-roadmap.md) 为准。自定义 Agent 可借用任一内置 CLI 的形状。完整差异见 [Agent 协作](docs/guides/agent-collaboration.md)。
 

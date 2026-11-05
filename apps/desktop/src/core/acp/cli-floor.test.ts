@@ -33,14 +33,14 @@ describe.skipIf(process.platform === "win32")("checkCliFloor", () => {
     const error = await checkCliFloor(
       "pi",
       installed("pi"),
-      async () => "pi 0.80.10\n",
+      async () => "pi 1.0.4\n",
     );
     expect(error).toMatchObject({
       code: "acp_cli_outdated",
       details: {
         agentId: "pi",
-        installed: "0.80.10",
-        minimum: "0.81.0",
+        installed: "1.0.4",
+        minimum: "1.1.0",
         package: "@earendil-works/pi-coding-agent",
       },
     });
@@ -48,7 +48,7 @@ describe.skipIf(process.platform === "win32")("checkCliFloor", () => {
   });
 
   it("lets the floor itself and newer versions through", async () => {
-    for (const banner of ["0.81.0", "v1.5.0", "0.100.2"]) {
+    for (const banner of ["1.1.0", "v1.5.0", "2.0.0"]) {
       forgetCliVersions();
       expect(
         await checkCliFloor("pi", installed("pi"), async () => banner),
@@ -112,7 +112,7 @@ describe.skipIf(process.platform === "win32")("checkCliFloor", () => {
     let calls = 0;
     const run = async () => {
       calls += 1;
-      return calls === 1 ? undefined : "0.73.1";
+      return calls === 1 ? undefined : "1.0.4";
     };
     expect(await checkCliFloor("pi", env, run)).toBeUndefined();
     expect(await checkCliFloor("pi", env, run)).toMatchObject({
@@ -126,11 +126,11 @@ describe.skipIf(process.platform === "win32")("checkCliFloor", () => {
     // 版本管理器的 shim：路径、修改时间、大小都不变，背后的版本升了。
     const run = async () => {
       calls += 1;
-      return calls === 1 ? "pi 0.80.10" : "pi 0.82.1";
+      return calls === 1 ? "pi 1.0.4" : "pi 1.2.0";
     };
     expect(await checkCliFloor("pi", env, run)).toMatchObject({
       code: "acp_cli_outdated",
-      details: { installed: "0.80.10" },
+      details: { installed: "1.0.4" },
     });
     expect(await checkCliFloor("pi", env, run)).toBeUndefined();
     expect(calls).toBe(2);
@@ -143,19 +143,19 @@ describe.skipIf(process.platform === "win32")("checkCliFloor", () => {
     const error = await checkCliFloor(
       "pi",
       installed("pi"),
-      async () => "pi 0.81.0-beta.2\n",
+      async () => "pi 1.1.0-beta.2\n",
     );
     expect(error).toMatchObject({
       code: "acp_cli_outdated",
-      details: { installed: "0.81.0-beta.2", minimum: "0.81.0" },
+      details: { installed: "1.1.0-beta.2", minimum: "1.1.0" },
     });
     forgetCliVersions();
     expect(
-      await checkCliFloor("pi", installed("pi"), async () => "0.82.0-rc.1"),
+      await checkCliFloor("pi", installed("pi"), async () => "1.2.0-rc.1"),
     ).toBeUndefined();
     forgetCliVersions();
     expect(
-      await checkCliFloor("pi", installed("pi"), async () => "0.81.0"),
+      await checkCliFloor("pi", installed("pi"), async () => "1.1.0"),
     ).toBeUndefined();
   });
 
@@ -163,8 +163,8 @@ describe.skipIf(process.platform === "win32")("checkCliFloor", () => {
     const bin = mkdtempSync(join(tmpdir(), "armadra-cli-floor-start-"));
     dirs.push(bin);
     for (const [name, body] of [
-      ["pi", "echo 0.80.10"],
-      ["pi-acp", "exit 0"],
+      ["pi", "echo 1.0.4"],
+      ["ama", "exit 0"],
     ] as const) {
       writeFileSync(join(bin, name), `#!/bin/sh\n${body}\n`, "utf8");
       chmodSync(join(bin, name), 0o755);

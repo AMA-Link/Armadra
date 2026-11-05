@@ -13,6 +13,9 @@ describe("startFailureKey", () => {
     ["acp_protocol_version", "acp.error.protocolVersion"],
     ["acp_session_timeout", "acp.error.timeout"],
     ["acp_cli_outdated", "acp.error.cliOutdated"],
+    ["pi_outdated", "acp.error.piOutdated"],
+    ["pi_missing", "acp.error.piMissing"],
+    ["pi_no_model", "acp.error.piNoModel"],
   ])("%s 有专门的一句", (code, key) => {
     expect(startFailureKey(code)).toBe(key);
   });
@@ -31,6 +34,9 @@ describe("startFailureKey", () => {
       "acp_protocol_version",
       "acp_session_timeout",
       "acp_cli_outdated",
+      "pi_outdated",
+      "pi_missing",
+      "pi_no_model",
       "other",
     ]) {
       const key = startFailureKey(code);
@@ -58,6 +64,27 @@ describe("startFailureNote", () => {
     expect(startFailureNote(error, t)).toBe(
       'acp.error.cliOutdatedNeed:{"installed":"0.73.1","minimum":"0.81.0","package":"@earendil-works/pi-coding-agent"}',
     );
+  });
+
+  it("pi_outdated 同样写出版本与包；pi_missing 只写应装的包", () => {
+    const outdated = new RuntimeRequestError(409, "old", "pi_outdated", {
+      details: {
+        agentId: "pi",
+        installed: "1.0.4",
+        minimum: "1.1.0",
+        package: "pkg",
+      },
+    });
+    expect(startFailureNote(outdated, t)).toBe(
+      'acp.error.cliOutdatedNeed:{"installed":"1.0.4","minimum":"1.1.0","package":"pkg"}',
+    );
+    const missing = new RuntimeRequestError(409, "gone", "pi_missing", {
+      details: { package: "pkg" },
+    });
+    expect(startFailureNote(missing, t)).toBe("pkg");
+    expect(
+      startFailureNote(new RuntimeRequestError(409, "x", "pi_no_model"), t),
+    ).toBeNull();
   });
 
   it("details 缺失或形状不对时不附", () => {

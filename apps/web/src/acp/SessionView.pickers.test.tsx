@@ -143,7 +143,7 @@ describe("model and mode pickers right after creation", () => {
     render(
       <SessionView
         nodeId="n1"
-        data={{ ...existing, agent: { id: "pi", driver: "acp" } }}
+        data={{ ...existing, agent: { id: "copilot", driver: "acp" } }}
       />,
     );
     expect(await screen.findByLabelText("模型")).toBeTruthy();

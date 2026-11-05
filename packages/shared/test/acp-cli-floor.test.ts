@@ -20,9 +20,9 @@ describe("ACP_CLI_FLOOR", () => {
     }
   });
 
-  it("pins pi at 0.81.0 on the current package, not the deprecated one", () => {
+  it("pins pi at 1.1.0 on the current package, not the deprecated one", () => {
     expect(acpCliFloor("pi")).toEqual({
-      minVersion: "0.81.0",
+      minVersion: "1.1.0",
       package: "@earendil-works/pi-coding-agent",
     });
     expect(AGENT_CLI_PACKAGES.pi).not.toContain("mariozechner");
@@ -36,18 +36,18 @@ describe("ACP_CLI_FLOOR", () => {
 
 describe("acpCliOutdated", () => {
   it("reports an installed version below the floor", () => {
-    expect(acpCliOutdated("pi", "0.73.1")).toEqual({
+    expect(acpCliOutdated("pi", "1.0.4")).toEqual({
       agentId: "pi",
-      installed: "0.73.1",
-      minimum: "0.81.0",
+      installed: "1.0.4",
+      minimum: "1.1.0",
       package: "@earendil-works/pi-coding-agent",
     });
     expect(acpCliOutdated("pi", "0.80.10")?.installed).toBe("0.80.10");
   });
 
   it("passes the floor itself and anything above, comparing per segment", () => {
-    expect(acpCliOutdated("pi", "0.81.0")).toBeUndefined();
-    expect(acpCliOutdated("pi", "0.100.0")).toBeUndefined();
+    expect(acpCliOutdated("pi", "1.1.0")).toBeUndefined();
+    expect(acpCliOutdated("pi", "1.10.0")).toBeUndefined();
     expect(acpCliOutdated("pi", "1.5.0")).toBeUndefined();
   });
 
