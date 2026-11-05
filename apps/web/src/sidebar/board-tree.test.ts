@@ -6,6 +6,8 @@ import {
   boardSignals,
   nextBoardName,
   pinnedEntries,
+  startsCollapsed,
+  treeWorkspaces,
   visibleBoards,
   type BoardEntry,
 } from "./board-tree";
@@ -89,5 +91,57 @@ describe("nextBoardName", () => {
     expect(
       nextBoardName([board("a"), board("b", "画布 4"), board("c")], template),
     ).toBe("画布 5");
+  });
+});
+
+describe("treeWorkspaces（#817）", () => {
+  const listed = [{ id: "phone" }, { id: "legacy" }, { id: "desk" }];
+
+  it("服务端列出的全都在：本设备没打开过的跟在打开过的后面", () => {
+    // 复现：桌面只记得 desk，手机建的 phone 与旧版「关闭」掉的 legacy 以前被筛掉。
+    expect(
+      treeWorkspaces({ listed, openIds: ["desk"], pinnedIds: [] }).map(
+        (item) => item.id,
+      ),
+    ).toEqual(["desk", "phone", "legacy"]);
+  });
+
+  it("打开记录只管顺序；记着但已不在列表里的（归档、删除）不出现", () => {
+    expect(
+      treeWorkspaces({
+        listed,
+        openIds: ["gone", "legacy", "desk", "legacy"],
+        pinnedIds: [],
+      }).map((item) => item.id),
+    ).toEqual(["legacy", "desk", "phone"]);
+  });
+
+  it("置顶在最前；当前那个还不在列表里时补在前面", () => {
+    expect(
+      treeWorkspaces({
+        listed,
+        openIds: ["desk"],
+        pinnedIds: ["legacy"],
+        current: { id: "fresh" },
+      }).map((item) => item.id),
+    ).toEqual(["legacy", "fresh", "desk", "phone"]);
+  });
+});
+
+describe("startsCollapsed", () => {
+  const state = { openIds: ["desk"], collapsedIds: [], currentId: "desk" };
+
+  it("本设备没打开过的先收起，打开过的展开", () => {
+    expect(startsCollapsed("phone", state)).toBe(true);
+    expect(startsCollapsed("desk", state)).toBe(false);
+  });
+
+  it("收起过的收起；当前那个即使没记过也展开", () => {
+    expect(startsCollapsed("desk", { ...state, collapsedIds: ["desk"] })).toBe(
+      true,
+    );
+    expect(startsCollapsed("fresh", { ...state, currentId: "fresh" })).toBe(
+      false,
+    );
   });
 });

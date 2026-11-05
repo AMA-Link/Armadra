@@ -63,15 +63,15 @@ import { toast } from "@/ui/toast";
  * 打开哪个画布，当前源跟着打开的工作空间走（`sources/follow-workspace.ts`），
  * 没有手动切换。
  *
- * 打开着的工作空间所在的那台电脑，这一段是 `tree`（已打开的工作空间与它们的
- * 画布）；其余每台各一段，列出它的全部工作空间。每段各自的状态：在连、离线
+ * 打开着的工作空间所在的那台电脑，这一段是 `tree`（它的全部工作空间与它们的
+ * 画布，#817）；其余每台各一段，同样列出它的全部工作空间。每段各自的状态：在连、离线
  * 时灰着列上次记下的名字，点不开，也不挡本机那一段。
  *
  * 「我的其他电脑」按段头拖动排序（桌面壳与服务器壳的页面，源表在本机 core）：
  * 新顺序写回 `sources.update.orderIndex`，侧栏先按新顺序画，不为此重连。
  */
 interface WorkspaceGroupsProps {
-  /** 当前那台电脑的那一段（已打开的工作空间树）。 */
+  /** 当前那台电脑的那一段（工作空间树）。 */
   tree: React.ReactNode;
   /** 「这台电脑」组的外壳（组标题、添加项目、拖入目录），内容由这里给。 */
   renderLocal: (content: React.ReactNode, current: boolean) => React.ReactNode;

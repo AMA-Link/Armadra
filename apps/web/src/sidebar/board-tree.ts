@@ -63,6 +63,58 @@ export function visibleBoards(
   return active ? [...head.slice(0, BOARD_PAGE_SIZE - 1), active] : head;
 }
 
+/**
+ * 当前那台电脑的工作空间行（#817）。
+ *
+ * **可见性只听服务端**：`workspaces.list` 列出的（未归档的，契约 §89）全都在，
+ * 每个客户端看到的是同一组；想在所有设备上收起一个工作空间，用归档。本设备的
+ * 打开记录（`openIds`，localStorage）只管顺序：打开过的按打开顺序在前，其余按
+ * 服务端顺序（最近打开）跟在后面；置顶的排到最前（稳定排序）。
+ *
+ * 以前这里拿 `openIds` 去筛列表，于是别的客户端建的、旧版「关闭」掉的工作空间
+ * 在本机永远不出现，手机却能看到、进去建画布。
+ *
+ * `current` 是当前打开着、但列表里还没有的那个（刚建好、列表还没刷新）。
+ */
+export function treeWorkspaces<T extends { id: string }>(input: {
+  listed: readonly T[];
+  openIds: readonly string[];
+  pinnedIds: readonly string[];
+  current?: T | null;
+}): T[] {
+  const byId = new Map(input.listed.map((item) => [item.id, item]));
+  const list: T[] = [];
+  const taken = new Set<string>();
+  const take = (item: T | undefined) => {
+    if (!item || taken.has(item.id)) return;
+    taken.add(item.id);
+    list.push(item);
+  };
+  for (const id of input.openIds) take(byId.get(id));
+  for (const item of input.listed) take(item);
+  if (input.current && !taken.has(input.current.id)) {
+    list.unshift(input.current);
+  }
+  const rank = (item: T) => (input.pinnedIds.includes(item.id) ? 0 : 1);
+  return list.sort((a, b) => rank(a) - rank(b));
+}
+
+/**
+ * 一行缺省收不收起：本设备收起过的收起；本设备从没打开过的也先收起（只露一行
+ * 文件夹名），免得旧工作空间的画布一下子撑满侧栏。当前那个永远展开。
+ */
+export function startsCollapsed(
+  id: string,
+  state: {
+    openIds: readonly string[];
+    collapsedIds: readonly string[];
+    currentId: string | null;
+  },
+): boolean {
+  if (state.collapsedIds.includes(id)) return true;
+  return id !== state.currentId && !state.openIds.includes(id);
+}
+
 /** 置顶组的一行：板本身 + 它属于哪个工作空间。 */
 export interface PinnedEntry {
   workspaceId: string;
