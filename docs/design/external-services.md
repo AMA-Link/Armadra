@@ -399,7 +399,7 @@ Pwned Passwords range API **免费、无需密钥、无限额**，k-匿名：只
 
 | 壳 / 平台    | 后端                                                                                                                                                 | 自报                                                                      |
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| 桌面 macOS   | 现状 `security(1)`（不改，避免两套条目）                                                                                                             | `keychain`                                                                |
+| 桌面 macOS   | 默认数据目录：现状 `security(1)`（不改，避免两套条目）；别的数据目录：同服务器壳的 `master.key`（钥匙串整个账户一份，契约 §102.1）                   | `keychain` / `file-encrypted`                                             |
 | 桌面 Windows | `safeStorage`（DPAPI）加密后的密文存 `<数据目录>/secrets/<service>.bin`                                                                              | `dpapi`                                                                   |
 | 桌面 Linux   | `safeStorage` 且 `getSelectedStorageBackend() ∈ {gnome_libsecret, kwallet*}` 才用；`basic_text` / `unknown` → 文件                                   | `libsecret` / `file`                                                      |
 | 服务器壳     | `<数据目录>/secrets/master.key`（0600，首启生成）AES-256-GCM 封装各条目；`ARMADRA_SECRET_MASTER_KEY_FILE` 可指到别处（如 systemd `LoadCredential=`） | `file-encrypted`（Windows 且无 `master.key` 时为 `dpapi`，见契约 §102.7） |

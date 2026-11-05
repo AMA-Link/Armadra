@@ -50,7 +50,7 @@ checkpoint 和质量门见[真实双 Agent 入口](../../docs/guides/local-cli-p
 
 其余脚本（`browser-cdp`、`git-tool-window`、`forge-panel`、`connection-drag`、`canvas-tidy`、`browser-agent-e2e`、`timezone-picker`、`language-load`、`launch-concurrency`）是单项核验，本地按需手动跑；`relay-web-e2e` 要 armadra-cloud 的检出，也是本地手动跑（见「中继托管页面端到端」）；`saas-host-e2e` 要一个已经在跑的 SaaS 部署，本地手动跑（见「控制台 `/h/` 端到端」）；`mermaid-trusted-types` 本地手动跑（见「Mermaid 在强制 Trusted Types 下渲染」）。平台探针 `personal-roundtrip`、`multi-source`、`link-join`（A 档）与 `nat-core-offline`、`webkit-roundtrip`（B 档）同样要 armadra-cloud 的检出（CI 上记 skipped）；后两者与 `multi-source` 的中继在容器里（要 Docker），`pnpm platform:e2e` 一次跑完，共用件在 `platform-lib.mjs`；经中继的客户端（端到端通道，复用 `@armadra/shared/e2e`，要先 `pnpm libs:build`）在 `e2e-client.mjs`，`language-load --relay`、`personal-roundtrip --workerd` 与上面几条探针都用它。
 
-探针起的 core、服务器壳、桌面壳一律用临时 HOME（`probe-home.mjs`：HOME、XDG、各 CLI 配置目录与 git 全局配置都指进 mktemp 目录，并去掉指向真实账号的凭据变量），不读写操作员自己的 HOME。新写的探针也照此办；Vite / pnpm 这类工具链进程不在此列。
+探针起的 core、服务器壳、桌面壳一律用临时 HOME（`probe-home.mjs`：HOME、XDG、各 CLI 配置目录与 git 全局配置都指进 mktemp 目录，并去掉指向真实账号的凭据变量），不读写操作员自己的 HOME。新写的探针也照此办；Vite / pnpm 这类工具链进程不在此列。macOS 上 `isolatedEnv` 同时设 `ARMADRA_SECRET_BACKEND=file`（不用它的探针在起 core 的环境里自己写上）：钥匙串整个账户只有一份，临时 HOME 下也没有默认钥匙串。core 自己对非默认数据目录也不碰钥匙串、没有默认钥匙串时不弹窗（契约 §102.1）。
 
 ## 并发启动多个 Codex
 
@@ -588,7 +588,7 @@ xvfb-run -a node tools/probes/packaged-smoke.mjs --no-real-cli   # Linux，没�
 
 B 档（`nightly.yml` 的 `linux` 与 `macos` 作业）带 `--no-real-cli`：不要真 Codex 与它的登录，第 3 步换成一个普通终端节点——打包版按桌面会话的 PATH 起来后找得到 tmux、起得来 shell、页面敲的 `echo` 有回显（`packaged-shell.png`）。第 1、2、4 步照旧。Linux 上不给 `--app` 时取 `apps/desktop/release/` 里的 AppImage（没有就取 `linux-unpacked/`）；AppImage 用 `APPIMAGE_EXTRACT_AND_RUN=1` 起，不要 FUSE；环境是桌面会话的 PATH（`/usr/local/sbin:…:/bin`）、`SHELL=/bin/bash`，透传 `DISPLAY` / `XAUTHORITY` / `WAYLAND_DISPLAY` / `XDG_RUNTIME_DIR` / `DBUS_SESSION_BUS_ADDRESS`，Chromium 用 `--password-store=basic`；以 root 运行（容器里调试）时加 `--no-sandbox`。
 
-直接执行 `apps/desktop/release/mac-arm64/Armadra.app` 里的二进制，按访达的方式给环境（launchd 的 PATH、`SHELL=/bin/zsh`），`HOME`、`ARMADRA_DATA_DIR`、`--user-data-dir` 都在 `mktemp` 的目录里，Chromium 用 `--use-mock-keychain`（临时 HOME 下没有登录钥匙串）。不安装、不替换 `/Applications/Armadra.app`，也不碰正在运行的那个 Armadra（单实例锁按 `--user-data-dir` 算）。
+直接执行 `apps/desktop/release/mac-arm64/Armadra.app` 里的二进制，按访达的方式给环境（launchd 的 PATH、`SHELL=/bin/zsh`），`HOME`、`ARMADRA_DATA_DIR`、`--user-data-dir` 都在 `mktemp` 的目录里，Chromium 用 `--use-mock-keychain`、core 用 `ARMADRA_SECRET_BACKEND=file`（临时 HOME 下没有登录钥匙串）。不安装、不替换 `/Applications/Armadra.app`，也不碰正在运行的那个 Armadra（单实例锁按 `--user-data-dir` 算）。
 
 1. **升级后自动迁移全局安装**：临时 HOME 里预先造出旧版装进各 CLI 全局目录的东西（Claude `settings.json` 的 Hook、Codex `hooks.json`、Copilot `hooks/armadra.json`、OpenCode / Pi / OMP 的状态模块、`skills/armadra`）和用户自己的条目。断言我们的都清掉、清之前有备份（用户也编辑的文件备份在旁边，只有我们写的备份进数据目录）、用户的 Hook / 设置 / 技能原样留着；临时 HOME 的 `~/.codex/config.toml` 预置一条上一版的会话级信任记录和用户自己的行，起打包版后我们的记录被清掉、用户的行留着，画布里起过 Codex（启动器方案，零写入，信任记录在 `-c` 层）之后也没有写回。
 2. **编辑器的 PDF 与视频**：视频夹具由打包版自己的 MediaRecorder 录出来；截图里 PDF 区域不是空白，`<video>` 读得出 320×240、没有解码错误，播一下之后画面不是一块纯色。

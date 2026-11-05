@@ -620,8 +620,10 @@ core 关停与启动中途失败走同一条收尾（`main.ts` 的 `teardown`）
   指纹且逐级验签与主机名有效期都对的放行（`shell-core/remote-trust.ts`、
   `main/remote-trust.ts`）。`<webview>` 供浏览器节点使用。
 - core 自己拥有的密钥（Copilot 令牌、GitHub PAT 等）只经 `core/secrets` 的
-  `SecretBackend { kind, get, set, delete }` 存取，名字一律 `armadra-*`：macOS 桌面壳
-  走 `security(1)` 钥匙串（`keychain`）；Windows / Linux 桌面壳的 core 是 fork 出的
+  `SecretBackend { kind, get, set, delete }` 存取，名字一律 `armadra-*`：macOS 上默认
+  数据目录的 core 走 `security(1)` 钥匙串（`keychain`；先确认有默认钥匙串，没有就当
+  不可用，从不弹窗），指了别的数据目录的走数据目录里的 `file-encrypted`（钥匙串条目
+  整个账户一份，契约 §102.1）；Windows / Linux 桌面壳的 core 是 fork 出的
   `ELECTRON_RUN_AS_NODE` 子进程，封与解经 fork 的 IPC 通道问主进程的 `safeStorage`
   （`main/secrets.ts`，`dpapi` / `libsecret`；Linux 的 `basic_text` / `unknown` 当作
   没有钥匙串）；服务器壳用 `<数据目录>/secrets/master.key` 做 AES-256-GCM
