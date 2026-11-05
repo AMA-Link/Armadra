@@ -1,13 +1,7 @@
-import { execFileSync } from "node:child_process";
-import {
-  chmodSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
+import { protectKeyFile } from "../../windows/acl";
 import { PROTOCOL_MAJOR } from "./protocol";
 
 /**
@@ -134,53 +128,6 @@ export function ensureKey(dataDir: string): Buffer {
   renameSync(temporary, path);
   protectKeyFile(path);
   return key;
-}
-
-/**
- * Narrows the key file to this user, and throws if it cannot.
- *
- * POSIX needs only the `chmod` the write already applied; it is repeated
- * because a file inherited from an earlier build may be wider. Windows needs
- * `icacls`: `/inheritance:r` drops the ACEs the parent directory contributed
- * — which on a default profile include Administrators and SYSTEM — and
- * `/grant:r <user>:F` puts exactly one back.
- */
-export function protectKeyFile(
-  path: string,
-  platform: NodeJS.Platform = process.platform,
-  environment: NodeJS.ProcessEnv = process.env,
-): void {
-  if (platform !== "win32") {
-    chmodSync(path, 0o600);
-    return;
-  }
-  const account = windowsAccount(environment);
-  try {
-    execFileSync(
-      "icacls",
-      [path, "/inheritance:r", "/grant:r", `${account}:F`],
-      {
-        windowsHide: true,
-        stdio: "ignore",
-      },
-    );
-  } catch (error) {
-    throw new Error(
-      `无法收紧会话宿主密钥文件的权限（icacls ${path}）：${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-  }
-}
-
-/** `DOMAIN\user`, or the bare user name when there is no domain. */
-export function windowsAccount(environment: NodeJS.ProcessEnv): string {
-  const user = environment.USERNAME ?? "";
-  if (user === "") {
-    throw new Error("USERNAME is not set; cannot name the account to grant");
-  }
-  const domain = environment.USERDOMAIN ?? "";
-  return domain === "" ? user : `${domain}\\${user}`;
 }
 
 /**

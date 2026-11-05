@@ -12,8 +12,8 @@ import {
   readKey,
   sign,
   signHello,
-  windowsAccount,
 } from "./auth";
+import { windowsAccount } from "../../windows/acl";
 import { pipeEndpoint } from "./protocol";
 
 /**

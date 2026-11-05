@@ -9,6 +9,7 @@ import {
   placeElectronNotices,
   migrationResources,
   placeLaunchExe,
+  placeWinsecExe,
   placements,
   requireServerBuild,
   serverResources,
@@ -237,6 +238,33 @@ test("a Windows target also gets the canvas launcher, built only on a Windows ho
     elsewhere[0],
     /WARNING .*armadra-launch\.exe.*without injection/,
   );
+});
+
+test("a Windows target also gets the pipe helper, built only on a Windows host", () => {
+  const built = [];
+  const logs = [];
+  const options = {
+    host: "win32",
+    compile: (output) => (built.push(output), output),
+    log: (line) => logs.push(line),
+  };
+  assert.equal(placeWinsecExe("darwin", "R", options), undefined);
+  assert.equal(placeWinsecExe("linux", "R", options), undefined);
+  assert.deepEqual(built, []);
+  assert.equal(
+    placeWinsecExe("win32", "R", options),
+    join("R", "cli", "armadra-winsec.exe"),
+  );
+  const elsewhere = [];
+  assert.equal(
+    placeWinsecExe("win32", "R", {
+      host: "darwin",
+      compile: () => assert.fail("no compiler off Windows"),
+      log: (line) => elsewhere.push(line),
+    }),
+    undefined,
+  );
+  assert.match(elsewhere[0], /WARNING .*armadra-winsec\.exe.*PowerShell/);
 });
 
 test("every bundle carries the generated notices and ama's own, from files that exist", () => {
