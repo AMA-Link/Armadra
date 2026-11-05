@@ -18,7 +18,9 @@ import { installIdentity } from "./identity";
 import { setLoopbackAnonymousOwner } from "./identity/http";
 import { install as installHooks } from "./hook";
 import { hookService } from "./hook/service";
-import { hardenDataRoot } from "./windows/acl";
+import { channelKey, ensurePipeKey } from "./private-pipe";
+import { RUNTIME_LABEL } from "./private-pipe/labels";
+import { hardenDataRoot, hardenPipe } from "./windows/acl";
 import {
   RUNTIME_SERVICE,
   CONTROLLER_SERVICE,
@@ -457,7 +459,23 @@ export async function run(options: RunOptions = {}): Promise<RunningCore> {
   try {
     for (const spec of parsed.args.listen) {
       const listener = server.createListener();
-      bound.push(await bind(listener, spec));
+      bound.push(
+        await bind(
+          listener,
+          spec,
+          spec.kind === "pipe"
+            ? {
+                channel: {
+                  label: RUNTIME_LABEL,
+                  key: channelKey(ensurePipeKey(dataDir), RUNTIME_LABEL),
+                },
+                harden: hardenPipe,
+                onWarning: (message, detail) =>
+                  log.warn(message, detail as Record<string, unknown>),
+              }
+            : undefined,
+        ),
+      );
       listeners.push({
         server: listener,
         spec: bound[bound.length - 1] as ListenSpec,
