@@ -63,6 +63,12 @@ export const KEY_FILE = "session-host.key";
 /** Domain separation: this key signs nothing else, ever. */
 export const AUTH_CONTEXT = "armadra-session-host/auth";
 
+/**
+ * Domain separation for the host's answer: a client proof can never be
+ * replayed as a server proof, nor the reverse.
+ */
+export const SERVER_CONTEXT = "armadra-session-host/server";
+
 /** How far from the host's clock a proof may be minted and still be used. */
 export const SKEW_MS = 60_000;
 
@@ -173,6 +179,43 @@ export function signHello(
     issuedAt: now,
     proof: sign(key, endpoint, nonce, now, major),
   };
+}
+
+/**
+ * The bytes a server proof covers: the endpoint, the major and the nonce of
+ * the `hello` it answers, so a proof captured from one connection is worthless
+ * on any other.
+ */
+export function serverProofInput(
+  endpoint: string,
+  nonce: string,
+  major: number = PROTOCOL_MAJOR,
+): string {
+  return [SERVER_CONTEXT, String(major), endpoint, nonce].join("\n");
+}
+
+/** The host's proof, to go in `welcome`. */
+export function signWelcome(
+  key: Buffer,
+  endpoint: string,
+  nonce: string,
+  major: number = PROTOCOL_MAJOR,
+): string {
+  return createHmac("sha256", key)
+    .update(serverProofInput(endpoint, nonce, major))
+    .digest("hex");
+}
+
+/** Constant-time check of a `welcome` proof; anything but a string fails. */
+export function verifyWelcome(
+  key: Buffer,
+  endpoint: string,
+  nonce: string,
+  proof: unknown,
+  major: number = PROTOCOL_MAJOR,
+): boolean {
+  if (typeof proof !== "string") return false;
+  return equalHex(signWelcome(key, endpoint, nonce, major), proof);
 }
 
 export type AuthRefusal =

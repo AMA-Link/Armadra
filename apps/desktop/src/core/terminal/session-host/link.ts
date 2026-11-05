@@ -18,6 +18,7 @@ import {
   pipeEndpoint,
 } from "./protocol";
 import { currentSid } from "../../windows/acl";
+import { verifyWelcome } from "./auth";
 
 /**
  * One connected pipe, with a reader draining it.
@@ -73,6 +74,12 @@ interface Pending {
   readonly resolve: (message: HostMessage) => void;
   readonly reject: (error: Error) => void;
   readonly timer: NodeJS.Timeout;
+}
+
+/** What a client needs to check the host's answer: the key and the name it dialled. */
+export interface ServerTrust {
+  readonly key: Buffer;
+  readonly endpoint: string;
 }
 
 export class Link {
@@ -141,7 +148,11 @@ export class Link {
    * passes whatever the host it is talking to needs, and both are the same
    * protocol major — see {@link HelloAuth}.
    */
-  async handshake(client: string, auth?: HelloAuth): Promise<Greeting> {
+  async handshake(
+    client: string,
+    auth: HelloAuth | undefined,
+    trust: ServerTrust,
+  ): Promise<Greeting> {
     const greeted = new Promise<HostMessage>((resolve, reject) => {
       const timer = setTimeout(() => {
         reject(new Error("the session host did not answer hello"));
@@ -158,7 +169,22 @@ export class Link {
       client,
       ...(auth === undefined ? {} : { auth }),
     });
-    return acceptWelcome(await greeted, PROTOCOL_MAJOR);
+    const answer = await greeted;
+    // The major first, so an old host is reported as old rather than as an
+    // impostor; then the proof. Nothing but `hello` has been sent by now, and
+    // the caller only sends more once this returns.
+    const greeting = acceptWelcome(answer, PROTOCOL_MAJOR);
+    if (
+      auth === undefined ||
+      answer.type !== "welcome" ||
+      !verifyWelcome(trust.key, trust.endpoint, auth.nonce, answer.proof)
+    ) {
+      this.close();
+      throw new Error(
+        "the session host could not prove it holds the key; refusing to send it anything",
+      );
+    }
+    return greeting;
   }
 
   /** Sends without waiting for an answer. */

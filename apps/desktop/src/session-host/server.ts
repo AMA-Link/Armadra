@@ -1,10 +1,14 @@
 import { type Server, type Socket, createServer } from "node:net";
-import { HandshakeVerifier } from "../core/terminal/session-host/auth";
+import {
+  HandshakeVerifier,
+  signWelcome,
+} from "../core/terminal/session-host/auth";
 import {
   type ClientMessage,
   type CreateSpec,
   type Frame,
   type HostErrorCode,
+  type HelloAuth,
   type HostMessage,
   type HostSize,
   FrameDecoder,
@@ -465,6 +469,11 @@ export class SessionHost {
     this.tell(connection.id, {
       type: "welcome",
       protocol: PROTOCOL_MAJOR,
+      proof: signWelcome(
+        this.options.key,
+        this.options.endpoint,
+        (message as { auth: HelloAuth }).auth.nonce,
+      ),
       host: this.options.version,
       pid: process.pid,
       instanceId: this.instanceId,

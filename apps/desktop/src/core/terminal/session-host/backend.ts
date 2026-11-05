@@ -28,6 +28,7 @@ import {
 } from "../backend";
 import {
   type ClientMessage,
+  type Greeting,
   type HostErrorCode,
   type HostMessage,
   type SessionSummary,
@@ -42,6 +43,7 @@ import {
 import {
   type EventSink,
   type LinkEvent,
+  type ServerTrust,
   Link,
   endpointFor,
   hostLaunch,
@@ -232,8 +234,13 @@ export class SessionHostBackend implements AdoptableBackend {
    * single-use and the host refuses a repeat, so a cached proof would work
    * exactly once and then look like an authentication failure.
    */
-  private proof(): HelloAuth {
-    return signHello(ensureKey(this.options.dataDir), this.endpoint());
+  private proof(): { auth: HelloAuth; trust: ServerTrust } {
+    const key = ensureKey(this.options.dataDir);
+    const endpoint = this.endpoint();
+    return {
+      auth: signHello(key, endpoint),
+      trust: { key, endpoint },
+    };
   }
 
   /**
@@ -271,10 +278,18 @@ export class SessionHostBackend implements AdoptableBackend {
         );
       }
     }
-    const greeting = await link.handshake(
-      `armadra-core/${this.options.version}`,
-      this.proof(),
-    );
+    const { auth, trust } = this.proof();
+    let greeting: Greeting;
+    try {
+      greeting = await link.handshake(
+        `armadra-core/${this.options.version}`,
+        auth,
+        trust,
+      );
+    } catch (error) {
+      link.close();
+      throw error;
+    }
     if (this.instance !== undefined && this.instance !== greeting.instanceId) {
       // The host restarted: everything this core remembered about its sessions
       // describes consoles that no longer exist.
@@ -524,9 +539,11 @@ export class SessionHostBackend implements AdoptableBackend {
         `会话宿主没有在运行：${error instanceof Error ? error.message : String(error)}`,
       );
     }
+    const { auth, trust } = this.proof();
     await link.handshake(
       `armadra-core-attach/${this.options.version}`,
-      this.proof(),
+      auth,
+      trust,
     );
     // Registered before the request goes out, so no frame can arrive unchecked.
     link.expectOutput(generation);

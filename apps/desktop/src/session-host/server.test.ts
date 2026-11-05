@@ -3,11 +3,19 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
-import { keyPath, signHello } from "../core/terminal/session-host/auth";
+import { createServer } from "node:net";
+import {
+  keyPath,
+  signHello,
+  signWelcome,
+} from "../core/terminal/session-host/auth";
 import { type LinkEvent, Link } from "../core/terminal/session-host/link";
 import {
+  FrameDecoder,
   PIPE_PREFIX,
+  PROTOCOL_MAJOR,
   RequestIds,
+  jsonFrame,
   createMessage,
   resizeMessage,
 } from "../core/terminal/session-host/protocol";
@@ -130,7 +138,10 @@ async function connect(
           flavour === "wrong" ? randomBytes(32) : harness.key,
           harness.endpoint,
         );
-  await link.handshake("armadra-core/test", auth);
+  await link.handshake("armadra-core/test", auth, {
+    key: harness.key,
+    endpoint: harness.endpoint,
+  });
   const ids = new RequestIds();
   return { link, events, ids, next: () => ids.issue() };
 }
@@ -178,6 +189,7 @@ describe("the handshake", () => {
     const greeting = await link.handshake(
       "armadra-core/test",
       signHello(harness.key, harness.endpoint),
+      { key: harness.key, endpoint: harness.endpoint },
     );
     expect(greeting.hostVersion).toBe("armadra-session-host/test");
     expect(greeting.pid).toBe(process.pid);
@@ -201,6 +213,37 @@ describe("the handshake", () => {
     await expect(connect(harness, { auth: "wrong" })).rejects.toThrow(
       /unauthorized/,
     );
+  });
+
+  /**
+   * The host's side of the proof: the `welcome` it sent verifies under the
+   * key and this endpoint, bound to the nonce of the hello it answered.
+   */
+  it("proves to the client that it holds the key", async () => {
+    const harness = await serve();
+    const link = await Link.connect(harness.endpoint, () => {});
+    scrap.push(() => link.close());
+    // Would throw if the welcome proof were missing or wrong.
+    await link.handshake(
+      "armadra-core/test",
+      signHello(harness.key, harness.endpoint),
+      { key: harness.key, endpoint: harness.endpoint },
+    );
+  });
+
+  /** A client holding a different key refuses a host that proves with this one. */
+  it("is refused by a client that expects another key", async () => {
+    const harness = await serve();
+    const link = await Link.connect(harness.endpoint, () => {});
+    scrap.push(() => link.close());
+    await expect(
+      link.handshake(
+        "armadra-core/test",
+        signHello(harness.key, harness.endpoint),
+        { key: randomBytes(32), endpoint: harness.endpoint },
+      ),
+    ).rejects.toThrow(/prove/);
+    expect(link.alive).toBe(false);
   });
 
   /** The refusal says nothing about *which* part of the attempt was wrong. */
@@ -910,5 +953,118 @@ describe("requestShutdownIfIdle", () => {
     });
     expect(outcome.kind).toBe("failed");
     expect(harness.left).toEqual([]);
+  });
+});
+
+/* ------------------------------ a squatter -------------------------------- */
+
+describe("a process squatting the endpoint", () => {
+  /**
+   * Answers `welcome` like a host would but cannot sign it. The client must
+   * hang up before it sends `create`, which carries environment variables and
+   * credentials.
+   */
+  async function squat(
+    reply: (hello: { auth: { nonce: string } }) => Record<string, unknown>,
+  ): Promise<{ endpoint: string; received: Buffer[] }> {
+    const dir = mkdtempSync(join(tmpdir(), "armadra-squat-"));
+    const endpoint =
+      process.platform === "win32"
+        ? `${PIPE_PREFIX}squat-${randomBytes(8).toString("hex")}`
+        : join(dir, "s");
+    const received: Buffer[] = [];
+    const server = createServer((socket) => {
+      const decoder = new FrameDecoder();
+      socket.on("error", () => {});
+      socket.on("data", (chunk: Buffer) => {
+        received.push(chunk);
+        decoder.push(chunk);
+        for (let frame = decoder.next(); frame; frame = decoder.next()) {
+          const message = JSON.parse(frame.payload.toString("utf8"));
+          if (message.type === "hello") {
+            socket.write(jsonFrame(reply(message)));
+          }
+        }
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(endpoint, resolve));
+    scrap.push(() => {
+      server.close();
+      rmSync(dir, { recursive: true, force: true });
+    });
+    return { endpoint, received };
+  }
+
+  const welcome = (extra: Record<string, unknown>) => ({
+    type: "welcome",
+    protocol: PROTOCOL_MAJOR,
+    host: "squatter",
+    pid: 1,
+    instanceId: "x",
+    sessions: [],
+    ...extra,
+  });
+
+  async function attempt(
+    reply: (hello: { auth: { nonce: string } }) => Record<string, unknown>,
+  ): Promise<{ received: Buffer[]; error: unknown; link: Link }> {
+    const key = randomBytes(32);
+    const { endpoint, received } = await squat(reply);
+    const link = await Link.connect(endpoint, () => {});
+    scrap.push(() => link.close());
+    let error: unknown;
+    try {
+      await link.handshake("armadra-core/test", signHello(key, endpoint), {
+        key,
+        endpoint,
+      });
+      // Only reachable if the client wrongly trusted the squatter.
+      await link.notify(createMessage(1, { ...SPEC }));
+    } catch (caught) {
+      error = caught;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return { received, error, link };
+  }
+
+  const sentCreate = (received: Buffer[]) =>
+    Buffer.concat(received).toString("utf8").includes('"create"');
+
+  it("learns nothing from a welcome without a proof", async () => {
+    const { received, error, link } = await attempt(() => welcome({}));
+    expect(String(error)).toMatch(/prove/);
+    expect(sentCreate(received)).toBe(false);
+    expect(link.alive).toBe(false);
+  });
+
+  it("learns nothing from a welcome with a made-up proof", async () => {
+    const { received, error } = await attempt(() =>
+      welcome({ proof: "ab".repeat(32) }),
+    );
+    expect(String(error)).toMatch(/prove/);
+    expect(sentCreate(received)).toBe(false);
+  });
+
+  /** A proof captured on one connection does not carry to the next. */
+  it("cannot replay a proof from another nonce", async () => {
+    const key = randomBytes(32);
+    const { endpoint, received } = await squat(() =>
+      welcome({ proof: signWelcome(key, "elsewhere", "00".repeat(16)) }),
+    );
+    const link = await Link.connect(endpoint, () => {});
+    scrap.push(() => link.close());
+    await expect(
+      link.handshake("armadra-core/test", signHello(key, endpoint), {
+        key,
+        endpoint,
+      }),
+    ).rejects.toThrow(/prove/);
+    expect(sentCreate(received)).toBe(false);
+  });
+
+  it("is named as an old host, not an impostor, when it speaks major 1", async () => {
+    const { received, error } = await attempt(() => welcome({ protocol: 1 }));
+    expect(String(error)).toMatch(/protocol 1/);
+    expect(sentCreate(received)).toBe(false);
   });
 });

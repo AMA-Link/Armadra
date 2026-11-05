@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { createHmac } from "node:crypto";
 import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,10 +12,13 @@ import {
   proofInput,
   readKey,
   sign,
+  serverProofInput,
   signHello,
+  signWelcome,
+  verifyWelcome,
 } from "./auth";
 import { windowsAccount } from "../../windows/acl";
-import { pipeEndpoint } from "./protocol";
+import { PROTOCOL_MAJOR, pipeEndpoint } from "./protocol";
 
 /**
  * The handshake is what replaced the pipe's DACL and the per-connection SID
@@ -92,7 +96,7 @@ describe("the proof", () => {
     expect(sign(key, `${ENDPOINT}x`, "abc", 1000)).not.toBe(base);
     expect(sign(key, ENDPOINT, "abd", 1000)).not.toBe(base);
     expect(sign(key, ENDPOINT, "abc", 1001)).not.toBe(base);
-    expect(sign(key, ENDPOINT, "abc", 1000, 2)).not.toBe(base);
+    expect(sign(key, ENDPOINT, "abc", 1000, PROTOCOL_MAJOR + 1)).not.toBe(base);
     expect(sign(Buffer.alloc(32, 8), ENDPOINT, "abc", 1000)).not.toBe(base);
   });
 
@@ -202,5 +206,55 @@ describe("equalHex", () => {
     expect(equalHex("aabb", "aabc")).toBe(false);
     expect(equalHex("aabb", "aa")).toBe(false);
     expect(equalHex("", "")).toBe(false);
+  });
+});
+
+describe("the host's proof", () => {
+  const key = Buffer.alloc(32, 7);
+  const nonce = "ab".repeat(16);
+
+  it("matches a fixed vector", () => {
+    expect(serverProofInput("ep", nonce, 2)).toBe(
+      `armadra-session-host/server\n2\nep\n${nonce}`,
+    );
+    expect(signWelcome(key, "ep", nonce, 2)).toBe(
+      createHmac("sha256", key)
+        .update(`armadra-session-host/server\n2\nep\n${nonce}`)
+        .digest("hex"),
+    );
+  });
+
+  it("verifies for the same key, endpoint, major and nonce", () => {
+    const proof = signWelcome(key, ENDPOINT, nonce);
+    expect(verifyWelcome(key, ENDPOINT, nonce, proof)).toBe(true);
+  });
+
+  it("fails for another key, endpoint, nonce or major", () => {
+    const proof = signWelcome(key, ENDPOINT, nonce);
+    expect(verifyWelcome(Buffer.alloc(32, 8), ENDPOINT, nonce, proof)).toBe(
+      false,
+    );
+    expect(verifyWelcome(key, `${ENDPOINT}x`, nonce, proof)).toBe(false);
+    expect(verifyWelcome(key, ENDPOINT, "cd".repeat(16), proof)).toBe(false);
+    expect(verifyWelcome(key, ENDPOINT, nonce, proof, PROTOCOL_MAJOR + 1)).toBe(
+      false,
+    );
+  });
+
+  it("fails for a missing, non-string or malformed proof", () => {
+    expect(verifyWelcome(key, ENDPOINT, nonce, undefined)).toBe(false);
+    expect(verifyWelcome(key, ENDPOINT, nonce, 5)).toBe(false);
+    expect(verifyWelcome(key, ENDPOINT, nonce, "zz")).toBe(false);
+    expect(verifyWelcome(key, ENDPOINT, nonce, "")).toBe(false);
+  });
+
+  /** Domain separation: the client's proof is not a valid server proof. */
+  it("is not the client's proof over the same nonce", () => {
+    const hello = signHello(key, ENDPOINT, 1_700_000_000_000);
+    expect(verifyWelcome(key, ENDPOINT, hello.nonce, hello.proof)).toBe(false);
+  });
+
+  it("is speaking major 2", () => {
+    expect(PROTOCOL_MAJOR).toBe(2);
   });
 });

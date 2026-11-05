@@ -56,7 +56,7 @@ export const REQUEST_TIMEOUT_MS = 10_000;
 /** How long to keep trying after starting the host. */
 export const START_TIMEOUT_MS = 5_000;
 /** The protocol major both sides must agree on. */
-export const PROTOCOL_MAJOR = 1;
+export const PROTOCOL_MAJOR = 2;
 export type FrameKind = "json" | "output" | "snapshot" | "snapshotEnd";
 
 const KIND_BYTES: Record<FrameKind, number> = {
@@ -306,6 +306,12 @@ export type HostMessage =
   | {
       type: "welcome";
       protocol: number;
+      /**
+       * The host's proof that it holds the key (major 2): an HMAC over the
+       * client's `hello` nonce, so a process squatting the pipe name cannot
+       * produce it. The client checks it before sending anything secret.
+       */
+      proof?: string;
       host: string;
       pid: number;
       instanceId: string;

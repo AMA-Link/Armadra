@@ -116,6 +116,7 @@ export async function requestShutdownIfIdle(
         const greeting = await link.handshake(
           request.client,
           signHello(key, endpoint),
+          { key, endpoint },
         );
         const reply = await link.request(1, { type: "shutdownIfIdle", id: 1 });
         return { greeting, reply };
