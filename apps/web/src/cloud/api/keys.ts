@@ -18,6 +18,8 @@ export const cloudKeys = {
   platformInfo: ["cloud", "platform", "info"] as const,
   spaces: ["cloud", "spaces"] as const,
   devices: ["cloud", "devices"] as const,
+  /** `me.signInMethods`：登录方式与此刻可用的提权方式。 */
+  signInMethods: ["cloud", "signInMethods"] as const,
   securityLog: (cursor?: string) =>
     ["cloud", "securityLog", cursor ?? null] as const,
   hosts: (space: SpaceKey, filters?: Filters) =>

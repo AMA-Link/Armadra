@@ -5,6 +5,7 @@ import { Alert, AlertTitle } from "@/ui/alert";
 import { Button } from "@/ui/button";
 import { useCloudApi } from "../api/context";
 import { describeFailure } from "../api/errors";
+import { forgetOAuthIntent } from "./oauth-intent";
 import { external, rememberOAuthNext } from "./redirect";
 import type { OAuthProvider } from "./sign-in-options";
 
@@ -43,6 +44,8 @@ export function OAuthButtons({
     setBusy(provider);
     setError("");
     try {
+      // 登录没有意图：清掉上一次中途放弃的提权 / 绑定，免得回跳页走错分支。
+      forgetOAuthIntent();
       rememberOAuthNext(next);
       const answer = await api.client.auth.oauthStart({
         provider,

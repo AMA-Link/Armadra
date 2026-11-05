@@ -24,6 +24,12 @@ export const meQuery = (api: CloudApi) => ({
   queryFn: () => api.client.me.get({}),
 });
 
+/** 登录方式（`me.signInMethods`）：账号页与提权对话框共用。 */
+export const signInMethodsQuery = (api: CloudApi) => ({
+  queryKey: cloudKeys.signInMethods,
+  queryFn: () => api.client.me.signInMethods({}),
+});
+
 /**
  * 服务端的平台信息（能力位、挑战要求）。取不到不重试：调用方按「口令登录、没有第三方」回退，
  * 不让登录页卡在重试里。
