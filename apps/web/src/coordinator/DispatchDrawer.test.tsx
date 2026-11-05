@@ -42,7 +42,11 @@ function mirrored(state: string, extra: Partial<MirroredStatus> = {}) {
   } as unknown as MirroredStatus;
 }
 
-const api = vi.hoisted(() => ({ tasks: vi.fn(), retry: vi.fn() }));
+const api = vi.hoisted(() => ({
+  tasks: vi.fn(),
+  retry: vi.fn(),
+  readReplies: vi.fn(),
+}));
 
 vi.mock("./api", async (original) => ({
   ...(await original<typeof import("./api")>()),
@@ -144,6 +148,7 @@ function task(
     stage: null,
     report: null,
     attention: null,
+    reply: null,
     ...patch,
   };
 }
@@ -171,6 +176,8 @@ beforeEach(() => {
   usePreferencesStore.setState({ locale: "zh-CN" });
   api.tasks.mockReset();
   api.retry.mockReset();
+  api.readReplies.mockReset();
+  api.readReplies.mockResolvedValue(0);
   useAgentStatusStore.setState({ statuses: {} });
   useCanvasStore.setState({
     boardId: BOARD,
@@ -631,6 +638,52 @@ describe("DispatchDrawer", () => {
       });
     });
     await waitFor(() => expect(api.tasks).toHaveBeenCalledTimes(2));
+  });
+
+  it("shows the coordinator's reply under the member, highlights it and marks it read on open", async () => {
+    const reply = {
+      purpose: "result" as const,
+      text: "请验收 src/y",
+      at: AT,
+      read: false,
+    };
+    api.tasks.mockResolvedValue([
+      TASKS[0],
+      { ...TASKS[1], stage: "person/review", reply },
+      TASKS[2],
+    ]);
+    openDispatchDrawer(ID.lead);
+    render(
+      <TestProviders>
+        <DispatchDrawer />
+      </TestProviders>,
+    );
+    const text = await screen.findByText("请验收 src/y");
+    expect(text.getAttribute("data-purpose")).toBe("result");
+    const row = text.closest('[data-slot="dispatch-member"]')!;
+    expect(row.getAttribute("data-fresh")).toBe("true");
+    expect(
+      document.querySelectorAll('[data-slot="dispatch-member"][data-fresh]'),
+    ).toHaveLength(1);
+    await waitFor(() => expect(api.readReplies).toHaveBeenCalledWith(BOARD));
+  });
+
+  it("does not mark anything read when nothing is unread", async () => {
+    api.tasks.mockResolvedValue([
+      {
+        ...TASKS[1],
+        reply: { purpose: "answer", text: "在做", at: AT, read: true },
+      },
+    ]);
+    openDispatchDrawer(ID.lead);
+    render(
+      <TestProviders>
+        <DispatchDrawer />
+      </TestProviders>,
+    );
+    await screen.findByText("在做");
+    expect(document.querySelector("[data-fresh]")).toBeNull();
+    expect(api.readReplies).not.toHaveBeenCalled();
   });
 
   it("closes with the header button", async () => {

@@ -33,4 +33,19 @@ describe("dispatchTaskSchema", () => {
   it("defaults the ledger fields an older core does not send", () => {
     expect(dispatchTaskSchema.parse(ROW).stage).toBeNull();
   });
+
+  it("reads the coordinator's reply, and a missing or unknown one as none", () => {
+    const reply = {
+      purpose: "attention",
+      text: "用哪个账号？",
+      at: "2026-10-04T08:00:00.000Z",
+      read: false,
+    };
+    expect(dispatchTaskSchema.parse({ ...ROW, reply }).reply).toEqual(reply);
+    expect(dispatchTaskSchema.parse(ROW).reply).toBeNull();
+    expect(
+      dispatchTaskSchema.parse({ ...ROW, reply: { ...reply, purpose: "chat" } })
+        .reply,
+    ).toBeNull();
+  });
 });

@@ -17,7 +17,23 @@ import { STAGE_STATUS, isPersonStage } from "./model";
  */
 export const useItemStages = create<{
   stages: Readonly<Record<string, WorkItemStage>>;
-}>(() => ({ stages: {} }));
+  /** 每个协调者节点名下还没读的回复数（契约 §101）：节点头的徽标读它。 */
+  unreadReplies: Readonly<Record<string, number>>;
+}>(() => ({ stages: {}, unreadReplies: {} }));
+
+/** 协调者节点 → 还没读的回复数；没有的不列。 */
+export function unreadReplies(
+  tasks: readonly DispatchTask[],
+): Record<string, number> {
+  const unread: Record<string, number> = {};
+  for (const task of tasks) {
+    if (task.reply !== null && !task.reply.read) {
+      unread[task.coordinatorNodeId] =
+        (unread[task.coordinatorNodeId] ?? 0) + 1;
+    }
+  }
+  return unread;
+}
 
 /** 每个成员节点最新一行任务的阶段。 */
 export function nodeStages(
@@ -55,7 +71,10 @@ export function useItemStageSync(): void {
   });
   const data = tasks.data;
   React.useEffect(() => {
-    useItemStages.setState({ stages: data ? nodeStages(data) : {} });
+    useItemStages.setState({
+      stages: data ? nodeStages(data) : {},
+      unreadReplies: data ? unreadReplies(data) : {},
+    });
   }, [data]);
 }
 

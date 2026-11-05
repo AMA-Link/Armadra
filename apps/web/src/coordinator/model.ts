@@ -41,6 +41,8 @@ export interface DispatchMember {
   readonly stage: WorkItemStage | null;
   /** 进展看门狗的标记（契约 §91）；没有标记省略。 */
   readonly stalled?: AgentStallKind;
+  /** 协调者说的最新一句话（契约 §101）；没有为 `null`。 */
+  readonly reply: DispatchTask["reply"];
 }
 
 export interface DispatchSummary {
@@ -210,6 +212,7 @@ export function buildDispatch(input: DispatchInput): DispatchModel {
       taskId: task.taskId,
       retryable: task.retryable && task.status !== "running",
       stage: task.stage,
+      reply: task.reply,
       ...markOf(node.id, status),
     });
   }
@@ -229,6 +232,7 @@ export function buildDispatch(input: DispatchInput): DispatchModel {
       taskId: null,
       retryable: false,
       stage: null,
+      reply: null,
       ...markOf(node.id, status),
     });
   }
