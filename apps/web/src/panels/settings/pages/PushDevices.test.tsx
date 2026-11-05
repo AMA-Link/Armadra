@@ -41,6 +41,8 @@ const ALL = [
   "resources",
   "comment",
   "workflowGate",
+  "result",
+  "attention",
 ] as const;
 
 const device = (patch: Partial<PushDevice>): PushDevice => ({
