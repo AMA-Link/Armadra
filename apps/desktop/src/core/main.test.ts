@@ -265,7 +265,13 @@ describe("the core process", () => {
         stdout: () => {},
       }),
     ).rejects.toThrow(/already in use/);
-    expect(existsSync(endpointsFile(second))).toBe(false);
+    // No service record. (Windows: the identity channel may have published and
+    // withdrawn its `control` record before the bind failed, which leaves the
+    // file itself, empty.)
+    const left = read(endpointsFile(second));
+    expect(left.runtime).toBeUndefined();
+    expect(left.controller).toBeUndefined();
+    expect(left.control).toBeUndefined();
   });
 
   // nightly 37858782422：启动中途失败（当时是 controller.sock 超长 EINVAL）时库先关了，

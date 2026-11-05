@@ -286,6 +286,10 @@ export function installIdentity(context: CoreContext): void {
     .then((channel) => {
       if (channel !== undefined) {
         context.log.info("身份私有通道已就绪", { spec: channel.spec });
+        // Closed with the core, which also withdraws the `control` record on
+        // Windows: a start-up that fails later must not leave a pipe name
+        // behind in `endpoints.json`.
+        context.onStop?.(() => channel.close());
       }
     })
     .catch((error: unknown) => {
