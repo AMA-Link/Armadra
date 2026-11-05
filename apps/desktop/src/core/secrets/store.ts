@@ -102,10 +102,12 @@ export function legacyBinaryFile(
   to: string,
   path: string,
   bytes: number,
+  options: { readonly authoritative?: boolean } = {},
 ): LegacySecret {
   return {
     id,
     to,
+    ...(options.authoritative === true ? { authoritative: true } : {}),
     async read() {
       let content: Buffer;
       try {

@@ -292,6 +292,7 @@ async function main() {
         ...process.env,
         PATH: LAUNCHD_PATH,
         ARMADRA_DATA_DIR: dataDir,
+        ARMADRA_SECRET_BACKEND: "file",
         // 临时 HOME：打包版的 core 启动时会把各 CLI 旧的全局安装迁走（备份后
         // 清理）并往 ~/.codex/config.toml 写信任记录，用真实 HOME 跑这个探针就
         // 是替操作员做了这件事。

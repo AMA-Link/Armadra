@@ -16,6 +16,10 @@ The Windows session host's `welcome` now carries a server proof (an HMAC with `s
 
 The "This computer" sidebar section now lists every non-archived workspace from the server, the same set the phone and other devices see; this device's open history only orders the rows, and never-opened ones start collapsed. It used to list only workspaces opened on this device, so workspaces created, dropped in, or closed in older versions elsewhere were invisible on the desktop while the phone could still open them and create canvases (#817).
 
+macOS 上只有默认数据目录的 core 用钥匙串：指了 `ARMADRA_DATA_DIR` / `--data-dir` 的实例（开发、探针、隔离运行）改用数据目录里的加密文件（`file-encrypted`），不再读到或覆盖真实应用的钥匙串条目；没有默认钥匙串时（如临时 HOME）密钥按不可用处理，不再弹出「找不到钥匙串」窗口（契约 §102.1，Closes #818）。hook 实例密钥的条目名定为 `armadra-hook-key`，从旧 `hook-secret` 文件迁移时以文件为准，已发出的节点令牌不受钥匙串里残留条目影响。此前在 macOS 上用非默认数据目录存过的令牌需要重新登录一次。
+
+On macOS only the core of the default data directory uses the Keychain: instances pointed at another `ARMADRA_DATA_DIR` / `--data-dir` (development, probes, isolated runs) use an encrypted file in that data directory (`file-encrypted`) and no longer read or overwrite the real app's Keychain items; with no default keychain (e.g. a temporary HOME) secrets are treated as unavailable instead of raising the "Keychain Not Found" dialog (contract §102.1, Closes #818). The hook instance secret is stored as `armadra-hook-key`, and the migration from the old `hook-secret` file lets the file win, so issued node tokens are unaffected by leftover Keychain items. Tokens stored under a non-default data directory on macOS need one more sign-in.
+
 ## 0.14.0（2026-11-05）
 
 版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.14.0。随包 `@armadra/agent` 0.14.0（新增 Pi 的 ACP 桥 `ama --mode acp --bridge pi`）与平台协议包 0.14.0（协议仍是 1.4，没有形状变化）；配套镜像 `armadra-cloud` / `armadra-relay` 0.14.0。本版主题：连接手机只剩一张二维码（局域网与互联网装在同一张码里），ACP 提示框接管与交还的顺序修复，macOS 首次打开说明。

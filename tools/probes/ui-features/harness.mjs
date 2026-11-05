@@ -127,6 +127,7 @@ export async function startStack(options = {}) {
     CODEX_HOME: join(home, ".codex"),
     XDG_CONFIG_HOME: join(home, ".config"),
     ARMADRA_DATA_DIR: data,
+    ARMADRA_SECRET_BACKEND: "file",
     ARMADRA_LOG: options.log ?? "info",
     // 页面停在普通浏览器里，拿不到壳的票（契约 §3.2）。
     ...LOOPBACK_OWNER_ENV,

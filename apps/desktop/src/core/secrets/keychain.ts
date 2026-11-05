@@ -5,9 +5,15 @@
  * 换后端意味着同一个令牌有两套存放（[外部服务 §12.1](../../../../../docs/design/external-services.md)）。
  *
  * 工具经一个可注入的 {@link SecurityTool} 调用，测试永远不碰开发者真正的钥匙串。
+ *
+ * 条目按名字寻址、整个账户只有一份，所以只有默认数据目录的 core 用它（契约
+ * §102.1，挑后端在 {@link ./index}）；用之前先不出声地确认有默认钥匙串，没有就
+ * 不可用，从不让 `security` 弹窗。
  */
 
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import { isAbsolute } from "node:path";
 
 import {
   type SecretBackend,
@@ -89,15 +95,20 @@ function addressArgs(address: KeychainAddress): string[] {
     : ["-a", address.account, "-s", address.service];
 }
 
-/** 读一个条目；不在时 `undefined`，工具别的失败抛 {@link SecretUnavailable}。 */
+/**
+ * 读一个条目；不在时 `undefined`，工具别的失败抛 {@link SecretUnavailable}。
+ * `keychain` 给了就只在那个钥匙串文件里找，否则按搜索列表。
+ */
 export async function readKeychain(
   tool: SecurityTool,
   address: KeychainAddress,
+  keychain?: string,
 ): Promise<string | undefined> {
   const result = await tool([
     "find-generic-password",
     ...addressArgs(address),
     "-w",
+    ...(keychain === undefined ? [] : [keychain]),
   ]);
   if (result.code === ITEM_NOT_FOUND) return undefined;
   if (result.code !== 0) throw new SecretUnavailable("keychain_failed");
@@ -109,35 +120,99 @@ export async function readKeychain(
 export async function deleteKeychain(
   tool: SecurityTool,
   address: KeychainAddress,
+  keychain?: string,
 ): Promise<void> {
   const result = await tool([
     "delete-generic-password",
     ...addressArgs(address),
+    ...(keychain === undefined ? [] : [keychain]),
   ]);
   if (result.code === 0 || result.code === ITEM_NOT_FOUND) return;
   throw new SecretUnavailable("keychain_failed");
 }
 
 /**
+ * 这个账户的默认钥匙串文件；没有时 `undefined`。
+ *
+ * `security default-keychain` 只读偏好设置，不碰任何条目、从不弹窗。没有默认钥匙串
+ * （临时 HOME、登录钥匙串被删）时条目命令不会失败退出，而是让 SecurityAgent 弹
+ * 「找不到钥匙串」——所以先问这一句，并确认它说的文件真的在（`login.keychain` 在
+ * 磁盘上是 `login.keychain-db`）。
+ */
+export async function defaultKeychain(
+  tool: SecurityTool,
+  exists: (path: string) => boolean = existsSync,
+): Promise<string | undefined> {
+  let result: SecurityResult;
+  try {
+    result = await tool(["default-keychain"]);
+  } catch {
+    return undefined;
+  }
+  if (result.code !== 0) return undefined;
+  const quoted = /"([^"]+)"/.exec(result.stdout);
+  const path = (quoted?.[1] ?? result.stdout).trim();
+  if (!isAbsolute(path)) return undefined;
+  if (exists(path)) return path;
+  return exists(`${path}-db`) ? `${path}-db` : undefined;
+}
+
+/** 每个工具只问一次默认钥匙串：一轮 core 里各域拿到的后端共用答案。 */
+const probes = new WeakMap<SecurityTool, Promise<string | undefined>>();
+
+function probeOnce(
+  tool: SecurityTool,
+  exists: ((path: string) => boolean) | undefined,
+): Promise<string | undefined> {
+  if (exists !== undefined) return defaultKeychain(tool, exists);
+  let probe = probes.get(tool);
+  if (probe === undefined) {
+    probe = defaultKeychain(tool);
+    probes.set(tool, probe);
+  }
+  return probe;
+}
+
+export interface KeychainOptions {
+  /** 文件在不在；测试注入。给了就不缓存默认钥匙串的答案。 */
+  readonly exists?: (path: string) => boolean;
+}
+
+/**
  * 名字同时是 service 与 account：一个条目一个名字，在钥匙串访问里按 `armadra-`
  * 一搜就是全部。
+ *
+ * 每次存取先确认默认钥匙串（{@link defaultKeychain}）：没有就抛
+ * `SecretUnavailable("keychain_missing")`，一条条目命令都不跑（同钥匙串锁住：hook
+ * 密钥本轮 `ephemeral`）。有就把它的路径显式带给条目命令，`add-generic-password`
+ * 永远不需要自己「找一个钥匙串来存」。
  */
 export function keychainBackend(
   tool: SecurityTool = realSecurityTool,
+  options: KeychainOptions = {},
 ): SecretBackend {
   const address = (name: string): KeychainAddress => {
     checkSecretName(name);
     return { service: name, account: name };
   };
+  const keychain = async (): Promise<string> => {
+    const path = await probeOnce(tool, options.exists);
+    if (path === undefined) throw new SecretUnavailable("keychain_missing");
+    return path;
+  };
   return {
     kind: "keychain",
-    get: (name) => readKeychain(tool, address(name)),
+    async get(name) {
+      const where = address(name);
+      return readKeychain(tool, where, await keychain());
+    },
     async set(name, value) {
       if (/[\r\n]/.test(value)) throw new Error("secret values are one line");
       const where = address(name);
       if (value.length > KEYCHAIN_MAX_VALUE) {
         throw new SecretUnavailable("keychain_value_too_long");
       }
+      const file = await keychain();
       // 经 `security -i` 从标准输入读一整条命令写，而不是 `-w <值>`（参数会出现在
       // 进程命令行里），也不是 `-w` 的交互提示——那条走 getpass，超过 128 个字符
       // 的值会被悄悄截断，读回来对不上（远程服务的刷新令牌就比这长）。
@@ -145,12 +220,19 @@ export function keychainBackend(
         ["-i"],
         `add-generic-password -U ${addressArgs(where)
           .map(quoteForInteractive)
-          .join(" ")} -w ${quoteForInteractive(value)}\n`,
+          .join(" ")} -w ${quoteForInteractive(value)} ${quoteForInteractive(
+          file,
+        )}\n`,
       );
       // 两次提示对不上时工具也退 0，所以写靠读回来确认。
-      const stored = await readKeychain(tool, where).catch(() => undefined);
+      const stored = await readKeychain(tool, where, file).catch(
+        () => undefined,
+      );
       if (stored !== value) throw new SecretUnavailable("keychain_failed");
     },
-    delete: (name) => deleteKeychain(tool, address(name)),
+    async delete(name) {
+      const where = address(name);
+      await deleteKeychain(tool, where, await keychain());
+    },
   };
 }

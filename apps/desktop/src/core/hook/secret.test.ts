@@ -6,6 +6,7 @@ import {
   type SecretBackend,
   type SecurityTool,
   SecretUnavailable,
+  keychainBackend,
   migrationRecordFile,
   unavailableBackend,
 } from "../secrets";
@@ -86,6 +87,32 @@ describe("the hook secret in the secret store", () => {
     expect(auth.verdict("n", again.nodeToken("n"))).toBe("verified");
   });
 
+  it("the old file wins over a value already under the new name", async () => {
+    const dir = tempDir("armadra-hook-secret-");
+    const old = randomBytes(32);
+    writeFileSync(legacyHookSecretFile(dir), old);
+    // Someone else (an isolated run on a shared keychain) wrote here first.
+    const backend = memoryBackend();
+    backend.values.set(HOOK_SECRET_NAME, randomBytes(32).toString("base64url"));
+    const auth = await open(dir, backend);
+    expect(auth.state).toBe("keychain");
+    expect(backend.values.get(HOOK_SECRET_NAME)).toBe(
+      old.toString("base64url"),
+    );
+    expect(existsSync(legacyHookSecretFile(dir))).toBe(false);
+  });
+
+  it("never reads the name unreleased builds used", async () => {
+    const dir = tempDir("armadra-hook-secret-");
+    const stale = randomBytes(32).toString("base64url");
+    const backend = memoryBackend();
+    backend.values.set("armadra-hook-secret", stale);
+    expect(HOOK_SECRET_NAME).not.toBe("armadra-hook-secret");
+    await open(dir, backend);
+    expect(backend.values.get(HOOK_SECRET_NAME)).not.toBe(stale);
+    expect(backend.values.get("armadra-hook-secret")).toBe(stale);
+  });
+
   it("does not migrate twice and ignores an old file of the wrong length", async () => {
     const dir = tempDir("armadra-hook-secret-");
     writeFileSync(legacyHookSecretFile(dir), randomBytes(31));
@@ -124,6 +151,27 @@ describe("the hook secret in the secret store", () => {
     // Two runs, two secrets: nothing was persisted behind the user's back.
     expect(two.kid).not.toBe(one.kid);
     expect(existsSync(legacyHookSecretFile(dir))).toBe(false);
+  });
+
+  it("no default keychain: ephemeral, the old file stays, no item command runs", async () => {
+    const dir = tempDir("armadra-hook-secret-");
+    const old = randomBytes(32);
+    writeFileSync(legacyHookSecretFile(dir), old, { mode: 0o600 });
+    const calls: string[] = [];
+    const tool: SecurityTool = async (args) => {
+      calls.push(args[0] ?? "");
+      return { code: 1, stdout: "" };
+    };
+    const auth = await open(dir, keychainBackend(tool));
+    // The old file still answers this run; nothing was written anywhere.
+    expect(auth.state).toBe("legacy-file");
+    expect(readFileSync(legacyHookSecretFile(dir))).toEqual(old);
+    expect(calls.every((verb) => verb === "default-keychain")).toBe(true);
+
+    const fresh = tempDir("armadra-hook-secret-");
+    const none = await open(fresh, keychainBackend(tool));
+    expect(none.state).toBe("ephemeral");
+    expect(calls.every((verb) => verb === "default-keychain")).toBe(true);
   });
 
   it("an unreachable store never overwrites a value it only cannot read", async () => {

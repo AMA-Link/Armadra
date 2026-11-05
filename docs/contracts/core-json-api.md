@@ -5186,19 +5186,21 @@ ACP 会话经 `session/new.mcpServers` 拿到 `armadra-hook mcp`（§14、`core/
 
 ### 102.1 hook 实例密钥进系统凭据库（P1）
 
-- **位置**：hook 实例密钥（32 字节，派生 §5.2 的每节点令牌）不再是 `<data>/hook-secret` 明文文件，而是 core 密钥后端里名为 `armadra-hook-secret` 的一条（base64url）。后端沿用 `resolveSecretBackend`，不新增：
+- **位置**：hook 实例密钥（32 字节，派生 §5.2 的每节点令牌）不再是 `<data>/hook-secret` 明文文件，而是 core 密钥后端里名为 `armadra-hook-key` 的一条（base64url）。#751 开发期间的构建用过 `armadra-hook-secret`，那时所有数据目录共用同一条钥匙串条目、可能存着隔离运行写的值，所以改名，任何代码都不读旧名字（`#818`）。后端沿用 `resolveSecretBackend`，不新增：
 
   | 平台               | 后端                                                                                                  |
   | ------------------ | ----------------------------------------------------------------------------------------------------- |
-  | macOS 桌面         | `security(1)` 钥匙串（`keychain`）                                                                    |
+  | macOS 桌面         | 默认数据目录：`security(1)` 钥匙串（`keychain`）；别的数据目录：数据目录里的 `file-encrypted`（见下） |
   | Windows 桌面       | 壳的 `safeStorage`（`dpapi`）                                                                         |
   | Linux 桌面         | `safeStorage`，只认 libsecret / kwallet（`libsecret`）；`basic_text` 拒用，降级为 0600 文件（`file`） |
   | 服务器壳 / 无壳 CI | `file-encrypted`；`ARMADRA_SECRET_BACKEND` 可强制                                                     |
 
+- **钥匙串的范围**（`#818`）：钥匙串条目按名字寻址（service = account = 名字），一个 macOS 账户只有一份，所以**只有默认数据目录的 core 用钥匙串**。默认数据目录是 `<家目录>/Library/Application Support/Armadra`，家目录取账户记录（`os.userInfo().homedir`），不随 `HOME` 变；数据目录（`ARMADRA_DATA_DIR` 或 `--data-dir`）按解析后的绝对路径与它比较。指了别的数据目录的实例（开发、探针、端到端、隔离的第二份）在 macOS 上用 `<数据目录>/secrets/master.key` 封存的 `file-encrypted`，与 `ARMADRA_SECRET_BACKEND=file-encrypted` 相同，从不调用 `security`，也不迁移钥匙串里旧名字的条目；各自的值互不可见。此规则对本节存放的所有条目生效（hook 密钥、Copilot、GitHub、节点凭据、AMA 密钥、OAuth / 云身份 / 中继 / 来源设备密钥、SMTP 口令），除 hook 密钥改名外条目名不变。
+- **从不弹窗**：钥匙串后端每轮先跑一次 `security default-keychain`（只读偏好，不碰条目），并确认它报的文件存在（`login.keychain` 在磁盘上可能是 `login.keychain-db`）。没有默认钥匙串（临时 `HOME`、登录钥匙串缺失）时一切存取抛 `SecretUnavailable("keychain_missing")`，不跑任何条目命令（否则 SecurityAgent 会弹「找不到钥匙串」）；按下面「凭据库不可用」处理（`ephemeral` / `legacy-file`）。有默认钥匙串时，`find-` / `add-` / `delete-generic-password` 都显式带上它的路径；写入只经 `security -i` 的标准输入、带 `-w <值>`，不走任何交互提示。
 - **启动**：`HookService.open` 异步读取密钥，hook 域在监听与发布端点文件之前 `await` 它；`install(context)` 因此返回 Promise，`DOMAINS` 的元素允许返回 Promise，装配顺序不变。`issueNodeToken` 只经运行中的 hook 服务铸令牌，不存在不经服务直接读密钥的路径；服务没起时抛错（终端域已 try/catch，降级为 `legacy`）。
 - **节点令牌与应用 bearer 仍是文件**（`node-tokens/<nodeId>`、端点文件里的 `ARMADRA_HOOK_TOKEN`）：每次 hook 调用都要读，预算 1.5 s，跨进程访问凭据库太慢。令牌由密钥派生，换密钥即全部作废。
-- **一次性迁移**：`migrateLegacySecrets` 登记 `hook.file`。旧文件必须正好 32 字节，长度不对按「没有」处理（铸新值）。顺序是写新位置 → 读回确认 → 删旧文件 → 记入 `secrets/migrated.json`；值不变，所以 kid 不变，已发出的令牌仍是 `verified`。中途凭据库不可用，本轮只读旧文件（`/health` 报 `legacy-file`），下次启动再迁。迁移代码在下一个 minor 版本删除，之后没有任何代码再读 `hook-secret`。
-- **凭据库不可用**（`SecretUnavailable`：钥匙串锁住、SSH 会话、壳断开）：**不铸新值、不覆盖**，本轮用只在内存里的密钥，`/health` 报 `ephemeral`。比本轮 core 活得久的终端，它们的报告降级为 `legacy`（状态照收，控制路由要刷新令牌）。下次启动重试。
+- **一次性迁移**：`migrateLegacySecrets` 登记 `hook.file`。旧文件必须正好 32 字节，长度不对按「没有」处理（铸新值）。顺序是写新位置 → 读回确认 → 删旧文件 → 记入 `secrets/migrated.json`；**旧文件为准**：新位置上已经有一个不同的值时用旧文件的值覆盖它（一般迁移是新位置为准，这一条反过来，`LegacySecret.authoritative`），因为已发出的令牌由旧文件派生；值不变，所以 kid 不变，已发出的令牌仍是 `verified`。中途凭据库不可用，本轮只读旧文件（`/health` 报 `legacy-file`），下次启动再迁。迁移代码在下一个 minor 版本删除，之后没有任何代码再读 `hook-secret`。
+- **凭据库不可用**（`SecretUnavailable`：钥匙串锁住、没有默认钥匙串、SSH 会话、壳断开）：**不铸新值、不覆盖**，本轮用只在内存里的密钥，`/health` 报 `ephemeral`。比本轮 core 活得久的终端，它们的报告降级为 `legacy`（状态照收，控制路由要刷新令牌）。下次启动重试。
 - **`GET /health` 的 `hook.secret`**（追加在 `ok` 之后，旧页面忽略）：`keychain` / `dpapi` / `libsecret` / `file-encrypted` / `file`（后端种类）、`legacy-file`、`ephemeral`。从不带值。
 - **威胁模型**：防的是数据目录被拷贝、备份、同步、打诊断包时泄露实例密钥，以及别的账户读取；**不防同用户的恶意进程**（`security` 条目信任 `/usr/bin/security`，DPAPI CurrentUser 按用户授权），门槛与 0600 文件相同。
 

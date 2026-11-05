@@ -332,6 +332,7 @@ export async function setup(clis) {
   const environment = {
     ...process.env,
     ARMADRA_DATA_DIR: data,
+    ARMADRA_SECRET_BACKEND: "file",
     ARMADRA_LOG: process.env.ARMADRA_E2E_LOG ?? "info",
     CODEX_HOME: codexHome,
     CLAUDE_CONFIG_DIR: claudeInstallHome,

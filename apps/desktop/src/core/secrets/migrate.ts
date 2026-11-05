@@ -4,7 +4,8 @@
  * 搬过的条目记在数据目录 `secrets/migrated.json` 里，下次启动不再去敲旧位置（在
  * macOS 上那是一次钥匙串访问）。每一步都可以重来：
  *
- * 1. 新位置已经有值 → 新的为准，只清旧的；
+ * 1. 新位置已经有值 → 新的为准，只清旧的（{@link LegacySecret.authoritative} 的条目
+ *    反过来：旧位置的值不同就覆盖新位置）；
  * 2. 旧位置有值 → 写新位置、**读回确认**、再删旧的；
  * 3. 旧位置没有 → 什么都不做。
  *
@@ -28,6 +29,12 @@ export interface LegacySecret {
   read(): Promise<string | undefined>;
   /** 删掉旧位置；不在是成功。 */
   remove(): Promise<void>;
+  /**
+   * 旧位置为准：新位置已有一个不同的值时用旧值覆盖它，而不是丢掉旧值。给「值在用、
+   * 新位置可能被别人先写过」的条目（hook 实例密钥：已发出的令牌由数据目录里的旧
+   * 文件派生，新位置上的值可能是别的进程写的）。
+   */
+  readonly authoritative?: boolean;
 }
 
 export function migrationRecordFile(dataDir: string): string {
@@ -93,7 +100,10 @@ async function migrate(
       const legacy = await item.read();
       if (legacy !== undefined) {
         const current = await backend.get(item.to);
-        if (current === undefined) {
+        if (
+          current === undefined ||
+          (item.authoritative === true && current !== legacy)
+        ) {
           await backend.set(item.to, legacy);
           if ((await backend.get(item.to)) !== legacy) {
             throw new Error("read-back mismatch");
