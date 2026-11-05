@@ -2,6 +2,31 @@
 
 每个版本一节，按发布倒序。括号里是合入的 PR 编号（github.com/AMA-Link/Armadra，2026-10-11 前为 Owlbay/Armadra，旧编号照常跳转）。兼容范围以 `tools/release/compatibility.json` 为准，发布说明里的 `armadra-compatibility` 围栏由它渲染。桌面、服务器与手机 / 平板 App 共用一条版本线和一个标签 `vX.Y.Z`（规则见 `docs/guides/ci-release.md`「版本规则」）；有手机端改动的版本，在「手机与平板」小节里写，其余写在「桌面 / 服务器」下。2026-10-10 之前手机端曾单独编号（1.0.0、1.1.0），内容并入对应的 0.2.5、0.2.6。
 
+## 0.14.0（2026-11-05）
+
+版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.14.0。随包 `@armadra/agent` 0.14.0（新增 Pi 的 ACP 桥 `ama --mode acp --bridge pi`）与平台协议包 0.14.0（协议仍是 1.4，没有形状变化）；配套镜像 `armadra-cloud` / `armadra-relay` 0.14.0。本版主题：连接手机只剩一张二维码（局域网与互联网装在同一张码里），ACP 提示框接管与交还的顺序修复，macOS 首次打开说明。
+
+Version aligned with armadra-cloud and armadra-agent (all three ship 0.14.0), with `@armadra/agent` 0.14.0 (adds a Pi ACP bridge, `ama --mode acp --bridge pi`) and platform protocol 0.14.0 (still protocol 1.4, no shape changes); matching images `armadra-cloud` / `armadra-relay` 0.14.0. Themes: connecting a phone is now a single QR code carrying both the LAN and the internet route, an ordering fix for lease takeover and release in the ACP prompt box, and macOS first-launch notes.
+
+### 桌面 / 服务器
+
+- 连接手机只剩一张二维码（#784–#787，Closes #749）：设置里只有一个「连接手机」，对话框点开才铸码，局域网直连与互联网中转装在同一张码里，没有来源下拉；有路可连时入口才出现，手机把码用掉就收起并提示已连接；「账号与设备」里的「配对新设备」删除。core 新增 `connect.offer`（只有 owner，经中继来的浏览器答 403）与事件 `connect.used`（契约 §99）；配对票绑定 Gateway 的来源集合（迁移 0060），集合内任一来源可兑，会话绑实际来源。旧接口 `gateway.pair`、`e2e.pairingSecret` 与 `armadra://pair` 深链删除（契约 §17.3、§80.1 标已取代）。
+- 二维码是网页链接（载荷 v2，`#c=…`）：手机相机扫到可直接在浏览器打开；手机并行探各直连来源取最先通的配对，直连不通转中转，账号下没有这台电脑报 `wrongAccount`；过期、新旧版本不符与走不通都带原因回连接页（#785）。
+- ACP 提示框的接管与交还按发出顺序串行，交还不再先于在途的接管落地；空闲租约上的 `terminals.drive` release 作空操作，不再答 500（#789）。
+- 文档：新增 macOS 首次打开说明（README 中英同步）（#781、#782）；发布指南更正未签名包的更新安装路径（#783）。
+- 测试与依赖：提示用例收尾先等全部提示移出再卸载，消除 `window is not defined`（#780，Closes #779）；会话显示全组合用例给足超时（Refs #630）；`@hono/node-server` 2.1.6（#777）、`systeminformation` 5.33.19（#778）。
+
+### 手机与平板
+
+- 扫一张二维码连接电脑：App 内扫码器与相机解析同一种网页链接，深链只剩分享、OAuth、通知与设备码回跳，配对深链删除；扫到旧版二维码提示把电脑升级到与 App 相同的版本（#787）。
+
+### 部署说明
+
+- 新的数据库迁移 0060（`identity_bootstrap_tickets.origins`），core 启动时自动执行；空串表示只认原来源，旧票照旧可兑。
+- 手机与电脑要一起升到 0.14.0 才能扫码连接：0.14.0 的电脑不再签发旧二维码、不再认 `armadra://pair`，0.14.0 的 App 不再解析旧二维码。已经连上的设备不受影响。
+- 契约：新增 §99（`connect.offer`、`connect.used`）；§17.3、§80.1 已由 §99 取代，§24、§73 去掉 `deepLink`。
+- 配套镜像 `ghcr.io/ama-link/armadra-cloud:0.14.0`、`ghcr.io/ama-link/armadra-relay:0.14.0` 与协议包 0.14.0 同号（cloud 只对齐版本，没有代码改动）；推送中继镜像 `ghcr.io/ama-link/armadra-push-relay:0.14.0` 与服务器壳镜像同号。发版顺序沿用 0.13.0：先打 Armadra `v0.14.0`，再打 armadra-cloud `v0.14.0`。
+
 ## 0.13.0（2026-11-04）
 
 版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.13.0。随包 `@armadra/agent` 0.13.0（维护版，没有用户可见的变化）与平台协议包 0.13.0（协议仍是 1.4，没有形状变化）；配套镜像 `armadra-cloud` / `armadra-relay` 0.13.0。本版主题：设置整理（「账号与设备」合并页、每家 Agent 的启用开关、快捷键页与全选）、登录会话去重与清扫、ACP 会话视图改版与补齐（两行输入区、计划条、内联审批、自家画布工具免审批）、侧栏搜索与 ⌘K 共用内容索引、画布多选拖动与一键整理、手机布局（横屏铺满、竖屏一行 Dock、视口与触屏手势）、缺陷审计的修复批次与夜间 CI。
