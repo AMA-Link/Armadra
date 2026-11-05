@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   WORK_ITEM_STAGES,
   workItemAttentionSchema,
+  workItemReplySchema,
   workItemReportSchema,
 } from "@armadra/shared";
 
@@ -32,12 +33,15 @@ export const dispatchTaskSchema = z.object({
   stage: z.enum(WORK_ITEM_STAGES).nullable().default(null).catch(null),
   report: workItemReportSchema.nullable().default(null),
   attention: workItemAttentionSchema.nullable().default(null),
+  // 协调者经 `canvas notify` 说的最新一句话（契约 §101）：旧 core 没有这个字段。
+  reply: workItemReplySchema.nullable().default(null).catch(null),
 });
 
 export type DispatchTask = z.infer<typeof dispatchTaskSchema>;
 
 const tasksSchema = z.object({ tasks: z.array(dispatchTaskSchema) });
 const taskSchema = z.object({ task: dispatchTaskSchema });
+const readSchema = z.object({ read: z.number() });
 
 export const coordinatorKeys = {
   /** 挂在 `workflow` 之下：`workflow.*` 帧整组重读时它跟着重读。 */
@@ -50,6 +54,11 @@ export const coordinatorApi = {
   tasks: async (boardId: string, source = activeSource()) =>
     tasksSchema.parse(await clientFor(source).coordinator.tasks({ boardId }))
       .tasks,
+  /** 打开抽屉：这块画板上协调者的回复标为已读（契约 §101.2）。 */
+  readReplies: async (boardId: string, source = activeSource()) =>
+    readSchema.parse(
+      await clientFor(source).coordinator.readReplies({ boardId }),
+    ).read,
   retry: async (taskId: string, source = activeSource()) =>
     taskSchema.parse(await clientFor(source).coordinator.retry({ taskId }))
       .task,

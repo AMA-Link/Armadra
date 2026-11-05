@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { WorkItemReportState, WorkItemStage } from "@armadra/shared";
 import type { WorkspaceEvent } from "../bus";
+import type { RouterReply } from "../collab/router-replies";
 
 /**
  * `workflow_task_runs`：协调者的 `task(agent=…)` 经画布节点执行的记录（补全
@@ -352,6 +353,7 @@ export function taskRunsForBoard(
 export function taskRowJson(
   run: TaskRun,
   stage: WorkItemStage,
+  reply: RouterReply | null = null,
 ): Record<string, unknown> {
   const result = run.result as { reason?: unknown } | null;
   const reason =
@@ -376,6 +378,15 @@ export function taskRowJson(
     stage,
     report: run.report,
     attention: run.attention,
+    reply:
+      reply === null
+        ? null
+        : {
+            purpose: reply.purpose,
+            text: reply.text,
+            at: new Date(reply.createdAt).toISOString(),
+            read: reply.readAt !== null,
+          },
   };
 }
 

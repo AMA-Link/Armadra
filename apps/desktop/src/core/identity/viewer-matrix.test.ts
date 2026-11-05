@@ -66,6 +66,8 @@ const INTENDED_WRITES = new Set([
   "POST /api/workspaces/{workspaceId}/boards/{boardId}/presence",
   "DELETE /api/workspaces/{workspaceId}/boards/{boardId}/presence/{clientId}",
   "POST /api/workspaces/{workspaceId}/open",
+  // 打开分派抽屉标已读（契约 §101.2）：只是清掉协调者节点头上的未读点。
+  "POST /api/workflows/tasks/read-replies",
 ]);
 
 /** 每个登录主体的底线（控制面升级、`system.hello` / `ping`）：不是分享给的权限。 */

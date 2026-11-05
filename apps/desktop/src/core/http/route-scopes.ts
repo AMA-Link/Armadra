@@ -298,6 +298,13 @@ export const ROUTE_SCOPE_RULES: readonly RouteScopeRule[] = [
     read: "canvas:read",
     write: "agent:launch",
   },
+  // 人打开分派抽屉标已读（契约 §101.2）：只是清掉协调者节点头上的未读点，看得
+  // 见这块画布的人都会做，与 Agent 状态标已读同一档。
+  {
+    pattern: /^\/api\/workflows\/tasks\/read-replies$/,
+    read: "canvas:read",
+    write: "canvas:read",
+  },
   {
     pattern: /^\/api\/workflows/,
     read: "canvas:read",

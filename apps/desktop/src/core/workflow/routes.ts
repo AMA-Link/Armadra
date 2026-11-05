@@ -8,7 +8,8 @@ import {
 import type { CoreServer } from "../http/server";
 import { DomainError } from "../workspaces/support";
 import { workflowScheduleBridge } from "./registry";
-import { taskRowJson } from "./task-runs";
+import type { RouterReply } from "../collab/router-replies";
+import { type TaskRun, taskRowJson } from "./task-runs";
 import {
   type WorkflowService,
   draftJson,
@@ -190,10 +191,24 @@ export function workflowOperations(service: WorkflowService) {
     },
 
     /* ------------------------------ 协调者任务 ------------------------------ */
-    tasks: (boardId: unknown) => ({
-      tasks: service
-        .tasks(optional(boardId))
-        .map((run) => taskRowJson(run, service.stageOf(run))),
+    tasks: (boardId: unknown) => {
+      const replies = new Map<string, Map<string, RouterReply>>();
+      const replyOf = (run: TaskRun): RouterReply | null => {
+        let latest = replies.get(run.coordinatorNodeId);
+        if (latest === undefined) {
+          latest = service.replies(run.coordinatorNodeId);
+          replies.set(run.coordinatorNodeId, latest);
+        }
+        return latest.get(run.taskId) ?? null;
+      };
+      return {
+        tasks: service
+          .tasks(optional(boardId))
+          .map((run) => taskRowJson(run, service.stageOf(run), replyOf(run))),
+      };
+    },
+    readReplies: (boardId: unknown) => ({
+      read: service.readReplies(optional(boardId)),
     }),
     retryTask: (taskId: string) => ({
       task: (() => {
@@ -329,6 +344,7 @@ export function installWorkflowRoutes(
   } as unknown as DomainHandlers<"workflows">);
   registerProcedures(server, "coordinator", {
     tasks: ({ boardId }: { boardId?: string }) => ops.tasks(boardId),
+    readReplies: ({ boardId }: { boardId: string }) => ops.readReplies(boardId),
     retry: ({ taskId }: { taskId: string }) => ops.retryTask(taskId),
   } as unknown as DomainHandlers<"coordinator">);
 
@@ -409,6 +425,9 @@ export function installWorkflowRoutes(
 
   route("GET", `${BASE}/tasks`, (_match, request) =>
     ok(ops.tasks(query(request, "boardId"))),
+  );
+  route("POST", `${BASE}/tasks/read-replies`, (_match, request) =>
+    ok(ops.readReplies(jsonBody(request).boardId)),
   );
   route("POST", `${BASE}/tasks/{taskId}/retry`, (match) =>
     ok(ops.retryTask(param(match, "taskId"))),

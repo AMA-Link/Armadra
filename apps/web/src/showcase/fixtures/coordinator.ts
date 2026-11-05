@@ -127,6 +127,7 @@ function task(
     stage: null,
     report: null,
     attention: null,
+    reply: null,
     ...patch,
   };
 }

@@ -74297,6 +74297,32 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "reply": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "purpose": {
+                                    "enum": ["answer", "result", "attention"],
+                                    "type": "string"
+                                  },
+                                  "text": {
+                                    "type": "string"
+                                  },
+                                  "at": {
+                                    "type": "string"
+                                  },
+                                  "read": {
+                                    "type": "boolean"
+                                  }
+                                },
+                                "required": ["purpose", "text", "at", "read"]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         },
                         "required": [
@@ -74312,7 +74338,8 @@
                           "title",
                           "stage",
                           "report",
-                          "attention"
+                          "attention",
+                          "reply"
                         ]
                       }
                     }
@@ -74340,6 +74367,77 @@
           "legacy": {
             "method": "GET",
             "path": "/api/workflows/tasks"
+          }
+        }
+      }
+    },
+    "/api/rpc/coordinator/readReplies": {
+      "post": {
+        "operationId": "coordinator.readReplies",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "boardId": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": ["boardId"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "read": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": ["read"]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          }
+        },
+        "x-armadra": {
+          "contract": "§43.3",
+          "scope": "canvas:read",
+          "since": "1.54",
+          "legacy": {
+            "method": "POST",
+            "path": "/api/workflows/tasks/read-replies"
           }
         }
       }
@@ -74487,6 +74585,32 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "reply": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "purpose": {
+                                  "enum": ["answer", "result", "attention"],
+                                  "type": "string"
+                                },
+                                "text": {
+                                  "type": "string"
+                                },
+                                "at": {
+                                  "type": "string"
+                                },
+                                "read": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": ["purpose", "text", "at", "read"]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         }
                       },
                       "required": [
@@ -74502,7 +74626,8 @@
                         "title",
                         "stage",
                         "report",
-                        "attention"
+                        "attention",
+                        "reply"
                       ]
                     }
                   },

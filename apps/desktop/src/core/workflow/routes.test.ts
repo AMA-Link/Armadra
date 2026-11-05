@@ -1,3 +1,4 @@
+import { insertReply } from "../collab/router-replies";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AgentFixture, agentFixture, callerFor } from "../agent/fixture";
 import { controlDispatcher } from "../collab/control";
@@ -364,6 +365,51 @@ describe("协调者任务（契约 §15.7）", () => {
     return { member, taskId: `sess:${member}` };
   }
 
+  it("shows the coordinator's latest reply on the row and marks it read", async () => {
+    const { taskId } = seed("审查 src/x");
+    insertReply(fixture.database, {
+      id: `result:${taskId}:a`,
+      coordinatorNodeId: coordinator,
+      itemId: taskId,
+      purpose: "result",
+      stage: "person/review",
+      text: "请验收",
+      createdAt: 2_000,
+    });
+    const before = await call(
+      "GET",
+      `/api/workflows/tasks?boardId=${fixture.boardId}`,
+    );
+    expect((before.body.tasks as { reply: unknown }[])[0]?.reply).toEqual({
+      purpose: "result",
+      text: "请验收",
+      at: new Date(2_000).toISOString(),
+      read: false,
+    });
+    const marked = await call("POST", "/api/workflows/tasks/read-replies", {
+      boardId: fixture.boardId,
+    });
+    expect(marked).toMatchObject({ status: 200, body: { read: 1 } });
+    const after = await call(
+      "GET",
+      `/api/workflows/tasks?boardId=${fixture.boardId}`,
+    );
+    expect(
+      (after.body.tasks as { reply: { read: boolean } }[])[0]?.reply.read,
+    ).toBe(true);
+    // 再标一次什么也不动；缺 boardId 是 400。
+    expect(
+      (
+        await call("POST", "/api/workflows/tasks/read-replies", {
+          boardId: fixture.boardId,
+        })
+      ).body,
+    ).toEqual({ read: 0 });
+    expect(
+      await call("POST", "/api/workflows/tasks/read-replies", {}),
+    ).toMatchObject({ status: 400 });
+  });
+
   it("lists a board's task rows without the task text", async () => {
     const { member, taskId } = seed("审查 src/x");
     finishTask(
@@ -393,6 +439,7 @@ describe("协调者任务（契约 §15.7）", () => {
         stage: "person/failed",
         report: null,
         attention: null,
+        reply: null,
       },
     ]);
     expect(JSON.stringify(listed.body)).not.toContain("审查 src/x");

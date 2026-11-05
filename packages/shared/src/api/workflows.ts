@@ -344,6 +344,14 @@ export const workItemAttentionSchema = z.object({
   raisedAt: z.string(),
 });
 
+/** 协调者经 `canvas notify` 对人说的最新一句话（§101.2）：页面显示在成员行下面。 */
+export const workItemReplySchema = z.object({
+  purpose: z.enum(["answer", "result", "attention"]),
+  text: z.string(),
+  at: z.string(),
+  read: z.boolean(),
+});
+
 export const workflowTaskRunSchema = z.object({
   taskId: z.string(),
   coordinatorNodeId: z.string(),

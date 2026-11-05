@@ -4,7 +4,13 @@ import { act, cleanup, render } from "@testing-library/react";
 import { TestProviders, installDomPolyfills } from "@/app/test-harness";
 import { usePreferencesStore } from "@/app/preferences-store";
 import type { DispatchTask } from "./api";
-import { ItemStageBadge, nodeStages, useItemStages } from "./stage";
+import {
+  ItemStageBadge,
+  nodeStages,
+  unreadReplies,
+  useItemStages,
+} from "./stage";
+import { MembersChip } from "./MembersChip";
 
 /** 成员节点头部的阶段（契约 §90.4）。 */
 
@@ -23,6 +29,7 @@ function task(nodeId: string, patch: Partial<DispatchTask>): DispatchTask {
     stage: null,
     report: null,
     attention: null,
+    reply: null,
     ...patch,
   };
 }
@@ -31,7 +38,7 @@ beforeAll(() => installDomPolyfills());
 
 afterEach(() => {
   cleanup();
-  useItemStages.setState({ stages: {} });
+  useItemStages.setState({ stages: {}, unreadReplies: {} });
 });
 
 describe("nodeStages", () => {
@@ -87,5 +94,48 @@ describe("ItemStageBadge", () => {
       ).toBeNull();
       cleanup();
     }
+  });
+});
+
+describe("unreadReplies", () => {
+  const reply = (read: boolean) =>
+    ({
+      purpose: "result",
+      text: "x",
+      at: "2026-10-04T08:00:00.000Z",
+      read,
+    }) as const;
+
+  it("counts the unread replies per coordinator", () => {
+    expect(
+      unreadReplies([
+        task("a", { reply: reply(false) }),
+        task("b", { reply: reply(false) }),
+        task("c", { reply: reply(true) }),
+        task("d", { coordinatorNodeId: "other", reply: reply(false) }),
+        task("e", {}),
+      ]),
+    ).toEqual({ lead: 2, other: 1 });
+  });
+
+  it("puts a dot on the coordinator's chip, and only for its own replies", () => {
+    useItemStages.setState({ unreadReplies: { lead: 1 } });
+    const { container, rerender } = render(
+      <TestProviders>
+        <MembersChip nodeId="lead" />
+      </TestProviders>,
+    );
+    expect(
+      container.querySelector('[data-slot="coordinator-reply-dot"]'),
+    ).not.toBeNull();
+    rerender(
+      <TestProviders>
+        <MembersChip nodeId="other" />
+      </TestProviders>,
+    );
+    expect(
+      container.querySelector('[data-slot="coordinator-reply-dot"]'),
+    ).toBeNull();
+    act(() => useItemStages.setState({ unreadReplies: {} }));
   });
 });

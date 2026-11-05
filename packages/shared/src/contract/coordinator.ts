@@ -4,6 +4,7 @@ import {
   WORKFLOW_TASK_RUN_STATUSES,
   WORK_ITEM_STAGES,
   workItemAttentionSchema,
+  workItemReplySchema,
   workItemReportSchema,
 } from "../api/workflows.js";
 import { errors } from "./errors.js";
@@ -36,6 +37,8 @@ const taskRowWire = z.object({
   stage: z.enum(WORK_ITEM_STAGES),
   report: workItemReportSchema.nullable(),
   attention: workItemAttentionSchema.nullable(),
+  /** 协调者经 `canvas notify` 说的最新一句话（§101.2）；没有是 null。 */
+  reply: workItemReplySchema.nullable(),
 });
 
 export const coordinator = {
@@ -49,6 +52,19 @@ export const coordinator = {
         ...base,
         scope: "canvas:read",
         legacy: { method: "GET", path: "/api/workflows/tasks" },
+      }),
+    ),
+  /** 人打开分派抽屉：这块画板上协调者的回复都标为已读（§101.2）。 */
+  readReplies: oc
+    .input(z.object({ boardId: z.string().min(1) }))
+    .output(z.object({ read: z.number().int().nonnegative() }))
+    .errors(errors.pick("forbidden", "not_found"))
+    .meta(
+      meta({
+        since: "1.54",
+        contract: "§43.3",
+        scope: "canvas:read",
+        legacy: { method: "POST", path: "/api/workflows/tasks/read-replies" },
       }),
     ),
   /** 重试一条失败或已停的任务。 */

@@ -27,6 +27,7 @@ import {
   Item,
   ItemActions,
   ItemContent,
+  ItemDescription,
   ItemGroup,
   ItemMedia,
   ItemTitle,
@@ -65,11 +66,15 @@ export interface DispatchViewProps {
   readonly canRetry?: boolean;
   /** 正在重试的任务。 */
   readonly retrying?: string | null;
+  /** 打开抽屉时还没读的回复所在的任务：这些行高亮（契约 §101）。 */
+  readonly fresh?: ReadonlySet<string>;
   readonly onReload?: () => void;
   readonly onRetry?: (taskId: string) => void;
   readonly onOpen?: (nodeId: string) => void;
   readonly onFocusLead?: () => void;
 }
+
+const NO_TASKS: ReadonlySet<string> = new Set();
 
 /** 纯展示：真抽屉与展示页共用。 */
 export function DispatchView({
@@ -80,6 +85,7 @@ export function DispatchView({
   offline = false,
   canRetry = true,
   retrying = null,
+  fresh = NO_TASKS,
   onReload,
   onRetry,
   onOpen,
@@ -179,6 +185,7 @@ export function DispatchView({
                 offline={offline}
                 canRetry={canRetry}
                 retrying={retrying === member.taskId}
+                fresh={member.taskId !== null && fresh.has(member.taskId)}
                 {...(onRetry ? { onRetry } : {})}
                 {...(onOpen ? { onOpen } : {})}
               />
@@ -224,10 +231,13 @@ function MemberRow({
   offline,
   canRetry,
   retrying,
+  fresh,
   onRetry,
   onOpen,
 }: {
   member: DispatchMember;
+  /** 打开抽屉时还没读的回复：这一行高亮，直到抽屉关上。 */
+  fresh: boolean;
   offline: boolean;
   canRetry: boolean;
   retrying: boolean;
@@ -239,11 +249,15 @@ function MemberRow({
   return (
     <Item
       size="xs"
-      className="rounded-none border-0 border-l-2 px-2"
+      className={cn(
+        "rounded-none border-0 border-l-2 px-2",
+        fresh && "bg-accent",
+      )}
       style={{ borderLeftColor: agentColorVar(member.agentId) }}
       data-slot="dispatch-member"
       data-node-id={member.nodeId}
       data-tone={member.status.tone}
+      data-fresh={fresh ? "true" : undefined}
     >
       <ItemMedia>
         <AgentAvatar agentId={member.agentId || "custom:"} size={20} />
@@ -271,6 +285,14 @@ function MemberRow({
           }
           spinning={member.status.tone === "working"}
         />
+        {member.reply !== null ? (
+          <ItemDescription
+            data-slot="dispatch-reply"
+            data-purpose={member.reply.purpose}
+          >
+            {member.reply.text}
+          </ItemDescription>
+        ) : null}
       </ItemContent>
       {member.stalled !== undefined ? (
         <Badge
@@ -400,6 +422,34 @@ export function DispatchDrawer() {
     });
   }, [coordinatorId, document, tasks.data, statuses, now]);
 
+  // 打开抽屉就标已读（契约 §101.2）；这一次打开时还没读的那几行高亮到关上。
+  const [fresh, setFresh] = React.useState<ReadonlySet<string>>(new Set());
+  const markRead = useMutation({
+    mutationFn: (board: string) => coordinatorApi.readReplies(board),
+    onSuccess: () =>
+      void client.invalidateQueries({
+        queryKey: coordinatorKeys.tasks(boardId ?? ""),
+      }),
+  });
+  const markReadNow = markRead.mutate;
+  React.useEffect(() => {
+    if (!open) {
+      setFresh((previous) => (previous.size === 0 ? previous : new Set()));
+      return;
+    }
+    const unread = (tasks.data ?? []).filter(
+      (task) =>
+        task.coordinatorNodeId === coordinatorId &&
+        task.reply !== null &&
+        !task.reply.read,
+    );
+    if (unread.length === 0 || !boardId) return;
+    setFresh(
+      (previous) => new Set([...previous, ...unread.map((t) => t.taskId)]),
+    );
+    markReadNow(boardId);
+  }, [open, tasks.data, coordinatorId, boardId, markReadNow]);
+
   const retry = useMutation({
     mutationFn: (taskId: string) => coordinatorApi.retry(taskId),
     onSuccess: () =>
@@ -437,6 +487,7 @@ export function DispatchDrawer() {
           offline={!online}
           canRetry={access.can("agent:launch", workspaceId ?? "")}
           retrying={retry.isPending ? (retry.variables ?? null) : null}
+          fresh={fresh}
           onReload={() => void tasks.refetch()}
           onRetry={(taskId) => retry.mutate(taskId)}
           onOpen={(nodeId) => revealNode(nodeId)}

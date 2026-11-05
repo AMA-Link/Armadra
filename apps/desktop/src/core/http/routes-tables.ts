@@ -16,6 +16,7 @@ export const WORKFLOW_ROUTES: readonly RouteEntry[] = (
     ["/runs/{runId}/cancel", ["POST"]],
     ["/runs/{runId}/gates/{stepId}", ["POST"]],
     ["/tasks", ["GET"]],
+    ["/tasks/read-replies", ["POST"]],
     ["/tasks/{taskId}/retry", ["POST"]],
   ] as const
 ).map(([path, methods]) => ({
