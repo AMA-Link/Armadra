@@ -22,6 +22,9 @@ export default defineConfig({
       // flake teaches people to ignore the only test that proves the pipe
       // protocol against the real thing.
       "**/*live.integration.test.ts",
+      // The Windows private-channel scenarios create a local account and spawn
+      // processes as it; they run on their own (`vitest.windows.config.mts`).
+      "**/*.windows.test.ts",
     ],
     environment: "node",
     pool: "forks",
