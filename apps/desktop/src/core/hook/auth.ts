@@ -26,7 +26,7 @@ import {
  * `legacy` (accepted, flagged) rather than `forged` (rejected).
  *
  * The derivation is unchanged, so a node token minted before the secret moved
- * into the secret store (contract §101) is still `verified` afterwards.
+ * into the secret store (contract §102) is still `verified` afterwards.
  */
 
 /**

@@ -10,7 +10,7 @@ import {
 } from "../secrets";
 
 /**
- * Where the hook instance secret lives — contract §101.
+ * Where the hook instance secret lives — contract §102.
  *
  * It used to be `<data>/hook-secret`, a plaintext 32-byte file. It is now one
  * entry in the core's secret backend (Keychain, safeStorage, the encrypted

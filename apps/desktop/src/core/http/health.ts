@@ -27,7 +27,7 @@ export interface HookHealth {
   /**
    * Where this run's hook secret lives: the backend kind, `legacy-file` while
    * the store is unreachable and the old file is still the source, or
-   * `ephemeral` when this run's tokens die with the process (contract §101).
+   * `ephemeral` when this run's tokens die with the process (contract §102).
    * Never the value.
    */
   readonly secret?: string;
