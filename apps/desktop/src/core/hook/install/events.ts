@@ -15,7 +15,7 @@
  * integration's version: the design keeps it fixed while the way the adapter
  * is injected changes (docs/design/agent-integration.md §2).
  */
-export const HOOK_CLIENT_REVISION = 5;
+export const HOOK_CLIENT_REVISION = 6;
 
 /** The revision of the skill half, mirroring `collab::skills::SKILLS_REVISION`. */
 export const SKILLS_REVISION = 23;

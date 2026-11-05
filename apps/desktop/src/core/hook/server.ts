@@ -4,7 +4,7 @@ import {
   type ServerResponse,
   createServer,
 } from "node:http";
-import { type ListenSpec, bind, release } from "../listen";
+import { type ListenSpec, type PipeSecurity, bind, release } from "../listen";
 import { ROUTES } from "../http/routes";
 import { Router, type CoreRequest, type HandlerResult } from "../http/router";
 import { readBody } from "../http/server";
@@ -416,9 +416,9 @@ export class HookServer {
   }
 
   /** Binds one address. Failures are the caller's to report. */
-  async listen(spec: ListenSpec): Promise<ListenSpec> {
+  async listen(spec: ListenSpec, secured?: PipeSecurity): Promise<ListenSpec> {
     const server = this.createListener();
-    const bound = await bind(server, spec);
+    const bound = await bind(server, spec, secured);
     this.servers.push({ server, spec: bound });
     return bound;
   }

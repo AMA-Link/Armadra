@@ -354,7 +354,7 @@ describe("the Claude Code mod", () => {
     expect(mod.fetched[0]?.init.socketPath).toBe("/data/hook.sock");
     expect(mod.fetched[0]?.init.headers).toEqual({
       "Content-Type": "application/json",
-      "X-Armadra-Hook-Client": "5",
+      "X-Armadra-Hook-Client": "6",
       "X-Armadra-Hook-Token": "it's",
       "X-Armadra-Node-Token": "kid.mac",
     });

@@ -32,6 +32,12 @@ export interface Endpoint {
   readonly port?: number | undefined;
   /** Unix socket path; `undefined` on Windows. */
   readonly socket?: string | undefined;
+  /**
+   * Windows named pipe `\\.\pipe\armadra-hook-<random>` (contract §102.5):
+   * a new name every start, behind the `armadra-pipe/1` handshake keyed from
+   * the bearer below. `undefined` off Windows.
+   */
+  readonly pipe?: string | undefined;
   readonly token: string;
   readonly nodeTokenDir: string;
 }
@@ -52,6 +58,9 @@ export function render(endpoint: Endpoint): string {
   }
   if (endpoint.socket !== undefined) {
     pushLine(lines, "ARMADRA_HOOK_SOCK", endpoint.socket);
+  }
+  if (endpoint.pipe !== undefined) {
+    pushLine(lines, "ARMADRA_HOOK_PIPE", endpoint.pipe);
   }
   pushLine(lines, "ARMADRA_HOOK_TOKEN", endpoint.token);
   pushLine(lines, "ARMADRA_NODE_TOKEN_DIR", endpoint.nodeTokenDir);

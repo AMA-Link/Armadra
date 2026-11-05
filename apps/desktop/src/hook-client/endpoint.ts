@@ -47,6 +47,7 @@ export const MAX_CANDIDATES = 3;
 /** Keys the client understands. Unknown keys are kept but ignored. */
 export const KEY_PORT = "ARMADRA_HOOK_PORT";
 export const KEY_SOCK = "ARMADRA_HOOK_SOCK";
+export const KEY_PIPE = "ARMADRA_HOOK_PIPE";
 export const KEY_TOKEN = "ARMADRA_HOOK_TOKEN";
 export const KEY_TOKEN_DIR = "ARMADRA_NODE_TOKEN_DIR";
 export const KEY_VERSION = "ARMADRA_HOOK_VERSION";
@@ -135,6 +136,8 @@ export interface Endpoint {
   path: string;
   port?: number;
   sock?: string;
+  /** Windows named pipe; the handshake is keyed from `hookToken`. */
+  pipe?: string;
   hookToken?: string;
   tokenDir?: string;
   version?: string;
@@ -164,9 +167,10 @@ export function loadEndpoint(
     port = parsed;
   }
   const sock = nonEmpty(map.get(KEY_SOCK));
-  if (port === undefined && sock === undefined) {
+  const pipe = nonEmpty(map.get(KEY_PIPE));
+  if (port === undefined && sock === undefined && pipe === undefined) {
     return {
-      error: `endpoint file ${file} has neither ${KEY_PORT} nor ${KEY_SOCK}`,
+      error: `endpoint file ${file} has none of ${KEY_PORT}, ${KEY_SOCK} or ${KEY_PIPE}`,
     };
   }
   return {
@@ -174,6 +178,7 @@ export function loadEndpoint(
       path: file,
       port,
       sock,
+      pipe,
       hookToken: nonEmpty(map.get(KEY_TOKEN)),
       tokenDir: nonEmpty(map.get(KEY_TOKEN_DIR)),
       version: nonEmpty(map.get(KEY_VERSION)),
@@ -280,6 +285,8 @@ export function discoverCandidatesFrom(
       address !== undefined &&
       (address.port !== credentials.port || address.sock !== credentials.sock)
     ) {
+      // `endpoints.json` names no hook pipe: that one is only ever in the
+      // endpoint file, whose name changes every start.
       candidates.push({
         path: endpointsJson,
         port: address.port,

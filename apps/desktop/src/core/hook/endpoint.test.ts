@@ -30,6 +30,19 @@ describe("the hook endpoint file", () => {
     }
   });
 
+  it("advertises the Windows pipe next to the bearer and omits it elsewhere", () => {
+    const withPipe = render({
+      ...fixture(),
+      socket: undefined,
+      pipe: "\\\\.\\pipe\\armadra-hook-00ff",
+    });
+    expect(parse(withPipe).get("ARMADRA_HOOK_PIPE")).toBe(
+      "\\\\.\\pipe\\armadra-hook-00ff",
+    );
+    expect(withPipe).not.toContain("ARMADRA_HOOK_SOCK");
+    expect(render(fixture())).not.toContain("ARMADRA_HOOK_PIPE");
+  });
+
   it("round-trips a path containing a quote", () => {
     const awkward = { ...fixture(), socket: "/tmp/it's here/hook.sock" };
     const parsed = parse(render(awkward));

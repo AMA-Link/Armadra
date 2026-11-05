@@ -128,11 +128,40 @@ export class HookService {
     return nodeTokenDir(this.dataDir);
   }
 
-  /** `undefined` on Windows, where the client uses the TCP fallback. */
+  /** `undefined` on Windows, where the surface is a named pipe instead. */
   socketPath(): string | undefined {
     return process.platform === "win32"
       ? undefined
       : join(this.dataDir, "hook.sock");
+  }
+
+  private pipeName: string | undefined;
+  private readonly withdrawn = new Set<"socket" | "pipe">();
+
+  /**
+   * Windows: this run's pipe, `armadra-hook-<128 random bits>`. Chosen before
+   * the endpoint file is published and never reused; the handshake, not the
+   * name, is what keeps a squatter out.
+   */
+  usePipe(name: string): void {
+    this.pipeName = name;
+  }
+
+  pipePath(): string | undefined {
+    return this.pipeName === undefined
+      ? undefined
+      : `\\\\.\\pipe\\${this.pipeName}`;
+  }
+
+  /** What the endpoint file advertises right now. */
+  private advertised(): {
+    socket: string | undefined;
+    pipe: string | undefined;
+  } {
+    return {
+      socket: this.withdrawn.has("socket") ? undefined : this.socketPath(),
+      pipe: this.withdrawn.has("pipe") ? undefined : this.pipePath(),
+    };
   }
 
   port(): number | undefined {
@@ -192,9 +221,11 @@ export class HookService {
   /** Writes the endpoint file. Called at start-up and whenever the port moves. */
   publishEndpoint(port: number | undefined): void {
     this.currentPort = port;
+    const { socket, pipe } = this.advertised();
     endpointFile.write(this.endpointFile(), {
       port,
-      socket: this.socketPath(),
+      socket,
+      pipe,
       token: this.auth.bearer,
       nodeTokenDir: this.nodeTokenDir(),
     });
@@ -213,23 +244,40 @@ export class HookService {
    * first.
    */
   withdrawSocket(): void {
+    this.withdrawn.add("socket");
+    this.republish(
+      "could not update the hook endpoint file after a failed socket bind",
+    );
+  }
+
+  /** The same for the named pipe on Windows: a failed bind is taken back. */
+  withdrawPipe(): void {
+    this.withdrawn.add("pipe");
+    this.republish(
+      "could not update the hook endpoint file after a failed pipe bind",
+    );
+  }
+
+  private republish(failure: string): void {
     const port = this.port();
+    const { socket, pipe } = this.advertised();
     try {
       endpointFile.write(this.endpointFile(), {
         port,
-        socket: undefined,
+        socket,
+        pipe,
         token: this.auth.bearer,
         nodeTokenDir: this.nodeTokenDir(),
       });
     } catch (error) {
-      this.onWarning(
-        "could not update the hook endpoint file after a failed socket bind",
-        error,
-      );
+      this.onWarning(failure, error);
     }
-    // No port either: this run has no hook surface left to advertise at all,
-    // so the file itself has to go rather than name a dead address.
-    if (port === undefined) this.withdraw();
+    // No port and no listener either: this run has no hook surface left to
+    // advertise at all, so the file itself has to go rather than name a dead
+    // address.
+    if (port === undefined && socket === undefined && pipe === undefined) {
+      this.withdraw();
+    }
   }
 
   /**
@@ -258,11 +306,15 @@ export class HookService {
     const published = endpointFile.read(this.endpointFile());
     const port = this.port();
     const sock = this.socketPath();
+    const pipe = this.pipePath();
     const ok =
       port !== undefined
         ? published.get("ARMADRA_HOOK_PORT") === String(port)
-        : !published.has("ARMADRA_HOOK_PORT") &&
-          published.get("ARMADRA_HOOK_SOCK") === sock;
+        : pipe !== undefined
+          ? !published.has("ARMADRA_HOOK_PORT") &&
+            published.get("ARMADRA_HOOK_PIPE") === pipe
+          : !published.has("ARMADRA_HOOK_PORT") &&
+            published.get("ARMADRA_HOOK_SOCK") === sock;
     return {
       ...(sock === undefined ? {} : { sock }),
       ...(port === undefined ? {} : { port }),

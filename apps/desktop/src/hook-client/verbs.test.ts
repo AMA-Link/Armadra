@@ -155,7 +155,7 @@ describe("wire arguments", () => {
 });
 
 describe("the shared client", () => {
-  it("imports nothing from the CLI and only the dependency-free verb spec from core", () => {
+  it("imports nothing from the CLI and only dependency-free modules from core", () => {
     const dir = import.meta.dirname;
     for (const file of fs.readdirSync(dir)) {
       if (!file.endsWith(".ts") || file.endsWith(".test.ts")) continue;
@@ -166,7 +166,16 @@ describe("the shared client", () => {
         const [, typeOnly, specifier] = match;
         expect(specifier, file).not.toMatch(/cli\//);
         if (specifier!.startsWith("../core/") && typeOnly === undefined) {
-          expect(specifier, file).toBe("../core/browser/verb-spec.js");
+          // The verb spec, and the pipe handshake: both are pure and import
+          // nothing but node built-ins, so bundling them adds no dependency.
+          expect(
+            [
+              "../core/browser/verb-spec.js",
+              "../core/private-pipe/handshake.js",
+              "../core/private-pipe/labels.js",
+            ],
+            file,
+          ).toContain(specifier);
         }
       }
     }

@@ -19,7 +19,7 @@ import type { HookRequest, HookResponse } from "./http.js";
  * `core/hook/install/events.ts` and `packages/shared`. Lives here rather than in the CLI's `usage.ts` because every user of
  * the shared client (the CLI, the MCP bridge, the ama adapter) sends it.
  */
-export const HOOK_CLIENT_REVISION = "5";
+export const HOOK_CLIENT_REVISION = "6";
 
 export interface Session {
   nodeId: string;
@@ -114,6 +114,7 @@ export async function send(
 /** How a candidate is named in an error: its socket, else its port. */
 function describe(candidate: Endpoint): string {
   if (candidate.sock !== undefined) return candidate.sock;
+  if (candidate.pipe !== undefined) return candidate.pipe;
   if (candidate.port !== undefined) return `127.0.0.1:${candidate.port}`;
   return "the hook endpoint";
 }

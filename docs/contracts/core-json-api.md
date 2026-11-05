@@ -5226,6 +5226,14 @@ ACP 会话经 `session/new.mcpServers` 拿到 `armadra-hook mcp`（§14、`core/
 - **失败策略**：这条通道签的票能换全权会话，所以只靠握手不够——**DACL 收紧失败（§102.2）就不开这条通道**（`bind` 的 `requireHardened`），关掉已绑的管道、不写 `control` 记录、告警，`pipe.key` 收紧失败同样不开。桌面壳不受影响：它在 Windows 上仍然经 fork 的 IPC 通道取票（`armadra:identity-ticket`，只有起这个 core 的壳在另一头，是最窄的一条路，保留）。
 - **客户端**：服务器壳的 `armadra-server cloud …` 与 `invite --cloud-link` 经 `core/identity/control-client.ts` 取票：Unix 上是数据目录里的 socket，Windows 上读 `endpoints.json` 的 `control.pipe`、`pipe.key`，完成握手后再发请求。找不到管道、没有密钥或握手失败都答 `host_unavailable`。原先 Windows 上这些命令直接答 `unsupported_platform` 的分支删除。
 
+### 102.5 Windows 的 hook 面：随机命名管道（P5）
+
+- **端点文件**：`hook-endpoint.env` 增加 `ARMADRA_HOOK_PIPE='\\.\pipe\armadra-hook-<32 位十六进制>'`（Windows 上取代 `ARMADRA_HOOK_SOCK`；其余平台不写）。名字每次启动随机（128 位），与 `ARMADRA_HOOK_TOKEN` 一起每次 hook 调用重读。此前 Windows 上没有 hook 面：`socketPath()` 为空、没有端口，端点文件被撤回，hook 一律落到「无核心」。
+- **握手**：连接先过 `armadra-pipe/1`（§102.3），label `hook`，根密钥就是端点文件里的 bearer（`ARMADRA_HOOK_TOKEN`），即 `K = HMAC(bearer, "armadra-pipe-key/1" ‖ 0 ‖ "hook")`。客户端在服务端证明通过之前不写请求，所以抢占管道名的进程只拿得到客户端的一个随机数；证明不过时 `sent` 为 false，客户端还可以试下一个候选（端口）。
+- **失败策略**：管道的 DACL 收紧失败只告警（hook 面照开，靠握手兜底，`/health` 的 `pipeAcl` 报 `default`）；管道绑不上则撤回端点文件里的 `ARMADRA_HOOK_PIPE`，没有端口也没有 socket 时整个文件撤回。`GET /health` 的 `hook.ok` 在 Windows 上看端点文件的 `ARMADRA_HOOK_PIPE` 是否就是本次的管道。
+- **客户端**：`armadra-hook`（含 `armadra-hook.exe` 启动的那份）候选里有管道且有 bearer 时先走管道，再走 socket / 端口；`doctor` 的 `endpoint load` 行多一个 `pipe=`。Claude Code 的 mod 与 pi / opencode 的扩展在仅有管道时没有可用的直连，沿用已有的 `armadra-hook` 进程回退（与此前 Windows 上的行为相同，没有新增功能损失）。Codex 的 MCP 服务器转发的环境变量名多一个 `ARMADRA_HOOK_PIPE`。
+- `HOOK_CLIENT_REVISION` 由 5 升到 6（注入给 Codex 的配置变了，各 CLI 重新装一次）。
+
 ## 101. 协调者的回复闸门、重启恢复与记忆约定（`#704`，R3）
 
 > 状态：实施契约（AMA-Link/Armadra#704）。迁移 0061 新增 `router_replies`；`canvas` 多一个动词 `notify`；多一种工作空间事件 `workflow.reply`；协议版本不变，只加字段与种类。

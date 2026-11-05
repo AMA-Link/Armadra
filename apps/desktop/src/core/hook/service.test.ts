@@ -116,4 +116,23 @@ describe("the hook service", () => {
       expect(read(service.endpointFile()).size).toBe(0);
     },
   );
+
+  it("advertises a pipe instead of a socket and takes it back when the bind fails", async () => {
+    const directory = temporary();
+    const service = await HookService.open(directory, undefined);
+    service.usePipe("armadra-hook-0123");
+    service.publishEndpoint(undefined);
+    expect(service.pipePath()).toBe("\\\\.\\pipe\\armadra-hook-0123");
+    expect(read(service.endpointFile()).get("ARMADRA_HOOK_PIPE")).toBe(
+      service.pipePath(),
+    );
+    expect(service.health().ok).toBe(true);
+    service.withdrawPipe();
+    // Without a port and without a socket on Windows nothing is left to advertise.
+    if (process.platform === "win32") {
+      expect(read(service.endpointFile()).size).toBe(0);
+    } else {
+      expect(read(service.endpointFile()).has("ARMADRA_HOOK_PIPE")).toBe(false);
+    }
+  });
 });

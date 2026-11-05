@@ -1,5 +1,8 @@
+import { randomBytes } from "node:crypto";
 import type { CoreContext } from "../main";
 import { pendingDir } from "../paths";
+import { channelKey } from "../private-pipe";
+import { HOOK_LABEL } from "../private-pipe/labels";
 import { secretsFor } from "../secrets";
 import { timelineDomainOf } from "../timeline";
 import { startApprovalSweep } from "./approvals";
@@ -104,15 +107,47 @@ export async function install(context: CoreContext): Promise<HookDomain> {
         });
       }
     }
+    let pipeBound = false;
+    if (process.platform === "win32") {
+      // Windows has no socket file: the surface is a named pipe whose name is
+      // new every start and whose connections complete the `armadra-pipe/1`
+      // handshake, keyed from the bearer the client already reads from the
+      // endpoint file (contract §102.5). A DACL that cannot be tightened is a
+      // warning, not a reason to go without hooks: the handshake still holds.
+      const name = `armadra-hook-${randomBytes(16).toString("hex")}`;
+      service.usePipe(name);
+      try {
+        await server.listen(
+          { kind: "pipe", name },
+          {
+            channel: {
+              label: HOOK_LABEL,
+              key: channelKey(service.bearer(), HOOK_LABEL),
+            },
+            onWarning: (message, detail) =>
+              context.log.warn(message, { detail: describe(detail) }),
+          },
+        );
+        pipeBound = true;
+        context.log.info("hook pipe is listening", { name });
+      } catch (error) {
+        context.log.warn("could not bind the hook pipe", {
+          name,
+          error: describe(error),
+        });
+      }
+    }
     try {
       service.publishEndpoint(undefined);
-      if (!bound) {
+      if (socketPath !== undefined && !bound) {
         // The endpoint file would otherwise advertise a socket that will never
         // accept a connection, and a hook client only moves on from a
         // *transport* failure — every attempt would burn its connect budget
         // here first (W0.3).
         service.withdrawSocket();
       }
+      if (service.pipePath() !== undefined && !pipeBound)
+        service.withdrawPipe();
     } catch (error) {
       context.log.warn("hook clients will not find this core", {
         error: describe(error),
@@ -125,7 +160,10 @@ export async function install(context: CoreContext): Promise<HookDomain> {
       path: pendingDir(context.dataDir),
     });
   };
-  void start();
+  // Awaited: on Windows the pipe is bound, hardened and only then published,
+  // and a `/health` asked right after start-up must already see the endpoint
+  // (otherwise `hook.ok` is false for as long as the DACL helper runs).
+  await start();
 
   return {
     service,

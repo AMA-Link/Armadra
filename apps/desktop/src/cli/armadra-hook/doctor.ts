@@ -28,7 +28,7 @@ export async function run(): Promise<number> {
     out(`endpoint load: failed (${(loaded as { error: string }).error})`);
   else {
     out(
-      `endpoint load: ok (port=${endpoint.port ?? "-"}, socket=${endpoint.sock ?? "-"}, ` +
+      `endpoint load: ok (port=${endpoint.port ?? "-"}, socket=${endpoint.sock ?? "-"}, pipe=${endpoint.pipe ?? "-"}, ` +
         `version=${endpoint.version ?? "-"}, client=${HOOK_CLIENT_REVISION})`,
     );
   }
