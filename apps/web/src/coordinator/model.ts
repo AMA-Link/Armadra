@@ -94,6 +94,7 @@ export const STAGE_STATUS: Readonly<Record<WorkItemStage, DispatchStatus>> = {
   "working/queued": { tone: "queued", label: "coordinator.stage.queued" },
   idle: STATUS.idle,
   working: STATUS.working,
+  done: STATUS.done,
 };
 
 /** 要人处理的阶段排在前面。 */

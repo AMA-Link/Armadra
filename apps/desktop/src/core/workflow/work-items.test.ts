@@ -18,6 +18,16 @@ const stage = (facts: Partial<ItemStageFacts>) =>
   itemStage({ ...QUIET, ...facts });
 
 describe("itemStage", () => {
+  it("done: ended because its own pull merged or closed, ahead of everything", () => {
+    expect(stage({ endedByPull: true })).toBe("done");
+    expect(
+      stage({ endedByPull: true, report: "ready", deliveryFailed: true }),
+    ).toBe("done");
+    expect(stage({ endedByPull: false, report: "ready" })).toBe(
+      "person/review",
+    );
+  });
+
   it("person/delivery: the delivery to the member failed", () => {
     expect(stage({ deliveryFailed: true })).toBe("person/delivery");
   });

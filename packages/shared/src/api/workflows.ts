@@ -330,6 +330,8 @@ export const WORK_ITEM_STAGES = [
   "working/queued",
   "idle",
   "working",
+  /** 自己开的 PR 合并或关闭后这一项结束（§103.4）。 */
+  "done",
 ] as const;
 export type WorkItemStage = (typeof WORK_ITEM_STAGES)[number];
 

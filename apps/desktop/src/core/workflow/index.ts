@@ -17,6 +17,8 @@
 import { collab } from "../agent";
 import { setStallSource } from "../agent/stalled";
 import { loadSession } from "../collab/nodes";
+import { deliverPullBatch } from "../collab/pr-fanout";
+import { forgeService } from "../forge/registry";
 import {
   deliverRecoveryHint,
   recordInterrupted,
@@ -33,10 +35,12 @@ import {
   DEFAULT_STALLED_MINUTES,
   ProgressWatchdog,
 } from "./progress-watchdog";
+import { PrWatch } from "./pr-watch";
 import { installWorkflowRoutes } from "./routes";
 import { type WorkflowDomain, setWorkflowDomain } from "./registry";
 import { WorkflowService } from "./service";
 import { TaskWatch } from "./task-watch";
+import { publishTask } from "./task-runs";
 
 export { WorkflowEngine } from "./engine";
 export { WorkflowService } from "./service";
@@ -156,6 +160,23 @@ export function install(context: CoreContext): WorkflowDomain | undefined {
     }
   }, RECOVERY_GRACE_MS + 1_000);
   firstScan.unref?.();
+  // 绑定 PR 的拉取式轮询（契约 §103）：同样搭 60 秒兜底扫描的便车，每个线程自己
+  // 按 60 秒与服务端给的间隔到点才读。
+  const pulls = new PrWatch({
+    database,
+    forge: forgeService,
+    deliver: (run, thread, batch) => {
+      const ctx = collab();
+      if (ctx !== undefined) deliverPullBatch(ctx, run, thread, batch);
+    },
+    onSettled: (run, result) => {
+      const ctx = collab();
+      if (ctx === undefined) return;
+      publishTask(database, ctx.publish, run.taskId);
+      recordTaskDone(ctx, run, "done", result);
+    },
+    log: (message, fields) => context.log.info(message, fields),
+  });
   const tasks = new TaskWatch({
     database,
     bus: context.bus,
@@ -164,6 +185,11 @@ export function install(context: CoreContext): WorkflowDomain | undefined {
     onTick: () => {
       watchdog.scan();
       recovery.scan();
+      void pulls.tick().catch((error: unknown) => {
+        context.log.info("PR 轮询没有跑完", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
     },
     onSettled: (run, status) => {
       const ctx = collab();
