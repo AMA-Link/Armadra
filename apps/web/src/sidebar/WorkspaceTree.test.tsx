@@ -429,4 +429,42 @@ describe("WorkspaceTree", () => {
     expect(await screen.findByText("板 9")).toBeTruthy();
     expect(screen.getByText("收起")).toBeTruthy();
   });
+
+  it("手机建的工作空间与画布在桌面也列出来：先收起，展开后看到画布并记住（#817）", async () => {
+    const phoneMade = {
+      ...workspace,
+      id: "019ff7d1-0d12-7421-833d-2c5e8d64ed60",
+      name: "phone-made",
+      rootPath: "/tmp/phone-made",
+      boards: [
+        {
+          id: "019ff7d1-0d12-7421-833d-2c5e8d64ed61",
+          name: "手机上的画布",
+          nodeCount: 0,
+        },
+      ],
+    };
+    listWorkspaces.mockResolvedValue([
+      phoneMade,
+      {
+        ...workspace,
+        boards: [
+          { id: FIRST, name: "Default", nodeCount: 3 },
+          { id: SECOND, name: "实验", nodeCount: 7 },
+        ],
+      },
+    ]);
+    renderTree();
+
+    // 桌面的打开记录里只有 repo：以前 phone-made 整行不出现。
+    expect(await screen.findByText("phone-made")).toBeTruthy();
+    expect(screen.queryByText("手机上的画布")).toBeNull();
+
+    fireEvent.click(screen.getByText("phone-made"));
+    expect(await screen.findByText("手机上的画布")).toBeTruthy();
+    expect(usePreferencesStore.getState().openWorkspaceKeys).toEqual([
+      scoped(workspace.id),
+      scoped(phoneMade.id),
+    ]);
+  });
 });

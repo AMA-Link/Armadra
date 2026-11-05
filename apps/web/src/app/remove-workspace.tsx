@@ -46,7 +46,7 @@ export function useRemoveWorkspace() {
 }
 
 /**
- * 恢复：侧栏只列打开着的工作空间，所以恢复的同时把它的标签放回去；`open`
+ * 恢复：回到列表就回到侧栏；同时记成本设备打开过（侧栏里展开着）；`open`
  * （撤销刚才的归档、它原本就开着）时直接切回它。
  */
 export function useRestoreWorkspace() {

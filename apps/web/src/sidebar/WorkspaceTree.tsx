@@ -2,8 +2,9 @@
  * 侧栏主体（§26 →§28，#301）：新建画布 → 置顶 → 这台电脑 / 我的其他电脑 /
  * 他人分享（`SourceGroups.tsx`）。
  *
- * 打开着的工作空间所在的那台电脑，那一段是这里的树：已打开的工作空间，一行
- * 一个，展开后缩进列出它的画布；点画布 =
+ * 打开着的工作空间所在的那台电脑，那一段是这里的树：服务端列出的全部工作空间
+ * （未归档的，与手机、别的设备看到的同一组，#817），一行一个，展开后缩进列出
+ * 它的画布；本设备没打开过的先收起。点画布 =
  * 需要时先切工作空间，再切板。「置顶」是跨工作空间的一组画布，偏好里存 id。
  * 当前工作空间的画布取 store（`setBoards` 已按 `sortOrder` 排好），其余
  * 工作空间取列表接口里的 `boards[]`。
@@ -56,6 +57,8 @@ import {
   boardSignals,
   nextBoardName,
   pinnedEntries,
+  startsCollapsed,
+  treeWorkspaces,
   visibleBoards,
   type BoardEntry,
   type BoardSignal,
@@ -102,6 +105,9 @@ export function WorkspaceTree() {
   const setCollapsed = usePreferencesStore(
     (state) => state.setWorkspaceCollapsed,
   );
+  const openWorkspaceTab = usePreferencesStore(
+    (state) => state.openWorkspaceTab,
+  );
   const setBoardPinned = usePreferencesStore((state) => state.setBoardPinned);
   const setWorkspacePinned = usePreferencesStore(
     (state) => state.setWorkspacePinned,
@@ -115,26 +121,19 @@ export function WorkspaceTree() {
     boardId: string;
   } | null>(null);
 
-  // 行顺序 = 偏好里的 openWorkspaceIds；当前工作空间永远在树里
-  const rows = useMemo(() => {
-    const byId = new Map(
-      (workspaces.data ?? []).map((item) => [item.id, item]),
-    );
-    const list = openWorkspaceIds
-      .map((id) => byId.get(id))
-      .filter((item): item is WorkspaceSummary => Boolean(item));
-    if (workspace && !list.some((item) => item.id === workspace.id)) {
-      list.unshift(
-        byId.get(workspace.id) ??
-          ({ ...workspace, boards: [] } as WorkspaceSummary),
-      );
-    }
-    // 置顶的项目排到最前面，其余保持打开顺序（稳定排序）。
-    const rank = (item: WorkspaceSummary) =>
-      pinnedWorkspaceIds.includes(item.id) ? 0 : 1;
-    list.sort((a, b) => rank(a) - rank(b));
-    return list;
-  }, [openWorkspaceIds, workspace, workspaces.data, pinnedWorkspaceIds]);
+  // 列表里的全都在（#817）：本设备的打开记录只管顺序，可见性只听服务端。
+  const rows = useMemo(
+    () =>
+      treeWorkspaces<WorkspaceSummary>({
+        listed: workspaces.data ?? [],
+        openIds: openWorkspaceIds,
+        pinnedIds: pinnedWorkspaceIds,
+        current: workspace
+          ? ({ ...workspace, boards: [] } as WorkspaceSummary)
+          : null,
+      }),
+    [openWorkspaceIds, workspace, workspaces.data, pinnedWorkspaceIds],
+  );
 
   useEffect(() => {
     if (!pending) return;
@@ -229,8 +228,16 @@ export function WorkspaceTree() {
                     signals={signals}
                     pinnedBoardIds={pinnedBoardIds}
                     pinned={pinnedWorkspaceIds.includes(summary.id)}
-                    collapsed={collapsedIds.includes(summary.id)}
-                    onToggle={(next) => setCollapsed(summary.id, next)}
+                    collapsed={startsCollapsed(summary.id, {
+                      openIds: openWorkspaceIds,
+                      collapsedIds,
+                      currentId: workspace?.id ?? null,
+                    })}
+                    onToggle={(next) => {
+                      // 展开一次就记成本设备打开过，下次照样展开。
+                      if (!next) openWorkspaceTab(summary.id);
+                      setCollapsed(summary.id, next);
+                    }}
                     onSelectBoard={(id) => openBoard(summary.id, id)}
                     onTogglePin={(id, next) => setBoardPinned(id, next)}
                     onTogglePinWorkspace={(next) =>

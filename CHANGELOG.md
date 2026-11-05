@@ -8,6 +8,10 @@ Windows 会话宿主的 `welcome` 增加服务端证明（用 `session-host.key`
 
 The Windows session host's `welcome` now carries a server proof (an HMAC with `session-host.key`, bound to the endpoint, the protocol major and the client's `hello` nonce), and the core sends no `create` until it verifies, so a process squatting the pipe name no longer receives environment variables or credentials (contract §102.6, Refs #751). The session-host protocol `PROTOCOL_MAJOR` goes from 1 to 2: live Windows terminal sessions are lost once at this upgrade and are preserved across restarts as before afterwards.
 
+侧栏「这台电脑」改为列出服务端的全部工作空间（未归档的），与手机、别的设备看到的同一组；本设备的打开记录只管顺序，没打开过的先收起。此前它只列本设备打开过的，别的客户端建的、拖入的、旧版「关闭」掉的工作空间在桌面看不到，手机却能进去建画布（#817）。
+
+The "This computer" sidebar section now lists every non-archived workspace from the server, the same set the phone and other devices see; this device's open history only orders the rows, and never-opened ones start collapsed. It used to list only workspaces opened on this device, so workspaces created, dropped in, or closed in older versions elsewhere were invisible on the desktop while the phone could still open them and create canvases (#817).
+
 ## 0.14.0（2026-11-05）
 
 版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.14.0。随包 `@armadra/agent` 0.14.0（新增 Pi 的 ACP 桥 `ama --mode acp --bridge pi`）与平台协议包 0.14.0（协议仍是 1.4，没有形状变化）；配套镜像 `armadra-cloud` / `armadra-relay` 0.14.0。本版主题：连接手机只剩一张二维码（局域网与互联网装在同一张码里），ACP 提示框接管与交还的顺序修复，macOS 首次打开说明。
