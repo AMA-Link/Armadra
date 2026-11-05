@@ -27,12 +27,16 @@ import { runBrowser, runCanvas, runContext } from "./control.js";
 import { run as runCredential } from "./credential.js";
 import { run as runAmaKeys } from "./ama-keys.js";
 import { run as runDoctor } from "./doctor.js";
+import { askpassMode, run as runAskpass } from "./askpass.js";
 import { run as runHook } from "./hook.js";
 import { run as runMcp } from "./mcp.js";
 import { run as runModHello } from "./mod-hello.js";
 import { CLIENT_VERSION, USAGE } from "./usage.js";
 
 export async function main(argv: string[]): Promise<number> {
+  // `ssh` runs `askpass.exe <prompt>`: the core marks that child's environment,
+  // so the prompt (server-chosen text) is never mistaken for a subcommand.
+  if (askpassMode()) return runAskpass(argv);
   const first = argv[0];
   if (first === undefined) {
     process.stderr.write(USAGE);
@@ -48,6 +52,8 @@ export async function main(argv: string[]): Promise<number> {
     case "-V":
       process.stdout.write(`armadra-hook ${CLIENT_VERSION}\n`);
       return 0;
+    case "askpass":
+      return runAskpass(argv.slice(1));
     case "context":
       return runContext(argv.slice(1));
     case "context-usage":
