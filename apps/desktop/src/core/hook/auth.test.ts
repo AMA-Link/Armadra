@@ -1,11 +1,16 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { HookAuth, validNodeId } from "./auth";
+import { fileHookSecretStore } from "./secret";
 import { tempDir } from "../testing/temp-dir";
 
 function temporary(): string {
   return tempDir("armadra-hook-auth-");
+}
+
+function open(directory: string, bearer?: string): Promise<HookAuth> {
+  return HookAuth.open(directory, fileHookSecretStore(directory), bearer);
 }
 
 function mode(path: string): number {
@@ -24,22 +29,22 @@ describe("hook credentials", () => {
     expect(validNodeId("a".repeat(81))).toBe(false);
   });
 
-  it("keeps the secret across a reload and reuses the bearer", () => {
+  it("keeps the secret across a reload and reuses the bearer", async () => {
     const directory = temporary();
-    const first = HookAuth.load(directory);
-    const second = HookAuth.load(directory, first.bearer);
+    const first = await open(directory);
+    const second = await open(directory, first.bearer);
     expect(second.kid).toBe(first.kid);
     expect(second.bearer).toBe(first.bearer);
     expect(second.nodeToken("node-a")).toBe(first.nodeToken("node-a"));
     // A bearer that is missing or obviously truncated is replaced.
-    const third = HookAuth.load(directory, "short");
+    const third = await open(directory, "short");
     expect(third.bearer).not.toBe(first.bearer);
     expect(third.kid).toBe(first.kid);
   });
 
-  it("distinguishes the three verdicts", () => {
+  it("distinguishes the three verdicts", async () => {
     const directory = temporary();
-    const auth = HookAuth.load(directory);
+    const auth = await open(directory);
     const token = auth.nodeToken("node-a");
     expect(token.startsWith(`${auth.kid}.`)).toBe(true);
 
@@ -69,15 +74,16 @@ describe("hook credentials", () => {
 
   it.skipIf(process.platform === "win32")(
     "writes token files private and named after the node",
-    () => {
+    async () => {
       const directory = temporary();
-      const auth = HookAuth.load(directory);
+      const auth = await open(directory);
       const tokens = join(directory, "node-tokens");
       const token = auth.writeNodeToken(tokens, "node-a");
       expect(readFileSync(join(tokens, "node-a"), "utf8")).toBe(token);
       expect(mode(join(tokens, "node-a"))).toBe(0o600);
       expect(mode(tokens)).toBe(0o700);
-      expect(mode(join(directory, "hook-secret"))).toBe(0o600);
+      // The secret is an entry of the secret store now, not `hook-secret`.
+      expect(existsSync(join(directory, "hook-secret"))).toBe(false);
       expect(() => auth.writeNodeToken(tokens, "../escape")).toThrow();
       // Rewriting is idempotent, and leaves no temporary file behind.
       auth.writeNodeToken(tokens, "node-a");

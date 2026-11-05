@@ -1,7 +1,13 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { hardenDirectory, hardenFile, writeSecret } from "../paths";
+import { hardenDirectory, writeSecret } from "../paths";
+import type { SecretStore } from "../secrets";
+import {
+  HOOK_SECRET_BYTES,
+  type HookSecretState,
+  legacyHookSecretFile,
+} from "./secret";
 
 /**
  * Hook credentials — contract §5.2.
@@ -19,9 +25,8 @@ import { hardenDirectory, hardenFile, writeSecret } from "../paths";
  * token minted by a previous install carries a foreign `kid`, so it is
  * `legacy` (accepted, flagged) rather than `forged` (rejected).
  *
- * The byte-level scheme is the Rust Runtime's, unchanged, because both
- * implementations read the same `hook-secret` file and a terminal started by
- * one must keep reporting to the other.
+ * The derivation is unchanged, so a node token minted before the secret moved
+ * into the secret store (contract §101) is still `verified` afterwards.
  */
 
 /**
@@ -35,7 +40,7 @@ const MAC_DOMAIN_PREFIX = "armadra-node-v1|";
  * installs apart and short enough to keep the file readable.
  */
 const KID_LENGTH = 8;
-const SECRET_BYTES = 32;
+const SECRET_BYTES = HOOK_SECRET_BYTES;
 
 /** How a hook report authenticated itself for the node it claims. */
 export type Verdict = "verified" | "legacy" | "forged";
@@ -82,30 +87,65 @@ export function randomToken(): string {
   return base64url(randomBytes(SECRET_BYTES));
 }
 
+function decodeSecret(stored: string | undefined): Buffer | undefined {
+  if (stored === undefined) return undefined;
+  const bytes = Buffer.from(stored, "base64url");
+  return bytes.length === SECRET_BYTES ? bytes : undefined;
+}
+
+/** The old plaintext file, only for the run in which the store was unreachable. */
+function readLegacySecret(dataDir: string): Buffer | undefined {
+  try {
+    const bytes = readFileSync(legacyHookSecretFile(dataDir));
+    return bytes.length === SECRET_BYTES ? bytes : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+interface Loaded {
+  readonly secret: Buffer;
+  readonly state: HookSecretState;
+}
+
 /**
- * Loads the instance secret from `<dataDir>/hook-secret`, creating it on first
- * use.
+ * Loads the instance secret from the secret store, minting it on first use.
  *
- * TODO(keyring): contract §5.2 wants the secret in the OS keyring with this
- * file as the fallback. The file is the whole implementation for now, and it
- * is 0600 inside a 0700 directory.
+ * The store being *unreachable* (locked Keychain, an SSH session, a shell that
+ * hung up) is not the same as the secret being *absent*: in the first case
+ * nothing is minted and nothing is overwritten, because a fresh value would
+ * replace one that is only temporarily out of reach. The run reads the old
+ * file if the migration has not moved it yet, and otherwise uses a secret that
+ * lives in memory only; the next start tries again.
  */
-function loadOrCreateSecret(dataDir: string): Buffer {
+async function loadOrCreateSecret(
+  dataDir: string,
+  store: SecretStore,
+): Promise<Loaded> {
   mkdirSync(dataDir, { recursive: true });
   hardenDirectory(dataDir);
-  const path = join(dataDir, "hook-secret");
+  const kind = store.backend();
   try {
-    const existing = readFileSync(path);
-    if (existing.length === SECRET_BYTES) {
-      hardenFile(path);
-      return existing;
+    const existing = decodeSecret(await store.readStrict());
+    if (existing !== undefined) return { secret: existing, state: kind };
+    // Absent (or malformed). A valid old file here means the migration did not
+    // finish: keep using it rather than minting a second secret.
+    const legacy = readLegacySecret(dataDir);
+    if (legacy !== undefined) return { secret: legacy, state: "legacy-file" };
+    const minted = randomBytes(SECRET_BYTES);
+    await store.write(minted.toString("base64url"));
+    // Read back: a store that accepts a write it cannot return is unavailable.
+    const back = decodeSecret(await store.readStrict());
+    if (back === undefined || !back.equals(minted)) {
+      throw new Error("read-back mismatch");
     }
+    return { secret: minted, state: kind };
   } catch {
-    // Not there, or unreadable: a new one is minted below.
+    const legacy = readLegacySecret(dataDir);
+    return legacy !== undefined
+      ? { secret: legacy, state: "legacy-file" }
+      : { secret: randomBytes(SECRET_BYTES), state: "ephemeral" };
   }
-  const secret = randomBytes(SECRET_BYTES);
-  writeSecret(path, secret);
-  return secret;
 }
 
 export class HookAuth {
@@ -114,6 +154,8 @@ export class HookAuth {
   private constructor(
     private readonly secret: Buffer,
     readonly bearer: string,
+    /** Where the secret of this run lives; `ephemeral` dies with the process. */
+    readonly state: HookSecretState,
   ) {
     this.kid = deriveKid(secret);
   }
@@ -123,16 +165,20 @@ export class HookAuth {
    * reusing it keeps terminals that outlive the core working. A bearer that is
    * missing or obviously truncated is replaced.
    */
-  static load(dataDir: string, bearer?: string | undefined): HookAuth {
-    const secret = loadOrCreateSecret(dataDir);
+  static async open(
+    dataDir: string,
+    store: SecretStore,
+    bearer?: string | undefined,
+  ): Promise<HookAuth> {
+    const { secret, state } = await loadOrCreateSecret(dataDir, store);
     const kept =
       bearer !== undefined && bearer.length >= 16 ? bearer : randomToken();
-    return new HookAuth(secret, kept);
+    return new HookAuth(secret, kept, state);
   }
 
   /** In-memory only: for tests and for a data directory we could not write. */
   static ephemeral(): HookAuth {
-    return new HookAuth(randomBytes(SECRET_BYTES), randomToken());
+    return new HookAuth(randomBytes(SECRET_BYTES), randomToken(), "ephemeral");
   }
 
   /** `kid.mac` — what a hook client presents as `X-Armadra-Node-Token`. */

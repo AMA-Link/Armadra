@@ -113,7 +113,7 @@ export interface RunOptions {
    * listener binds — so a route registered here is reachable from the first
    * request. Each domain exports one `install(context)`; `main` lists them.
    */
-  readonly domains?: readonly ((context: CoreContext) => void)[];
+  readonly domains?: readonly ((context: CoreContext) => unknown)[];
   /**
    * 这次装配用哪一份 `CorePlatform`。
    *
@@ -167,7 +167,7 @@ export interface RunningCore extends CoreContext {
 }
 
 /** The domains assembled by default; each phase adds its `install` here. */
-export const DOMAINS: readonly ((context: CoreContext) => void)[] = [
+export const DOMAINS: readonly ((context: CoreContext) => unknown)[] = [
   // Events first: a domain installed after it may emit during its own
   // installation, and a fan-out that is not listening yet would drop that.
   installEvents,
@@ -368,7 +368,9 @@ export async function run(options: RunOptions = {}): Promise<RunningCore> {
   setLoopbackAnonymousOwner(
     options.loopbackAnonymousOwner ?? env.ARMADRA_LOOPBACK_OWNER === "1",
   );
-  for (const install of options.domains ?? DOMAINS) install(context);
+  // Awaited one by one, so the order below still decides what exists when. Only
+  // the hook domain is asynchronous: it loads its secret from the secret store.
+  for (const install of options.domains ?? DOMAINS) await install(context);
   // 每个域都交过自己那部分契约实现了：挂到 `/api/rpc/*` 与迁过来的旧路径上
   // （契约 §34.1）。在任何监听开始之前。
   installContract(server, rpcOptionsFromEnv(env, platform));

@@ -10,9 +10,9 @@ function temporary(): string {
 }
 
 describe("the hook service", () => {
-  it("writes the endpoint file and keeps the bearer across a restart", () => {
+  it("writes the endpoint file and keeps the bearer across a restart", async () => {
     const directory = temporary();
-    const service = new HookService(directory, 43119);
+    const service = await HookService.open(directory, 43119);
     service.publishEndpoint(43119);
 
     const published = read(service.endpointFile());
@@ -33,7 +33,7 @@ describe("the hook service", () => {
 
     // A second core over the same data directory keeps both secrets, so
     // terminals started by the first one keep reporting.
-    const restarted = new HookService(directory, 43118);
+    const restarted = await HookService.open(directory, 43118);
     expect(restarted.bearerMatches(published.get("ARMADRA_HOOK_TOKEN"))).toBe(
       true,
     );
@@ -50,16 +50,16 @@ describe("the hook service", () => {
 
   it.skipIf(process.platform === "win32")(
     "publishes no port for a socket-only core and clears a previous one",
-    () => {
+    async () => {
       // A desktop core binds no port. Its endpoint file must advertise the
       // socket alone: a port key left over from a TCP run would send hook
       // clients to whatever process now owns that number.
       const directory = temporary();
-      const withPort = new HookService(directory, 43119);
+      const withPort = await HookService.open(directory, 43119);
       withPort.publishEndpoint(43119);
       expect(withPort.health().ok).toBe(true);
 
-      const socketOnly = new HookService(directory, undefined);
+      const socketOnly = await HookService.open(directory, undefined);
       // The stale port file does not describe this core.
       expect(socketOnly.health().ok).toBe(false);
       socketOnly.publishEndpoint(undefined);
@@ -79,9 +79,9 @@ describe("the hook service", () => {
     },
   );
 
-  it("writes node tokens next to the endpoint file", () => {
+  it("writes node tokens next to the endpoint file", async () => {
     const directory = temporary();
-    const service = new HookService(directory, 43119);
+    const service = await HookService.open(directory, 43119);
     const token = service.issueNodeToken("node-a");
     expect(readFileSync(join(service.nodeTokenDir(), "node-a"), "utf8")).toBe(
       token,
@@ -89,8 +89,8 @@ describe("the hook service", () => {
     expect(() => service.issueNodeToken("../escape")).toThrow();
   });
 
-  it("keeps reducer memory per node and between events", () => {
-    const service = new HookService(temporary(), 43119);
+  it("keeps reducer memory per node and between events", async () => {
+    const service = await HookService.open(temporary(), 43119);
     service.withMemory("node-a", (memory) => {
       memory.awaitingInput = true;
     });
@@ -104,12 +104,12 @@ describe("the hook service", () => {
 
   it.skipIf(process.platform === "win32")(
     "removes the endpoint file when a socket-only run has nothing to advertise",
-    () => {
+    async () => {
       // W0.3: the file is published optimistically before the bind, so a bind
       // that fails has to take the advertisement back rather than leave a dead
       // socket every client burns its connect budget on.
       const directory = temporary();
-      const service = new HookService(directory, undefined);
+      const service = await HookService.open(directory, undefined);
       service.publishEndpoint(undefined);
       expect(read(service.endpointFile()).has("ARMADRA_HOOK_SOCK")).toBe(true);
       service.withdrawSocket();

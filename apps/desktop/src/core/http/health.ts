@@ -24,6 +24,13 @@ export interface HookHealth {
   readonly port?: number;
   /** The endpoint file exists and names this core. */
   readonly ok: boolean;
+  /**
+   * Where this run's hook secret lives: the backend kind, `legacy-file` while
+   * the store is unreachable and the old file is still the source, or
+   * `ephemeral` when this run's tokens die with the process (contract §101).
+   * Never the value.
+   */
+  readonly secret?: string;
 }
 
 export interface HealthDocument {

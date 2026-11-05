@@ -383,8 +383,8 @@ describe("what the core answers", () => {
       // clients reach the core over its TCP listener instead.
       hook:
         process.platform === "win32"
-          ? { ok: true }
-          : { ok: true, sock: join(core.dataDir, "hook.sock") },
+          ? { ok: true, secret: "file" }
+          : { ok: true, secret: "file", sock: join(core.dataDir, "hook.sock") },
       // 这台机器上有没有 Chromium 决定真假；键必须在，页面靠它给浏览器入口。
       capabilities: { headlessBrowser: expect.any(Boolean) as boolean },
       // 页面按它校验本机路径、按缺省 shell 引用启动行。
