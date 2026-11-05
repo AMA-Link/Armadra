@@ -397,13 +397,13 @@ Pwned Passwords range API **免费、无需密钥、无限额**，k-匿名：只
 
 **方案**。core 定义 `SecretBackend` 接口（已有 `SecretStore`，抽成 `{ kind, get, set, delete }`），由壳注入：
 
-| 壳 / 平台    | 后端                                                                                                                                                 | 自报                 |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| 桌面 macOS   | 现状 `security(1)`（不改，避免两套条目）                                                                                                             | `keychain`           |
-| 桌面 Windows | `safeStorage`（DPAPI）加密后的密文存 `<数据目录>/secrets/<service>.bin`                                                                              | `dpapi`              |
-| 桌面 Linux   | `safeStorage` 且 `getSelectedStorageBackend() ∈ {gnome_libsecret, kwallet*}` 才用；`basic_text` / `unknown` → 文件                                   | `libsecret` / `file` |
-| 服务器壳     | `<数据目录>/secrets/master.key`（0600，首启生成）AES-256-GCM 封装各条目；`ARMADRA_SECRET_MASTER_KEY_FILE` 可指到别处（如 systemd `LoadCredential=`） | `file-encrypted`     |
-| 任意         | `ARMADRA_SECRET_BACKEND=file` 强制明文 0600（测试与无人值守）                                                                                        | `file`               |
+| 壳 / 平台    | 后端                                                                                                                                                 | 自报                                                                      |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| 桌面 macOS   | 现状 `security(1)`（不改，避免两套条目）                                                                                                             | `keychain`                                                                |
+| 桌面 Windows | `safeStorage`（DPAPI）加密后的密文存 `<数据目录>/secrets/<service>.bin`                                                                              | `dpapi`                                                                   |
+| 桌面 Linux   | `safeStorage` 且 `getSelectedStorageBackend() ∈ {gnome_libsecret, kwallet*}` 才用；`basic_text` / `unknown` → 文件                                   | `libsecret` / `file`                                                      |
+| 服务器壳     | `<数据目录>/secrets/master.key`（0600，首启生成）AES-256-GCM 封装各条目；`ARMADRA_SECRET_MASTER_KEY_FILE` 可指到别处（如 systemd `LoadCredential=`） | `file-encrypted`（Windows 且无 `master.key` 时为 `dpapi`，见契约 §102.7） |
+| 任意         | `ARMADRA_SECRET_BACKEND=file` 强制明文 0600（测试与无人值守）                                                                                        | `file`                                                                    |
 
 设置页继续只显示「存在哪儿」，从不回显值。所有 `armadra-*` service 名统一前缀，便于用户在钥匙串里一眼找到并清理。
 
