@@ -64,6 +64,8 @@ export interface ForgeResponse {
   readonly status: number;
   readonly body: Buffer;
   readonly nextPage: number;
+  /** 服务端的 `x-poll-interval`（秒）；没给省略。 */
+  readonly pollIntervalSec?: number;
 }
 
 export interface TransportOptions {
@@ -209,6 +211,7 @@ export class ForgeTransport {
         nextPage:
           nextPage(result.headers.get("link") ?? "") ||
           headerPage(result.headers.get("x-next-page") ?? ""),
+        ...pollInterval(result.headers.get("x-poll-interval")),
       };
     }
     throw (
@@ -235,6 +238,13 @@ function classify(status: number, read: boolean): ForgeError {
       : forgeError("unknownOutcome", "REMOTE_UNAVAILABLE");
   }
   return forgeError("invalid", "UNEXPECTED_STATUS");
+}
+
+function pollInterval(raw: string | null): { pollIntervalSec?: number } {
+  const value = Number.parseInt((raw ?? "").trim(), 10);
+  return Number.isSafeInteger(value) && value > 0
+    ? { pollIntervalSec: value }
+    : {};
 }
 
 /** 只从 Link 头里读页码，远端 URL 本身既不跟随也不交回。 */

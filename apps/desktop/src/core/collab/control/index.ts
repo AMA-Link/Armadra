@@ -10,6 +10,7 @@ import { color, link, rename } from "./edits";
 import { interrupt } from "./interrupt";
 import { ackEventVerb, events } from "./events";
 import { handback, items, report } from "./items";
+import { resolvePullFlag } from "./pr-bind";
 import { list, openAgent, openTerminal, sticky, team } from "./nodes";
 import { notify } from "./notify";
 import { outbox } from "./outbox";
@@ -248,11 +249,21 @@ export async function run(
     case "wait":
       return wait(context, caller, args);
     case "report":
-      return report(context, caller, args);
+      return report(
+        context,
+        caller,
+        args,
+        await resolvePullFlag(context, caller, args, "pr"),
+      );
     case "handback":
       return handback(context, caller, args);
     case "items":
-      return items(context, caller, args);
+      return items(
+        context,
+        caller,
+        args,
+        await resolvePullFlag(context, caller, args, "bind-pr"),
+      );
     case "events":
       return events(context, caller, args);
     case "notify":

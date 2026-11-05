@@ -97,6 +97,32 @@ export interface ForgeChecks {
   readonly checks: readonly ForgeCheck[];
 }
 
+/**
+ * 一个 PR 讨论里的一条：普通评论、行内评论或一次评审（契约 §103.2）。`id` 是
+ * 远端给的稳定编号（评论、行内评论、评审各是自己的编号空间，所以带前缀
+ * `c` / `r` / `v`），事件 id 由它定，重复读到同一条不会变成第二个事件。
+ * 正文是**别人写的材料**，原样给读者、从不被当成指令。
+ */
+export interface ForgeConversationItem {
+  readonly id: string;
+  readonly kind: "comment" | "review";
+  readonly author: string | null;
+  readonly body: string;
+  /** 评审的结论（`approved` / `changes_requested` / `commented`）；评论 `null`。 */
+  readonly state: string | null;
+  readonly url: string;
+  readonly createdAtMs: number;
+}
+
+export interface ForgeConversation {
+  readonly items: readonly ForgeConversationItem[];
+  /** 服务端要求的最小轮询间隔（`x-poll-interval`，毫秒）；没给 `null`。 */
+  readonly pollIntervalMs: number | null;
+}
+
+/** 一次最多读这么多页讨论（每页 100 条）。 */
+export const MAX_CONVERSATION_PAGES = 5;
+
 export interface ForgeMerged {
   readonly merged: true;
   readonly sha: string | null;
@@ -225,6 +251,8 @@ export interface Forge {
   createPull(repo: ForgeRepo, input: CreatePullInput): Promise<ForgePull>;
   pullFiles(repo: ForgeRepo, number: number): Promise<readonly ForgeFile[]>;
   checks(repo: ForgeRepo, number: number): Promise<ForgeChecks>;
+  /** 这个 PR 的评论与评审，按时间从早到晚（契约 §103.2）。 */
+  conversation(repo: ForgeRepo, number: number): Promise<ForgeConversation>;
   merge(
     repo: ForgeRepo,
     number: number,

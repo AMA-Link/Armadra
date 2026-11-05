@@ -1,0 +1,59 @@
+{
+  "$comment": "按 GitLab REST v4（17.x）的答复形状整理的回放夹具：备注（评论）与系统备注混在一起，系统备注要被丢掉。主机名、编号与时间换成了虚构值。",
+  "apiBase": "https://gitlab.example.test/api/v4",
+  "interactions": [
+    {
+      "request": {
+        "method": "GET",
+        "path": "/projects/acme%2Fapp/merge_requests/12/notes",
+        "query": {
+          "sort": "asc"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json",
+          "x-page": "1",
+          "x-next-page": "",
+          "x-poll-interval": "120"
+        },
+        "body": [
+          {
+            "id": 9001,
+            "type": null,
+            "body": "added 1 commit",
+            "author": {
+              "username": "bob"
+            },
+            "system": true,
+            "created_at": "2026-10-02T12:00:00.000Z",
+            "noteable_iid": 12
+          },
+          {
+            "id": 9002,
+            "type": "DiffNote",
+            "body": "这里少了空值判断",
+            "author": {
+              "username": "carol"
+            },
+            "system": false,
+            "created_at": "2026-10-02T12:05:00.000Z",
+            "noteable_iid": 12
+          },
+          {
+            "id": 9003,
+            "type": null,
+            "body": "pipeline summary",
+            "author": {
+              "username": "gitlab-bot"
+            },
+            "system": false,
+            "created_at": "2026-10-02T12:06:00.000Z",
+            "noteable_iid": 12
+          }
+        ]
+      }
+    }
+  ]
+}

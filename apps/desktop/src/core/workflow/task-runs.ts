@@ -57,6 +57,21 @@ export interface WorkItemHandback {
   readonly at: string;
 }
 
+/**
+ * 工作项绑定的外部线程（契约 §103.1）。目前只有 `pull`：`repo` 是
+ * `<主机>/<owner>/<名字>`（owner 可以是 GitLab 的多级子组），`own` 表示这个工作
+ * 项自己开的 PR，`url` 是网页地址（只收 http(s)），`boundAt` 是绑定的毫秒时刻
+ * （轮询游标的起点）。
+ */
+export interface PullThread {
+  readonly kind: "pull";
+  readonly repo: string;
+  readonly number: number;
+  readonly own: boolean;
+  readonly url: string;
+  readonly boundAt: number;
+}
+
 /** 报告历史最多留多少条（含最近一次）。 */
 export const MAX_REPORT_HISTORY = 20;
 /** 标题上限（字）。 */
@@ -81,6 +96,8 @@ export interface TaskRun {
   readonly handback: WorkItemHandback | null;
   /** 阶段函数结果的缓存；以 `itemStage()` 为准。 */
   readonly stage: string | null;
+  /** 绑定的外部线程（迁移 0063）；没绑是空数组。 */
+  readonly threads: readonly PullThread[];
 }
 
 interface TaskRunRecord {
@@ -100,11 +117,12 @@ interface TaskRunRecord {
   attention_json: string | null;
   handback_json: string | null;
   stage: string | null;
+  threads: string | null;
 }
 
 const COLUMNS =
   "task_id, coordinator_node_id, runner_id, node_id, status, started_at, ended_at, result_json, " +
-  "title, origin_json, mandate_json, report_json, reports_json, attention_json, handback_json, stage";
+  "title, origin_json, mandate_json, report_json, reports_json, attention_json, handback_json, stage, threads";
 
 function parsed<T>(text: string | null): T | null {
   if (text === null) return null;
@@ -150,7 +168,43 @@ function taskRunOf(row: TaskRunRecord): TaskRun {
     attention: parsed<WorkItemAttention>(row.attention_json),
     handback: parsed<WorkItemHandback>(row.handback_json),
     stage: row.stage,
+    threads: threadsOf(row.threads),
   };
+}
+
+/** 库里的 `threads` 列 → 合格的线程（坏的元素丢掉，不让一行坏数据拖垮读取）。 */
+export function threadsOf(text: string | null): PullThread[] {
+  if (text === null) return [];
+  let list: unknown;
+  try {
+    list = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(list)) return [];
+  const out: PullThread[] = [];
+  for (const value of list as Record<string, unknown>[]) {
+    if (
+      value !== null &&
+      typeof value === "object" &&
+      value.kind === "pull" &&
+      typeof value.repo === "string" &&
+      value.repo !== "" &&
+      typeof value.number === "number" &&
+      Number.isSafeInteger(value.number) &&
+      value.number > 0
+    ) {
+      out.push({
+        kind: "pull",
+        repo: value.repo,
+        number: value.number,
+        own: value.own === true,
+        url: typeof value.url === "string" ? value.url : "",
+        boundAt: typeof value.boundAt === "number" ? value.boundAt : 0,
+      });
+    }
+  }
+  return out;
 }
 
 /**

@@ -43,6 +43,17 @@ export interface FakePull {
   diff: string;
 }
 
+/** 一条评论或评审（`id` 在各自的编号空间里）。 */
+export interface FakeNote {
+  id: number;
+  login: string;
+  body: string;
+  /** 评审的结论（`APPROVED` / `REQUEST_CHANGES` / `COMMENT` / `PENDING`）。 */
+  state?: string;
+  /** 秒，从夹具的起点算。 */
+  at: number;
+}
+
 export interface FakeRequest {
   readonly method: string;
   readonly path: string;
@@ -56,6 +67,9 @@ export interface FakeGitea {
   readonly requests: FakeRequest[];
   readonly issues: FakeIssue[];
   readonly pulls: FakePull[];
+  /** PR / issue 编号 → 评论、评审。 */
+  readonly comments: Map<number, FakeNote[]>;
+  readonly reviews: Map<number, FakeNote[]>;
   readonly statuses: Map<
     string,
     { context: string; status: string; target_url: string }[]
@@ -104,6 +118,8 @@ export async function startFakeGitea(): Promise<FakeGitea> {
   const requests: FakeRequest[] = [];
   const issues: FakeIssue[] = [];
   const pulls: FakePull[] = [];
+  const comments = new Map<number, FakeNote[]>();
+  const reviews = new Map<number, FakeNote[]>();
   const statuses = new Map<
     string,
     { context: string; status: string; target_url: string }[]
@@ -412,6 +428,34 @@ export async function startFakeGitea(): Promise<FakeGitea> {
         protected: branch.protected,
       });
     }
+    if ((match = rest.match(/^\/issues\/(\d+)\/comments$/))) {
+      const number = Number(match[1]);
+      return send(
+        200,
+        (comments.get(number) ?? []).map((note) => ({
+          id: note.id,
+          user: { login: note.login },
+          body: note.body,
+          html_url: `${root}/${OWNER}/${REPO}/pulls/${number}#issuecomment-${note.id}`,
+          created_at: iso(note.at),
+        })),
+        { "x-poll-interval": "90" },
+      );
+    }
+    if ((match = rest.match(/^\/pulls\/(\d+)\/reviews$/))) {
+      const number = Number(match[1]);
+      return send(
+        200,
+        (reviews.get(number) ?? []).map((note) => ({
+          id: note.id,
+          user: { login: note.login },
+          body: note.body,
+          state: note.state ?? "COMMENT",
+          html_url: `${root}/${OWNER}/${REPO}/pulls/${number}#issuecomment-${note.id}`,
+          submitted_at: iso(note.at),
+        })),
+      );
+    }
     if ((match = rest.match(/^\/commits\/([0-9a-f]{40})\/status$/))) {
       const list = statuses.get(match[1]!) ?? [];
       return send(200, {
@@ -432,6 +476,8 @@ export async function startFakeGitea(): Promise<FakeGitea> {
     requests,
     issues,
     pulls,
+    comments,
+    reviews,
     statuses,
     branches,
     repository,

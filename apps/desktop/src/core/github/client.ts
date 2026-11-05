@@ -82,6 +82,8 @@ export interface GithubResponse {
    */
   readonly oauthScopes: readonly string[];
   readonly fromCache: boolean;
+  /** 服务端的 `x-poll-interval`（秒）；没给是 0 或省略。 */
+  readonly pollIntervalSec?: number;
 }
 
 export interface GithubClientOptions {
@@ -329,6 +331,7 @@ export class GithubClient {
         nextPage: nextPage(cached.link),
         rate,
         oauthScopes: oauthScopes(result),
+        pollIntervalSec: headerInt(result, "x-poll-interval"),
         fromCache: true,
       };
     }
@@ -346,6 +349,7 @@ export class GithubClient {
         nextPage: nextPage(link),
         rate,
         oauthScopes: oauthScopes(result),
+        pollIntervalSec: headerInt(result, "x-poll-interval"),
         fromCache: false,
       };
     }

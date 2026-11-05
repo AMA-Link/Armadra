@@ -4842,13 +4842,13 @@ owner：本机作为客户端连别的电脑（`sources.session`，§33）时，
 
 经 `POST /control/<verb>`（与其余画布动词同一道门：要本运行时签发的节点令牌）；`armadra-hook canvas <verb>`、MCP 的 `canvas_<verb>`、ama 的 `canvas_<verb>` 工具同一份实现（`hook-client/verbs.ts`）。成功答 `{ ok, message, result }`。
 
-- **`report`** `--state progress|waiting|ready|blocked|failed --summary <≤300 字> [--human-action <问题> | --clear-action] [--item <id>]`
+- **`report`** `--state progress|waiting|ready|blocked|failed --summary <≤300 字> [--human-action <问题> | --clear-action] [--item <id>] [--pr <编号或网页地址>]`
   - `--item` 缺省取本节点名下唯一一个 `running` 的工作项。节点名下没有工作项：`404 no_work_item`；有几个：`409 ambiguous_item`；没有进行中的：`409 no_running_item`；`--item` 不是本节点名下的（含不存在）：`404 item_not_found`。
   - `--human-action`（≤300 字）写进单槽：给出就替换（`raisedAt` 记现在），省略就保持，`--clear-action` 清除；两者同给 `400 bad_request`；`--human-action` 不带值 `400 bad_request`。
   - 超长不截断，直接 `400 bad_request`。阶段变了、或报告要紧（下一条）、或清了待决问题时推 §15.4 的 `workflow.task`；阶段没变的进度报告不推，免得每块画板为每一步进度重读一次。答 `result: { item, state, stage, attention, notified }`。
   - **告诉协调者**：`ready` / `blocked` / `failed`，或带了 `--human-action` 的报告，给协调者写一个事件（§93：种类 `report`，带 `--human-action` 的是 `attention`；id `<种类>:<工作项 id>:<报告时刻>`，幂等），由 core 在它空闲时合并进事件卡片；`progress` / `waiting` 只记账。协调者节点不在就不写（`notified: false`），报告照样记进账本。**不再**往协调者收件箱 `post` 一行。
 - **`handback`** `--item <id> --reason <≤100 字>`：把一条跟进交回协调者。每个工作项只能交回一次，再交 `409 already_handed_back`；不是本节点名下的 `404 item_not_found`。落记录（`handback_json`）、推 `workflow.task`，并给协调者写一个 `handback` 事件（§93，id `handback:<工作项 id>:1`，协调者节点不在时 `notified: false`）；事件回到协调者的卡片里，由它决定接手或上报给人。
-- **`items`** `[--stage <阶段>] [--item <id>] [--limit N] [--offset N]`：调用者看得到的行是它自己派发的（协调者）与派给它的（成员自己的），别的都看不到。
+- **`items`** `[--stage <阶段>] [--item <id>] [--limit N] [--offset N] [--bind-pr <编号或网页地址>]`（`--bind-pr` 见 §103.1）：调用者看得到的行是它自己派发的（协调者）与派给它的（成员自己的），别的都看不到。
   - 列表：`person/*` 在前，同一阶段内新的在前；`--limit` 1–50（缺省 20），`--offset` 是跳过的行数；`message` 每项一行（id · 标题 · 节点 · 阶段 · 最近报告首行 · `? 待决问题`），末尾写明接着读的参数；`result: { items: [{ id, title, nodeId, nodeTitle, stage, status, report, attention }], total, offset, next }`，`next` 为 `null` 表示读完。`--stage` 不是 §90.2 的取值 `400 bad_request`。
   - 单项（`--item`）：在列表字段之外多 `mandate`、`handback`、`reports`（报告历史）与 `origin: { kind, ref, text, from, to, size, next }`。来源原文按 #674 的续读约定一段一段给：每段最多 2048 字节，起点与终点都对齐到字符边界，`--offset` 是字节位置，`next` 非空就用 `--offset <next>` 接着读，拼起来就是原文。没有这个工作项 `404 item_not_found`。
 
@@ -5293,3 +5293,33 @@ ACP 会话经 `session/new.mcpServers` 拿到 `armadra-hook mcp`（§14、`core/
 - **记忆约定**：协调者说明（适配器加进系统提示的画布工具说明）多一条：分派偏好（例如「前端改动交给 claude」「这个仓库要先跑 `pnpm check`」）用 `memory` 工具写进 `project` 作用域，下次分派前先读；工作项与事件的状态不写进记忆，一律以 `canvas_items` / `canvas_events` 为准——账本是唯一事实来源。
 - **压缩提醒**：适配器订阅 ama 的 `session_compact`；协调者预设（有 `read`、没有 bash / edit / write，同 `canvas_wait` 的 5 秒上限那条判定）下，每次压缩成功后用宿主 API 的 `messages.sendUser` 注入一句，`origin` 为 `armadra`（宿主来源，落盘在消息上，不是人说的话）：「对话刚被压缩。工作项与事件的现状以 `canvas_items` 与 `canvas_events` 为准，不要凭摘要或记忆判断。」（中英各一句）。成员与单机的 ama 不注入；注入被拒（`busy` 等）只记日志，不影响这一轮。运行中压缩时这条按 steer 入队，空闲时压缩（手动）会开一轮。
 - ama 侧不需要改动：`messages.sendUser` 与 `session_compact` 在已发布的宿主 API 里。
+
+## 103. 工作项绑定 PR，拉取评审、评论、CI 与合并事件（`#705`，R4 第一阶段）
+
+> 状态：实施契约（AMA-Link/Armadra#705）。迁移 0063 给 `workflow_task_runs` 加 `threads` 列并新增 `thread_events`；`report` 多 `--pr`，`items` 多 `--bind-pr`；forge 域多一个读取方法 `conversation`；协议版本不变，只加字段。轮询、分发与收尾见 §103.3–§103.5，页面见 §103.6。第二阶段（主动接未绑定的 issue / PR）不在本节。
+
+### 103.1 绑定
+
+`workflow_task_runs.threads`（TEXT，可空）是 JSON 数组，元素 `{ kind: "pull", repo, number, own, url, boundAt }`：
+
+| 字段      | 含义                                                                                       |
+| --------- | ------------------------------------------------------------------------------------------ |
+| `repo`    | `<主机>/<owner>/<名字>`，owner 可以是 GitLab 的多级子组；由托管平台域（§29）认出           |
+| `number`  | PR / merge request 编号                                                                    |
+| `own`     | `true` 是这个工作项自己开的 PR（全部合并或关闭后这一项结束，§103.5）；`false` 只看，不收尾 |
+| `url`     | PR 的网页地址（只收 http(s)；平台没给网页根时为空）                                        |
+| `boundAt` | 绑定的毫秒时刻：轮询游标的起点（§103.3）。比它早的讨论不算新事件                           |
+
+- **成员 `report --pr <编号或网页地址>`**：绑定成 `own: true`。绑定先于报告落库，绑不上（见下）整条报告被拒绝，不留下半件事。答 `result` 多一个 `pull: { repo, number, bound }`，`bound` 为 `false` 表示早已绑过。
+- **协调者 `items --item <id> --bind-pr <编号或网页地址>`**：绑定成 `own: false`。只有派发这个工作项的协调者能用；别人的与不存在的同答 `404 item_not_found`（不泄露它在不在）；不带 `--item` 是 `400 bad_request`。答 `result: { item, pull: { repo, number, url }, bound }`。
+- **幂等**：同一个 PR（`repo` + `number`）再绑只会把 `own` 升成 `true`（自己开的不会被降成只看），其余不动，所以成员每次 `report` 都带着 `--pr` 也不会重复。一个工作项最多绑 5 个 PR，再绑 `409 threads_full`。
+- **引用的写法**：编号（`12`、`#12`），或 PR 的网页地址（GitHub `…/pull/12`、Gitea `…/pulls/12`、GitLab `…/-/merge_requests/12`，只收 http(s)、不带凭据）。其余 `400 bad_request`。**编号**按工作区的 Git 远端（`origin`）认仓库；工作区在远端执行主机上、不是 Git 仓库或没有 `origin` 时 `400`，请改给网页地址。仓库一律交给托管平台域的 `resolve`（§29.1）认；认不出平台（不在已配置的 GitHub / Gitea / GitLab 上）`400`，托管平台域没装配 `409 forge_unavailable`。
+- `items --item` 的详情多一行 `PR：<repo>#<n>（自己开的|只看） <url>`，`items` 的每项 `result` 多 `pulls: [{ repo, number, own, url }]`。
+
+### 103.2 forge 的 `conversation`
+
+`Forge` 接口（§29）多一个读取方法 `conversation(repo, number) → { items, pollIntervalMs }`，GitHub、Gitea / Forgejo、GitLab 同一个形状：
+
+- `items` 是这个 PR 的评论与评审，按远端时间从早到晚：`{ id, kind: "comment" | "review", author, body, state, url, createdAtMs }`。`id` 是远端给的稳定编号，带前缀区分编号空间：`c<n>` 普通评论、`r<n>` 行内评论（GitHub）、`v<n>` 评审。评审的 `state` 统一写成 `approved` / `changes_requested` / `commented`；评论为 `null`。草稿评审（`PENDING`）与 GitLab 的系统备注（“added 1 commit”）不算。`url` 只收 http(s)；GitLab 的备注没有自己的地址，用 `<MR 地址>#note_<id>`。
+- 最多读 5 页（每页 100 条）；`body` 截到 65536 字符——这是**别人写的材料**，原样交给读者，从不当成指令。
+- `pollIntervalMs` 是服务端的 `x-poll-interval`（秒）换成毫秒，没给是 `null`；GitHub 客户端与非 GitHub 传输层都读这个头。

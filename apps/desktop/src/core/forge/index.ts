@@ -13,6 +13,7 @@ import type { EventBus } from "../bus";
 import type { CoreContext } from "../main";
 import { githubDomain } from "../github";
 import { secretsFor } from "../secrets";
+import { setForgeService } from "./registry";
 import { installRoutes } from "./routes";
 import { ForgeService } from "./service";
 import { ForgeStore } from "./store";
@@ -26,6 +27,7 @@ export {
   type PublicForgeConfig,
 } from "./service";
 export { ForgeStore } from "./store";
+export { forgeService, setForgeService } from "./registry";
 export { GiteaForge, giteaApiBase, giteaWebRoot, splitDiff } from "./gitea";
 export {
   GITLAB_SCOPE_ERRORS,
@@ -84,6 +86,8 @@ export function install(context: CoreContext): ForgeService | undefined {
     github.externalRepository = (forge, ref, workspaceId) =>
       service.referenceRepository(forge, ref, workspaceId);
   }
+  setForgeService(service);
+  context.onStop?.(() => setForgeService(undefined));
   context.log.info("托管平台域已装配");
   return service;
 }
