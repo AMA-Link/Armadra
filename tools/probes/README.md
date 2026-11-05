@@ -63,7 +63,7 @@ node tools/probes/launch-concurrency.mjs
 
 ## Windows 真机验收
 
-`windows-acceptance.mjs`（补全计划 G3-2）：在 Windows 上一键装 NSIS 包、起应用、验会话宿主与命名管道、三种 shell 里的 `armadra-launch.exe`（参数、注入、凭据兑换）、DPAPI 凭据状态、回环 Gateway、文件监听、保活、杀主进程后接回、ConPTY 关闭、静默卸载与用户配置快照，写 `result.json`。只要 Node 22；纯函数一半在 `windows-acceptance-lib.mjs`，临时 HOME 用同目录的 `probe-home.mjs`，拷到别的机器上要连这两个文件一起。
+`windows-acceptance.mjs`（补全计划 G3-2）：在 Windows 上一键装 NSIS 包、起应用、验会话宿主与命名管道、三种 shell 里的 `armadra-launch.exe`（参数、注入、凭据兑换）、DPAPI 凭据状态、回环 Gateway、文件监听、保活、杀主进程后接回、ConPTY 关闭、静默卸载与用户配置快照，写 `result.json`。只要 Node 22；纯函数一半在 `windows-acceptance-lib.mjs`（会话宿主代答段在 `windows-acceptance-replies.mjs`，干跑自检在 `windows-acceptance-selftest.mjs`，本机探测在 `windows-acceptance-machine.mjs`，lib 与主文件重新导出，导入方不用改），临时 HOME 用同目录的 `probe-home.mjs`，拷到别的机器上要把这些文件一起带上。
 
 ```powershell
 node tools/probes/windows-acceptance.mjs --installer .\Armadra-Setup-0.1.0-x64.exe [--soak-minutes 30] [--with-codex] [--require-signed]
