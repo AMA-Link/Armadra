@@ -37,6 +37,7 @@ import {
   compileHookLauncher,
 } from "./hook-launcher.mjs";
 import { LAUNCH_EXE_RESOURCE, compileLaunchExe } from "./launch-exe.mjs";
+import { WINSEC_EXE_RESOURCE, compileWinsecExe } from "./winsec-exe.mjs";
 
 const app = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -468,6 +469,7 @@ export default async function afterPack(context) {
     );
   placeHookLauncher(platformName, resourcesDir);
   placeLaunchExe(platformName, resourcesDir);
+  placeWinsecExe(platformName, resourcesDir);
 }
 
 /**
@@ -525,5 +527,34 @@ export function placeLaunchExe(
   }
   const output = compile(join(resourcesDir, LAUNCH_EXE_RESOURCE));
   log(`after-pack: built ${LAUNCH_EXE_RESOURCE}`);
+  return output;
+}
+
+/**
+ * Builds `cli/armadra-winsec.exe`, the pipe access-control helper, for a
+ * Windows target (see winsec-exe.mjs). Same rule as {@link placeLaunchExe}:
+ * only a Windows host can compile it, a Windows target packaged elsewhere says
+ * so, and a failed compile on a Windows host fails the build. Without it that
+ * build's core hardens private pipes through PowerShell, which Constrained
+ * Language Mode and endpoint tools can block.
+ */
+export function placeWinsecExe(
+  platformName,
+  resourcesDir,
+  {
+    host = process.platform,
+    compile = compileWinsecExe,
+    log = console.log,
+  } = {},
+) {
+  if (platformName !== "win32") return undefined;
+  if (host !== "win32") {
+    log(
+      `after-pack: WARNING ${WINSEC_EXE_RESOURCE} not built (needs a Windows host); private pipes on this build are hardened through PowerShell`,
+    );
+    return undefined;
+  }
+  const output = compile(join(resourcesDir, WINSEC_EXE_RESOURCE));
+  log(`after-pack: built ${WINSEC_EXE_RESOURCE}`);
   return output;
 }
