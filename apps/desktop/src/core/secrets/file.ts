@@ -73,6 +73,18 @@ export function readPrivateFile(path: string): Buffer | undefined {
   return readFileSync(path);
 }
 
+/** 目录里有没有以 `suffix` 结尾的条目文件（`.token` 明文 / `.sealed` 信封）。 */
+export function hasEntryFiles(
+  directory: string,
+  suffix: ".token" | ".sealed",
+): boolean {
+  try {
+    return readdirSync(directory).some((file) => file.endsWith(suffix));
+  } catch {
+    return false;
+  }
+}
+
 /* --------------------------------- 明文 ---------------------------------- */
 
 /**

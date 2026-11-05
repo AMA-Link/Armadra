@@ -9,7 +9,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { readMasterKey, rotateMasterKey } from "../../desktop/src/core/secrets";
+import {
+  type DpapiRunner,
+  readMasterKey,
+  rotateMasterKey,
+} from "../../desktop/src/core/secrets";
 import { MASTER_KEY_ENV, masterKeyFile, serverSecrets } from "./secrets";
 
 const dirs: string[] = [];
@@ -79,5 +83,77 @@ describe("服务器壳的密钥后端", () => {
     expect(readFileSync(join(dir, "secrets", "armadra-a.token"), "utf8")).toBe(
       "plain",
     );
+  });
+});
+
+describe("服务器壳在 Windows 上的 DPAPI 选择", () => {
+  const xor: DpapiRunner = async (_file, args, input) =>
+    args[0] === "dpapi-protect"
+      ? Buffer.concat([Buffer.from("DP"), input.map((b) => b ^ 0x21)])
+      : Buffer.from(input.subarray(2).map((b) => b ^ 0x21));
+  const win = {
+    platform: "win32",
+    winsec: "C:\\x\\armadra-winsec.exe",
+    dpapiRunner: xor,
+  } as const;
+
+  it("win32、有工具、没有 master key：dpapi，不生成 master key", async () => {
+    const dir = dataDir();
+    const backend = serverSecrets(dir, {}, win);
+    expect(backend.kind).toBe("dpapi");
+    await backend.set("armadra-copilot", "gho_dpapi_token");
+    expect(existsSync(join(dir, "secrets", "master.key"))).toBe(false);
+    const raw = readFileSync(
+      join(dir, "secrets", "armadra-copilot.sealed"),
+      "utf8",
+    );
+    expect(raw).not.toContain("gho_dpapi_token");
+    expect(await serverSecrets(dir, {}, win).get("armadra-copilot")).toBe(
+      "gho_dpapi_token",
+    );
+  });
+
+  it("已有 master.key：继续 file-encrypted，已存的条目不搁浅", async () => {
+    const dir = dataDir();
+    await serverSecrets(dir, {}, { platform: "linux" }).set(
+      "armadra-old",
+      "old-value",
+    );
+    const backend = serverSecrets(dir, {}, win);
+    expect(backend.kind).toBe("file-encrypted");
+    expect(await backend.get("armadra-old")).toBe("old-value");
+  });
+
+  it("master key 由运维指定，或强制了别的后端：不碰 DPAPI", () => {
+    const dir = dataDir();
+    const elsewhere = join(dir, "credentials", "master.key");
+    expect(() =>
+      serverSecrets(dir, { [MASTER_KEY_ENV]: elsewhere }, win),
+    ).toThrow();
+    expect(
+      serverSecrets(dir, { ARMADRA_SECRET_BACKEND: "file" }, win).kind,
+    ).toBe("file");
+    expect(
+      serverSecrets(dir, { ARMADRA_SECRET_BACKEND: "file-encrypted" }, win)
+        .kind,
+    ).toBe("file-encrypted");
+  });
+
+  it("找不到工具或不是 win32：照旧 file-encrypted", () => {
+    expect(
+      serverSecrets(dataDir(), {}, { ...win, winsec: undefined }).kind,
+    ).toBe("file-encrypted");
+    expect(
+      serverSecrets(dataDir(), {}, { ...win, platform: "linux" }).kind,
+    ).toBe("file-encrypted");
+  });
+
+  it("DPAPI 封的条目遇到 file-encrypted（工具之后丢了）：sealed_by_dpapi", async () => {
+    const dir = dataDir();
+    await serverSecrets(dir, {}, win).set("armadra-x", "v");
+    const fallback = serverSecrets(dir, {}, { ...win, winsec: undefined });
+    await expect(fallback.get("armadra-x")).rejects.toMatchObject({
+      reason: "sealed_by_dpapi",
+    });
   });
 });
