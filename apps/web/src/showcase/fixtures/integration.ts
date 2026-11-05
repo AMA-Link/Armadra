@@ -109,7 +109,7 @@ function cli(
   label: string,
   acp: {
     installed: boolean;
-    support?: "native" | "official" | "community";
+    support?: "native" | "official" | "bundled";
   } | null,
   extra: Partial<AgentInfo> = {},
 ): AgentInfo {
@@ -137,7 +137,12 @@ function cli(
       : {
           acp: {
             support: acp.support ?? "official",
-            program: acp.support === "native" ? id : `${id}-acp`,
+            program:
+              acp.support === "native"
+                ? id
+                : acp.support === "bundled"
+                  ? "ama"
+                  : `${id}-acp`,
             installed: acp.installed,
             resume: "load",
           },
@@ -186,6 +191,25 @@ export const CLI_GROUP: readonly {
   {
     agent: cli("claude", "Claude Code", { installed: true }),
     integration: state("claude"),
+    jobs: {
+      adapter: {
+        agentId: "claude",
+        target: "adapter",
+        state: "failed",
+        package: "@agentclientprotocol/claude-agent-acp",
+        reinstall: true,
+        previousVersion: "0.0.30",
+        startedAt: at(30),
+        endedAt: at(31),
+        exitCode: 1,
+        installed: false,
+        output: [
+          "npm error code ETARGET",
+          "npm error notarget No matching version",
+        ],
+        failure: { code: "adapter_install_failed", message: "npm 以 1 退出" },
+      },
+    },
   },
   {
     agent: cli("codex", "Codex", { installed: true }),
@@ -220,33 +244,8 @@ export const CLI_GROUP: readonly {
     }),
   },
   {
-    agent: cli("pi", "Pi", { installed: true, support: "community" }),
-    integration: state("pi", {
-      canvasAgents: {
-        terminal: "available",
-        acp: "limited",
-        reasons: ["mcp_not_wired"],
-      },
-    }),
-    jobs: {
-      adapter: {
-        agentId: "pi",
-        target: "adapter",
-        state: "failed",
-        package: "pi-acp",
-        reinstall: true,
-        previousVersion: "0.0.30",
-        startedAt: at(30),
-        endedAt: at(31),
-        exitCode: 1,
-        installed: false,
-        output: [
-          "npm error code ETARGET",
-          "npm error notarget No matching version",
-        ],
-        failure: { code: "adapter_install_failed", message: "npm 以 1 退出" },
-      },
-    },
+    agent: cli("pi", "Pi", { installed: true, support: "bundled" }),
+    integration: state("pi"),
   },
   {
     agent: cli(

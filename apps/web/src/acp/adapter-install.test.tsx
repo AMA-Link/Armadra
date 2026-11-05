@@ -143,7 +143,11 @@ beforeEach(() => {
 describe("installAgentId", () => {
   it("适配器只认能代装的几家，custom: 借基础 CLI；CLI 认 CLI 表，custom: 不代装", () => {
     expect(adapterAgentId(agent("codex"))).toBe("codex");
-    expect(adapterAgentId(agent("custom:x", { baseAgent: "pi" }))).toBe("pi");
+    expect(adapterAgentId(agent("custom:x", { baseAgent: "claude" }))).toBe(
+      "claude",
+    );
+    // pi 的 ACP 入口是随包的桥，没有要装的适配器包。
+    expect(adapterAgentId(agent("pi"))).toBeNull();
     expect(adapterAgentId(agent("opencode"))).toBeNull();
     expect(installAgentId(agent("opencode"), "cli")).toBe("opencode");
     expect(installAgentId(agent("omp"), "cli")).toBe("omp");

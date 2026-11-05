@@ -130,15 +130,18 @@ export function AgentDetailPage({ agent }: { agent: AgentInfo }) {
     : t("integration.state.cliMissing");
   const acp = agent.acp;
   const native = acp?.support === "native";
+  const bundled = acp?.support === "bundled";
   const acpValue = !acp
     ? null
-    : native && agent.installed
-      ? t("integration.state.viaCli")
-      : acp.installed
-        ? acp.version
-          ? t("integration.state.installedVersion", { version: acp.version })
-          : t("integration.state.installed")
-        : t("integration.state.missing");
+    : bundled
+      ? t("integration.state.bundled")
+      : native && agent.installed
+        ? t("integration.state.viaCli")
+        : acp.installed
+          ? acp.version
+            ? t("integration.state.installedVersion", { version: acp.version })
+            : t("integration.state.installed")
+          : t("integration.state.missing");
 
   /* -------------------------------- 画布注入 -------------------------------- */
   const hooked = agent.capabilities.includes("hooks");
@@ -197,7 +200,7 @@ export function AgentDetailPage({ agent }: { agent: AgentInfo }) {
         {acpValue !== null && (
           <SettingsRow label={t("integration.row.acp")}>
             <RowValue>{acpValue}</RowValue>
-            {acp && !native && (
+            {acp && !native && !bundled && (
               <InstallButton install={adapter} installed={acp.installed} />
             )}
           </SettingsRow>

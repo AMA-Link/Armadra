@@ -978,6 +978,32 @@ describe("SessionView", () => {
     ).toBeTruthy();
   });
 
+  it("tells the pi bridge's refusals apart (#716)", async () => {
+    api.createSession.mockRejectedValueOnce(
+      new RuntimeRequestError(409, "old", "pi_outdated", {
+        code: "pi_outdated",
+        message: "old",
+        details: {
+          agentId: "pi",
+          installed: "1.0.4",
+          minimum: "1.1.0",
+          package: "@earendil-works/pi-coding-agent",
+        },
+      }),
+    );
+    const fresh: TerminalNodeData = {
+      kind: "terminal",
+      agent: { id: "pi", driver: "acp" },
+    };
+    render(<SessionView nodeId="n1" data={fresh} />);
+    expect(await screen.findByText("Pi 版本过旧")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "已装 1.0.4，至少需要 1.1.0；请安装 @earendil-works/pi-coding-agent",
+      ),
+    ).toBeTruthy();
+  });
+
   it("shows the agent's own words under the generic title (#710)", async () => {
     api.createSession.mockRejectedValueOnce(
       new RuntimeRequestError(

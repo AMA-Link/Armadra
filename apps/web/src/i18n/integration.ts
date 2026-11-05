@@ -41,6 +41,7 @@ export const integration: MessageModule = {
     "integration.state.missing": "未安装",
     "integration.state.cliMissing": "未检测到",
     "integration.state.viaCli": "随 CLI", // i18n-exempt
+    "integration.state.bundled": "随包",
     "integration.state.stale": "待更新",
     "integration.state.hookMissing": "Hook 未生成", // i18n-exempt
     "integration.state.skillMissing": "技能未生成",
@@ -131,6 +132,7 @@ export const integration: MessageModule = {
     "integration.state.missing": "Not installed",
     "integration.state.cliMissing": "Not detected",
     "integration.state.viaCli": "With the CLI",
+    "integration.state.bundled": "Bundled",
     "integration.state.stale": "Out of date",
     "integration.state.hookMissing": "Hook not generated",
     "integration.state.skillMissing": "Skill not generated",
