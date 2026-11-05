@@ -700,17 +700,17 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
 }
 ```
 
-| 字段        | 含义                                                                                                                                                 |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `support`   | `native`（CLI 自带入口：`opencode acp`、`omp acp`、`copilot --acp`、`ama --mode acp`）/ `official`（官方适配器）/ `community`（社区适配器 `pi-acp`） |
-| `program`   | 在补齐过的 `PATH` 上找的程序名：`claude-agent-acp`、`codex-acp`、`opencode`、`pi-acp`、`omp`、`copilot`、`ama`                                       |
-| `installed` | `program` 每次请求都按 `resolveCommand`（与 `resolvedPath` 同一条规则）探，不缓存                                                                    |
-| `version`   | 可选：本进程最近一次对这家起会话或探测时 `initialize` 报的 `agentInfo.version`。列表从不为它起进程，没有就缺席；`installed: false` 时也缺席          |
-| `resume`    | 跨进程接回用哪个方法：`load`（`session/load`，回放）/ `resume`（`session/resume`，不回放）/ `none`（只能新开，Copilot；这样的会话不休眠）            |
+| 字段        | 含义                                                                                                                                                                                |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `support`   | `native`（CLI 自带入口：`opencode acp`、`omp acp`、`copilot --acp`、`ama --mode acp`）/ `official`（官方适配器）/ `bundled`（随包的桥：`pi` 走 `ama --mode acp --bridge pi`，§100） |
+| `program`   | 在补齐过的 `PATH` 上找的程序名：`claude-agent-acp`、`codex-acp`、`opencode`、`omp`、`copilot`、`ama`（`pi` 也是 `ama`，参数见 §100）                                                |
+| `installed` | `program` 每次请求都按 `resolveCommand`（与 `resolvedPath` 同一条规则）探，不缓存                                                                                                   |
+| `version`   | 可选：本进程最近一次对这家起会话或探测时 `initialize` 报的 `agentInfo.version`。列表从不为它起进程，没有就缺席；`installed: false` 时也缺席                                         |
+| `resume`    | 跨进程接回用哪个方法：`load`（`session/load`，回放）/ `resume`（`session/resume`，不回放）/ `none`（只能新开，Copilot；这样的会话不休眠）                                           |
 
-- 七家的表：`claude` 官方 `load`、`codex` 官方 `load`、`opencode` 原生 `load`、`pi` 社区 `load`、`omp` 原生 `load`、`copilot` 原生 `none`、`ama` 原生 `resume`。`resume` 是偏好：起会话时按 Agent 在 `initialize` 声明的能力协商，偏好的方法不支持就用另一个，两个都不支持就新开并如实告诉页面没有接上。
+- 七家的表：`claude` 官方 `load`、`codex` 官方 `load`、`opencode` 原生 `load`、`pi` 随包 `load`、`omp` 原生 `load`、`copilot` 原生 `none`、`ama` 原生 `resume`。`resume` 是偏好：起会话时按 Agent 在 `initialize` 声明的能力协商，偏好的方法不支持就用另一个，两个都不支持就新开并如实告诉页面没有接上。
 - 权限模式在 ACP 下的落点（`session/set_mode` 的模式 id 或启动 argv）不在行上；没有落点的模式（OpenCode 的 `auto-edit` / `full-auto`，Pi 除 `default` 外的三个）不出现在会话视图里，以它起会话答 `acp_mode_unsupported`。`plan` 在 Agent 不提供对应模式 id 时拒绝启动（`acp_mode_unavailable`），不以可写模式起。
-- 起会话失败的错误码（G2-1 的路由原样答出，形状 `{ code, message }`）：`acp_not_installed`、`acp_spawn_failed`、`acp_exited`、`acp_initialize_failed`、`acp_initialize_timeout`、`acp_protocol_version`、`acp_auth_required`（Agent 要先在 CLI 里登录）、`acp_session_failed`、`acp_mode_unsupported`、`acp_mode_unavailable`；自 1.24 起还有 `acp_session_timeout`（504，§51）；CLI 本体低于适配器要求的最低版本时答 `acp_cli_outdated`（409），`details` 为 `{ agentId, installed, minimum, package }`，起适配器进程之前就答，不再等 `session/new` 超时（各家下限在 `@armadra/shared` 的 `ACP_CLI_FLOOR`，目前只登记 pi；问不出版本不拦）。适配器在 `session/new` 答复里报的 `modes` 不是权限模式时（`ACP_REPORTED_MODES` 为 `ignore`，目前是 pi：它把推理强度放在里面，另以 `thought_level` 配置项给出）core 丢掉，`modes` 为 `null`。消息里不带适配器的 stderr。
+- 起会话失败的错误码（G2-1 的路由原样答出，形状 `{ code, message }`）：`acp_not_installed`、`acp_spawn_failed`、`acp_exited`、`acp_initialize_failed`、`acp_initialize_timeout`、`acp_protocol_version`、`acp_auth_required`（Agent 要先在 CLI 里登录）、`acp_session_failed`、`acp_mode_unsupported`、`acp_mode_unavailable`；自 1.24 起还有 `acp_session_timeout`（504，§51）；CLI 本体低于适配器要求的最低版本时答 `acp_cli_outdated`（409），`details` 为 `{ agentId, installed, minimum, package }`，起适配器进程之前就答，不再等 `session/new` 超时（各家下限在 `@armadra/shared` 的 `ACP_CLI_FLOOR`，目前只登记 pi，下限 1.1.0；问不出版本不拦）。适配器在 `session/new` 答复里报的 `modes` 不是权限模式时（`ACP_REPORTED_MODES` 为 `ignore`；目前没有哪家是）core 丢掉，`modes` 为 `null`。ama 的 pi 桥在 `session/new` 里答 `error.data.code` 时，core 原样作为错误码答出（409，`details` 只留字符串字段：`installed`、`minimum`、`package`，外加 `agentId: "pi"`）：`pi_outdated`（Pi 低于下限）、`pi_missing`（找不到 `pi`）、`pi_no_model`（Pi 里没有可用模型）。消息里不带适配器的 stderr。
 - 实跑验证过的版本区间记在 `tools/release/compatibility.json` 的 `acp` 键（`{ protocolVersion: 1, adapters: { <id>: { program, verified: null | { min, max? } } } }`），不进发布说明的兼容围栏；`program` 与适配器表由测试对齐。
 - 状态来源词汇多一个 `acp`（`agent_status.state_source`）：由 core 在 ACP 驱动的会话上写入，与 `hook` / `extension` 一样算上报（`stateSourceIsReported`），客户端无法自称。
 
@@ -1910,7 +1910,9 @@ CSV 按 RFC 4180：`\r\n` 换行，首行表头 `id,time,principalId,deviceId,ac
 - `PUT /api/acp/sessions/{id}/model { modelId }` → `session/set_config_option { sessionId, configId, value }` → `204`；以答复里的 `configOptions` 为准。目录里没有这个模型或没有目录答 `409 acp_model_unavailable`，客户端没有这个能力答 `409 acp_model_unsupported`，`modelId` 缺席 `400`。会话行已结束时与 `…/mode` 一样先接回。节点数据 `agent.model` 由页面写回。
 - 起会话（含接回、唤醒、切换驱动）时节点数据记着 `agent.model` 且目录里有就落上；目录里没有、或 Agent 拒了不拦启动（模型不是安全边界，与只读模式不同）。
 
-### 26.3 `pi-acp` 的映射文件
+### 26.3 `pi-acp` 的映射文件（已由 §100 取代）
+
+> 节号保留。`pi-acp`、`sessionId: "mapFile"` 与 `~/.pi/pi-acp/session-map.json` 已整体删除，Pi 的 ACP 会话 id 就是 Pi 自己的会话 id（`sessionId: "same"`）；下面是历史描述。
 
 - 适配器表 `sessionId: "mapFile"` 的那一行（`pi`）写死映射文件 `~/.pi/pi-acp/session-map.json`，形状 `{ "version": 1, "sessions": { "<ACP 会话 id>": { "sessionFile": "<Pi 会话文件绝对路径>" } } }`（也认没有 `sessions` 外壳的扁平对象，值也可以直接是路径）。会话文件名里的 uuid 是 Pi 的会话 id。读不到、过大（> 4 MiB）、不是这个形状、或路径不是绝对路径时退回 `opaque`。
 - 会话开好时 `transcriptPath` 是映射到的 Pi 会话文件（存在时），否则是镜像。
@@ -2996,7 +2998,7 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 
 自协议 1.15 起。实现在 `core/agent/adapter-install.ts`，只经 procedure，没有旧路径。
 
-- 只装 `ACP_ADAPTER_PACKAGES`（`@armadra/shared`）里的三家：`claude` → `@agentclientprotocol/claude-agent-acp`、`codex` → `@agentclientprotocol/codex-acp`、`pi` → `pi-acp`。命令固定是 `npm install --global <包>`，入参只有 `agentId` 与 `reinstall`；表外的 id（含 `custom:` 条目与 ACP 入口就是 CLI 本身的那几家）答 400 `adapter_not_installable`，不起进程。页面给 `custom:` 条目时传它的 `baseAgent`。
+- 只装 `ACP_ADAPTER_PACKAGES`（`@armadra/shared`）里的两家：`claude` → `@agentclientprotocol/claude-agent-acp`、`codex` → `@agentclientprotocol/codex-acp`。`pi` 不在表里（它的 ACP 入口是随包的 ama，没有适配器包）。命令固定是 `npm install --global <包>`，入参只有 `agentId` 与 `reinstall`；表外的 id（含 `custom:` 条目与 ACP 入口就是 CLI 本身的那几家）答 400 `adapter_not_installable`，不起进程。页面给 `custom:` 条目时传它的 `baseAgent`。
 - 只有 owner：scope 是 `settings:write` / `settings:read`（不在任何共享角色里，高于 `agent:launch`），域里再按主体判一次，成员答 403。
 - npm 先用这家 CLI 所在 bin 目录里的那个（同一个 Node 安装），没有再用补齐过的 PATH 上的；子进程 PATH 以那个目录开头。都找不到答 409 `npm_not_found`。没带 `reinstall` 而适配器已在 PATH 上答 409 `adapter_already_installed`。同一家已在装时答那一个任务，不起第二个。
 - 任务只在内存里（每家最近一个），`adapterInstall` 读进度：`state` 是 `idle | running | succeeded | failed`，带 `startedAt`、`endedAt`、`exitCode`、`output`（最后 40 行，去掉控制字符并脱敏，每行至多 300 字符）、`installed`（结束后重新探测）与 `failure: { code, message }`。失败码：`adapter_install_failed`（非零退出或起不来）、`adapter_install_timeout`（10 分钟）、`adapter_install_missing`（npm 成功但 PATH 上仍找不到适配器程序）。页面按 `code` 取文案。
@@ -3606,7 +3608,7 @@ human initiator。页面不接收任何 controller 凭据；body owner/controlle
 自协议 1.22 起扩展 §39.7（§39.7 原文仍是 1.15 的行为；procedure 名与 `since` 不变，表在 §39.7 的生成块里）。实现在 `core/agent/adapter-install.ts`。
 
 - `agents.installAdapter` 入参多 `target?: "adapter" | "cli"`（缺省 `adapter`，与 1.15 相同）与 `rollback?: boolean`；`agents.adapterInstall` 入参多 `target?`。
-- 两张白名单（`@armadra/shared`）：`adapter` 只认 `ACP_ADAPTER_PACKAGES`（`claude` / `codex` / `pi` 三家适配器，不变）；`cli` 只认 `AGENT_CLI_PACKAGES`：`claude` → `@anthropic-ai/claude-code`、`codex` → `@openai/codex`、`opencode` → `opencode-ai`、`pi` → `@earendil-works/pi-coding-agent`、`omp` → `@oh-my-pi/pi-coding-agent`、`copilot` → `@github/copilot`、`ama` → `@armadra/agent`。表外（含 `custom:` 条目）答 400 `adapter_not_installable`，不起进程。命令仍固定是 `npm install --global <包>`，npm 的选取与子进程 PATH 同 §39.7。
+- 两张白名单（`@armadra/shared`）：`adapter` 只认 `ACP_ADAPTER_PACKAGES`（`claude` / `codex` 两家适配器；`pi` 自 §100 起不在其中）；`cli` 只认 `AGENT_CLI_PACKAGES`：`claude` → `@anthropic-ai/claude-code`、`codex` → `@openai/codex`、`opencode` → `opencode-ai`、`pi` → `@earendil-works/pi-coding-agent`、`omp` → `@oh-my-pi/pi-coding-agent`、`copilot` → `@github/copilot`、`ama` → `@armadra/agent`。表外（含 `custom:` 条目）答 400 `adapter_not_installable`，不起进程。命令仍固定是 `npm install --global <包>`，npm 的选取与子进程 PATH 同 §39.7。
 - 探测：`adapter` 找适配器程序，`cli` 找注册表的 `launchCmd`；没带 `reinstall` 而已在 PATH 上答 409 `adapter_already_installed`。原生 ACP 的几家（opencode / omp / copilot / ama）装 CLI 即装 ACP。
 - 任务键是 `${agentId}:${target}`：同一家同一样在装时答那一个任务；同一家另一样在装答 409 `adapter_install_busy`，不起第二个 npm。
 - 上一版本：开始前用同一个 npm 跑 `npm ls --global --depth=0 --json <包>`，读 `dependencies.<包>.version` 记为任务的 `previousVersion`；拿不到就缺席。`rollback: true` 装回 `<包>@<previousVersion>`（这一家这一样最近一个任务的值，隐含 `reinstall`）；没有 `previousVersion` 答 409 `adapter_rollback_unavailable`。
@@ -3627,7 +3629,7 @@ human initiator。页面不接收任何 controller 凭据；body owner/controlle
 
 - `terminal`（终端驱动，注入的 `armadra-hook canvas open-agent / team`）：CLI 在 PATH 上、技能与 Hook 都已生成、启动器没有警告 → `available`；技能在而 Hook 缺或 `launcherWarning` 存在 → `limited`（能发命令但没有节点身份）；CLI 没装或技能缺 → `unavailable`。
 - `acp`（会话视图）：这家没有 ACP 入口 → `none`；ACP 程序不在 PATH 上 → `unavailable`（`acp_missing`）；适配器不接 MCP → `limited`（`mcp_not_wired`）；这一版 ACP 客户端开会话不能带 MCP 服务器 → `limited`（`client_without_mcp`）；否则 `available`。ama 经宿主 runners 建节点，不看 MCP。
-- 适配器表（`core/acp/adapters.ts`）每行多 `canvasTools: "mcp" | "runners" | "none"`：claude / codex / opencode / omp / copilot 为 `mcp`，ama 为 `runners`，pi 为 `none`。`canvasTools === "mcp"` 当且仅当 `injection.mcp` 为真；pi 的 `injection.mcp` 因此改为 `false`，`session/new` 不再给 pi-acp 带 `mcpServers`。
+- 适配器表（`core/acp/adapters.ts`）每行多 `canvasTools: "mcp" | "runners" | "none"`：claude / codex / opencode / omp / copilot 为 `mcp`，ama 为 `runners`，pi 起为 `mcp`（§100，原为 `none`）。`canvasTools === "mcp"` 当且仅当 `injection.mcp` 为真。
 - `reasons` 是两边缺的东西的并集（无序语义，按上列顺序给），页面据此给修复动作；未知原因词按透传处理。旧 core 不带这个字段。事件无变化。
 
 ## 49. ACP 会话视图：镜像的图片与资源链接、`acp.log` 的活进程快照
@@ -5140,3 +5142,34 @@ ACP 会话经 `session/new.mcpServers` 拿到 `armadra-hook mcp`（§14、`core/
 `connect.offer` 取代了三样旧东西，随 #749 的最后一个包删除，节号保留：`gateway.pair` / `POST /api/gateway/pairing`（§17.3）、`e2e.pairingSecret` / `POST /api/e2e/pairing-secret`（§80.1）以及 §24.2 与 §73 回答里的 `deepLink`。`armadra://pair?` 与 `armadra://pair-e2e?` 两种链接形状同时不再被认：网页（`parsePairingQr`）、core（`sources/pair-link.ts`）、iOS 与 Android 的深链都只剩分享（`join`）、`oauth` 和工作空间跳转；App 内扫到旧形状报 `connectOlder`。浏览器用的 `#pair=` 链接保留（「复制链接」与服务器壳的打印仍在用）。
 
 探针与集成测试在回环上起 Gateway，回环来源默认不进二维码；它们设环境变量 `ARMADRA_CONNECT_INCLUDE_LOOPBACK=1` 放开（页面与 App 不读这个变量，也没有对应的 API）。
+
+## 100. ACP 下的 Pi：ama 的桥（`#716`）
+
+> 状态：实施契约。Pi 的 ACP 由随包的 ama 实现（`ama --mode acp --bridge pi`），不再用社区适配器 `pi-acp`；只改已有行的取值并加三个错误码，协议版本不变。
+
+### 100.1 适配器行与取代关系
+
+- `pi` 一行：`program: "ama"`，`args: ["--mode","acp","--bridge","pi"]`，`support: "bundled"`（§14.1 `acp.support` 的新取值），`sessionId: "same"`（ACP 会话 id 就是 Pi 的会话 id），`resume: "load"`，`injection: { mcp: true, reuse: ["args"], passthrough: "--" }`，`canvasTools: "mcp"`，`expectedProcess: ["ama", "ama.cjs"]`。不带 ama 的 `--profile`，Pi 自己登录（在 Pi 里 `/login`）。
+- 删除（不做兼容）：`pi-acp`、适配器行的 `sessionId: "mapFile"` 与 `sessionMap`、`readSessionMap` / `mappedSession` / `acpResumeId` / `cliResumeId`、`ACP_ADAPTER_PACKAGES.pi`。§26.3 作废，节号保留；以前用 `pi-acp` 开的节点按新会话开始。
+- §47：`adapter` 白名单只剩 `claude`、`codex`；`pi` 的「适配器」一样答 400 `adapter_not_installable`，页面只给「安装 CLI」。§48：`pi` 的 `canvasTools` 由 `none` 改为 `mcp`（`session/new.mcpServers` 带 `armadra-hook mcp`，由桥交给 Pi 内置的 MCP）。
+- `ACP_MODE_TABLE.pi`：`default` / `auto-edit` / `full-auto` / `plan` 四个模式的 `modeId` 与 ama 相同（`session/set_mode`，桥里的审批闸每次调用都问，立即生效）；`ACP_REPORTED_MODES.pi` 为 `permission`。推理强度只以 `thought_level` 配置项给出（`category: "thought_level"`），页面放进「模型与强度」同一个选择器。
+- `tools/release/compatibility.json` 的 `acp.adapters.pi.program` 为 `ama`。
+
+### 100.2 Pi 版本
+
+- `ACP_CLI_FLOOR.pi` 为 1.1.0：起进程之前核对，低于它答 `acp_cli_outdated`（§14.1，`details` 同前）。桥自己也核对：`session/new` 的 JSON-RPC 错误带 `error.data.code`，core 原样作为错误码答出（409），页面各给一句本地化原因，`pi_outdated` 与 `pi_missing` 另附版本与包：
+
+  | 码            | `details`                                        | 含义                                     |
+  | ------------- | ------------------------------------------------ | ---------------------------------------- |
+  | `pi_outdated` | `{ agentId: "pi", installed, minimum, package }` | Pi 低于 1.1.0                            |
+  | `pi_missing`  | `{ agentId: "pi", package }`                     | PATH 上没有 `pi`                         |
+  | `pi_no_model` | `{ agentId: "pi" }`                              | Pi 里没有可用模型，要先在 Pi 里 `/login` |
+
+- 已验证区间 `>=1.1.0 <2.0.0`；更高的版本照跑，桥在 `session/new` 答复里给 `_meta["armadra.pi"] = { version, verified, capabilities: { todo, subagent, questionnaire } }`（能力只在已装的 Pi 有同名工具时为真，桥不替 Pi 加工具）。core 目前不读这份 `_meta`，不画「未验证」提示。
+
+### 100.3 桥的画面
+
+- **工具调用**：先 `pending`，过审批闸后转 `in_progress`。Armadra 自己的 MCP 工具带 `_meta.is_mcp_tool_call: true` 与 `rawInput { server, tool, arguments }`，与 Codex 同一种写法，所以 §98 的免审批对 Pi 同样生效（`@armadra/shared` 的 `acpMcpToolOf` 测试覆盖）。子 Agent 的调用带 `_meta["armadra.subagent"]`，页面按普通工具显示。
+- **用量**：`usage_update` 带 `cost { amount, currency }`，页面的上下文表显示费用（沿用 §82 的 `usage.cost`）。
+- **计划与征询**：Pi 里的待办变成 `plan`，其它扩展的对话框与问卷变成 `elicitation/create`；core 的 ACP 客户端声明了 `elicitation` 能力时才会收到征询，已有的计划与征询卡片照常显示。
+- **SSH 节点**：执行主机上要有 `ama`（`@armadra/agent`）和 Pi；缺了与以前缺 `pi-acp` 一样答 `acp_not_installed`。

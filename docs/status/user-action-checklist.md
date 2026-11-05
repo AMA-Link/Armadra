@@ -139,9 +139,9 @@
 - [ ] **Codex（ChatGPT 登录）与 codex-acp**
   - 提供：用 ChatGPT 登录过的 Codex（`~/.codex/auth.json`），以及 codex-acp 适配器。
   - 验证：同上，`compatibility.json` 的 `codex.verified` 由 `--record-compat` 写入；场景 10 的成本一步一并复跑。
-- [ ] **pi-acp 的会话映射**
-  - 提供：已装的 pi-acp（本机已实跑过 0.0.34）。
-  - 验证：ACP 驱动的 Pi 节点答一轮后看 `~/.pi/pi-acp/session-map.json` 的形状与 `core/acp/adapters.ts` 的约定一致，切回终端视图能接回同一会话。
+- [ ] **Pi 桥的完整回合**
+  - 提供：装了 Pi ≥ 1.1.0 并已登录的机器（本机 Pi 1.5.0 只验过开会话与切模式）。
+  - 验证：ACP 驱动的 Pi 节点答一轮，覆盖工具、审批、费用与画布工具，切回终端视图能接回同一会话；结果写进 `compatibility.json`。
 - [ ] **多账号实测（T1–T9）**
   - 提供：两个 Claude 订阅（一个 `/login`、一个 `setup-token`）、两个带 Copilot 的 GitHub 账号与其中一个的细粒度 PAT；Codex / Pi / OMP / OpenCode 的 API key。
   - 填在：设置 → Agent → 节点凭据。

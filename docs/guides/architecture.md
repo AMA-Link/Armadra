@@ -378,8 +378,7 @@ ACP 只是同一个 Agent 节点的另一种驱动方式（`core/acp/`，[ACP �
 驱动切换（`POST /api/acp/nodes/{id}/driver`）结束当前驱动、在同一行上以另一种驱动接回 CLI
 自己的会话；画布注入在 ACP 下只留入口认得的那一半（`agent/canvas-launch.ts::acpInjection`），
 其余由 MCP 承担。`elicitation/create` 也进同一张审批表（状态 `waiting`，内容只交给 Agent），
-模型目录来自开会话答的 `configOptions`；这两样按 `AcpClient.features` 判断有无。`pi-acp` 的
-ACP 会话 id 经它的映射文件对回 Pi 的会话文件（`adapters.ts`）。CLI 低于适配器要求的版本（`ACP_CLI_FLOOR`，pi ≥ 0.81.0）时起进程前就答 `acp_cli_outdated`，不等 60 s 截止。适配器不经画布启动器，节点凭据与
+模型目录来自开会话答的 `configOptions`；这两样按 `AcpClient.features` 判断有无。Pi 的 ACP 入口是随包 ama 的桥（`ama --mode acp --bridge pi`，契约 §100），ACP 会话 id 就是 Pi 的会话 id。CLI 低于要求的版本（`ACP_CLI_FLOOR`，pi ≥ 1.1.0）时起进程前就答 `acp_cli_outdated`，不等 60 s 截止；桥在 `session/new` 里答的 `pi_outdated` / `pi_missing` / `pi_no_model` 原样作为错误码交给页面。适配器不经画布启动器，节点凭据与
 ama 模型密钥由 core 在起适配器前按启动器同一个兑换取值、只设给适配器进程（契约 §26）。
 起会话报阶段事件 `acp.starting`、`session/new` 有 60 s 截止，本机会话在起适配器前过启动闸门
 （`agent/launch-gate.ts`），各段毫秒数记进 info 日志；页面在会话就绪前就可以输入。新建菜单打开时
