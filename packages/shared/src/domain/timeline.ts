@@ -347,6 +347,7 @@ export const TIMELINE_NOTICE_CODES = [
   "driver_switched",
   "resumed",
   "not_resumed",
+  "pi_unverified",
   "hibernated",
   "woke",
   "exited",

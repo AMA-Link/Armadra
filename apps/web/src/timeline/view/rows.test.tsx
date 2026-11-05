@@ -917,6 +917,18 @@ describe("NoticeRow and TurnFooter", () => {
     expect(screen.getByText("模式已切换 · plan")).toBeTruthy();
   });
 
+  it("draws the Pi unverified notice with the version, or without one", () => {
+    const { unmount } = render(
+      <NoticeRow item={notice("pi_unverified", { version: "2.1.0" })} />,
+    );
+    expect(
+      screen.getByText("Pi 未经验证，部分功能可能不可用 · 2.1.0"),
+    ).toBeTruthy();
+    unmount();
+    render(<NoticeRow item={notice("pi_unverified")} />);
+    expect(screen.getByText("Pi 未经验证，部分功能可能不可用")).toBeTruthy();
+  });
+
   it("maps an error code to text and falls back to the raw code", () => {
     const { unmount } = render(
       <NoticeRow item={notice("error", { code: "acp_auth_required" })} />,

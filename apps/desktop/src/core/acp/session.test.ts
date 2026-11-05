@@ -320,3 +320,55 @@ describe("Armadra's own MCP tools (§98)", () => {
     expect(session.pending()).toHaveLength(1);
   });
 });
+
+describe("the Pi unverified notice (contract §100.2)", () => {
+  async function opened(pi: AcpHostSession["pi"], opened: "new" | "load") {
+    const notices: [string, unknown][] = [];
+    const feed = {
+      notice: (code: string, params?: unknown) => notices.push([code, params]),
+      ready: () => undefined,
+      catalog: () => undefined,
+      hadHistory: true,
+    };
+    const dataDir = tempDir("armadra-acp-session-");
+    dirs.push(dataDir);
+    const session = new AcpSession({
+      rowId: "row-1",
+      generation: 1,
+      nodeId: NODE,
+      workspaceId: "ws",
+      agentId: "pi",
+      sink: recorder(),
+      mirrorFor: (id) => new AcpMirror(mirrorPath(dataDir, NODE, id)),
+      feed: feed as never,
+    });
+    const host = await startAcp({
+      program: process.execPath,
+      args: [fakeAcpAgentPath()],
+      cwd: tmpdir(),
+      ...session.callbacks(),
+    });
+    session.opened({ ...host, opened, ...(pi === undefined ? {} : { pi }) });
+    sessions.push(session);
+    return notices;
+  }
+
+  it("says it once for a new session outside the range", async () => {
+    expect(await opened({ version: "2.1.0", verified: false }, "new")).toEqual([
+      ["pi_unverified", { version: "2.1.0" }],
+    ]);
+    expect(await opened({ version: null, verified: false }, "new")).toEqual([
+      ["pi_unverified", undefined],
+    ]);
+  });
+
+  it("stays quiet when verified, missing, or reopened", async () => {
+    expect(await opened({ version: "1.2.0", verified: true }, "new")).toEqual(
+      [],
+    );
+    expect(await opened(undefined, "new")).toEqual([]);
+    expect(await opened({ version: "2.1.0", verified: false }, "load")).toEqual(
+      [],
+    );
+  });
+});

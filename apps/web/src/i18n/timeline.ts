@@ -42,6 +42,7 @@ export const timeline: MessageModule = {
     "timeline.notice.driver_switched": "驱动已切换",
     "timeline.notice.resumed": "已恢复",
     "timeline.notice.not_resumed": "未能恢复",
+    "timeline.notice.pi_unverified": "Pi 未经验证，部分功能可能不可用",
     "timeline.notice.hibernated": "已休眠",
     "timeline.notice.woke": "已唤醒",
     "timeline.notice.exited": "已退出",
@@ -124,6 +125,8 @@ export const timeline: MessageModule = {
     "timeline.notice.driver_switched": "Driver switched",
     "timeline.notice.resumed": "Resumed",
     "timeline.notice.not_resumed": "Not resumed",
+    "timeline.notice.pi_unverified":
+      "Pi is unverified, some features may not work",
     "timeline.notice.hibernated": "Hibernated",
     "timeline.notice.woke": "Woke",
     "timeline.notice.exited": "Exited",

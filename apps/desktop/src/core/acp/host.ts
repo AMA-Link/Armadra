@@ -383,6 +383,29 @@ export interface AcpHostSession {
    * false，会话照样可用、只是没有画布工具）。没要求时缺席。
    */
   readonly mcpInjected?: boolean;
+  /** Pi 经 ama 的桥开会话时桥报的版本；`verified` 为假表示在已验证区间之外（§100.2）。 */
+  readonly pi?: AcpPiMeta;
+}
+
+/** 桥在 `session/new` 答复 `_meta["armadra.pi"]` 里给的版本信息。 */
+export interface AcpPiMeta {
+  readonly version: string | null;
+  readonly verified: boolean;
+}
+
+/** 读 `_meta["armadra.pi"]`：缺席或形状不对答 `undefined`，`verified` 只认布尔。 */
+export function piMetaOf(result: unknown): AcpPiMeta | undefined {
+  if (typeof result !== "object" || result === null) return undefined;
+  const meta = (result as { _meta?: unknown })._meta;
+  if (typeof meta !== "object" || meta === null) return undefined;
+  const pi = (meta as Record<string, unknown>)["armadra.pi"];
+  if (typeof pi !== "object" || pi === null) return undefined;
+  const { version, verified } = pi as Record<string, unknown>;
+  if (typeof verified !== "boolean") return undefined;
+  return {
+    version: typeof version === "string" && version !== "" ? version : null,
+    verified,
+  };
 }
 
 /* -------------------------------- 版本缓存 -------------------------------- */
@@ -541,6 +564,7 @@ export async function startAcp(
     let sessionId: string | undefined;
     let modes: AcpSessionModeState | null = null;
     let config: unknown;
+    let pi: AcpPiMeta | undefined;
     let resumeError: { code: string; message: string } | undefined;
 
     if (options.resume !== undefined) {
@@ -602,6 +626,7 @@ export async function startAcp(
         sessionId = result.sessionId;
         modes = reportedModes(options.agentId, result.modes);
         config = configOptionsOf(result);
+        pi = piMetaOf(result);
       } catch (error) {
         if (error instanceof AcpError) throw error;
         if (await gone(process_, error)) throw exitedError(process_);
@@ -698,6 +723,7 @@ export async function startAcp(
       ...((options.mcpServers?.length ?? 0) === 0
         ? {}
         : { mcpInjected: opener.mcpInjected }),
+      ...(pi === undefined ? {} : { pi }),
     };
   } catch (error) {
     clock.done();

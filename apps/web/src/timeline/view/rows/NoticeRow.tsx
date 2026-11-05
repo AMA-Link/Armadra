@@ -16,7 +16,14 @@ export interface NoticeRowProps {
   item: TimelineNoticeItem;
 }
 
-const DETAIL_KEYS = ["name", "message", "attempt", "reason", "code"] as const;
+const DETAIL_KEYS = [
+  "name",
+  "message",
+  "attempt",
+  "reason",
+  "version",
+  "code",
+] as const;
 
 /** `code` 有文案就用文案，没有就原样显示。 */
 function detailOf(
