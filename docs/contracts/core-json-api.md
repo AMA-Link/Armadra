@@ -5177,6 +5177,28 @@ ACP 会话经 `session/new.mcpServers` 拿到 `armadra-hook mcp`（§14、`core/
 - **计划与征询**：Pi 里的待办变成 `plan`，其它扩展的对话框与问卷变成 `elicitation/create`；core 的 ACP 客户端声明了 `elicitation` 能力时才会收到征询，已有的计划与征询卡片照常显示。
 - **SSH 节点**：执行主机上要有 `ama`（`@armadra/agent`）和 Pi；缺了与以前缺 `pi-acp` 一样答 `acp_not_installed`。
 
+## 102. 私有通道的鉴权与 hook 密钥（`#751`）
+
+> 状态：实施契约（分包落地，本节随各包追加小节）。HTTP 路由与 JSON 形状不变；只加 `/health` 的一个字段与一个存储位置的变化。
+
+### 102.1 hook 实例密钥进系统凭据库（P1）
+
+- **位置**：hook 实例密钥（32 字节，派生 §5.2 的每节点令牌）不再是 `<data>/hook-secret` 明文文件，而是 core 密钥后端里名为 `armadra-hook-secret` 的一条（base64url）。后端沿用 `resolveSecretBackend`，不新增：
+
+  | 平台               | 后端                                                                                                  |
+  | ------------------ | ----------------------------------------------------------------------------------------------------- |
+  | macOS 桌面         | `security(1)` 钥匙串（`keychain`）                                                                    |
+  | Windows 桌面       | 壳的 `safeStorage`（`dpapi`）                                                                         |
+  | Linux 桌面         | `safeStorage`，只认 libsecret / kwallet（`libsecret`）；`basic_text` 拒用，降级为 0600 文件（`file`） |
+  | 服务器壳 / 无壳 CI | `file-encrypted`；`ARMADRA_SECRET_BACKEND` 可强制                                                     |
+
+- **启动**：`HookService.open` 异步读取密钥，hook 域在监听与发布端点文件之前 `await` 它；`install(context)` 因此返回 Promise，`DOMAINS` 的元素允许返回 Promise，装配顺序不变。`issueNodeToken` 只经运行中的 hook 服务铸令牌，不存在不经服务直接读密钥的路径；服务没起时抛错（终端域已 try/catch，降级为 `legacy`）。
+- **节点令牌与应用 bearer 仍是文件**（`node-tokens/<nodeId>`、端点文件里的 `ARMADRA_HOOK_TOKEN`）：每次 hook 调用都要读，预算 1.5 s，跨进程访问凭据库太慢。令牌由密钥派生，换密钥即全部作废。
+- **一次性迁移**：`migrateLegacySecrets` 登记 `hook.file`。旧文件必须正好 32 字节，长度不对按「没有」处理（铸新值）。顺序是写新位置 → 读回确认 → 删旧文件 → 记入 `secrets/migrated.json`；值不变，所以 kid 不变，已发出的令牌仍是 `verified`。中途凭据库不可用，本轮只读旧文件（`/health` 报 `legacy-file`），下次启动再迁。迁移代码在下一个 minor 版本删除，之后没有任何代码再读 `hook-secret`。
+- **凭据库不可用**（`SecretUnavailable`：钥匙串锁住、SSH 会话、壳断开）：**不铸新值、不覆盖**，本轮用只在内存里的密钥，`/health` 报 `ephemeral`。比本轮 core 活得久的终端，它们的报告降级为 `legacy`（状态照收，控制路由要刷新令牌）。下次启动重试。
+- **`GET /health` 的 `hook.secret`**（追加在 `ok` 之后，旧页面忽略）：`keychain` / `dpapi` / `libsecret` / `file-encrypted` / `file`（后端种类）、`legacy-file`、`ephemeral`。从不带值。
+- **威胁模型**：防的是数据目录被拷贝、备份、同步、打诊断包时泄露实例密钥，以及别的账户读取；**不防同用户的恶意进程**（`security` 条目信任 `/usr/bin/security`，DPAPI CurrentUser 按用户授权），门槛与 0600 文件相同。
+
 ## 101. 协调者的回复闸门、重启恢复与记忆约定（`#704`，R3）
 
 > 状态：实施契约（AMA-Link/Armadra#704）。迁移 0061 新增 `router_replies`；`canvas` 多一个动词 `notify`；多一种工作空间事件 `workflow.reply`；协议版本不变，只加字段与种类。

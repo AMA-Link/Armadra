@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { type HookFixture, hookFixture, insertSession } from "./fixture";
 import { installRoutes } from "./routes";
+import { setHookService } from "./service";
 import { issueNodeToken } from "./tokens";
 
 /** The hook domain's routes on the main surface. */
@@ -76,14 +77,22 @@ describe("the node-token refresh route", () => {
 describe("minting a node token outside the service", () => {
   /**
    * The terminal domain calls this at creation and is not handed a service.
-   * It is safe because the token is derived rather than stored, which this
-   * asserts directly: the standalone path and the service agree byte for byte.
+   * It goes through the running service: the secret is loaded from the secret
+   * store once, and no second path reads it.
    */
-  it("agrees with the running service", () => {
+  it("agrees with the running service and needs one", () => {
     const one = fixture();
-    const standalone = issueNodeToken(one.core.directory, one.nodeId);
-    expect(standalone).toBe(one.service.issueNodeToken(one.nodeId));
-    expect(one.service.verdict(one.nodeId, standalone)).toBe("verified");
-    expect(() => issueNodeToken(one.core.directory, "../escape")).toThrow();
+    expect(() => issueNodeToken(one.core.directory, one.nodeId)).toThrow();
+    setHookService(one.service);
+    try {
+      const standalone = issueNodeToken(one.core.directory, one.nodeId);
+      expect(standalone).toBe(one.service.issueNodeToken(one.nodeId));
+      expect(one.service.verdict(one.nodeId, standalone)).toBe("verified");
+      expect(() => issueNodeToken(one.core.directory, "../escape")).toThrow();
+      // Another data directory is not this service's to mint for.
+      expect(() => issueNodeToken("/elsewhere", one.nodeId)).toThrow();
+    } finally {
+      setHookService(undefined);
+    }
   });
 });

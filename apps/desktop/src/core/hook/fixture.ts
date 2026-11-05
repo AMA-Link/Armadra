@@ -9,6 +9,7 @@ import {
 import { install as installWorkspaces } from "../workspaces/routes";
 import type { IngestContext } from "./ingest";
 import { HookServer } from "./server";
+import { HookAuth } from "./auth";
 import { HookService } from "./service";
 import { type AgentStatusRow, getAgentStatus } from "./store";
 
@@ -73,7 +74,7 @@ export function hookFixture(
       now,
     );
 
-  const service = new HookService(core.directory, 43199);
+  const service = HookService.from(core.directory, 43199, HookAuth.ephemeral());
   service.publishEndpoint(43199);
   const published: WorkspaceEvent[] = [];
   core.bus.on("workspace.event", (payload) => published.push(payload.event));

@@ -61,7 +61,12 @@ export {
   type LegacySecret,
   type MigrationResult,
 } from "./migrate";
-export { SecretStore, legacyFile, legacyKeychain } from "./store";
+export {
+  SecretStore,
+  legacyBinaryFile,
+  legacyFile,
+  legacyKeychain,
+} from "./store";
 
 /** 数据目录里放密钥文件的地方。 */
 export function secretsDirectory(dataDir: string): string {

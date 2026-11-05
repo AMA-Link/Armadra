@@ -2,9 +2,11 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import type { HookHealth } from "../http/health";
 import { hookEndpointFile, nodeTokenDir } from "../paths";
+import type { ResolvedSecrets } from "../secrets";
 import { HookAuth, type Verdict } from "./auth";
 import * as endpointFile from "./endpoint";
 import { type Memory, newMemory } from "./reduce";
+import { fileHookSecretStore, hookSecretStore } from "./secret";
 
 /**
  * The hello a Claude Code mod sends at `session.start` (`POST /node/mod`,
@@ -37,42 +39,85 @@ export const MAX_MOD_HELLOS = 512;
  *     because it is not reachable from another machine at all;
  *   * `<dataDir>/hook-endpoint.env`, which tells a client where those two are.
  *
- * `HookService` owns the credentials and the reducer's per-node memory.
+ * `HookService` (built with {@link HookService.open}) owns the credentials and
+ * the reducer's per-node memory.
  */
 export class HookService {
-  private readonly auth: HookAuth;
   private readonly memory = new Map<string, Memory>();
   /** In memory only: a core restart starts with none (contract §57). */
   private readonly modHellos = new Map<string, ModHello>();
   private currentPort: number | undefined;
 
   /**
-   * A data directory we cannot write is not fatal: the service falls back to
-   * in-memory credentials so the rest of the core still starts, and the
-   * endpoint file simply never appears — which the client reads as "no core".
+   * Use {@link HookService.open}: the instance secret comes out of the secret
+   * store, which is asynchronous, so a service only exists once it is loaded.
    */
-  constructor(
+  private constructor(
     readonly dataDir: string,
-    port?: number | undefined,
-    private readonly onWarning: (
-      message: string,
-      detail: unknown,
-    ) => void = () => {},
+    port: number | undefined,
+    private readonly auth: HookAuth,
+    private readonly onWarning: (message: string, detail: unknown) => void,
   ) {
     this.currentPort = port;
+  }
+
+  /**
+   * A service over credentials the caller already holds: the fixtures, which
+   * must stay synchronous and never touch a secret store.
+   */
+  static from(
+    dataDir: string,
+    port: number | undefined,
+    auth: HookAuth,
+    onWarning: (message: string, detail: unknown) => void = () => {},
+  ): HookService {
+    return new HookService(dataDir, port, auth, onWarning);
+  }
+
+  /**
+   * Loads the credentials, then returns the service. Awaited before the hook
+   * listener binds and before the endpoint file is published, so nothing is
+   * advertised that cannot verify a token yet.
+   *
+   * A store that cannot be reached is not fatal: the service runs on a secret
+   * that lives in memory (`/health` reports `hook.secret: "ephemeral"`) so the
+   * rest of the core still starts. Nothing is minted into, or overwritten in,
+   * a store that may merely be locked.
+   */
+  static async open(
+    dataDir: string,
+    port?: number | undefined,
+    onWarning: (message: string, detail: unknown) => void = () => {},
+    secrets?: ResolvedSecrets,
+  ): Promise<HookService> {
     const existing = endpointFile.read(hookEndpointFile(dataDir));
     const bearer = existing.get("ARMADRA_HOOK_TOKEN");
+    const store =
+      secrets === undefined
+        ? fileHookSecretStore(dataDir)
+        : hookSecretStore(secrets);
     let auth: HookAuth;
     try {
-      auth = HookAuth.load(dataDir, bearer);
+      auth = await HookAuth.open(dataDir, store, bearer);
     } catch (error) {
-      this.onWarning(
-        "could not persist the hook secret; using an ephemeral one",
+      onWarning(
+        "could not open the hook secret; using an ephemeral one",
         error,
       );
       auth = HookAuth.ephemeral();
     }
-    this.auth = auth;
+    if (auth.state === "ephemeral") {
+      onWarning(
+        "the secret store is unavailable; hook tokens are valid for this run only",
+        undefined,
+      );
+    } else if (auth.state === "legacy-file") {
+      onWarning(
+        "the secret store is unavailable; the old hook-secret file is used until the next start",
+        undefined,
+      );
+    }
+    return new HookService(dataDir, port, auth, onWarning);
   }
 
   endpointFile(): string {
@@ -222,6 +267,7 @@ export class HookService {
       ...(sock === undefined ? {} : { sock }),
       ...(port === undefined ? {} : { port }),
       ok,
+      secret: this.auth.state,
     };
   }
 }

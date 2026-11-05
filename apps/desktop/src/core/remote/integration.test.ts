@@ -33,6 +33,7 @@ import {
 } from "vitest";
 import { readMigration } from "../hook/install/migrate";
 import { registerSkillContent } from "../hook/install/skills";
+import { HookService, setHookService } from "../hook/service";
 import { issueNodeToken } from "../hook/tokens";
 import type { SshHost } from "../settings/ssh-hosts";
 import { tempDir } from "../testing/temp-dir";
@@ -134,6 +135,8 @@ describe.skipIf(process.platform === "win32")(
       received.length = 0;
       stateDir = tempDir("armadra-far-state-");
       dataDir = tempDir("armadra-control-");
+      // Node tokens come from the running hook service (the secret store).
+      setHookService(await HookService.open(dataDir));
       bin = tempDir("armadra-far-bin-");
       unregister = registerSkillContent({
         skill: () => "# armadra skill\n<!-- armadra:skill-revision 13 -->\n",
@@ -192,6 +195,7 @@ describe.skipIf(process.platform === "win32")(
     });
 
     afterEach(async () => {
+      setHookService(undefined);
       await integration.settled();
       unlisten();
       integration.stop();
@@ -440,8 +444,10 @@ describe("Codex's configuration on an execution host", () => {
         ["old", false],
         ["new", true],
       ]);
+      const codexData = tempDir("armadra-control-");
+      setHookService(await HookService.open(codexData));
       const integration = new RemoteIntegration({
-        dataDir: tempDir("armadra-control-"),
+        dataDir: codexData,
         version: "0.1.0",
         call: async (_hostId, operation, args) => {
           calls.push([operation, args]);
@@ -494,6 +500,7 @@ describe("Codex's configuration on an execution host", () => {
       integration.stop();
     } finally {
       unregister();
+      setHookService(undefined);
     }
   });
 });

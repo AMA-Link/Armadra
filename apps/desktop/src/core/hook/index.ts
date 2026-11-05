@@ -1,5 +1,6 @@
 import type { CoreContext } from "../main";
 import { pendingDir } from "../paths";
+import { secretsFor } from "../secrets";
 import { timelineDomainOf } from "../timeline";
 import { startApprovalSweep } from "./approvals";
 import type { IngestContext } from "./ingest";
@@ -47,11 +48,17 @@ export interface HookDomain {
   stop(): Promise<void>;
 }
 
-export function install(context: CoreContext): HookDomain {
-  const service = new HookService(
+export async function install(context: CoreContext): Promise<HookDomain> {
+  // The secret is loaded before anything listens or publishes: an endpoint
+  // file must never name a surface that cannot verify a token yet.
+  const service = await HookService.open(
     context.dataDir,
     undefined,
-    (message, detail) => context.log.warn(message, { error: describe(detail) }),
+    (message, detail) =>
+      context.log.warn(message, {
+        ...(detail === undefined ? {} : { error: describe(detail) }),
+      }),
+    secretsFor(context),
   );
   setHookService(service);
 
