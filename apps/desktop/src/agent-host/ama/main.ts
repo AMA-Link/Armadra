@@ -24,6 +24,7 @@ import type {
   HostApi,
 } from "@armadra/agent/host";
 import { installBroker } from "./approvals.js";
+import { injectAfterCompaction } from "./compaction.js";
 import { subscribeEvents } from "./events.js";
 import { addInstructions } from "./instructions.js";
 import { provideRunners } from "./runners.js";
@@ -42,6 +43,7 @@ export function create(api: HostApi): HostAdapter | undefined {
   addInstructions(api);
   const unsubscribe = subscribeEvents(api);
   unsubscribe.push(provideRunners(api));
+  unsubscribe.push(injectAfterCompaction(api));
   installBroker(api);
   return {
     id: ADAPTER_ID,
