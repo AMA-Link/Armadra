@@ -64,6 +64,8 @@ describe("usage dashboard maths", () => {
     expect(formatTokens(1_234)).toBe("1.2K");
     expect(formatTokens(1_234_567)).toBe("1.2M");
     expect(formatTokens(123_456_789)).toBe("123M");
+    expect(formatTokens(1_000_000)).toBe("1M");
+    expect(formatTokens(200_000)).toBe("200K");
     expect(formatUsd(0)).toBe("$0.00");
     expect(formatUsd(0.0004)).toBe("<$0.01");
     expect(formatUsd(12.345)).toBe("$12.35");

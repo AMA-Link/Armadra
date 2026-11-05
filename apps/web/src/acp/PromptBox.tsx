@@ -9,6 +9,7 @@ import type {
 
 import { usePreferencesStore, useT } from "@/app/preferences-store";
 import { cn } from "@/lib/cn";
+import { formatTokens } from "@/lib/cost";
 import { useCompactLayout } from "@/platform/layout";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
@@ -68,7 +69,7 @@ export interface AcpUsageView {
 export const COMPACT_COMMAND = "compact";
 
 /**
- * 上下文窗口（设计系统 §5.1）：触发器是 20 格刻度条 + 等宽「18.3万 / 20万」，
+ * 上下文窗口（设计系统 §5.1）：触发器是 20 格刻度条 + 等宽「18.3K / 200K」（token 一律 K / M，不按语言换「万」），
  * 已用格 `--brand`、≥80% `--warn`、≥95% `--danger`；点开弹层是大数字（已用 /
  * 总量 / 百分比徽标）、剩余 tokens、费用（有才出）与「压缩」（只在命令里有 `compact`
  * 时出现，发送该命令）。数据里没有分类，所以不画图例。
@@ -91,16 +92,12 @@ function Usage({
   const t = useT();
   const locale = usePreferencesStore((state) => state.locale);
   const [open, setOpen] = React.useState(false);
-  const compact = new Intl.NumberFormat(locale, {
-    notation: "compact",
-    maximumFractionDigits: 1,
-  });
   const ratio = usage.size > 0 ? usage.used / usage.size : 0;
   const percent = Math.min(100, Math.max(0, Math.round(ratio * 100)));
   const tone = progressToneFor(percent);
   const values = {
-    used: compact.format(usage.used),
-    size: compact.format(usage.size),
+    used: formatTokens(usage.used),
+    size: formatTokens(usage.size),
   };
   let cost: string | null = null;
   if (usage.cost) {
@@ -203,7 +200,7 @@ function Usage({
             className={cn("font-mono", warn ? "text-warn-text" : toneText)}
           >
             {t("acp.context.remaining", {
-              value: compact.format(Math.max(0, usage.size - usage.used)),
+              value: formatTokens(Math.max(0, usage.size - usage.used)),
             })}
           </span>
           {cost !== null && (

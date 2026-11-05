@@ -290,10 +290,10 @@ describe("PromptBox", () => {
   it("shows context usage and turns to the warning colour near the limit", () => {
     renderBox({ usage: { used: 12_300, size: 200_000 } });
     const usage = document.querySelector("[data-slot=acp-usage]")!;
-    // 数字按界面语言紧凑写（中文是「万」）。宽窄两种写法都在，操作行的容器
+    // token 一律写 K / M，不随界面语言换成「万」（#806）。宽窄两种写法都在，操作行的容器
     // 宽度决定显示哪一种（#768）。
     expect(usage.querySelector("[data-slot=acp-usage-wide]")?.textContent).toBe(
-      "1.2万 / 20万",
+      "12.3K / 200K",
     );
     expect(
       usage.querySelector("[data-slot=acp-usage-short]")?.textContent,
@@ -567,11 +567,11 @@ describe("PromptBox", () => {
       expect(node).toBeTruthy();
       return node as HTMLElement;
     });
-    expect(popover.textContent).toContain("18.3万");
+    expect(popover.textContent).toContain("183K");
     expect(popover.textContent).toContain("92%");
     expect(popover.textContent).toContain("$1.50");
     const remaining = popover.querySelector("[data-slot=acp-usage-remaining]")!;
-    expect(remaining.textContent).toBe("剩余 1.7万");
+    expect(remaining.textContent).toBe("剩余 16.6K");
     // ≥80% 剩余用警示文字色
     expect(remaining.className).toContain("text-warn-text");
   });
