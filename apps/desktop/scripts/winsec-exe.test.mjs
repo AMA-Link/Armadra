@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  WINSEC_EXE_REFERENCES,
   WINSEC_EXE_RESOURCE,
   WINSEC_EXE_SOURCE,
   buildWinsecExe,
@@ -14,6 +15,10 @@ import {
 test("the helper lives beside the other Windows programs", () => {
   assert.ok(WINSEC_EXE_SOURCE.endsWith("armadra-winsec/winsec.cs"));
   assert.equal(WINSEC_EXE_RESOURCE, "cli/armadra-winsec.exe");
+});
+
+test("the helper references the assembly that has ProtectedData", () => {
+  assert.deepEqual(WINSEC_EXE_REFERENCES, ["System.Security.dll"]);
 });
 
 test("the build compiles the helper only on a Windows host", () => {

@@ -50,6 +50,41 @@ test("the launcher is an anycpu console program", () => {
   assert.ok(args.includes("/platform:anycpu"));
   assert.ok(args.includes("/out:out.exe"));
   assert.equal(args.at(-1), "in.cs");
+  assert.ok(!args.some((arg) => arg.startsWith("/reference:")));
+});
+
+test("extra references go in front of the output, the default is unchanged", () => {
+  assert.deepEqual(cscArguments("in.cs", "out.exe", ["System.Security.dll"]), [
+    ...cscArguments("in.cs", "out.exe").slice(0, -2),
+    "/reference:System.Security.dll",
+    "/out:out.exe",
+    "in.cs",
+  ]);
+});
+
+test("compileCSharp passes the references to csc", () => {
+  const root = mkdtempSync(join(tmpdir(), "armadra-csc-refs-"));
+  try {
+    const csc = join(
+      root,
+      "Microsoft.NET",
+      "Framework",
+      "v4.0.30319",
+      "csc.exe",
+    );
+    mkdirSync(dirname(csc), { recursive: true });
+    writeFileSync(csc, "");
+    const calls = [];
+    const run = (file, args) => (calls.push([file, args]), { status: 0 });
+    compileCSharp("in.cs", join(root, "out", "x.exe"), {
+      env: { WINDIR: root },
+      run,
+      references: ["System.Security.dll"],
+    });
+    assert.ok(calls[0][1].includes("/reference:System.Security.dll"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("after-pack builds the launcher only for a Windows target", () => {

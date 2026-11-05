@@ -13,6 +13,12 @@
 // 用法：
 //   armadra-winsec harden-pipe <\\.\pipe\名字> <用户 SID>   成功时 stdout 打印读回的 SDDL
 //   armadra-winsec read-pipe <\\.\pipe\名字>                 只读回，不修改
+//   armadra-winsec dpapi-protect                             stdin 全部字节 -> DPAPI 密文 -> stdout
+//   armadra-winsec dpapi-unprotect                           stdin 全部字节（DPAPI 密文） -> 明文 -> stdout
+//
+// dpapi-*：core 的密钥后端（secrets/dpapi.ts）用。值只走 stdin / stdout，从不进命令行
+// （命令行对同机其他进程可见）。ProtectedData + CurrentUser 作用域 + 固定附加熵
+// `armadra-dpapi/1`；失败时 stderr 只写异常类型与系统给的信息，不含输入。
 //
 // 退出码 0 成功；非 0 失败，原因写 stderr（不含任何输入的值）。
 //
@@ -25,6 +31,8 @@ using System;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 
 internal static class ArmadraWinsec
 {
@@ -88,14 +96,45 @@ internal static class ArmadraWinsec
             {
                 return ReadPipe(args[1]);
             }
-            Console.Error.WriteLine("usage: armadra-winsec harden-pipe <pipe> <sid> | read-pipe <pipe>");
+            if (args.Length == 1 && args[0] == "dpapi-protect")
+            {
+                return Dpapi(true);
+            }
+            if (args.Length == 1 && args[0] == "dpapi-unprotect")
+            {
+                return Dpapi(false);
+            }
+            Console.Error.WriteLine("usage: armadra-winsec harden-pipe <pipe> <sid> | read-pipe <pipe> | dpapi-protect | dpapi-unprotect");
             return 64;
         }
         catch (Exception error)
         {
-            Console.Error.WriteLine("armadra-winsec: " + error.Message);
+            // 异常信息来自系统或本程序的固定文案，不含 stdin 的内容。
+            Console.Error.WriteLine("armadra-winsec: " + error.GetType().Name + ": " + error.Message);
             return 1;
         }
+    }
+
+    private static readonly byte[] DpapiEntropy = Encoding.UTF8.GetBytes("armadra-dpapi/1");
+
+    private static int Dpapi(bool protect)
+    {
+        byte[] input;
+        using (Stream stdin = Console.OpenStandardInput())
+        using (MemoryStream buffer = new MemoryStream())
+        {
+            stdin.CopyTo(buffer);
+            input = buffer.ToArray();
+        }
+        byte[] output = protect
+            ? ProtectedData.Protect(input, DpapiEntropy, DataProtectionScope.CurrentUser)
+            : ProtectedData.Unprotect(input, DpapiEntropy, DataProtectionScope.CurrentUser);
+        using (Stream stdout = Console.OpenStandardOutput())
+        {
+            stdout.Write(output, 0, output.Length);
+            stdout.Flush();
+        }
+        return 0;
     }
 
     private static bool IsPipePath(string path)
