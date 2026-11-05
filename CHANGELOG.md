@@ -2,6 +2,12 @@
 
 每个版本一节，按发布倒序。括号里是合入的 PR 编号（github.com/AMA-Link/Armadra，2026-10-11 前为 Owlbay/Armadra，旧编号照常跳转）。兼容范围以 `tools/release/compatibility.json` 为准，发布说明里的 `armadra-compatibility` 围栏由它渲染。桌面、服务器与手机 / 平板 App 共用一条版本线和一个标签 `vX.Y.Z`（规则见 `docs/guides/ci-release.md`「版本规则」）；有手机端改动的版本，在「手机与平板」小节里写，其余写在「桌面 / 服务器」下。2026-10-10 之前手机端曾单独编号（1.0.0、1.1.0），内容并入对应的 0.2.5、0.2.6。
 
+## 未发布 / Unreleased
+
+Windows 会话宿主的 `welcome` 增加服务端证明（用 `session-host.key` 做 HMAC，绑定端点、协议 major 与客户端 `hello` 的 nonce），core 核对通过之前不发 `create`，抢占管道名的进程拿不到环境变量与凭据（契约 §102.6，Refs #751）。会话宿主协议 `PROTOCOL_MAJOR` 由 1 升到 2：升级当次，Windows 上仍在运行的终端会话会丢失一次，之后照常跨重启保留。
+
+The Windows session host's `welcome` now carries a server proof (an HMAC with `session-host.key`, bound to the endpoint, the protocol major and the client's `hello` nonce), and the core sends no `create` until it verifies, so a process squatting the pipe name no longer receives environment variables or credentials (contract §102.6, Refs #751). The session-host protocol `PROTOCOL_MAJOR` goes from 1 to 2: live Windows terminal sessions are lost once at this upgrade and are preserved across restarts as before afterwards.
+
 ## 0.14.0（2026-11-05）
 
 版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.14.0。随包 `@armadra/agent` 0.14.0（新增 Pi 的 ACP 桥 `ama --mode acp --bridge pi`）与平台协议包 0.14.0（协议仍是 1.4，没有形状变化）；配套镜像 `armadra-cloud` / `armadra-relay` 0.14.0。本版主题：连接手机只剩一张二维码（局域网与互联网装在同一张码里），ACP 提示框接管与交还的顺序修复，macOS 首次打开说明。
