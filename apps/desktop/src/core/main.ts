@@ -18,6 +18,7 @@ import { installIdentity } from "./identity";
 import { setLoopbackAnonymousOwner } from "./identity/http";
 import { install as installHooks } from "./hook";
 import { hookService } from "./hook/service";
+import { hardenDataRoot } from "./windows/acl";
 import {
   RUNTIME_SERVICE,
   CONTROLLER_SERVICE,
@@ -307,6 +308,14 @@ export async function run(options: RunOptions = {}): Promise<RunningCore> {
 
   // Step 1 — before anything can fail.
   write(`${announcement()}\n`);
+
+  // Windows: the data directory root is narrowed to this user and SYSTEM
+  // before anything private is written into it (contract §102.2). A failure is
+  // a warning; the private pipes then rest on their handshake alone.
+  hardenDataRoot(dataDir, {
+    warn: (message, detail) =>
+      log.warn(message, detail as Record<string, unknown>),
+  });
 
   // Step 2.
   //

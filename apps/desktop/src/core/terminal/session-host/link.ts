@@ -1,7 +1,7 @@
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { closeSync, existsSync, openSync, renameSync, statSync } from "node:fs";
 import { connect, type Socket } from "node:net";
-import { dirname, join, win32 } from "node:path";
+import { dirname, join } from "node:path";
 import {
   type ClientMessage,
   FrameDecoder,
@@ -17,6 +17,7 @@ import {
   jsonFrame,
   pipeEndpoint,
 } from "./protocol";
+import { currentSid } from "../../windows/acl";
 
 /**
  * One connected pipe, with a reader draining it.
@@ -344,39 +345,6 @@ export class Link {
 }
 
 /* -------------------------------- discovery -------------------------------- */
-
-/**
- * This user's SID.
- *
- * `whoami /user` is the only way to it without a native module, and its output
- * is stable across every supported Windows version. A failure here is fatal
- * rather than defaulted: the SID is half the pipe name, and guessing it would
- * aim this core at somebody else's host.
- */
-export function currentSid(): string {
-  const output = execFileSync(systemWhoami(), ["/user", "/fo", "csv", "/nh"], {
-    encoding: "utf8",
-    windowsHide: true,
-  });
-  // `"DOMAIN\user","S-1-5-21-…"`
-  const sid = /"(S-1-[0-9-]+)"/.exec(output)?.[1];
-  if (sid === undefined) {
-    throw new Error(`could not read this user's SID from: ${output.trim()}`);
-  }
-  return sid;
-}
-
-/**
- * Windows' own `whoami.exe`, by absolute path. A bare `whoami` resolves on
- * `PATH`, and Git for Windows' `usr\bin` (on `PATH` for anyone who chose "Git
- * and optional Unix tools", and for every GitHub Actions bash step) ships the
- * GNU one, which answers `/user` with "extra operand" — and the core then
- * cannot reach any session host at all.
- */
-export function systemWhoami(env: NodeJS.ProcessEnv = process.env): string {
-  const root = env.SystemRoot ?? env.SYSTEMROOT ?? env.windir ?? "C:\\Windows";
-  return win32.join(root, "System32", "whoami.exe");
-}
 
 /** The pipe this user's host of this data directory listens on. */
 export function endpointFor(dataDir: string): string {

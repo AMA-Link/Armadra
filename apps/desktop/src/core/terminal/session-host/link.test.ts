@@ -10,13 +10,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
-import {
-  HOST_LOG,
-  currentSid,
-  hostLaunch,
-  openHostLog,
-  systemWhoami,
-} from "./link";
+import { currentSid, systemWhoami } from "../../windows/acl";
+import { HOST_LOG, hostLaunch, openHostLog } from "./link";
 
 /**
  * The SID behind the session host's pipe name comes from Windows' own
