@@ -5205,6 +5205,20 @@ ACP 会话经 `session/new.mcpServers` 拿到 `armadra-hook mcp`（§14、`core/
 - **兜底**：没有 `.exe` 的开发树改用 Windows PowerShell 5.1 调同样的 .NET 类（管道名与 SDDL 经环境变量传入）。受限语言模式、AMSI 或策略拦截时按收紧失败处理；`.exe` 存在却失败不会再转 PowerShell，免得把一次策略拦截变成静默绕过。`ARMADRA_WINSEC_EXE` 可指定工具，指到的不是文件就等于没有。
 - **数据目录根**（win32）：启动时用 `icacls` 去掉继承，只授权 SYSTEM 与本用户（按 SID），每个 SID 一次（根目录下 `.acl-owner-only` 记 SID）；失败只告警，管道转而只靠握手。`protectKeyFile`（会话宿主密钥）与 `currentSid` 从 session-host 迁入同一个模块。
 
+### 102.3 私有管道原语与运行时管道（P3）
+
+- **传输**：Windows 上的私有通道一律是命名管道；回环 TCP 只留给浏览器面（那里有完整的身份认证）。运行时主通道 `pipe:armadra-runtime-<hash>` 的名字保持可推导（壳在 spawn 之前就得知道它）。
+- **会话层握手 `armadra-pipe/1`**（`core/private-pipe/`）：每条连接先握手，再交给 HTTP 服务器。
+  1. 客户端发 `"APH1" ‖ nonce_c`（20 字节）；
+  2. 服务端回 `nonce_s ‖ HMAC(K, "server" ‖ 0 ‖ label ‖ 0 ‖ 管道名 ‖ 0 ‖ nonce_c ‖ nonce_s)`（48 字节）；
+  3. 客户端核对通过之后才发 `HMAC(K, "client" ‖ …)`（32 字节）和请求。
+
+  两边都有新鲜 nonce，没有重放窗口；抢占管道名的进程只能拿到客户端的一个随机数，客户端核对不过就断开，请求一个字节都不会发出。管道名统一小写、去掉 `\\.\pipe\` 前缀后进入 HMAC；label 把证明绑在一条通道上（`runtime`、`control`、`hook`、`askpass`）。握手 5 秒超时，未完成握手的连接最多同时 32 条，超出的直接断开。
+
+- **密钥**：`K = HMAC(根密钥, "armadra-pipe-key/1" ‖ 0 ‖ label)`。hook 通道的根密钥由端点文件里的 bearer 提供（P5）；其余通道的根密钥是 `<data>/pipe.key`（32 字节十六进制，0600，Windows 上 `icacls` 收紧到本用户）。**收紧失败就拒绝开启该通道**（抛错，不降级）。只有 core 创建这个文件，客户端只读。
+- **运行时管道**：`bind(server, {kind:"pipe"}, secured)` 要求带 `secured`，没有密钥的管道不予服务（`listen.ts` 里的 `TODO(R6)` 删除）。握手守卫在 `listen` 之前装好，之后用 `armadra-winsec` 收紧 DACL 并核对（§102.2）；收紧失败只告警，管道转而只靠握手，`GET /health` 的 `pipeAcl` 报 `default`，全部收紧成功报 `hardened`，没有管道的运行（所有非 Windows 运行）不带这个键。
+- **壳侧**：桌面壳对运行时管道的健康检查（`main/runtime-process.ts` 的 `socketHealth`）读 `<data>/pipe.key`、完成握手之后才发 `GET /health`；密钥文件还不存在表示 core 没起来，按「没有答复」处理。Unix socket 不变（文件权限就是鉴权）。
+
 ## 101. 协调者的回复闸门、重启恢复与记忆约定（`#704`，R3）
 
 > 状态：实施契约（AMA-Link/Armadra#704）。迁移 0061 新增 `router_replies`；`canvas` 多一个动词 `notify`；多一种工作空间事件 `workflow.reply`；协议版本不变，只加字段与种类。
