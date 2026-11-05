@@ -625,8 +625,10 @@ core 关停与启动中途失败走同一条收尾（`main.ts` 的 `teardown`）
   `ELECTRON_RUN_AS_NODE` 子进程，封与解经 fork 的 IPC 通道问主进程的 `safeStorage`
   （`main/secrets.ts`，`dpapi` / `libsecret`；Linux 的 `basic_text` / `unknown` 当作
   没有钥匙串）；服务器壳用 `<数据目录>/secrets/master.key` 做 AES-256-GCM
-  （`file-encrypted`，探针可用 `ARMADRA_SECRET_BACKEND=file-encrypted` 指定）；其余与
-  `ARMADRA_SECRET_BACKEND=file` 是 0600 明文（`file`）。
+  （`file-encrypted`，探针可用 `ARMADRA_SECRET_BACKEND=file-encrypted` 指定；Windows
+  上若还没有 `master.key` 且找得到 `armadra-winsec.exe`，改用它的 DPAPI 封存，`dpapi`，
+  契约 §102.7，无壳 core 同理）；其余与 `ARMADRA_SECRET_BACKEND=file` 是 0600
+  明文（`file`）。
   壳说了要用 `safeStorage` 而通道不在时拒绝，不降级成明文。旧名字的条目第一次读写时
   一次性迁移，记录在 `secrets/migrated.json`。设置页只显示种类。
 - 节点凭据（`core/agent/credentials/`，契约 §20）：条目在 `agent_credentials` 表，值在

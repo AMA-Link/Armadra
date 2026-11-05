@@ -15,7 +15,8 @@
  * and `pnpm --filter @armadra/desktop build` runs this file with `--if-windows`
  * so an unpackaged development tree on Windows has `out/cli/armadra-winsec.exe`
  * too. Without it the core falls back to Windows PowerShell 5.1 calling the
- * same .NET classes.
+ * same .NET classes. The `dpapi-protect` / `dpapi-unprotect` subcommands (core
+ * secret backend, contract §102.7) have no PowerShell fallback by decision.
  */
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,6 +30,9 @@ export const WINSEC_EXE_SOURCE = "src/cli/armadra-winsec/winsec.cs";
 /** Where it goes in a packaged app, beside `cli/armadra-hook.exe`. */
 export const WINSEC_EXE_RESOURCE = "cli/armadra-winsec.exe";
 
+/** Assemblies beyond mscorlib that the helper needs. */
+export const WINSEC_EXE_REFERENCES = ["System.Security.dll"];
+
 /** Compiles the helper into `output` and returns its path. */
 export function compileWinsecExe(
   output,
@@ -37,6 +41,8 @@ export function compileWinsecExe(
   return compileCSharp(source, output, {
     env,
     name: "winsec-exe",
+    // ProtectedData (the dpapi-* subcommands) lives in System.Security.dll.
+    references: WINSEC_EXE_REFERENCES,
     ...(run === undefined ? {} : { run }),
   });
 }

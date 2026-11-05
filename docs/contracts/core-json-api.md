@@ -5242,6 +5242,18 @@ ACP 会话经 `session/new.mcpServers` 拿到 `armadra-hook mcp`（§14、`core/
 - **`PROTOCOL_MAJOR` 1 → 2**：管道名与启动互斥量都带 `-v<major>`，所以新 core 找的是 `-v2` 管道，旧宿主（major 1）不会被连上，core 照常启动新宿主；没有旧协议的兼容路径。
 - **一次性代价**：升级当次，Windows 上还活着的终端会话丢失一次——旧宿主及其会话留在旧管道上，新 core 看不到也接不回。之后会话照常跨 core 重启保留。其余平台不受影响（它们没有会话宿主）。
 
+### 102.7 Windows 服务器壳与无壳 core 的 DPAPI 密钥后端（P9）
+
+- **工具**：`armadra-winsec.exe`（§102.2）增加 `dpapi-protect` / `dpapi-unprotect`：读完 stdin 的全部字节，把结果的全部字节写到 stdout；`System.Security.Cryptography.ProtectedData`，`DataProtectionScope.CurrentUser`，固定附加熵 `armadra-dpapi/1`。**值从不在命令行上**（命令行对同机其他进程可见），只走 stdin / stdout；失败时非零退出，stderr 只有异常类型与系统给的信息，不含输入。构建要给 `csc` 加 `/reference:System.Security.dll`（`winsec-exe.mjs` 传入）。
+- **封存器**：`core/secrets/dpapi.ts` 的 `dpapiSealer(exe)` 实现 `SecretSealer`（`kind: "dpapi"`），经 `execFile` 跑上述子命令；明文上限 32 KiB，密文上限比它多 4 KiB，超限在起进程前拒绝；超时 10 s。失败一律是 `SecretUnavailable`，`reason` 为 `dpapi_seal_failed` / `dpapi_unseal_failed` / `oversized`。它和桌面壳 `safeStorage` 一样交给 `sealedFileBackend`，密文信封（`kind: "dpapi"`）落在 `<数据目录>/secrets/<name>.sealed`。自报 `dpapi`，§102.1 的表不变。
+- **何时选它**（都要求 win32 且 `findWinsecExe()` 找得到工具；`ARMADRA_SECRET_BACKEND=file` / `file-encrypted` 永远优先，壳注入的后端与 `ARMADRA_SECRET_SEALER=ipc:*` 也优先）：
+  - 无壳 core（`resolveSecretBackend`）：此前落到 0600 明文 `file`。**数据目录里已有 `*.token` 明文条目时继续用 `file`**，不把它们搁浅。
+  - 服务器壳（`serverSecrets`）：此前总是 `file-encrypted`。**`<数据目录>/secrets/master.key` 已存在、或 `ARMADRA_SECRET_MASTER_KEY_FILE` 指了一把时继续用 `file-encrypted`**。
+    找不到工具时行为与此前相同。
+- **换后端不静默重读**：不同后端的信封记着封存者，`sealedFileBackend` 与 `encryptedFileBackend` 读到别人封的条目都抛 `SecretUnavailable("sealed_by_<kind>")`。上面两条「已有就沿用」就是为了让升级不触发它；想从 `file-encrypted` / `file` 换到 DPAPI，要自己用 `armadra-server secrets set` 重存条目、再删掉 `master.key`（或旧 `*.token`）。桌面壳 `safeStorage` 封的条目同样自报 `dpapi`，但格式不同，无壳 core 读它会得到 `dpapi_unseal_failed`。
+- **不用 PowerShell 做 DPAPI**：已决定。PowerShell 冷启动几百毫秒到数秒、受执行策略与受限语言模式影响，而凭据读写在启动路径上；没有工具就宁可不用 DPAPI，沿用上面的旧行为。
+- **威胁模型**同 §102.1：防数据目录被拷走或别的账户读取，不防同用户的恶意进程。
+
 ## 101. 协调者的回复闸门、重启恢复与记忆约定（`#704`，R3）
 
 > 状态：实施契约（AMA-Link/Armadra#704）。迁移 0061 新增 `router_replies`；`canvas` 多一个动词 `notify`；多一种工作空间事件 `workflow.reply`；协议版本不变，只加字段与种类。

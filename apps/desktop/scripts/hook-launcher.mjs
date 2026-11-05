@@ -52,13 +52,14 @@ export function findCsc({ env = process.env, exists = existsSync } = {}) {
 }
 
 /** The `csc` arguments that build `output` from `source`. */
-export function cscArguments(source, output) {
+export function cscArguments(source, output, references = []) {
   return [
     "/nologo",
     "/target:exe",
     "/platform:anycpu",
     "/optimize+",
     "/debug-",
+    ...references.map((reference) => `/reference:${reference}`),
     `/out:${output}`,
     source,
   ];
@@ -67,13 +68,19 @@ export function cscArguments(source, output) {
 /**
  * Compiles one C# console program from `source` into `output` and returns its
  * path. Throws with the compiler's own output when it fails, or when there is
- * no compiler. `name` prefixes the messages. Shared by this launcher and the
+ * no compiler. `name` prefixes the messages; `references` are extra assemblies
+ * (`System.Security.dll`) added as `/reference:`. Shared by this launcher and the
  * canvas launcher (`launch-exe.mjs`).
  */
 export function compileCSharp(
   source,
   output,
-  { env = process.env, run = spawnSync, name = "hook-launcher" } = {},
+  {
+    env = process.env,
+    run = spawnSync,
+    name = "hook-launcher",
+    references = [],
+  } = {},
 ) {
   const csc = findCsc({ env });
   if (csc === undefined) {
@@ -82,7 +89,9 @@ export function compileCSharp(
     );
   }
   mkdirSync(dirname(output), { recursive: true });
-  const result = run(csc, cscArguments(source, output), { encoding: "utf8" });
+  const result = run(csc, cscArguments(source, output, references), {
+    encoding: "utf8",
+  });
   if (result.error !== undefined) throw result.error;
   if (result.status !== 0) {
     throw new Error(
