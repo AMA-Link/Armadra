@@ -297,8 +297,8 @@ describe("listAgents 的 acp", () => {
       resume: "none",
     });
     expect(rows.find((row) => row.id === "pi")?.acp).toMatchObject({
-      support: "community",
-      program: "pi-acp",
+      support: "bundled",
+      program: "ama",
     });
     for (const row of rows) {
       expect(Object.keys(row.acp ?? {}).sort(), row.id).toEqual([

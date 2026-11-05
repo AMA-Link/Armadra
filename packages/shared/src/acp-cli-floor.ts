@@ -10,9 +10,9 @@ import { AGENT_CLI_PACKAGES, type AgentCliAgentId } from "./api/acp.js";
  * 低于哪个版本起不来」，core 起会话前据此核对、页面据此说原因，不在代码里按
  * Agent 写分支。只登记有实测或适配器文档为据的下限；没有登记的家不核对。
  *
- * pi：适配器 `pi-acp` 在 `session/new` 里要 `get_available_thinking_levels`，Pi
- * 0.81.0 起才有（0.80.10 没有，旧 Pi 对未知命令的应答不带请求 id，适配器永远等
- * 不到）。
+ * pi：ama 的 pi 桥（`ama --mode acp --bridge pi`）要 `agent_settled` 的
+ * `aborted`，Pi 1.1.0 起才有；更旧的 Pi 对未知命令的应答不带请求 id，桥永远等不
+ * 到。已验证区间 `>=1.1.0 <2.0.0`，更新的版本照跑、由桥自己提示。
  */
 export interface AcpCliFloor {
   /** 低于它起不来。 */
@@ -24,7 +24,7 @@ export interface AcpCliFloor {
 export const ACP_CLI_FLOOR: Readonly<
   Partial<Record<BuiltinAgentId, AcpCliFloor>>
 > = {
-  pi: { minVersion: "0.81.0", package: AGENT_CLI_PACKAGES.pi },
+  pi: { minVersion: "1.1.0", package: AGENT_CLI_PACKAGES.pi },
 };
 
 /** 这家 CLI 的最低版本要求；没有登记（或不是内置 Agent）答 `undefined`。 */

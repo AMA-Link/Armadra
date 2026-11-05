@@ -56,7 +56,12 @@ describe("ACP_MODE_TABLE", () => {
         "plan=read-only",
       ],
       opencode: ["default=build", "plan=plan"],
-      pi: [],
+      pi: [
+        "default=default",
+        "auto-edit=auto-edit",
+        "full-auto=full-auto",
+        "plan=plan",
+      ],
       omp: ["default=default", "plan=plan"],
       copilot: [],
       ama: [
@@ -72,8 +77,8 @@ describe("ACP_MODE_TABLE", () => {
     const withBypass = AGENT_IDS.filter((id) =>
       acpModeCandidates(id).some((c) => c.permissionMode === "full-auto"),
     );
-    expect(withBypass).toEqual(["claude", "codex", "ama"]);
-    // 其余只在启动旗标上有（omp、copilot）或根本没有（opencode、pi）。
+    expect(withBypass).toEqual(["claude", "codex", "pi", "ama"]);
+    // 其余只在启动旗标上有（omp、copilot）或根本没有（opencode）。
     expect(ACP_MODE_TABLE.omp["full-auto"]?.args).toEqual([
       "--approval-mode",
       "yolo",
@@ -82,7 +87,6 @@ describe("ACP_MODE_TABLE", () => {
       "--allow-all-tools",
     ]);
     expect(ACP_MODE_TABLE.opencode["full-auto"]).toBe(null);
-    expect(ACP_MODE_TABLE.pi["full-auto"]).toBe(null);
   });
 
   it("maps between permission modes and session mode ids", () => {
@@ -98,12 +102,12 @@ describe("ACP_MODE_TABLE", () => {
 });
 
 describe("ACP_REPORTED_MODES", () => {
-  it("has one row per built-in agent and only pi ignores what it reports", () => {
+  it("has one row per built-in agent and every one reports permission modes", () => {
     expect(Object.keys(ACP_REPORTED_MODES).sort()).toEqual(
       [...AGENT_IDS].sort(),
     );
     const ignored = AGENT_IDS.filter((id) => !acpReportsPermissionModes(id));
-    expect(ignored).toEqual(["pi"]);
+    expect(ignored).toEqual([]);
   });
 
   it("treats an unknown or custom agent as reporting permission modes", () => {

@@ -15,7 +15,7 @@
  *     `identity/route-access.ts`；契约 §14。
  *   * 契约 §26：`elicitation/create` 进同一张审批表（答复经
  *     `agent/approvals.ts` 的 elicitation 路由回来）；模型目录与
- *     `PUT …/model`；`pi-acp` 的映射文件；节点凭据与 ama 模型密钥在起适配器
+ *     `PUT …/model`；节点凭据与 ama 模型密钥在起适配器
  *     之前由 core 兑换、只设给适配器进程的环境。
  *
  * 装配次序：终端域先装（`terminal/install.ts` 用 {@link createAcpBackend} 把后端
@@ -23,7 +23,6 @@
  * 后装，只登记路由与审批的送回路。
  */
 
-import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { type AgentRole, defaultAgentRole } from "@armadra/shared";
@@ -72,13 +71,7 @@ import { TerminalError, type TerminalSpec } from "../terminal/backend";
 import type { EnvPairs } from "../terminal/environment";
 import type { Hibernator } from "../terminal/hibernator";
 import type { TerminalManager } from "../terminal/manager";
-import {
-  ACP_ADAPTERS,
-  type AcpAdapter,
-  acpResumeId,
-  adapterFor,
-  mappedSession,
-} from "./adapters";
+import { ACP_ADAPTERS, type AcpAdapter, adapterFor } from "./adapters";
 import { AcpBackend } from "./bridge";
 import { AcpError } from "./client";
 import { authenticateAdapter, logoutAdapter } from "./auth";
@@ -110,12 +103,9 @@ export {
   ACP_ADAPTERS,
   type AcpAdapter,
   acpAdapter,
-  acpResumeId,
   adapterFor,
   acpLaunchPlan,
   acpPermissionModes,
-  cliResumeId,
-  mappedSession,
 } from "./adapters";
 export {
   AcpError,
@@ -590,15 +580,6 @@ class AcpRuntime {
       transcriptPath: (acpSessionId, mirror) => {
         // SSH 节点：CLI 的转录在执行主机上，本机认镜像。
         if (remote) return mirror;
-        if (adapter.sessionId === "mapFile") {
-          // §26.3：适配器自己的映射文件把 ACP 会话 id 对回 CLI 的会话文件；
-          // 读不到就与 `opaque` 一样认镜像。
-          const session = mappedSession(adapter, acpSessionId);
-          if (session !== undefined && existsSync(session.sessionFile)) {
-            return session.sessionFile;
-          }
-          return mirror;
-        }
         if (adapter.sessionId === "same") {
           try {
             const located = historyAdapter(adapter.agentId)?.locate({
@@ -652,7 +633,7 @@ class AcpRuntime {
 
     const resume =
       typeof plan.resume === "string" && plan.resume !== ""
-        ? acpResumeId(adapter, plan.resume)
+        ? plan.resume
         : undefined;
     // 时间线先登记：启动各阶段、恢复历史都从这一刻起能被看到（契约 §82）。
     const timeline = timelineDomainOf(this.context.server);

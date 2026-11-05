@@ -212,11 +212,11 @@ describe("任务", () => {
       probe: () => true,
       locate: () => NPM,
     });
-    expect(rejection(() => installer.start("pi")).code).toBe(
+    expect(rejection(() => installer.start("codex")).code).toBe(
       "adapter_already_installed",
     );
-    expect(installer.start("pi", true).reinstall).toBe(true);
-    expect((await installer.settled("pi")).state).toBe("succeeded");
+    expect(installer.start("codex", true).reinstall).toBe(true);
+    expect((await installer.settled("codex")).state).toBe("succeeded");
   });
 
   it("非零退出 → adapter_install_failed，带退出码", async () => {
@@ -321,7 +321,7 @@ describe("CLI 与回滚（§47）", () => {
     ]);
     expect(probes).toContain("omp:cli");
     // 适配器那一样没被碰过。
-    expect(installer.status("pi").state).toBe("idle");
+    expect(installer.status("codex").state).toBe("idle");
   });
 
   it("同一家另一样在装 → 409 adapter_install_busy；同一样再点答那一个任务", async () => {
@@ -361,26 +361,26 @@ describe("CLI 与回滚（§47）", () => {
       probe: () => true,
       locate: () => NPM,
       installedVersion: async (name) =>
-        name === "pi-acp" ? "0.0.30" : undefined,
+        name === "@agentclientprotocol/codex-acp" ? "0.0.30" : undefined,
     });
     expect(
-      rejection(() => installer.start("pi", { rollback: true })).code,
+      rejection(() => installer.start("codex", { rollback: true })).code,
     ).toBe("adapter_rollback_unavailable");
-    installer.start("pi", { reinstall: true });
-    const failed = await installer.settled("pi");
+    installer.start("codex", { reinstall: true });
+    const failed = await installer.settled("codex");
     expect(failed).toMatchObject({
       state: "failed",
       previousVersion: "0.0.30",
       failure: { code: "adapter_install_failed" },
     });
     exitCode = 0;
-    const rolled = installer.start("pi", { rollback: true });
+    const rolled = installer.start("codex", { rollback: true });
     expect(rolled).toMatchObject({ rollback: true, previousVersion: "0.0.30" });
-    expect((await installer.settled("pi")).state).toBe("succeeded");
+    expect((await installer.settled("codex")).state).toBe("succeeded");
     expect(commands.at(-1)?.args).toEqual([
       "install",
       "--global",
-      "pi-acp@0.0.30",
+      "@agentclientprotocol/codex-acp@0.0.30",
     ]);
   });
 
@@ -506,8 +506,8 @@ describe("改过名的 CLI 包", () => {
         return name === LEGACY ? "0.70.0" : "1.0.0";
       },
     });
-    installer.start("pi", { target: "adapter" });
-    await installer.settled("pi", "adapter");
+    installer.start("claude", { target: "adapter" });
+    await installer.settled("claude", "adapter");
     installer.start("codex", { target: "cli" });
     await installer.settled("codex", "cli");
     expect(asked).not.toContain(LEGACY);
@@ -719,14 +719,14 @@ describe("agents.installAdapter / agents.adapterInstall", () => {
   it("入参只收 agentId 与 reinstall：多给的参数不进命令", async () => {
     const answer = await kit.procedure(
       "agents.installAdapter",
-      { agentId: "pi", args: ["--registry", "http://evil"] },
+      { agentId: "codex", args: ["--registry", "http://evil"] },
       "owner",
     );
     expect(answer.status).toBe(200);
     expect(fake.commands.at(-1)?.args).toEqual([
       "install",
       "--global",
-      "pi-acp",
+      "@agentclientprotocol/codex-acp",
     ]);
   });
 

@@ -37,7 +37,7 @@ import {
   jsonObject,
   optionalString,
 } from "../workspaces/support";
-import { type AcpAdapter, cliResumeId } from "./adapters";
+import type { AcpAdapter } from "./adapters";
 import { type AttachmentBlocks, attachmentBlocks } from "./attachments";
 import { AcpError } from "./client";
 import { AcpFeed } from "./feed";
@@ -168,6 +168,9 @@ function acpStatus(code: string): number {
     case "acp_model_unsupported":
     case "acp_auth_required":
     case "acp_cli_outdated":
+    case "pi_outdated":
+    case "pi_missing":
+    case "pi_no_model":
     case "acp_session":
     case "awaiting_approval":
       return 409;
@@ -987,13 +990,8 @@ export function installRoutes(context: CoreContext, deps: AcpRouteDeps): void {
         current = wiring.manager.session(current.id);
       }
 
-      // 2. CLI 自己的会话 id。`mapFile` 的适配器（pi-acp）：切回终端时把 ACP
-      // 会话 id 经映射文件对回 CLI 的（契约 §26.3），对不上就不接回。
-      const reported = getAgentStatus(database, nodeId)?.sessionId;
-      const provider =
-        driver === "terminal" && reported !== undefined && reported !== ""
-          ? cliResumeId(adapter, reported)
-          : reported;
+      // 2. CLI 自己的会话 id。
+      const provider = getAgentStatus(database, nodeId)?.sessionId;
       const cwd =
         text(node.data.cwd) ?? workspaceRoot(database, node.workspaceId);
       if (cwd === undefined) {

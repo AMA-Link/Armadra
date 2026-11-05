@@ -36,6 +36,27 @@ describe("acpMcpToolOf：只认结构化来源", () => {
     });
   });
 
+  it("ama 的 pi 桥：pending 与 in_progress 两帧都带同一份来源（§98 对 Pi 同样生效）", () => {
+    for (const status of ["pending", "in_progress"]) {
+      const call = codexCall("armadra", "canvas_wait", {
+        title: "armadra: canvas_wait",
+        kind: "other",
+        status,
+      });
+      expect(isArmadraMcpTool(acpMcpToolOf(call))).toBe(true);
+    }
+    // 子 Agent 的 _meta 与来源互不影响。
+    expect(
+      acpMcpToolOf({
+        ...codexCall("armadra", "canvas_wait"),
+        _meta: {
+          is_mcp_tool_call: true,
+          "armadra.subagent": { agent: "scout", task: "x" },
+        },
+      }),
+    ).toEqual({ server: "armadra", tool: "canvas_wait" });
+  });
+
   it("Claude：mcp__<server>__<tool>，带 mcpServer 时必须一致", () => {
     expect(acpMcpToolOf(claudeCall("mcp__armadra__canvas_post"))).toEqual({
       server: "armadra",

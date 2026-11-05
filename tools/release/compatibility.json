@@ -19,10 +19,8 @@
         "verified": null
       },
       "pi": {
-        "program": "pi-acp",
-        "verified": {
-          "min": "0.0.34"
-        }
+        "program": "ama",
+        "verified": null
       },
       "omp": {
         "program": "omp",

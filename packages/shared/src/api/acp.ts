@@ -17,8 +17,8 @@ import { MAX_ACP_ATTACHMENTS } from "./uploads.js";
  * and a field an adapter adds must not make the page drop a whole frame.
  */
 
-/** How a CLI speaks ACP: its own entry point, an official or a community adapter. */
-export const ACP_SUPPORT = ["native", "official", "community"] as const;
+/** How a CLI speaks ACP: its own entry point, an official adapter, or the bridge bundled with ama. */
+export const ACP_SUPPORT = ["native", "official", "bundled"] as const;
 export const acpSupportSchema = z.enum(ACP_SUPPORT);
 
 /** Which ACP method resumes a session across processes; `none` = start a new one. */
@@ -80,7 +80,6 @@ export const agentAcpInfoSchema = z.looseObject({
 export const ACP_ADAPTER_PACKAGES = {
   claude: "@agentclientprotocol/claude-agent-acp",
   codex: "@agentclientprotocol/codex-acp",
-  pi: "pi-acp",
 } as const;
 
 /**
