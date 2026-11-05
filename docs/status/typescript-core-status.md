@@ -360,7 +360,7 @@ Rust 版用受保护 DACL（`D:P(A;;GA;;;SY)(A;;GA;;;<sid>)`）加每连接 `Get
 
 | 项                                  | Rust                        | TS                                                                                 | 后果                                                  |
 | ----------------------------------- | --------------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| 管道 ACL                            | 受保护 DACL                 | 默认描述符 + 密钥文件                                                              | 见 §10.2                                              |
+| 管道 ACL                            | 受保护 DACL                 | 默认描述符 + 密钥文件（#751 起：`armadra-winsec.exe` 收紧 DACL，见 §13.4）         | 见 §10.2、§13.4                                       |
 | 客户端身份                          | 逐连接核对 SID              | 逐连接核对 HMAC                                                                    | 同用户的进程之间不再区分                              |
 | Job Object `KILL_ON_JOB_CLOSE`      | 有                          | **没有**，Node 无此 API                                                            | 宿主被 `SIGKILL` 时进程树不会被系统带走               |
 | 进程树收容                          | Job Object + 按 pid 兜底    | ConPTY 自身 + 退出时逐会话显式关闭（`SIGINT/SIGTERM/SIGHUP/SIGBREAK` 都接）        | 有序退出等价；被强杀时不等价                          |
@@ -369,6 +369,16 @@ Rust 版用受保护 DACL（`D:P(A;;GA;;;SY)(A;;GA;;;<sid>)`）加每连接 `Get
 | 日志过滤 `ARMADRA_SESSION_HOST_LOG` | tracing EnvFilter           | 无，全量写 stderr                                                                  | 量很小（每连接一两行）                                |
 
 `useConpty: true` 显式写上（默认会在老版本 Windows 上退回 winpty，而 winpty 不满足「伪控制台活得比壳久」这个前提）。`conptyInheritCursor` **没有**打开：它正是让 ConPTY 先问光标位置再吐字节的开关，不开就少一次在无 UI 时会死锁的握手；`QueryResponder` 仍然保留，因为 CLI 自己随时会问同样的问题。
+
+### 13.4 Windows 私有通道补强（#751，2026-11）
+
+§10.2 与上表里「管道 ACL：默认描述符 + 密钥文件」的退化在 #751 里补上，分九个包（契约 §102.1–§102.8）：
+
+- **DACL**：`armadra-winsec.exe`（构建期用系统 `csc.exe` 编出，没有原生 npm 模块）在 `bind` 之后以客户端身份带 `WRITE_DAC` 把管道的描述符换成受保护的 `D:P(D;;GA;;;NU)(A;;GA;;;SY)(A;;GA;;;<用户 SID>)`，core 用纯函数核对读回的 SDDL；开发树没有 `.exe` 时回退到 Windows PowerShell 5.1，受限语言模式下按收紧失败处理。数据目录根用 `icacls` 去掉继承，只授权本用户与 SYSTEM。
+- **握手 `armadra-pipe/1`**：运行时管道、身份私有通道、hook 面与 askpass 的每条连接先做双向 HMAC 握手，两边都有新鲜 nonce；抢占管道名的进程只拿得到一个随机数。会话宿主的 `welcome` 带服务端证明，客户端核对前不发 `create`，`PROTOCOL_MAJOR` 升到 2。
+- **失败策略**：身份通道要求 DACL 收紧成功，否则不开（桌面壳仍走 fork IPC）；运行时、hook、askpass 在收紧失败时只靠握手，`/health` 的 `pipeAcl` 报 `default`。
+- **验证**：握手向量、SDDL 核对、抢占者模拟在三平台 CI；真管道、真 `csc` 编译、PowerShell 兜底、受限语言模式在每个 PR 的 Windows runner 上；抢占管道名的另一个进程与「第二个本地用户 `net user` 后连不上」在 nightly 的 `windows-private-channels` 作业（`vitest.windows.config.mts`，`ARMADRA_WINDOWS_SECOND_USER=1`），也可手动触发（`workflow_dispatch` 的 `scenario=private-channels`）。
+- **仍只能在真机验证**：另一账户交互登录（快速用户切换或 RDP）后连不上；经 SMB 从另一台机器访问被拒；提权与非提权运行时 owner 与完整性标签的影响；设置 DACL 之后 libuv 新建的实例是否沿用同一个描述符；AppLocker / WDAC / Defender ASR / EDR 对 `armadra-winsec.exe` 的拦截；数据目录被重定向到 OneDrive 或网络盘、放在 exFAT 盘；Windows on ARM；真 CLI 经 `armadra-hook.exe` 端到端报告；会话宿主 major 升级时旧会话的去留（升级当次丢失，见更新记录）。
 
 ### 13.4 ConPTY 关闭要阳性证明
 

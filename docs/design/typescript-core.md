@@ -262,7 +262,7 @@ LSP 发现与 mux（多客户端复用一个 server）、会话流 WS；主机�
 
 **R6d 已实施（2026-09-20），三处偏离本节原文**，实测与复现命令见 [实施进度 §10](../status/typescript-core-status.md#10-r6dwindows-session-host-迁到-typescript)：
 
-1. **受保护 DACL + 逐连接核对客户端 SID 做不到。** `node:net` 经 libuv 用默认安全描述符建管道，返回 `Socket` 而非 `HANDLE`，既设不了安全描述符也读不到对端 SID；补回去要一个原生模块，而去掉原生依赖正是 R6 的目的。换成**数据目录下 0600 的密钥文件 + 每条连接一次性 HMAC 握手**（Windows 上用 `icacls` 收紧，收紧失败拒绝启动），核对不过立刻断开。等价的是「同机另一个账户进不来」；不等价的是「同一用户的不同进程不再被区分」。残余风险三条列在 `apps/desktop/src/core/terminal/session-host/auth.ts` 的头注释与进度文档 §10.2。
+1. **受保护 DACL + 逐连接核对客户端 SID 做不到。**（2026-11 起 DACL 一半已补上：构建期用系统 `csc.exe` 编出 `armadra-winsec.exe`，在 bind 之后收紧管道并读回核对，加上 `armadra-pipe/1` 双向握手；逐连接客户端 SID 仍然做不到，见 [进度 §13.4](../status/typescript-core-status.md) 与契约 §102。） `node:net` 经 libuv 用默认安全描述符建管道，返回 `Socket` 而非 `HANDLE`，既设不了安全描述符也读不到对端 SID；补回去要一个原生模块，而去掉原生依赖正是 R6 的目的。换成**数据目录下 0600 的密钥文件 + 每条连接一次性 HMAC 握手**（Windows 上用 `icacls` 收紧，收紧失败拒绝启动），核对不过立刻断开。等价的是「同机另一个账户进不来」；不等价的是「同一用户的不同进程不再被区分」。残余风险三条列在 `apps/desktop/src/core/terminal/session-host/auth.ts` 的头注释与进度文档 §10.2。
 2. **Job Object 的 `KILL_ON_JOB_CLOSE` 没有等价物。** Node 没有 Job Object API。收容改由 ConPTY 自身（关闭伪控制台即结束附着其上的进程）加守护进程退出时逐会话显式关闭承担，四个信号都接。**有序退出等价，被 `SIGKILL` 时不等价**——那正是 Job Object 唯一多给的那一条。
 3. **`first_pipe_instance` 换成 `listen` 的 `EADDRINUSE`。** libuv 给第一个实例带了 `FILE_FLAG_FIRST_PIPE_INSTANCE`，所以行为等价；但这是 libuv 的实现而非 Node 的文档承诺，因此另加一个锁文件兜底——锁只在它指名的管道**应答**时才被相信，否则视为崩溃残留并接管。
 
