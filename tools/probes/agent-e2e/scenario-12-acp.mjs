@@ -29,7 +29,7 @@
 // 隔离（D13 与任务约束）：
 //   * core 的 HOME、数据目录、XDG、CODEX_HOME、CLAUDE_CONFIG_DIR、COPILOT_HOME、
 //     PI_CODING_AGENT_DIR 全是临时的；PATH 最前面是一个包装目录：每家的 ACP 入口
-//     （与它要再起的程序，如 pi-acp → pi）是一个隔离包装脚本，其余真 CLI 名字是
+//     （与它要再起的程序，如 ama 的 pi 桥 → pi）是一个隔离包装脚本，其余真 CLI 名字是
 //     替身（`blockRealClis`，调用即记下、以 97 退出）。core 按 PATH 顺序找程序
 //     （`terminal/environment.ts::agentPath`），所以它起的任何东西都先经包装。
 //   * Claude 的登录在钥匙串里，只认真实配置目录：它的包装把 HOME 换回真实的、去
@@ -348,11 +348,11 @@ export function realPlan(scratch, shims, project) {
     }
   }
 
-  /* Pi：pi-acp 再起 pi，两个都经包装。 */
+  /* Pi：ama 的 pi 桥再起 pi，两个都经包装。 */
   {
     const acp = found("pi");
     const cli = homes.pi;
-    if (!acp.installed) skip("pi", "没有 pi-acp（npm i -g）");
+    if (!acp.installed) skip("pi", "没有 ama（npm i -g @armadra/agent）");
     else if (cli.skip) skip("pi", cli.skip);
     else {
       writeFileSync(
@@ -360,9 +360,9 @@ export function realPlan(scratch, shims, project) {
         `${JSON.stringify({ defaultProvider: "moonshotai-cn", defaultModel: "kimi-k2.6", defaultThinkingLevel: "off" }, null, 2)}\n`,
       );
       const env = cliEnvLines(scratch, "pi", cli);
-      writeScript(shims, "pi-acp", [...env, `exec ${quote(acp.path)} "$@"`]);
+      writeScript(shims, "ama", [...env, `exec ${quote(acp.path)} "$@"`]);
       writeScript(shims, "pi", [...env, `exec ${quote(cli.program)} "$@"`]);
-      kept.push("pi-acp", "pi");
+      kept.push("ama", "pi");
       plan.pi = { program: acp.program };
     }
   }

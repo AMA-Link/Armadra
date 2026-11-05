@@ -124,7 +124,7 @@ export const ACP_PROGRAMS = {
   claude: "claude-agent-acp",
   codex: "codex-acp",
   opencode: "opencode",
-  pi: "pi-acp",
+  pi: "ama", // `ama --mode acp --bridge pi`
   omp: "omp",
   copilot: "copilot",
 };
@@ -202,7 +202,6 @@ export const REAL_CLI_PROGRAMS = [
   "copilot",
   "claude-agent-acp",
   "codex-acp",
-  "pi-acp",
 ];
 
 /**
