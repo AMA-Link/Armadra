@@ -151,7 +151,7 @@ describe("样式表抄写的判据", () => {
       /font-size|--text-/,
     );
     // 设置工作台有自己的全屏版式，不进缩放名单。
-    expect(css).toContain(":not(:has(.settings-layout))");
+    expect(css).toContain(":not(:has(.settings-layout), .settings-layout *)");
     expect(read("app.css")).toContain('@import "./phone-scale.css";');
     expect(read("tokens.css")).toContain("--phone-scale: 0.8;");
   });

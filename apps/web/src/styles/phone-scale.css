@@ -12,7 +12,7 @@
  * 子孙自动继承，宽、高、内边距、间隙同比缩放；字号不动——正文不低于 12px，
  * 输入框保持 16px（`--text-input-touch`，防 iOS 聚焦缩放）。画布、侧栏、Dock
  * 与底部导航不在名单里，仍是桌面尺寸。设置工作台有自己的全屏版式，用
- * `:has(.settings-layout)` 排除。
+ * `:has(.settings-layout)`（对话框本身）与 `.settings-layout *`（里面的表格等）排除。
  *
  * 判据抄的是 `platform/layout.ts` 的 `COMPACT_QUERY` 与 `PHONE_LANDSCAPE_QUERY`
  * （手机竖屏 + 手机横屏），`platform/layout.test.ts` 逐字核对。
@@ -27,7 +27,7 @@
     [data-radix-popper-content-wrapper],
     [data-slot="data-list"],
     [data-slot="table-container"]
-  ):not(:has(.settings-layout)) {
+  ):not(:has(.settings-layout), .settings-layout *) {
     --spacing: calc(0.25rem * var(--phone-scale));
 
     /*
