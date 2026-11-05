@@ -25,6 +25,7 @@ import {
   capabilitiesOf,
   capabilitiesWire,
   forgetAcpVersions,
+  piMetaOf,
   probeAcp,
   rememberedAcpVersion,
   resumeMethod,
@@ -713,5 +714,35 @@ describe("startAcp: phases, timings and the session/new deadline (contract §51)
       { type: "text", text: "hi" },
     ]);
     expect(updates.length).toBeGreaterThan(0);
+  });
+});
+
+describe('piMetaOf (_meta["armadra.pi"], contract §100.2)', () => {
+  const meta = (pi: unknown) => ({ _meta: { "armadra.pi": pi } });
+
+  it("reads verified true and false with the version", () => {
+    expect(piMetaOf(meta({ version: "1.2.0", verified: true }))).toEqual({
+      version: "1.2.0",
+      verified: true,
+    });
+    expect(piMetaOf(meta({ version: "2.1.0", verified: false }))).toEqual({
+      version: "2.1.0",
+      verified: false,
+    });
+  });
+
+  it("keeps verified false when the version could not be read", () => {
+    expect(piMetaOf(meta({ version: null, verified: false }))).toEqual({
+      version: null,
+      verified: false,
+    });
+  });
+
+  it("answers undefined when missing or malformed", () => {
+    expect(piMetaOf({})).toBeUndefined();
+    expect(piMetaOf(undefined)).toBeUndefined();
+    expect(piMetaOf({ _meta: {} })).toBeUndefined();
+    expect(piMetaOf(meta({ version: "1.2.0" }))).toBeUndefined();
+    expect(piMetaOf(meta({ verified: "no" }))).toBeUndefined();
   });
 });

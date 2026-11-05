@@ -325,6 +325,13 @@ export class AcpSession implements AcpSessionIdentity {
     if (this.options.resumeSessionId !== undefined) {
       this.feed?.notice(host.resumed ? "resumed" : "not_resumed");
     }
+    // Pi 不在已验证区间：每个新开的会话说一次（接回的会话时间线里已有）。
+    if (host.pi?.verified === false && host.opened === "new") {
+      this.feed?.notice(
+        "pi_unverified",
+        host.pi.version === null ? undefined : { version: host.pi.version },
+      );
+    }
     this.feed?.ready();
   }
 
