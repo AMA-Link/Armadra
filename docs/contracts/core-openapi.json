@@ -74246,7 +74246,8 @@
                               "person/failed",
                               "working/queued",
                               "idle",
-                              "working"
+                              "working",
+                              "done"
                             ],
                             "type": "string"
                           },
@@ -74534,7 +74535,8 @@
                             "person/failed",
                             "working/queued",
                             "idle",
-                            "working"
+                            "working",
+                            "done"
                           ],
                           "type": "string"
                         },

@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import type { ForgeConversationItem } from "../forge/types";
 import { type PullThread, type TaskRun, taskRun } from "./task-runs";
 
 /**
@@ -18,6 +19,26 @@ export const MAX_BOT_ROUNDS = 3;
 export const POLL_RETENTION_MS = 14 * 24 * 3_600_000;
 
 export type ThreadEventKind = "comment" | "review" | "checks" | "state";
+
+/**
+ * 一次轮询对一个线程**新**读到的东西（已经去重、机器人超过轮数的已经滤掉）。
+ * 投递（成员、协调者的卡片）只认这个形状，不碰远端响应。
+ */
+export interface PullBatch {
+  /** 新的评论与评审，按远端时间从早到晚。 */
+  readonly items: readonly ForgeConversationItem[];
+  /** head 提交上检查的结论变了（只有成功与失败算）。 */
+  readonly checks: {
+    readonly rollup: "success" | "failure";
+    readonly sha: string;
+    /** 失败的检查名（至多 3 个）。 */
+    readonly failing: readonly string[];
+  } | null;
+  /** PR 被合并或关闭。 */
+  readonly state: "merged" | "closed" | null;
+  /** 这一批每个事件的确定 id：投递的去重键由它们算出。 */
+  readonly eventIds: readonly string[];
+}
 
 /** 线程的显示名与事件 id 里的写法：`<仓库>#<编号>`。 */
 export function threadKey(thread: Pick<PullThread, "repo" | "number">): string {

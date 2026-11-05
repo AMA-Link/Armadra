@@ -25,6 +25,8 @@ import {
 
 /** {@link itemStage} 的输入：都是库里查得到的事实。 */
 export interface ItemStageFacts {
+  /** 因为自己开的 PR 合并或关闭而结束（契约 §103.4）。 */
+  readonly endedByPull?: boolean;
   /** 协调者发给成员的最近一条投递没投成（取消或过期）。 */
   readonly deliveryFailed: boolean;
   /** 有待人决定的问题。 */
@@ -44,6 +46,7 @@ export interface ItemStageFacts {
 /**
  * 按顺序取第一个命中的阶段（契约 §90.2）：
  *
+ *   0. `done`：自己开的 PR 合并或关闭而结束（§103.4）；
  *   1. `person/delivery`：投递失败；
  *   2. `person/answer`：有待决问题；
  *   3. `person/review`：最近报告是 `ready`；
@@ -54,6 +57,7 @@ export interface ItemStageFacts {
  *   7. `working`。
  */
 export function itemStage(facts: ItemStageFacts): WorkItemStage {
+  if (facts.endedByPull === true) return "done";
   if (facts.deliveryFailed) return "person/delivery";
   if (facts.attention) return "person/answer";
   if (facts.report === "ready") return "person/review";
@@ -93,7 +97,13 @@ export function itemFacts(
         `AND acknowledged_at IS NULL AND expires_at > ? AND ${NOT_RECEIPT}`,
     )
     .get(run.nodeId, nowSeconds) as { total: number };
+  const result = run.result as { result?: unknown } | null;
   return {
+    endedByPull:
+      run.status === "done" &&
+      result !== null &&
+      typeof result === "object" &&
+      (result.result === "merged" || result.result === "closed"),
     deliveryFailed:
       delivery !== undefined &&
       (delivery.state === "cancelled" || delivery.state === "expired"),

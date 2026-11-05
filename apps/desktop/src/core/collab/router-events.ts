@@ -27,6 +27,7 @@ export const ROUTER_EVENT_KINDS = [
   "followup",
   "inbox",
   "interrupted",
+  "external",
 ] as const;
 
 export type RouterEventKind = (typeof ROUTER_EVENT_KINDS)[number];

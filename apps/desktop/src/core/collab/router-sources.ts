@@ -66,6 +66,8 @@ export function recordTaskDone(
   context: CollabContext,
   run: TaskRun,
   status: "done" | "failed",
+  /** 自己开的 PR 合并 / 关闭而结束时的原因（§103.4）；其余缺省。 */
+  prResult?: "merged" | "closed",
 ): boolean {
   const who = nodeName(context.database, run.nodeId);
   return recordRouterEvent(context, {
@@ -74,7 +76,10 @@ export function recordTaskDone(
     kind: "task-done",
     itemId: run.taskId,
     sourceNodeId: run.nodeId,
-    summary: `${who}的任务${status === "done" ? "已结束" : "失败了"}`,
+    summary:
+      prResult === undefined
+        ? `${who}的任务${status === "done" ? "已结束" : "失败了"}`
+        : `${who}的任务已结束：它开的 PR ${prResult === "merged" ? "已合并" : "已关闭"}`,
   });
 }
 
