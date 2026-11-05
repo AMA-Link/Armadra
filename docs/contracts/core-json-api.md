@@ -934,6 +934,7 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
 - `workflow.run`：运行或其中一步换了状态；只有运行换状态时没有 `stepId` / `stepStatus`。
 - `workflow.gate`：`state` 是 `waiting` / `approved` / `rejected` / `cancelled`；`nodeId` 是运行的 Frame（运行还没有 Frame 时缺席）。推送只在 `waiting` 时叫人，深链打开这个 Frame（§19）。
 - `workflow.task`：§15.5 的一个任务行换了状态——起任务（含换绑）、结束（`wait` 或 core 自己落的）、§15.7 的重试各一帧；`status` 同任务行。`boardId` 是协调者节点所在的画板；协调者节点已不在时不推。推送不认这一帧。
+- `workflow.reply`（§101）：协调者经 `canvas notify` 对人说了一句话，`{ replyId, taskId, boardId, coordinatorNodeId, nodeId（成员）, purpose }`，**不带 `--text`**；页面据此重读任务行。
 
 ### 15.6 自动化目标 `WORKFLOW_RUN`
 
@@ -2646,9 +2647,9 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 
 <!-- rpc:begin contract=§35.4 -->
 
-| procedure           | kind         | input                                                | output                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | errors                                                                                     | scope         | 自  | 原路径 |
-| ------------------- | ------------ | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------- | --- | ------ |
-| `workspaces.events` | subscription | `{ workspaceId: string, cursor?: "now" \| integer }` | 迭代：`agent.context`、`agent.status`、`agent.subagent`、`agent.approval`、`agent.delivery`、`acp.turn`、`acp.driver`、`acp.starting`、`terminal.exit`、`terminal.lease`、`terminal.hibernation`、`terminal.program`、`timeline.delta`、`timeline.activity`、`board.changed`、`canvas.presence`、`board.comment`、`node.created`、`ssh.prompt`、`workspace.updated`、`control.confirm`、`resource.sample`、`browser.session`、`browser.download`、`browser.lease`、`browser.tabs`、`browser.dialog`、`browser.fileChooser`、`browser.activity`、`language.session`、`language.server`、`file.changed`、`workflow.draft`、`workflow.run`、`workflow.gate`、`workflow.task`、`schedule.fired`、`schedule.failed`、`schedule.attention`、`cloud.tunnel`、`devices.pending`、`devices.changed`、`devices.endorsed`、`connect.used`、`resources.threshold`、`cursor` | `forbidden`、`not_found`、`snapshot_required`、`cursor_ahead`、`overflow`、`limit_reached` | `events:read` | 1.4 | —      |
+| procedure           | kind         | input                                                | output                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | errors                                                                                     | scope         | 自  | 原路径 |
+| ------------------- | ------------ | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------- | --- | ------ |
+| `workspaces.events` | subscription | `{ workspaceId: string, cursor?: "now" \| integer }` | 迭代：`agent.context`、`agent.status`、`agent.subagent`、`agent.approval`、`agent.delivery`、`acp.turn`、`acp.driver`、`acp.starting`、`terminal.exit`、`terminal.lease`、`terminal.hibernation`、`terminal.program`、`timeline.delta`、`timeline.activity`、`board.changed`、`canvas.presence`、`board.comment`、`node.created`、`ssh.prompt`、`workspace.updated`、`control.confirm`、`resource.sample`、`browser.session`、`browser.download`、`browser.lease`、`browser.tabs`、`browser.dialog`、`browser.fileChooser`、`browser.activity`、`language.session`、`language.server`、`file.changed`、`workflow.draft`、`workflow.run`、`workflow.gate`、`workflow.task`、`workflow.reply`、`schedule.fired`、`schedule.failed`、`schedule.attention`、`cloud.tunnel`、`devices.pending`、`devices.changed`、`devices.endorsed`、`connect.used`、`resources.threshold`、`cursor` | `forbidden`、`not_found`、`snapshot_required`、`cursor_ahead`、`overflow`、`limit_reached` | `events:read` | 1.4 | —      |
 
 <!-- rpc:end -->
 
@@ -5173,3 +5174,33 @@ ACP 会话经 `session/new.mcpServers` 拿到 `armadra-hook mcp`（§14、`core/
 - **用量**：`usage_update` 带 `cost { amount, currency }`，页面的上下文表显示费用（沿用 §82 的 `usage.cost`）。
 - **计划与征询**：Pi 里的待办变成 `plan`，其它扩展的对话框与问卷变成 `elicitation/create`；core 的 ACP 客户端声明了 `elicitation` 能力时才会收到征询，已有的计划与征询卡片照常显示。
 - **SSH 节点**：执行主机上要有 `ama`（`@armadra/agent`）和 Pi；缺了与以前缺 `pi-acp` 一样答 `acp_not_installed`。
+
+## 101. 协调者的回复闸门、重启恢复与记忆约定（`#704`，R3）
+
+> 状态：实施契约（AMA-Link/Armadra#704）。迁移 0061 新增 `router_replies`；`canvas` 多一个动词 `notify`；多一种工作空间事件 `workflow.reply`；协议版本不变，只加字段与种类。
+
+### 101.1 动词 `notify`
+
+`canvas notify --purpose answer|result|attention --item <工作项 id> --text <一句话> [--followup <事件 id>]`，经 `POST /control/notify`（与 §90.3 同一道门）；`armadra-hook canvas`、MCP、ama 的 `canvas_notify` 同一份实现（`hook-client/verbs.ts`）。协调者对人说话的唯一出口，带闸门。
+
+- **只给协调者用**：调用者必须是这一项的 `coordinator_node_id`，别人与不存在的项同答 `404 item_not_found`。
+- **`--text`**：1–100 字，去控制字符、折叠空白；`attention` 要原样带上待决问题，上限放宽到问题自己的上限（300 字）。超长 `400 bad_request`。
+- **前置条件**（core 检查，不满足 `409 notify_precondition`，`message` 写明缺什么）：
+
+  | `purpose`   | 前置条件                                                                                       | 回复 id                                     |
+  | ----------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------- |
+  | `result`    | 这一项的阶段（§90.2）是 `person/review`                                                        | `result:<项>:<最近报告时刻的 36 进制毫秒>`  |
+  | `attention` | 这一项有待决问题，且 `--text` 原样包含它（按去控制字符、折叠空白后比较）                       | `attention:<项>:<问题 raisedAt 的 36 进制>` |
+  | `answer`    | `--followup` 是这一项名下一条 `followup:…` 事件（§93.4；「没能转给」那种不算），且还没被回答过 | `answer:<followup 事件 id>`                 |
+
+- **进度一律拒绝**：没有 `progress` 这个用途，`--purpose progress` 回 `409 notify_precondition`；缺 `--purpose` 或取了别的值 `400 bad_request`。
+- **去重**：同一个回复 id 第二次写入回 `409 already_notified`，这就是「阶段再次变化（新的报告时刻、新的问题、新的追问）之前只能发一次」；`answer` 因此也消耗了那条 `followup`。
+- `result: { item, purpose, id, stage }`。
+
+### 101.2 表 `router_replies`（迁移 0061）
+
+`router_replies(id, coordinator_node_id, item_id, purpose, stage, text, created_at, read_at)`：每条被接受的回复一行，按协调者节点归属（节点删了跟着删）；`id` 就是 101.1 的回复 id；`stage` 是写入时那一项的阶段；`text` 是协调者的那句话；时刻为毫秒；`read_at` 是人打开分派抽屉的时刻，空表示未读。回复文本只存在这张表里，**不进推送、不进事件帧**。
+
+### 101.3 事件 `workflow.reply`
+
+每条被接受的回复推一帧 `workflow.reply`（形状见 §15.4）。页面据此重读任务行；推送规则对 `result` 与 `attention` 叫人（见推送触发表），`answer` 不叫人——它是对人刚说的话的回应，人就在画布前。
