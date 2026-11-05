@@ -59,6 +59,7 @@
     "0057_workspace_archive.sql": "6869de1eb4ca09dd4c5b760e3ed652eba63b431621a2b220707f7c6e476f143e",
     "0058_work_item_ledger.sql": "7a0ebcf8bc87f8909cf588281e9067708b8bc613baadaef7fd7009f24a3ba74c",
     "0059_router_events.sql": "2e12dbd0cb84c639e5675f30489099e6624396c3bf82bc6ecc9b1b772f299f04",
-    "0060_bootstrap_ticket_origins.sql": "f816c7f307f6d553bb25e79c5b802d0252b105db35a22d3be80e82af0c69e433"
+    "0060_bootstrap_ticket_origins.sql": "f816c7f307f6d553bb25e79c5b802d0252b105db35a22d3be80e82af0c69e433",
+    "0061_router_replies.sql": "c77cb23fed7376e7fdd7214e7d6818e7d728314ed84a05e925088c2646d82a9b"
   }
 }

@@ -11,6 +11,7 @@ import { interrupt } from "./interrupt";
 import { ackEventVerb, events } from "./events";
 import { handback, items, report } from "./items";
 import { list, openAgent, openTerminal, sticky, team } from "./nodes";
+import { notify } from "./notify";
 import { outbox } from "./outbox";
 import { resolveTarget, send } from "./send";
 import { type Outcome, outcomeBody, raw, result } from "./outcome";
@@ -79,6 +80,8 @@ export const VERBS = [
   "items",
   // 协调者的统一事件队列（契约 §93，#696）：读未确认的事件；确认用 `ack --event`。
   "events",
+  // 协调者对人说话的闸门（契约 §101，#704）：只有协调者能用，带前置条件与去重。
+  "notify",
 ] as const;
 
 export type ControlVerb = (typeof VERBS)[number];
@@ -252,6 +255,8 @@ export async function run(
       return items(context, caller, args);
     case "events":
       return events(context, caller, args);
+    case "notify":
+      return notify(context, caller, args);
     default:
       throw Refusal.badRequest(`未知的画布动词 \`${verb}\`。`);
   }

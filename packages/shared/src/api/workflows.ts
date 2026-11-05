@@ -394,6 +394,17 @@ export const workflowTaskEventSchema = z.object({
   status: z.enum(["running", "done", "failed", "stopped"]),
 });
 
+/** 协调者经 `canvas notify` 对人说了一句话（§101）；不带 `--text`。 */
+export const workflowReplyEventSchema = z.object({
+  type: z.literal("workflow.reply"),
+  replyId: z.string(),
+  taskId: z.string(),
+  boardId: z.string(),
+  coordinatorNodeId: z.string(),
+  nodeId: z.string(),
+  purpose: z.enum(["answer", "result", "attention"]),
+});
+
 /* ------------------------------- §15.6 ------------------------------------ */
 
 /** 自动化目标的种类名（`/api/automations/*` 的 `target.kind`）。 */
