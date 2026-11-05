@@ -451,8 +451,10 @@ describe("钥匙串后端（假 security(1)）", () => {
       "delete-generic-password",
     ]);
     for (const call of items.slice(1)) expect(call.at(-1)).toBe(keychain);
+    // `security -i` 的转义：Windows 的临时路径里有反斜杠。
+    const quoted = keychain.replace(/\\/g, "\\\\");
     expect(stdins).toEqual([
-      `add-generic-password -U "-a" "armadra-hook-key" "-s" "armadra-hook-key" -w "v" "${keychain}"\n`,
+      `add-generic-password -U "-a" "armadra-hook-key" "-s" "armadra-hook-key" -w "v" "${quoted}"\n`,
     ]);
   });
 
