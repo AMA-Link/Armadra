@@ -399,6 +399,9 @@ const CANVAS: Record<ControlVerb, Row> = {
       item: str(
         "the work item id (default: the only one in progress under this node)",
       ),
+      pr: str(
+        "the pull request you opened for this item: its number or web URL; Armadra then reads its reviews, comments and CI and forwards them to you as external material, and ends the item when it is merged or closed",
+      ),
     },
     required: ["state", "summary"],
   },
@@ -417,6 +420,9 @@ const CANVAS: Record<ControlVerb, Row> = {
     properties: {
       stage: oneOf(ENUMS.itemStages, "only items in this stage"),
       item: str("one item's detail"),
+      "bind-pr": str(
+        "coordinator only, with item: watch a pull request (number or web URL) on that item; the member gets its reviews, comments and CI, the item does not end with it",
+      ),
       limit: int("rows per page, 1–50 (default 20)", 1),
       offset: int(
         "list: rows to skip; with item: byte position to continue the origin text from",

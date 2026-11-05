@@ -85,13 +85,17 @@ export const CANVAS_USAGE = `CANVAS:
   outbox [--to ID] [--limit 20]        your deliveries still waiting to be sent
   cancel --id QUEUED-ID                drop one of them
   report --state progress|waiting|ready|blocked|failed --summary TEXT
-         [--human-action QUESTION | --clear-action] [--item ID]
+         [--human-action QUESTION | --clear-action] [--item ID] [--pr N|URL]
                                       report on your work item (summary <= 300
                                       chars); ready means awaiting review;
                                       --human-action holds the one question a
                                       person must answer (omit keeps it,
                                       --clear-action removes it); --item
-                                      defaults to your only item in progress
+                                      defaults to your only item in progress;
+                                      --pr binds the pull request you opened
+                                      (its reviews, comments and CI come back to
+                                      you as external material; merged or
+                                      closed ends the item)
   handback --item ID --reason TEXT      hand a follow-up back to the coordinator
                                       (reason <= 100 chars, once per item)
   events [--limit N]                   read the coordinator's unacknowledged events
@@ -103,6 +107,9 @@ export const CANVAS_USAGE = `CANVAS:
                                       open question verbatim, answer needs
                                       --followup; progress is refused; once each)
   items [--stage STAGE] [--item ID] [--limit N] [--offset N]
+  items --item ID --bind-pr N|URL     coordinator only: watch a pull request on
+                                      that item (the member receives its news;
+                                      the item does not end with it)
                                       read the work-item ledger: one line per
                                       item, person/* stages first; --item gives
                                       one item with its history and origin text

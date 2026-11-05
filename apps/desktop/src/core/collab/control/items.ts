@@ -6,6 +6,7 @@ import {
   type WorkItemStage,
 } from "@armadra/shared";
 import { type TaskRun, publishTask, taskRun } from "../../workflow/task-runs";
+import { bindPull, threadKey } from "../../workflow/threads";
 import {
   itemsOfNode,
   recordHandback,
@@ -23,6 +24,7 @@ import {
 import { Args, Refused, stripControl } from "../refusals";
 import { type CollabContext, nowDate, nowSeconds } from "../service";
 import { type Outcome, result } from "./outcome";
+import type { ResolvedPull } from "./pr-bind";
 
 /**
  * 工作项账本的三个动词（契约 §90.3）：`report`、`handback`、`items`。
@@ -148,6 +150,7 @@ export function report(
   context: CollabContext,
   caller: Caller,
   args: Args,
+  pull?: ResolvedPull,
 ): Outcome {
   const state = args.text("state");
   if (
@@ -170,6 +173,25 @@ export function report(
     wanted === undefined
       ? defaultItem(context.database, caller)
       : ownItem(context.database, caller, wanted);
+  // `--pr`：这个工作项自己开的 PR，绑上之后 core 去读它的评审、评论、CI 与合并
+  // （契约 §103）。先绑后记：绑不上（线程满了）整条报告拒绝，不留下半件事。
+  let bound = false;
+  if (pull !== undefined) {
+    const binding = bindPull(
+      context.database,
+      item.taskId,
+      { ...pull, own: true },
+      nowDate(context).getTime(),
+    );
+    if (binding.kind === "full") {
+      throw new Refused(
+        409,
+        "threads_full",
+        `工作项 ${item.taskId} 绑定的 PR 已经够多了。`,
+      );
+    }
+    bound = binding.kind === "bound";
+  }
   // 单槽：给出就替换，省略就保持，`--clear-action` 清除。
   const attention = clear ? null : action;
   const before = stageOf(context.database, item, nowSeconds(context));
@@ -184,7 +206,7 @@ export function report(
     LOUD_STATES.has(state as WorkItemReportState) || action !== undefined;
   // 页面靠 `workflow.task` 帧重读整块画板的任务行：阶段没变的进度报告不推，
   // 否则成员每报一步，每块画板都要重读一次。
-  if (loud || clear || stage !== before) {
+  if (loud || clear || bound || stage !== before) {
     publishTask(context.database, context.publish, item.taskId);
   }
   const notified = loud
@@ -199,6 +221,9 @@ export function report(
     : false;
   return result(
     `已记下工作项 ${item.taskId} 的报告（${state}），阶段 ${stage}。` +
+      (pull === undefined
+        ? ""
+        : `已绑定 PR ${threadKey(pull)}，core 会把它的评审、评论、CI 与合并情况转给你。`) +
       (loud
         ? notified
           ? "已记进协调者的事件队列。"
@@ -210,6 +235,9 @@ export function report(
       stage,
       attention: updated.attention,
       notified,
+      ...(pull === undefined
+        ? {}
+        : { pull: { repo: pull.repo, number: pull.number, bound } }),
     },
   );
 }
@@ -289,6 +317,12 @@ function rowJson(row: Row): Record<string, unknown> {
     status: run.status,
     report: run.report,
     attention: run.attention,
+    pulls: run.threads.map((thread) => ({
+      repo: thread.repo,
+      number: thread.number,
+      own: thread.own,
+      url: thread.url,
+    })),
   };
 }
 
@@ -310,14 +344,66 @@ function nodeTitleOf(database: DatabaseSync, nodeId: string): string {
   return typeof row?.title === "string" ? row.title : "(已删除的节点)";
 }
 
+/**
+ * `canvas items --item <id> --bind-pr <PR>`（契约 §103.1）：协调者给自己派发的
+ * 工作项绑一个 PR，只看不收尾（`own: false`）。不是它派发的工作项与不存在的同
+ * 答 404，不泄露它在不在。
+ */
+function bindOthersPull(
+  context: CollabContext,
+  caller: Caller,
+  args: Args,
+  pull: ResolvedPull,
+): Outcome {
+  const id = args.text("item");
+  if (id === undefined) throw bad("--bind-pr 要同时给 --item。");
+  const run = taskRun(context.database, id);
+  if (run === undefined || run.coordinatorNodeId !== caller.node.id) {
+    throw new Refused(
+      404,
+      "item_not_found",
+      `你派发的工作项里没有 \`${id}\`；--bind-pr 只有派发它的协调者能用（成员用 report --pr）。`,
+    );
+  }
+  const binding = bindPull(
+    context.database,
+    run.taskId,
+    { ...pull, own: false },
+    nowDate(context).getTime(),
+  );
+  if (binding.kind === "full") {
+    throw new Refused(
+      409,
+      "threads_full",
+      `工作项 ${run.taskId} 绑定的 PR 已经够多了。`,
+    );
+  }
+  if (binding.kind === "bound") {
+    publishTask(context.database, context.publish, run.taskId);
+  }
+  return result(
+    binding.kind === "bound"
+      ? `已把 PR ${threadKey(pull)} 绑定到工作项 ${run.taskId}（只看，不收尾）。`
+      : `工作项 ${run.taskId} 早已绑定 PR ${threadKey(pull)}。`,
+    {
+      item: run.taskId,
+      pull: { repo: pull.repo, number: pull.number, url: pull.url },
+      bound: binding.kind === "bound",
+    },
+  );
+}
+
 /** `canvas items` */
 export function items(
   context: CollabContext,
   caller: Caller,
   args: Args,
+  bindPr?: ResolvedPull,
 ): Outcome {
   const database = context.database;
   const now = nowSeconds(context);
+  if (bindPr !== undefined)
+    return bindOthersPull(context, caller, args, bindPr);
   const rows: Row[] = visible(database, caller).map((run) => ({
     run,
     stage: stageOf(database, run, now),
@@ -406,6 +492,11 @@ function detail(row: Row, args: Args): Outcome {
   if (run.mandate !== null) {
     lines.push(
       `授权：${run.mandate.by} · ${run.mandate.basis} · ${run.mandate.scope} · ${run.mandate.at}`,
+    );
+  }
+  for (const thread of run.threads) {
+    lines.push(
+      `PR：${thread.repo}#${thread.number}（${thread.own ? "自己开的" : "只看"}）${thread.url === "" ? "" : ` ${thread.url}`}`,
     );
   }
   if (run.attention !== null) {
