@@ -5254,6 +5254,13 @@ ACP 会话经 `session/new.mcpServers` 拿到 `armadra-hook mcp`（§14、`core/
 - **不用 PowerShell 做 DPAPI**：已决定。PowerShell 冷启动几百毫秒到数秒、受执行策略与受限语言模式影响，而凭据读写在启动路径上；没有工具就宁可不用 DPAPI，沿用上面的旧行为。
 - **威胁模型**同 §102.1：防数据目录被拷走或别的账户读取，不防同用户的恶意进程。
 
+### 102.8 Windows 的 SSH askpass（P7）
+
+- **通道**：Windows 上 `AskpassService` 不再因为没有 Unix socket 而整个不启动，而是在一条随机名命名管道 `\\.\pipe\armadra-askpass-<32 位十六进制>` 上监听（每次启动随机），连接先过 `armadra-pipe/1` 握手（label `askpass`，密钥由 `pipe.key` 派生，§102.3），DACL 收紧失败只告警。HTTP 面不变：`POST /askpass`，一次性令牌放 `Authorization: Bearer`，主机在 `X-Armadra-Host`，提示是请求体，答案是 200 的纯文本一行；令牌用一次即作废，其余一律 401。
+- **帮助程序**：`ssh` 运行的 `SSH_ASKPASS` 是 `<data>/ssh/askpass.exe`——`armadra-hook.exe` 的拷贝（`askpass.launch` 指向同一个 bundle），不是 `.cmd` + `curl`：`.cmd` 做不了握手，也会把服务器给定的提示文字再交给 `cmd.exe` 解释一遍。没有编好的 `armadra-hook.exe`（离开 Windows 打的包）就不启动 askpass 服务，需要口令的主机让 `ssh` 直接失败，不会挂在一个答不了的帮助程序上。
+- **环境**：`ssh` 子进程的环境在原有的 `SSH_ASKPASS`、`ARMADRA_ASKPASS_SOCKET`（Windows 上是管道全名）、`ARMADRA_ASKPASS_TOKEN`、`ARMADRA_ASKPASS_HOST` 之外多两项：`ARMADRA_ASKPASS_MODE=1`（`armadra-hook` 据此作为 askpass 客户端运行，提示文字不会被当成子命令）与 `ARMADRA_ASKPASS_KEYFILE`（`pipe.key` 的路径，密钥本身不进环境）。`armadra-hook askpass <提示>` 也可手动调用。
+- **输出约定**不变：成功时退出码 0、stdout 只有答案；失败时非零退出、stdout 什么都没有，令牌、提示与错误细节从不打印。
+
 ## 101. 协调者的回复闸门、重启恢复与记忆约定（`#704`，R3）
 
 > 状态：实施契约（AMA-Link/Armadra#704）。迁移 0061 新增 `router_replies`；`canvas` 多一个动词 `notify`；多一种工作空间事件 `workflow.reply`；协议版本不变，只加字段与种类。

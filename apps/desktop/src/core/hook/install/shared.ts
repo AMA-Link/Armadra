@@ -238,6 +238,40 @@ export function agentLauncherBinary(
   );
 }
 
+/** The SSH askpass helper's launcher name (`askpass.exe` + `askpass.launch`). */
+export const ASKPASS_LAUNCHER_NAME = "askpass";
+
+/**
+ * Windows: `<dataDir>/ssh/askpass.exe`, the hook client's launcher program
+ * copied under another name. `ssh` runs it as `SSH_ASKPASS <prompt>`; a prompt
+ * is text a server chose, so it must reach the program untouched — a `.cmd`
+ * would hand it to `cmd.exe` again, and there is no `.cmd` fallback here:
+ * without the compiled `.exe` the answer is `undefined` and the askpass
+ * service stays off. Never called off Windows.
+ */
+export function askpassLauncherBinary(
+  launcher: ClientLauncher,
+): string | undefined {
+  const bundle = (launcher.bundleCandidates ?? defaultBundleCandidates()).find(
+    isFile,
+  );
+  if (bundle === undefined) return undefined;
+  const hookExe =
+    launcher.windowsExe ?? join(dirname(bundle), `${CLIENT_NAME}.exe`);
+  if (!isFile(hookExe)) return undefined;
+  const written = writeLauncher(
+    join(launcher.dataDir, "ssh"),
+    {
+      runner: launcher.runner ?? process.execPath,
+      bundle,
+      windowsExe: hookExe,
+    },
+    "win32",
+    { name: ASKPASS_LAUNCHER_NAME },
+  );
+  return written.endsWith(".exe") ? written : undefined;
+}
+
 /**
  * The sidecar's file names. On Windows the launcher is `armadra-hook.exe`
  * (a console program that runs the bundle on the shell's own Electron without

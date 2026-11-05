@@ -50,7 +50,16 @@ import {
   writeSync,
 } from "node:fs";
 import { join } from "node:path";
+import { askpassLauncherBinary } from "../../hook/install/shared";
+import {
+  type ListenSpec,
+  type PipeSecurity,
+  bind,
+  release,
+} from "../../listen";
 import { hardenDirectory, hardenFile } from "../../paths";
+import { channelKey, ensurePipeKey, pipeKeyPath } from "../../private-pipe";
+import { ASKPASS_LABEL } from "../../private-pipe/labels";
 import { PromptRegistry, type SshPrompt } from "./prompts";
 
 /** What the helper needs to find this core, and what proves it may. */
@@ -58,6 +67,14 @@ export const SOCKET_ENV = "ARMADRA_ASKPASS_SOCKET";
 export const TOKEN_ENV = "ARMADRA_ASKPASS_TOKEN";
 /** Which host the prompt belongs to, so the dialog can name it. */
 export const HOST_ENV = "ARMADRA_ASKPASS_HOST";
+/**
+ * Windows only: the helper is the hook client's launcher program, and these say
+ * so — it runs as the askpass client when `MODE_ENV` is `1`, reaches the
+ * private pipe named by `SOCKET_ENV` and derives the handshake key from the
+ * file `KEY_FILE_ENV` names (never from the environment itself).
+ */
+export const MODE_ENV = "ARMADRA_ASKPASS_MODE";
+export const KEY_FILE_ENV = "ARMADRA_ASKPASS_KEYFILE";
 
 /**
  * How long the helper waits for a person. One second under the registry's own
@@ -177,6 +194,10 @@ export type PromptListener = (prompt: SshPrompt) => void;
 
 export interface AskpassOptions {
   readonly dataDir: string;
+  /** Windows: the `askpass.exe` to hand `ssh`; tests replace the lookup. */
+  readonly windowsLauncher?: () => string | undefined;
+  /** Windows: the pipe's hardening and warnings; tests replace the hardener. */
+  readonly pipeSecurity?: Pick<PipeSecurity, "harden">;
   /** Where an opened prompt is announced, so the page can show a dialog. */
   readonly onPrompt: PromptListener;
   readonly log?: (message: string, fields?: Record<string, unknown>) => void;
@@ -193,24 +214,32 @@ export class AskpassService {
   private readonly tokens = new Map<string, number>();
   private server: Server | undefined;
   private started = false;
+  private spec: ListenSpec | undefined;
+  private windows:
+    | { launcher: string; pipe: string; keyFile: string }
+    | undefined;
 
   constructor(private readonly options: AskpassOptions) {}
 
   /**
    * Bind the socket and write the helper, once.
    *
-   * Windows has neither a unix socket nor a `sh` to run the helper, so the
-   * service does not start there and {@link childEnvironment} hands back
-   * nothing — `ssh` then fails on a host that needs a password rather than
-   * hanging on a helper that cannot answer.
-   *
-   * TODO(R6): the Windows path is a named pipe plus a `.cmd` helper calling
-   * the bundled `curl.exe`, alongside the session-host work that brings the
-   * rest of the Windows terminal story up.
+   * Windows has neither a unix socket nor a `sh` to run the helper, so there
+   * the service listens on a private named pipe (contract §102.8) and the
+   * helper is the compiled launcher program copied as `askpass.exe`: a `.cmd`
+   * plus `curl` cannot do the handshake, and would hand a server-chosen prompt
+   * to `cmd.exe`. Without that `.exe` (a build made off Windows) the service
+   * does not start and {@link childEnvironment} hands back nothing — `ssh`
+   * then fails on a host that needs a password rather than hanging on a helper
+   * that cannot answer.
    */
   async start(): Promise<void> {
-    if (this.started || process.platform === "win32") return;
+    if (this.started) return;
     this.started = true;
+    if (process.platform === "win32") {
+      await this.startWindows();
+      return;
+    }
     const directory = join(this.options.dataDir, "ssh");
     mkdirSync(directory, { recursive: true });
     hardenDirectory(directory);
@@ -239,6 +268,50 @@ export class AskpassService {
     writeHelper(helperPath(this.options.dataDir), helperScript(path));
   }
 
+  private async startWindows(): Promise<void> {
+    const launcher = (
+      this.options.windowsLauncher ??
+      (() => askpassLauncherBinary({ dataDir: this.options.dataDir }))
+    )();
+    if (launcher === undefined) {
+      this.options.log?.("no askpass.exe: SSH password prompts are off");
+      return;
+    }
+    const name = `armadra-askpass-${randomBytes(16).toString("hex")}`;
+    const server = createServer((request, response) => {
+      void this.serve(request, response);
+    });
+    try {
+      const key = channelKey(
+        ensurePipeKey(this.options.dataDir),
+        ASKPASS_LABEL,
+      );
+      // A DACL that cannot be tightened is a warning: the handshake still
+      // keeps a squatter out, and the token is one-time.
+      this.spec = await bind(
+        server,
+        { kind: "pipe", name },
+        {
+          channel: { label: ASKPASS_LABEL, key },
+          ...this.options.pipeSecurity,
+          onWarning: (message, detail) =>
+            this.options.log?.(message, { detail: String(detail) }),
+        },
+      );
+    } catch (error) {
+      this.options.log?.("could not open the askpass pipe", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+    this.server = server;
+    this.windows = {
+      launcher,
+      pipe: `\\\\.\\pipe\\${name}`,
+      keyFile: pipeKeyPath(this.options.dataDir),
+    };
+  }
+
   /**
    * The environment for one `ssh` child, or `undefined` when prompts are not
    * available. A fresh token each time: it authorizes one connection attempt's
@@ -246,6 +319,18 @@ export class AskpassService {
    */
   childEnvironment(hostId: string): [string, string][] | undefined {
     if (this.server === undefined) return undefined;
+    if (this.windows !== undefined) {
+      return [
+        ...environment(
+          this.windows.launcher,
+          this.windows.pipe,
+          this.mint(),
+          hostId,
+        ),
+        [MODE_ENV, "1"],
+        [KEY_FILE_ENV, this.windows.keyFile],
+      ];
+    }
     return environment(
       helperPath(this.options.dataDir),
       socketPath(this.options.dataDir),
@@ -355,6 +440,12 @@ export class AskpassService {
     this.started = false;
     if (server === undefined) return;
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    if (this.spec !== undefined) {
+      release(this.spec);
+      this.spec = undefined;
+      this.windows = undefined;
+      return;
+    }
     rmSync(socketPath(this.options.dataDir), { force: true });
   }
 }
