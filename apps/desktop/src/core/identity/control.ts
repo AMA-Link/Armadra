@@ -1,6 +1,16 @@
 import { type Server, createServer } from "node:http";
+import { randomBytes } from "node:crypto";
 import { join } from "node:path";
+import {
+  CONTROL_SERVICE,
+  publish,
+  serviceEndpointNow,
+  withdraw,
+} from "../endpoints";
+import { endpointsFile } from "../paths";
 import { type ListenSpec, bind, release } from "../listen";
+import { channelKey, ensurePipeKey } from "../private-pipe";
+import { CONTROL_LABEL } from "../private-pipe/labels";
 import { IdentityError, identityFailure } from "./errors";
 import { nativeOrigin } from "./origin";
 import { allScopes } from "./scopes";
@@ -21,9 +31,11 @@ import { validName } from "./tokens";
  * 答 `armadra-host pair` 印的那个 JSON 形状——`HostIdentityClient.pair()` 原样
  * 收得下，所以前端一行不用改。
  *
- * TODO(R6)：Windows 上换成命名管道，并带上受保护的 DACL 与逐连接的客户端 SID
- * 核对；`node:net` 建出来的普通管道实例达不到这条通道要求的隔离，所以在
- * Windows 上这条通道不开；壳在那里走另一条取票路径。
+ * Windows 上它是一条命名管道（契约 §102.4）：名字每次启动随机（128 位），写进
+ * `endpoints.json` 的 `control` 记录；连接先过 `armadra-pipe/1` 握手（密钥来自
+ * `pipe.key`），管道的 DACL 用 `armadra-winsec` 收紧到本用户与 SYSTEM。**DACL
+ * 收紧失败这条通道就不开**——它签的票能换全权会话，只靠握手不够；桌面壳在那里
+ * 仍走 fork 的 IPC 通道（最窄的一条）。
  */
 
 export const CONTROL_SOCKET = "core-control.sock";
@@ -51,23 +63,56 @@ export interface ControlOptions {
 export async function startControlChannel(
   options: ControlOptions,
 ): Promise<ControlChannel | undefined> {
-  if (process.platform === "win32") {
-    options.log?.warn("身份私有通道在 Windows 上尚未实现（R6），本次不开");
-    return undefined;
-  }
   const server: Server = createServer((request, response) => {
     void handle(options, request, response);
   });
-  const spec = await bind(server, {
-    kind: "unix",
-    path: controlSocketPath(options.dataDir),
-  });
+  const onWindows = process.platform === "win32";
+  let spec: ListenSpec;
+  if (onWindows) {
+    try {
+      const key = channelKey(ensurePipeKey(options.dataDir), CONTROL_LABEL);
+      const name = `armadra-control-${randomBytes(16).toString("hex")}`;
+      spec = await bind(
+        server,
+        { kind: "pipe", name },
+        {
+          channel: { label: CONTROL_LABEL, key },
+          requireHardened: true,
+          onWarning: (message, detail) => options.log?.warn(message, detail),
+        },
+      );
+      publish(endpointsFile(options.dataDir), CONTROL_SERVICE, {
+        ...serviceEndpointNow(options.instanceId),
+        pipe: `\\\\.\\pipe\\${name}`,
+      });
+    } catch (error) {
+      options.log?.warn(
+        "身份私有通道在 Windows 上没有开：管道收紧失败，桌面壳改走 IPC",
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+      return undefined;
+    }
+  } else {
+    spec = await bind(server, {
+      kind: "unix",
+      path: controlSocketPath(options.dataDir),
+    });
+  }
   return {
     spec,
     close: () =>
       new Promise<void>((resolve) => {
         server.close(() => {
           release(spec);
+          if (onWindows) {
+            try {
+              withdraw(endpointsFile(options.dataDir), CONTROL_SERVICE);
+            } catch {
+              // The record is a hint; a stale one is probed and found dead.
+            }
+          }
           resolve();
         });
         // A keep-alive client on the control socket would otherwise hold

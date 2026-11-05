@@ -264,8 +264,10 @@ export function installIdentity(context: CoreContext): void {
     http.handle(request, response, cors),
   );
 
-  // Windows 上私有通道还不开（`control.ts` 的 TODO），票经 fork 的 IPC 通道
-  // 签：回环不再放行匿名请求（契约 §3.2），壳的页面没有票就什么都打不了。
+  // Windows 上桌面壳的票经 fork 的 IPC 通道签（最窄的一条，只有起这个 core 的
+  // 壳在另一头）：回环不再放行匿名请求（契约 §3.2），壳的页面没有票就什么都
+  // 打不了。同一时刻 Windows 也开命名管道版的私有通道（`control.ts`，§102.4），
+  // 给没有 fork 通道的客户端（服务器壳的 `armadra cloud`）。
   if (process.platform === "win32") {
     startTicketIpc(
       { service, instanceId: runInstance },
