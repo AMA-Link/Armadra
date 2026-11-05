@@ -10,8 +10,12 @@
 
 import * as net from "node:net";
 
+import { ClientHandshake, channelKey } from "../core/private-pipe/handshake.js";
+import { HOOK_LABEL } from "../core/private-pipe/labels.js";
+
 import { envVar } from "./endpoint.js";
 import type { Endpoint } from "./endpoint.js";
+import type { Channel } from "../core/private-pipe/handshake.js";
 
 /** How long a single connect attempt may take. */
 export const CONNECT_TIMEOUT_MS = 500;
@@ -119,6 +123,27 @@ export async function send(
   const bytes = requestBytes(request);
   let lastError = "no transport configured";
 
+  // Windows: the named pipe, behind the `armadra-pipe/1` handshake keyed from
+  // the bearer. The request is not written until the server proved the key, so
+  // a process that squatted the pipe name never sees it — and `sent` stays
+  // false, so the next candidate may still try.
+  if (endpoint.pipe !== undefined && endpoint.hookToken !== undefined) {
+    const attempt = await exchange(
+      { path: endpoint.pipe },
+      bytes,
+      deadline,
+      `cannot connect to ${endpoint.pipe}`,
+      {
+        label: HOOK_LABEL,
+        pipe: endpoint.pipe,
+        key: channelKey(endpoint.hookToken, HOOK_LABEL),
+      },
+    );
+    if ("ok" in attempt) return attempt;
+    if (attempt.sent === true) return attempt;
+    lastError = attempt.error;
+  }
+
   if (endpoint.sock !== undefined && process.platform !== "win32") {
     const attempt = await exchange(
       { path: endpoint.sock },
@@ -160,6 +185,7 @@ function exchange(
   bytes: Buffer,
   deadline: number,
   connectLabel: string,
+  channel?: Channel,
 ): Promise<{ ok: HookResponse } | SendFailure> {
   return new Promise((resolve) => {
     if (remaining(deadline) === 0) {
@@ -169,7 +195,13 @@ function exchange(
     let settled = false;
     const chunks: Buffer[] = [];
     let connected = false;
+    // The request bytes left this process. With a handshake that is later than
+    // the connect: until the server proved the key nothing but our nonce went.
+    let requestSent = false;
     let received = 0;
+    const handshake =
+      channel === undefined ? undefined : new ClientHandshake(channel);
+    let proven = handshake === undefined;
 
     const socket = net.connect(target);
     socket.setNoDelay(true);
@@ -193,7 +225,7 @@ function exchange(
       const complete = tryParse(Buffer.concat(chunks));
       finish(
         complete === undefined
-          ? { error: message, sent: connected }
+          ? { error: message, sent: requestSent }
           : { ok: complete },
       );
     };
@@ -212,9 +244,28 @@ function exchange(
     socket.on("connect", () => {
       connected = true;
       clearTimeout(connectTimer);
-      socket.write(bytes);
+      if (handshake === undefined) {
+        requestSent = true;
+        socket.write(bytes);
+      } else {
+        socket.write(handshake.hello());
+      }
     });
-    socket.on("data", (chunk: Buffer) => {
+    socket.on("data", (incoming: Buffer) => {
+      let chunk = incoming;
+      if (!proven && handshake !== undefined) {
+        const step = handshake.push(chunk);
+        if (step.kind === "wait") return;
+        if (step.kind === "rejected") {
+          finish({ error: `${connectLabel}: ${step.reason}`, sent: false });
+          return;
+        }
+        proven = true;
+        requestSent = true;
+        socket.write(Buffer.concat([step.data, bytes]));
+        if (step.rest.length === 0) return;
+        chunk = step.rest;
+      }
       chunks.push(chunk);
       received += chunk.length;
       // Stop early when the framing says we already have everything; some
@@ -230,13 +281,13 @@ function exchange(
     socket.on("end", () => {
       const parsed = parseResponse(Buffer.concat(chunks));
       finish(
-        "ok" in parsed ? parsed : { error: parsed.error, sent: connected },
+        "ok" in parsed ? parsed : { error: parsed.error, sent: requestSent },
       );
     });
     socket.on("close", () => {
       const parsed = parseResponse(Buffer.concat(chunks));
       finish(
-        "ok" in parsed ? parsed : { error: parsed.error, sent: connected },
+        "ok" in parsed ? parsed : { error: parsed.error, sent: requestSent },
       );
     });
   });
