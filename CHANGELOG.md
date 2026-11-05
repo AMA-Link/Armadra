@@ -20,6 +20,10 @@ macOS 上只有默认数据目录的 core 用钥匙串：指了 `ARMADRA_DATA_DI
 
 On macOS only the core of the default data directory uses the Keychain: instances pointed at another `ARMADRA_DATA_DIR` / `--data-dir` (development, probes, isolated runs) use an encrypted file in that data directory (`file-encrypted`) and no longer read or overwrite the real app's Keychain items; with no default keychain (e.g. a temporary HOME) secrets are treated as unavailable instead of raising the "Keychain Not Found" dialog (contract §102.1, Closes #818). The hook instance secret is stored as `armadra-hook-key`, and the migration from the old `hook-secret` file lets the file win, so issued node tokens are unaffected by leftover Keychain items. Tokens stored under a non-default data directory on macOS need one more sign-in.
 
+手机端浮层、面板与表格不再比桌面端大得多（Closes #822）：手机竖屏与手机横屏里，Popover、菜单、Select、对话框与 Sheet、工作面板、整页焦点页和表格容器内的间距刻度统一乘 `--phone-scale`（0.8），宽、高、内边距、间隙同比缩小，版式与桌面一致；字号不变、输入框仍 16px，控件命中区不低于 28px，设置页不受影响。
+
+Phone overlays, panels and tables are no longer oversized next to desktop (Closes #822): in phone portrait and phone landscape, the spacing scale inside popovers, menus, selects, dialogs and sheets, work panels, the full-page focus view and table containers is multiplied by `--phone-scale` (0.8), so widths, heights, paddings and gaps shrink together and the layout matches desktop; font sizes and 16px inputs are unchanged, controls keep at least a 28px hit area, and the settings dialog is untouched.
+
 ## 0.14.0（2026-11-05）
 
 版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.14.0。随包 `@armadra/agent` 0.14.0（新增 Pi 的 ACP 桥 `ama --mode acp --bridge pi`）与平台协议包 0.14.0（协议仍是 1.4，没有形状变化）；配套镜像 `armadra-cloud` / `armadra-relay` 0.14.0。本版主题：连接手机只剩一张二维码（局域网与互联网装在同一张码里），ACP 提示框接管与交还的顺序修复，macOS 首次打开说明。
