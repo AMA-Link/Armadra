@@ -106,7 +106,7 @@ import {
   waitFor,
 } from "./lib.mjs";
 
-const FAKE_KEY = "sk-agent-e2e-fake-key";
+export const FAKE_KEY = "sk-agent-e2e-fake-key";
 const DISPATCH = "派任务：请 taskecho 检查 src/z";
 const TASK_PROMPT = "检查 src/z，结论按任务末尾的键回报";
 const TASK_RESULT = "taskecho 回报：src/z 没有问题";
@@ -251,7 +251,7 @@ function realModelConfig(mock) {
 const SUMMARY = "汇总：A 说 x 没问题；B 说 y 要补测试。";
 
 /** 一条消息正文（OpenAI 的 content 可以是字符串或分段）。 */
-function textOf(message) {
+export function textOf(message) {
   const content = message?.content;
   if (typeof content === "string") return content;
   if (Array.isArray(content))
@@ -260,7 +260,7 @@ function textOf(message) {
 }
 
 /** 最后一条助手消息调的工具名。 */
-function lastToolCall(messages) {
+export function lastToolCall(messages) {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (message.role === "user") return undefined;
@@ -476,7 +476,7 @@ function paneEnvironment(data) {
  * `armadra-hook canvas` 只打印正文；这里要看 `wait` 答的结构（`approvalId`），
  * 所以照 hook 客户端的样子直接请求：hook 面的 bearer 与节点令牌都在数据目录里。
  */
-function controlAs(data, nodeId, verb, args) {
+export function controlAs(data, nodeId, verb, args) {
   const endpoint = Object.fromEntries(
     readFileSync(join(data, "hook-endpoint.env"), "utf8")
       .split("\n")
@@ -528,7 +528,7 @@ function controlAs(data, nodeId, verb, args) {
  * 自己的一套 core：临时 HOME、文件密钥后端、不写全局；PATH 最前面是真 CLI 的
  * 替身目录，这套 core 起不了任何真 CLI（ama 是数据目录里随包的那份）。
  */
-async function setupCore(scratch, home, probeEnv) {
+export async function setupCore(scratch, home, probeEnv) {
   const project = join(scratch, "project");
   mkdirSync(project);
   writeFileSync(join(project, "README.md"), "# probe\n");
