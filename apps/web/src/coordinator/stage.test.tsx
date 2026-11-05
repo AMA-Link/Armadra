@@ -30,6 +30,7 @@ function task(nodeId: string, patch: Partial<DispatchTask>): DispatchTask {
     report: null,
     attention: null,
     reply: null,
+    pulls: [],
     ...patch,
   };
 }

@@ -33,6 +33,18 @@ export const dispatchTaskSchema = z.object({
   stage: z.enum(WORK_ITEM_STAGES).nullable().default(null).catch(null),
   report: workItemReportSchema.nullable().default(null),
   attention: workItemAttentionSchema.nullable().default(null),
+  // 绑定的 PR（契约 §103.1）：旧 core 没有这个字段。
+  pulls: z
+    .array(
+      z.object({
+        repo: z.string(),
+        number: z.number(),
+        own: z.boolean(),
+        url: z.string(),
+      }),
+    )
+    .default([])
+    .catch([]),
   // 协调者经 `canvas notify` 说的最新一句话（契约 §101）：旧 core 没有这个字段。
   reply: workItemReplySchema.nullable().default(null).catch(null),
 });

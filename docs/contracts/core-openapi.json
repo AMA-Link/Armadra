@@ -74299,6 +74299,30 @@
                               }
                             ]
                           },
+                          "pulls": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "repo": {
+                                  "type": "string"
+                                },
+                                "number": {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991,
+                                  "exclusiveMinimum": 0
+                                },
+                                "own": {
+                                  "type": "boolean"
+                                },
+                                "url": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["repo", "number", "own", "url"]
+                            }
+                          },
                           "reply": {
                             "anyOf": [
                               {
@@ -74340,6 +74364,7 @@
                           "stage",
                           "report",
                           "attention",
+                          "pulls",
                           "reply"
                         ]
                       }
@@ -74588,6 +74613,30 @@
                             }
                           ]
                         },
+                        "pulls": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "repo": {
+                                "type": "string"
+                              },
+                              "number": {
+                                "type": "integer",
+                                "minimum": -9007199254740991,
+                                "maximum": 9007199254740991,
+                                "exclusiveMinimum": 0
+                              },
+                              "own": {
+                                "type": "boolean"
+                              },
+                              "url": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["repo", "number", "own", "url"]
+                          }
+                        },
                         "reply": {
                           "anyOf": [
                             {
@@ -74629,6 +74678,7 @@
                         "stage",
                         "report",
                         "attention",
+                        "pulls",
                         "reply"
                       ]
                     }
