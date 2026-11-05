@@ -35,6 +35,9 @@ import {
   type ForgeCheck,
   type ForgeCheckState,
   type ForgeChecks,
+  type ForgeConversation,
+  type ForgeConversationItem,
+  MAX_CONVERSATION_PAGES,
   ForgeError,
   type ForgeFile,
   type ForgeFileStatus,
@@ -394,6 +397,14 @@ function listQuery(
     query.state = kind === "issues" ? "closed" : "all";
   }
   return query;
+}
+
+interface WireNote {
+  id?: number;
+  body?: string;
+  system?: boolean;
+  author?: { username?: string } | null;
+  created_at?: string;
 }
 
 function array<T>(value: unknown): T[] {
@@ -761,6 +772,53 @@ export class GitlabForge implements Forge {
       });
     }
     return { headSha: pull.headSha, rollup: rollupOf(checks), checks };
+  }
+
+  async conversation(
+    repo: ForgeRepo,
+    number: number,
+  ): Promise<ForgeConversation> {
+    const index = numbered(number);
+    const pull = toPull(await this.rawPull(repo, number));
+    const items: ForgeConversationItem[] = [];
+    let intervalSec = 0;
+    let page = 1;
+    for (let pages = 0; pages < MAX_CONVERSATION_PAGES; pages += 1) {
+      const query: Record<string, string> = {
+        per_page: "100",
+        sort: "asc",
+        order_by: "created_at",
+      };
+      if (page > 1) query.page = String(page);
+      const response = await this.http.get(
+        projectPath(repo, `/merge_requests/${index}/notes`),
+        query,
+      );
+      intervalSec = Math.max(intervalSec, response.pollIntervalSec ?? 0);
+      for (const value of array<WireNote>(decodeJson(response))) {
+        // 系统备注（"added 1 commit"、"approved this merge request"）不是人写的话。
+        if (value.system === true) continue;
+        const id = count(value.id);
+        const at = timeMs(value.created_at);
+        if (id === 0 || at === null) continue;
+        const login = text(value.author?.username, 256);
+        items.push({
+          id: `c${id}`,
+          kind: "comment",
+          author: login === "" ? null : login,
+          body: text(value.body, MAX_BODY),
+          state: null,
+          url: pull.url === "" ? "" : `${pull.url}#note_${id}`,
+          createdAtMs: at,
+        });
+      }
+      if (response.nextPage <= page) break;
+      page = response.nextPage;
+    }
+    return {
+      items,
+      pollIntervalMs: intervalSec > 0 ? intervalSec * 1000 : null,
+    };
   }
 
   async merge(

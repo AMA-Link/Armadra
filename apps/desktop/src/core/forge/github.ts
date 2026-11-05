@@ -29,6 +29,8 @@ import {
   type Forge,
   type ForgeCheckState,
   type ForgeChecks,
+  type ForgeConversation,
+  type ForgeConversationItem,
   type ForgeError,
   type ForgeFile,
   type ForgeFileStatus,
@@ -42,6 +44,8 @@ import {
   type ForgeRepository,
   type ListOptions,
   type RepositoryListOptions,
+  MAX_BODY,
+  MAX_CONVERSATION_PAGES,
   MAX_FILES,
   MAX_LIMIT,
   MAX_NUMBER,
@@ -231,6 +235,47 @@ function decodeArray<T>(body: Buffer): T[] {
   if (!Array.isArray(value))
     throw forgeError("unavailable", "RESPONSE_MALFORMED");
   return value as T[];
+}
+
+interface WireNote {
+  id?: unknown;
+  user?: { login?: unknown } | null;
+  body?: unknown;
+  state?: unknown;
+  html_url?: unknown;
+  created_at?: unknown;
+  submitted_at?: unknown;
+}
+
+function noteTime(value: unknown): number {
+  const parsed = typeof value === "string" ? Date.parse(value) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+/** 评论 / 评审的一条；缺 id 或时间的丢掉，未提交的评审草稿不算。 */
+function toConversationItem(
+  value: WireNote,
+  prefix: "c" | "r" | "v",
+): ForgeConversationItem | undefined {
+  const id = typeof value.id === "number" ? value.id : NaN;
+  if (!Number.isSafeInteger(id) || id <= 0) return undefined;
+  const at = noteTime(value.submitted_at ?? value.created_at);
+  if (at === 0) return undefined;
+  const review = prefix === "v";
+  const state =
+    typeof value.state === "string" ? value.state.toLowerCase() : "";
+  if (review && (state === "pending" || state === "")) return undefined;
+  const login = value.user?.login;
+  const url = typeof value.html_url === "string" ? value.html_url : "";
+  return {
+    id: `${prefix}${id}`,
+    kind: review ? "review" : "comment",
+    author: typeof login === "string" && login !== "" ? login : null,
+    body: typeof value.body === "string" ? value.body.slice(0, MAX_BODY) : "",
+    state: review ? state : null,
+    url: /^https?:\/\//i.test(url) ? url.slice(0, 2048) : "",
+    createdAtMs: at,
+  };
 }
 
 function perPage(limit: number): string {
@@ -445,6 +490,46 @@ export class GithubForge implements Forge {
         return { headSha: "", rollup: "none" as const, checks: [] };
       }
       return fromGithubChecks(await api.checks(client, ref, pull.headSha, now));
+    });
+  }
+
+  conversation(repo: ForgeRepo, number: number): Promise<ForgeConversation> {
+    return this.run(async () => {
+      const { client, ref } = this.target(repo);
+      const index = numbered(number);
+      let intervalSec = 0;
+      const read = async (
+        suffix: string,
+        prefix: "c" | "r" | "v",
+      ): Promise<ForgeConversationItem[]> => {
+        const items: ForgeConversationItem[] = [];
+        let page = 1;
+        for (let pages = 0; pages < MAX_CONVERSATION_PAGES; pages += 1) {
+          const query: Record<string, string> = { per_page: "100" };
+          if (page > 1) query.page = String(page);
+          const response = await client.get(
+            `/repos/${ref.owner}/${ref.name}/${suffix}`,
+            query,
+          );
+          intervalSec = Math.max(intervalSec, response.pollIntervalSec ?? 0);
+          for (const value of decodeArray<WireNote>(response.body)) {
+            const item = toConversationItem(value, prefix);
+            if (item !== undefined) items.push(item);
+          }
+          if (response.nextPage <= page) break;
+          page = response.nextPage;
+        }
+        return items;
+      };
+      const items = [
+        ...(await read(`issues/${index}/comments`, "c")),
+        ...(await read(`pulls/${index}/comments`, "r")),
+        ...(await read(`pulls/${index}/reviews`, "v")),
+      ].sort((a, b) => a.createdAtMs - b.createdAtMs);
+      return {
+        items,
+        pollIntervalMs: intervalSec > 0 ? intervalSec * 1000 : null,
+      };
     });
   }
 

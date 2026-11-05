@@ -48,6 +48,7 @@ export const CASSETTES = [
   "merge-methods",
   "auto-merge",
   "cleanup",
+  "notes",
 ] as const;
 export type CassetteName = (typeof CASSETTES)[number];
 
