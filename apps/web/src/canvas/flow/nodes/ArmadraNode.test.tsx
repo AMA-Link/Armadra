@@ -19,6 +19,20 @@ const store = vi.hoisted(() => ({
   setNodeNote: vi.fn(),
 }));
 
+/** 每次渲染交给 `NodeResizer` 的 props（#819：回调身份要稳定）。 */
+const resizerProps = vi.hoisted(() => [] as Record<string, unknown>[]);
+
+vi.mock("@xyflow/react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@xyflow/react")>();
+  return {
+    ...actual,
+    NodeResizer: (props: Parameters<typeof actual.NodeResizer>[0]) => {
+      resizerProps.push(props as Record<string, unknown>);
+      return actual.NodeResizer(props);
+    },
+  };
+});
+
 vi.mock("@/store/canvas-store", () => {
   const useCanvasStore = <T,>(selector: (state: typeof store) => T) =>
     selector(store);
@@ -58,6 +72,25 @@ function node(patch: Partial<CanvasNode> = {}): CanvasNode {
     updatedAt: "2026-09-06T00:00:00.000Z",
     ...patch,
   } as CanvasNode;
+}
+
+function nodeElement(target: CanvasNode, selected: boolean, dragging = false) {
+  return (
+    <ArmadraNode
+      id={target.id}
+      type="armadra"
+      data={target}
+      selected={selected}
+      dragging={dragging}
+      zIndex={1}
+      isConnectable
+      positionAbsoluteX={0}
+      positionAbsoluteY={0}
+      deletable
+      selectable
+      draggable
+    />
+  );
 }
 
 function renderNode(target = node(), selected = false, dragging = false) {
@@ -163,5 +196,36 @@ describe("ArmadraNode 拖动与入场", () => {
         .querySelector('[data-slot="node-host"]')
         ?.getAttribute("data-entering"),
     ).toBe("true");
+  });
+});
+
+describe("ArmadraNode 的 resize 回调（#819）", () => {
+  it("重渲时交给 NodeResizer 的回调身份不变，松手用的是最新的节点", () => {
+    resizerProps.length = 0;
+    store.resizeNode.mockClear();
+    const first = node();
+    const view = renderFlow(nodeElement(first, true), {
+      nodeId: first.id,
+      selected: true,
+    });
+    const before = resizerProps.at(-1)!;
+    // 第一帧 onResize 写草稿 → 投影换节点 → 节点带着新数据重渲。
+    const next = node({ title: "改过", collapsed: true });
+    view.rerenderNode(nodeElement(next, true));
+    const after = resizerProps.at(-1)!;
+    expect(resizerProps.length).toBeGreaterThan(1);
+    expect(after.onResize).toBe(before.onResize);
+    expect(after.onResizeEnd).toBe(before.onResizeEnd);
+
+    (after.onResizeEnd as (event: unknown, params: unknown) => void)(
+      {},
+      { x: 10.4, y: 20.6, width: 400.2, height: 300 },
+    );
+    // 折叠是新渲染才有的：高度钉在 40，证明转发到了最新的节点。
+    expect(store.resizeNode).toHaveBeenCalledWith(
+      "n1",
+      { width: 400, height: COLLAPSED_HEIGHT },
+      { x: 10, y: 21 },
+    );
   });
 });

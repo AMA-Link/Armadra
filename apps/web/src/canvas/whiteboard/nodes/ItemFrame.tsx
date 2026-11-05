@@ -2,6 +2,7 @@ import * as React from "react";
 import { NodeResizer } from "@xyflow/react";
 
 import { ConnectionHandles } from "../../flow/nodes/ConnectionHandles";
+import { useStableResizeHandlers } from "../../flow/nodes/stable-resize";
 import { beginGesture, endGesture, resizeItem } from "../store";
 import type { Item } from "../model";
 
@@ -114,6 +115,24 @@ export function ItemFrame({
     [item.id, widthOnly],
   );
 
+  // 回调身份必须稳定：每一帧都写白板文档、对象都重渲，内联回调会让 React Flow
+  // 在手势中途换绑把手，手指拉伸到第一帧就断（`stable-resize.ts`，#819）。
+  const resize = useStableResizeHandlers({
+    onResizeStart: (_event, params) => {
+      beginGesture("whiteboard.resize");
+      start.current = {
+        box: { x: item.x, y: item.y, w: item.w, h: item.h },
+        params: { ...params },
+      };
+    },
+    onResize: (_event, params) => apply(params),
+    onResizeEnd: (_event, params) => {
+      apply(params);
+      start.current = null;
+      endGesture();
+    },
+  });
+
   return (
     <>
       {resizable ? (
@@ -124,19 +143,9 @@ export function ItemFrame({
           minWidth={0}
           minHeight={0}
           keepAspectRatio={keepAspectRatio}
-          onResizeStart={(_event, params) => {
-            beginGesture("whiteboard.resize");
-            start.current = {
-              box: { x: item.x, y: item.y, w: item.w, h: item.h },
-              params: { ...params },
-            };
-          }}
-          onResize={(_event, params) => apply(params)}
-          onResizeEnd={(_event, params) => {
-            apply(params);
-            start.current = null;
-            endGesture();
-          }}
+          onResizeStart={resize.onResizeStart}
+          onResize={resize.onResize}
+          onResizeEnd={resize.onResizeEnd}
         />
       ) : null}
       <ConnectionHandles dropOnly />

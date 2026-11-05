@@ -14,6 +14,7 @@ import { NodeBodyFallback } from "@/nodes/NodeBodyFallback";
 import { useCanvasStore } from "@/store/canvas-store";
 import { clearDrafts, setDraft } from "../drafts";
 import { useNodeEntering } from "../node-enter";
+import { useStableResizeHandlers } from "./stable-resize";
 import type { ArmadraFlowNode } from "../../sync/project";
 
 /**
@@ -81,6 +82,11 @@ export function ArmadraNode({
     focused,
   };
   const Body = NODE_BODY[node.type];
+  // 回调身份必须稳定，否则手指拉伸到第一帧就断（`stable-resize.ts`，#819）。
+  const resize = useStableResizeHandlers({
+    onResize: (_event, params) => onResize(id, params),
+    onResizeEnd: (_event, params) => onResizeEnd(node, params),
+  });
 
   return (
     // `contents`：不生成盒子，只给样式一个挂 `data-dragging`（拖动中阴影加倍、
@@ -98,8 +104,8 @@ export function ArmadraNode({
         // 拉成一条长条（旧引擎 `onResize` 里的同一条规则）。
         minHeight={collapsed ? COLLAPSED_HEIGHT : meta.minSize.height}
         maxHeight={collapsed ? COLLAPSED_HEIGHT : undefined}
-        onResize={(_event, params) => onResize(id, params)}
-        onResizeEnd={(_event, params) => onResizeEnd(node, params)}
+        onResize={resize.onResize}
+        onResizeEnd={resize.onResizeEnd}
       />
       {/* 头部插槽住在节点体里的类型（终端、编辑器、变更、文件、浏览器、
           两张自动化卡）自己渲染 `NodeShell`；其余（便签）走通用包壳。 */}

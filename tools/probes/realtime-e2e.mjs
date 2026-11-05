@@ -6,6 +6,8 @@
 //   1. 第一台打开就把板切到实时（`GET …/realtime` 答 realtime: true），在线条
 //      列出对方的头像；
 //   2. 两边**同时**各拖一个节点：两边都看到两处新位置，core 物化的表也一样；
+//  2b. 手指拉伸（#819）：B 开触摸模拟、用手指拉伸一个节点，整个手势走完、松手
+//      提交，A 与 core 收到同一尺寸；之后 A 再拖节点，B 照常收到；
 //   3. 一边在画布上移动指针，另一边看到带名字的成员光标；选中一个节点，另一边
 //      看到虚线选区外框；
 //   4. 同一张便签两边同时输入（一个在开头、一个在结尾），提交后两边与 core
@@ -285,6 +287,93 @@ try {
     { left: at(left.id), right: at(right.id) },
   );
   await run.shot(b, "realtime-2-concurrent-drag-b");
+
+  /* ------------------------ 2b. 手指拉伸（#819） ------------------------ */
+  // 手机上用手指拉伸节点：松手要提交（A 与 core 收到新尺寸），之后 A 的改动
+  // B 也要照常收到——修之前触摸手势在第一帧就被 React Flow 换绑丢掉，尺寸停在
+  // 第一帧、草稿永远不清，B 从此收不到任何远端改动。
+  // d3-drag 只在绑定那一刻看「能不能触摸」，所以先取消选中、开触摸模拟，再点选
+  // 让把手重新挂上来。
+  const bPaneBox = await b.evaluate(
+    `const r = document.querySelector('.react-flow__pane').getBoundingClientRect();
+     return { x: r.left + 40, y: r.bottom - 140 };`,
+  );
+  await b.click(bPaneBox.x, bPaneBox.y);
+  await b.until(
+    `return !document.querySelector('.react-flow__node[data-id="${right.id}"] .react-flow__resize-control')`,
+    "B 取消选中右边的便签",
+  );
+  await b.call("Emulation.setTouchEmulationEnabled", {
+    enabled: true,
+    maxTouchPoints: 5,
+  });
+  const touch = (type, x, y) =>
+    b.call("Input.dispatchTouchEvent", {
+      type,
+      touchPoints: type === "touchEnd" ? [] : [{ x, y, id: 1 }],
+    });
+  const rightHeader = await headerPoint(b, right.id);
+  await touch("touchStart", rightHeader.x, rightHeader.y);
+  await sleep(60);
+  await touch("touchEnd");
+  const grip = await b.until(
+    `const h = document.querySelector('.react-flow__node[data-id="${right.id}"] .react-flow__resize-control.handle.bottom.right');
+     if (!h) return null;
+     const r = h.getBoundingClientRect();
+     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`,
+    "B 点选后右边便签出现拉伸把手",
+  );
+  const sizeOf = (page, id) =>
+    page.evaluate(`
+      const node = document.querySelector('.react-flow__node[data-id="${id}"]');
+      return node ? { w: parseFloat(node.style.width), h: parseFloat(node.style.height) } : null;`);
+  const sizeBefore = await sizeOf(b, right.id);
+  await touch("touchStart", grip.x, grip.y);
+  for (let step = 1; step <= 14; step += 1) {
+    await touch(
+      "touchMove",
+      grip.x + (60 * step) / 14,
+      grip.y + (40 * step) / 14,
+    );
+    await sleep(16);
+  }
+  await sleep(60);
+  await touch("touchEnd");
+  await b.call("Emulation.setTouchEmulationEnabled", { enabled: false });
+  const sizeAfter = await sizeOf(b, right.id);
+  run.check(
+    sizeAfter.w >= sizeBefore.w + 55 && sizeAfter.h >= sizeBefore.h + 35,
+    "B 手指拉伸走完整个手势，不停在第一帧",
+    { sizeBefore, sizeAfter },
+  );
+  await a.until(
+    `const node = document.querySelector('.react-flow__node[data-id="${right.id}"]');
+     return node && Math.abs(parseFloat(node.style.width) - ${sizeAfter.w}) < 1 &&
+       Math.abs(parseFloat(node.style.height) - ${sizeAfter.h}) < 1;`,
+    "A 看到 B 手指拉伸后的尺寸",
+    { timeout: 20_000 },
+  );
+  const resized = (await stack.api(documentPath)).nodes.find(
+    (node) => node.id === right.id,
+  ).size;
+  run.check(
+    Math.abs(resized.width - sizeAfter.w) < 1 &&
+      Math.abs(resized.height - sizeAfter.h) < 1,
+    "core 物化的尺寸与 B 一致",
+    { resized, sizeAfter },
+  );
+  // 草稿清掉了：A 再挪左边的节点，B 照常收到。
+  await dragNode(a, left.id, 40, 0);
+  const leftAgain = await positionOf(a, left.id);
+  await waitAt(
+    b,
+    left.id,
+    leftAgain.x,
+    leftAgain.y,
+    "手指拉伸之后 B 仍收到 A 的拖动",
+  );
+  run.ok("手指拉伸提交并同步，之后远端改动照常到", { sizeAfter });
+  await run.shot(a, "realtime-2b-touch-resize-a");
 
   /* --------------------------- 3. 光标与选区 ---------------------------- */
   const pane = await a.centerOf(

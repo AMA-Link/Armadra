@@ -4,6 +4,10 @@
 
 ## 未发布 / Unreleased
 
+手机上用手指拉伸节点（会话、便签、分组、白板对象）走完整个手势并在松手时提交，电脑与 core 收到同一尺寸；以前只拉到第一帧就停住、不提交，残留的手势草稿还让这台手机此后收不到任何远端改动，直到刷新（Closes #819）。
+
+Finger-resizing a node on the phone (sessions, stickies, frames, whiteboard items) now follows the whole gesture and commits on release, so the desktop and core get the same size. Previously it froze after the first frame and never committed, and the leftover gesture draft stopped the phone from applying any remote change until a reload (Closes #819).
+
 Windows 会话宿主的 `welcome` 增加服务端证明（用 `session-host.key` 做 HMAC，绑定端点、协议 major 与客户端 `hello` 的 nonce），core 核对通过之前不发 `create`，抢占管道名的进程拿不到环境变量与凭据（契约 §102.6，Refs #751）。会话宿主协议 `PROTOCOL_MAJOR` 由 1 升到 2：升级当次，Windows 上仍在运行的终端会话会丢失一次，之后照常跨重启保留。
 
 The Windows session host's `welcome` now carries a server proof (an HMAC with `session-host.key`, bound to the endpoint, the protocol major and the client's `hello` nonce), and the core sends no `create` until it verifies, so a process squatting the pipe name no longer receives environment variables or credentials (contract §102.6, Refs #751). The session-host protocol `PROTOCOL_MAJOR` goes from 1 to 2: live Windows terminal sessions are lost once at this upgrade and are preserved across restarts as before afterwards.
