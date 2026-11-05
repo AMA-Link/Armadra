@@ -2,23 +2,36 @@
 
 每个版本一节，按发布倒序。括号里是合入的 PR 编号（github.com/AMA-Link/Armadra，2026-10-11 前为 Owlbay/Armadra，旧编号照常跳转）。兼容范围以 `tools/release/compatibility.json` 为准，发布说明里的 `armadra-compatibility` 围栏由它渲染。桌面、服务器与手机 / 平板 App 共用一条版本线和一个标签 `vX.Y.Z`（规则见 `docs/guides/ci-release.md`「版本规则」）；有手机端改动的版本，在「手机与平板」小节里写，其余写在「桌面 / 服务器」下。2026-10-10 之前手机端曾单独编号（1.0.0、1.1.0），内容并入对应的 0.2.5、0.2.6。
 
-## 未发布 / Unreleased
+## 0.15.0（2026-11-05）
 
-手机上用手指拉伸节点（会话、便签、分组、白板对象）走完整个手势并在松手时提交，电脑与 core 收到同一尺寸；以前只拉到第一帧就停住、不提交，残留的手势草稿还让这台手机此后收不到任何远端改动，直到刷新（Closes #819）。
+版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.15.0。随包 `@armadra/agent` 0.15.0（驱动表收录 omp）与平台协议包 0.15.0（只加不改，协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.15.0。本版主题：Pi 的 ACP 改走随包 ama 的桥，协调者的回复闸门、推送与重启恢复，工作项绑定 PR，Windows 私有通道与 hook 密钥进系统凭据库，云端控制台支持只用第三方登录的账号。
 
-Finger-resizing a node on the phone (sessions, stickies, frames, whiteboard items) now follows the whole gesture and commits on release, so the desktop and core get the same size. Previously it froze after the first frame and never committed, and the leftover gesture draft stopped the phone from applying any remote change until a reload (Closes #819).
+Version aligned with armadra-cloud and armadra-agent (all three ship 0.15.0), with `@armadra/agent` 0.15.0 (adds omp to the driver catalog) and platform protocol 0.15.0 (additive, still protocol 1.4); matching images `armadra-cloud` / `armadra-relay` 0.15.0. Themes: Pi's ACP now runs through the bundled ama bridge; the coordinator gains a reply gate, push triggers and restart recovery; work items can be bound to pull requests; Windows private channels and the hook secret moving into the system credential store; the cloud console supports accounts that only use third-party sign-in.
 
-Windows 会话宿主的 `welcome` 增加服务端证明（用 `session-host.key` 做 HMAC，绑定端点、协议 major 与客户端 `hello` 的 nonce），core 核对通过之前不发 `create`，抢占管道名的进程拿不到环境变量与凭据（契约 §102.6，Refs #751）。会话宿主协议 `PROTOCOL_MAJOR` 由 1 升到 2：升级当次，Windows 上仍在运行的终端会话会丢失一次，之后照常跨重启保留。
+### 桌面 / 服务器
 
-The Windows session host's `welcome` now carries a server proof (an HMAC with `session-host.key`, bound to the endpoint, the protocol major and the client's `hello` nonce), and the core sends no `create` until it verifies, so a process squatting the pipe name no longer receives environment variables or credentials (contract §102.6, Refs #751). The session-host protocol `PROTOCOL_MAJOR` goes from 1 to 2: live Windows terminal sessions are lost once at this upgrade and are preserved across restarts as before afterwards.
+- Pi 的 ACP 改走随包 ama 的桥 `ama --mode acp --bridge pi`，社区适配器 `pi-acp` 的支持全部删除（#791，Refs #716）：Pi 的模式选择器出现，思考强度并入「模型与强度」；Pi 过旧、未安装或没有模型时按原因提示；集成页 Pi 的 ACP 行显示「随包」。以前用 `pi-acp` 开的节点按新会话开始。Pi 超出已验证的版本区间时，新开会话在时间线里提示一次（#793）。
+- 协调者的回复闸门与推送（#794、#796、#808，Refs #704）：新动词 `canvas notify --purpose answer|result|attention`，只给协调者用，进度类回复被拒，同一目标只发一次；有成果等验收、有事要你决定时推送到手机（设备可按种类开关）；协调者节点头的成员标记在有未读回复时多一个点，分派抽屉的成员行显示最新回复并高亮未读。
+- 重启恢复（#798）：core 重启后，进行中但成员会话已不在的工作项记一条 `interrupted` 事件，成员续接后投一次固定的恢复提示，不自动重跑。协调者记忆约定与压缩后的宿主提醒（#810）；分派基准场景 14（#811，Closes #704，不进 CI）。
+- 工作项绑定 PR（#812、#815、#816，Closes #705）：成员 `canvas report --pr`、协调者 `canvas items --bind-pr` 把 PR 绑到工作项（GitHub、Gitea / Forgejo、GitLab）；core 定时读评论、评审、检查结论与合并 / 关闭，只投给绑定它的成员并标为外部资料，机器人每个 PR 至多 3 轮；自己开的 PR 全部合并或关闭后工作项结束；分派抽屉显示绑定的 PR 编号并可点开。
+- 私有通道与 hook 密钥（#795、#799–#805、#809，Closes #751）：hook 实例密钥从数据目录的明文文件移进系统凭据库（macOS 钥匙串、桌面 safeStorage、服务器壳加密文件），旧文件一次性迁移，已发令牌照常有效。Windows 上：数据目录与命名管道收紧访问控制，运行时、身份、hook 与 SSH askpass 各走随机名的私有管道并先握手（此前 Windows 上没有 hook 面，需要口令的 SSH 主机也连不上）；会话宿主的 `welcome` 带服务端证明，抢占管道名的进程拿不到环境变量与凭据；服务器壳与无壳 core 用 DPAPI 封存密钥。
+- 云端控制台（#797，Closes AMA-Link/armadra-cloud#195）：账号页「安全」多「登录方式」分组，可绑定、解绑第三方登录；需要再验证时弹出统一的对话框（口令、验证码或已绑定的提供方）；只用第三方登录的账号改邮箱不再要口令。
+- 上下文用量改用 K / M 单位，中文界面也显示 `12.3K / 200K`（#807）。
+- macOS 上只有默认数据目录的 core 用钥匙串：指了 `ARMADRA_DATA_DIR` / `--data-dir` 的实例（开发、探针、隔离运行）改用数据目录里的加密文件，不再读到或覆盖真实应用的钥匙串条目；没有默认钥匙串时密钥按不可用处理，不再弹出「找不到钥匙串」窗口（#821，Closes #818）。
+- 侧栏「这台电脑」列出服务端的全部未归档工作空间，与手机、别的设备看到的同一组；本设备的打开记录只管顺序，没打开过的先收起。此前在手机上能进去的工作空间，桌面上可能看不到（#823，Closes #817）。
 
-侧栏「这台电脑」改为列出服务端的全部工作空间（未归档的），与手机、别的设备看到的同一组；本设备的打开记录只管顺序，没打开过的先收起。此前它只列本设备打开过的，别的客户端建的、拖入的、旧版「关闭」掉的工作空间在桌面看不到，手机却能进去建画布（#817）。
+### 手机与平板
 
-The "This computer" sidebar section now lists every non-archived workspace from the server, the same set the phone and other devices see; this device's open history only orders the rows, and never-opened ones start collapsed. It used to list only workspaces opened on this device, so workspaces created, dropped in, or closed in older versions elsewhere were invisible on the desktop while the phone could still open them and create canvases (#817).
+- 手机上用手指拉伸节点（会话、便签、分组、白板对象）走完整个手势并在松手时提交，电脑与 core 收到同一尺寸；此前只拉到第一帧就停住，残留的手势草稿还让手机此后收不到远端改动，直到刷新（#824，Closes #819）。
+- 推送多两类：有成果等你验收、有事要你决定（#796）；设置 → 通知 →「推送设备」的种类开关在手机宽度下不再被裁掉首字（#814）。
 
-macOS 上只有默认数据目录的 core 用钥匙串：指了 `ARMADRA_DATA_DIR` / `--data-dir` 的实例（开发、探针、隔离运行）改用数据目录里的加密文件（`file-encrypted`），不再读到或覆盖真实应用的钥匙串条目；没有默认钥匙串时（如临时 HOME）密钥按不可用处理，不再弹出「找不到钥匙串」窗口（契约 §102.1，Closes #818）。hook 实例密钥的条目名定为 `armadra-hook-key`，从旧 `hook-secret` 文件迁移时以文件为准，已发出的节点令牌不受钥匙串里残留条目影响。此前在 macOS 上用非默认数据目录存过的令牌需要重新登录一次。
+### 部署说明
 
-On macOS only the core of the default data directory uses the Keychain: instances pointed at another `ARMADRA_DATA_DIR` / `--data-dir` (development, probes, isolated runs) use an encrypted file in that data directory (`file-encrypted`) and no longer read or overwrite the real app's Keychain items; with no default keychain (e.g. a temporary HOME) secrets are treated as unavailable instead of raising the "Keychain Not Found" dialog (contract §102.1, Closes #818). The hook instance secret is stored as `armadra-hook-key`, and the migration from the old `hook-secret` file lets the file win, so issued node tokens are unaffected by leftover Keychain items. Tokens stored under a non-default data directory on macOS need one more sign-in.
+- 新的数据库迁移 0061（`router_replies`）、0062（`workflow_task_runs.recovery_pending`）、0063（`workflow_task_runs.threads` 与 `thread_events`），core 启动时自动执行。
+- hook 实例密钥首次启动时从 `<data>/hook-secret` 迁进系统凭据库（条目名 `armadra-hook-key`，以旧文件为准，已发出的节点令牌照常有效）；凭据库不可用时本轮用内存密钥，`/health` 的 `hook.secret` 报 `ephemeral`。macOS 上此前用非默认数据目录存过的令牌需要重新登录一次。
+- Windows：会话宿主协议 `PROTOCOL_MAJOR` 由 1 升到 2，升级当次仍在运行的终端会话会丢失一次，之后照常跨重启保留；`HOOK_CLIENT_REVISION` 升到 6。
+- 契约：新增 §100（Pi 的桥）、§101（协调者回复闸门与重启恢复）、§102（私有通道与 hook 密钥）、§103（工作项绑定 PR）；§26.3 已由 §100 取代。
+- 配套镜像 `ghcr.io/ama-link/armadra-cloud:0.15.0`、`ghcr.io/ama-link/armadra-relay:0.15.0` 与协议包 0.15.0 同号（cloud 新增只用第三方登录账号的提权、改邮箱与绑定，没有新迁移；控制台页面取自本版服务器壳镜像）；推送中继镜像 `ghcr.io/ama-link/armadra-push-relay:0.15.0` 与服务器壳镜像同号。发版顺序沿用 0.14.0：先打 Armadra `v0.15.0`，再打 armadra-cloud `v0.15.0`。
 
 ## 0.14.0（2026-11-05）
 
