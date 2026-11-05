@@ -55,7 +55,8 @@ export function formatTokens(value: number): string {
   for (const [scale, suffix] of units) {
     if (value >= scale) {
       const scaled = value / scale;
-      const digits = scaled >= 100 ? String(Math.round(scaled)) : scaled.toFixed(1);
+      const digits =
+        scaled >= 100 ? String(Math.round(scaled)) : scaled.toFixed(1);
       return `${digits.replace(/\.0$/, "")}${suffix}`;
     }
   }
