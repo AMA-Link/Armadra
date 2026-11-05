@@ -7,6 +7,7 @@ import { AMA_HOOK_EVENTS } from "../../core/hook/install/events";
 import { TRUST_RULE } from "../../core/collab/skill";
 import { VERB_TOOLS } from "../../hook-client/verbs";
 import { AMA_EVENTS, payloadOf, subscribeEvents } from "./events";
+import { COMPACTION_NOTE, NOTE_ORIGIN } from "./compaction";
 import { canvasToolNote } from "./instructions";
 import { ADAPTER_ID, create, hostApi } from "./main";
 import {
@@ -320,6 +321,72 @@ describe("the instructions", () => {
     expect(note).toContain("canvas_events");
     expect(note).toContain("canvas_ack");
     expect(note).toContain("followup");
+  });
+});
+
+describe("after compaction", () => {
+  const coordinator = () => {
+    const made = fakeApi({ ARMADRA_NODE_ID: "node-1" });
+    for (const name of ["read", "grep"]) {
+      made.tools.push({ name } as ToolDefinition);
+    }
+    return made;
+  };
+
+  it("injects one host-sourced sentence for the coordinator preset", async () => {
+    const { api, handlers } = coordinator();
+    create(api);
+    const sendUser = api.messages.sendUser as ReturnType<typeof vi.fn>;
+    sendUser.mockResolvedValue("queued");
+    await handlers.get("session_compact")?.({ tokensBefore: 90_000 });
+    expect(sendUser).toHaveBeenCalledTimes(1);
+    expect(sendUser).toHaveBeenCalledWith(COMPACTION_NOTE, NOTE_ORIGIN);
+    expect(NOTE_ORIGIN).toBe(ADAPTER_ID);
+    expect(COMPACTION_NOTE).toContain("canvas_items");
+    expect(COMPACTION_NOTE).toContain("canvas_events");
+  });
+
+  it("stays quiet for a member or a standalone preset that can write", async () => {
+    const { api, handlers, tools } = fakeApi({ ARMADRA_NODE_ID: "node-1" });
+    for (const name of ["read", "bash", "edit", "write"]) {
+      tools.push({ name } as ToolDefinition);
+    }
+    create(api);
+    await handlers.get("session_compact")?.({ tokensBefore: 1 });
+    expect(api.messages.sendUser).not.toHaveBeenCalled();
+  });
+
+  it("never lets a refused injection break the turn", async () => {
+    const { api, handlers } = coordinator();
+    create(api);
+    (api.messages.sendUser as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("busy"),
+    );
+    await expect(
+      handlers.get("session_compact")?.({ tokensBefore: 1 }),
+    ).resolves.toBeUndefined();
+    expect(api.log).toHaveBeenCalledWith(
+      "warn",
+      expect.any(String),
+      expect.anything(),
+    );
+  });
+});
+
+describe("the dispatch memory convention", () => {
+  it("tells the coordinator where preferences go and where state does not", () => {
+    const note = canvasToolNote();
+    expect(note).toContain("project");
+    expect(note).toContain("memory");
+    expect(note).toContain("canvas_items");
+    expect(note).toContain("不要写进记忆");
+    expect(note).toContain("never put work-item or event state into memory");
+  });
+
+  it("names the reply gate", () => {
+    const note = canvasToolNote();
+    expect(note).toContain("canvas_notify");
+    expect(note).toContain("person/review");
   });
 });
 

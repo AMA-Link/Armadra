@@ -5265,3 +5265,11 @@ ACP 会话经 `session/new.mcpServers` 拿到 `armadra-hook mcp`（§14、`core/
 - `coordinator.tasks` / `coordinator.retry` 的任务行多一个字段 `reply: { purpose, text, at, read } | null`：这一项在 `router_replies`（§101.2）里最新的一条，`at` 是 RFC 3339 时刻，`read` 为 `read_at` 非空；没有回复是 `null`。
 - `coordinator.readReplies { boardId } → { read: number }`（旧路径 `POST /api/workflows/tasks/read-replies`，体 `{ boardId }`，权限 `canvas:read`——它只是清掉协调者节点头上的未读点，与 Agent 状态标已读同一档，只读分享的访客也能做）：把这块画板上协调者的回复都标为已读，答标了几条；重复调用答 0。缺 `boardId` 是 `400 bad_request`。
 - 页面：协调者节点头的 MembersChip 在有未读回复时多一个点；打开分派抽屉就调 `readReplies`，抽屉里对应成员行在成员标题下面显示回复文字，打开时未读的那几行高亮到抽屉关上。
+
+### 101.7 记忆约定与压缩提醒（ama 适配器）
+
+不改任何 core 接口，只改随包的 ama 适配器（`agent-host/ama/`）：
+
+- **记忆约定**：协调者说明（适配器加进系统提示的画布工具说明）多一条：分派偏好（例如「前端改动交给 claude」「这个仓库要先跑 `pnpm check`」）用 `memory` 工具写进 `project` 作用域，下次分派前先读；工作项与事件的状态不写进记忆，一律以 `canvas_items` / `canvas_events` 为准——账本是唯一事实来源。
+- **压缩提醒**：适配器订阅 ama 的 `session_compact`；协调者预设（有 `read`、没有 bash / edit / write，同 `canvas_wait` 的 5 秒上限那条判定）下，每次压缩成功后用宿主 API 的 `messages.sendUser` 注入一句，`origin` 为 `armadra`（宿主来源，落盘在消息上，不是人说的话）：「对话刚被压缩。工作项与事件的现状以 `canvas_items` 与 `canvas_events` 为准，不要凭摘要或记忆判断。」（中英各一句）。成员与单机的 ama 不注入；注入被拒（`busy` 等）只记日志，不影响这一轮。运行中压缩时这条按 steer 入队，空闲时压缩（手动）会开一轮。
+- ama 侧不需要改动：`messages.sendUser` 与 `session_compact` 在已发布的宿主 API 里。
