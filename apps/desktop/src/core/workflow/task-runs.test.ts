@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AgentFixture, agentFixture } from "../agent/fixture";
+import { bindPull } from "./threads";
 import {
   finishTask,
   rebindTask,
@@ -111,5 +112,41 @@ describe("task runs", () => {
         reason: null,
       },
     );
+  });
+});
+
+describe("task row", () => {
+  it("lists the bound pulls without the bind time", () => {
+    recordTaskStart(fixture.database, {
+      taskId: "t9",
+      coordinatorNodeId: "lead",
+      runnerId: "codex",
+      nodeId: "n9",
+      now: 1_000,
+    });
+    expect(
+      taskRowJson(taskRun(fixture.database, "t9")!, "working").pulls,
+    ).toEqual([]);
+    bindPull(
+      fixture.database,
+      "t9",
+      {
+        repo: "github.com/acme/app",
+        number: 12,
+        own: true,
+        url: "https://github.com/acme/app/pull/12",
+      },
+      5_000,
+    );
+    expect(
+      taskRowJson(taskRun(fixture.database, "t9")!, "working").pulls,
+    ).toEqual([
+      {
+        repo: "github.com/acme/app",
+        number: 12,
+        own: true,
+        url: "https://github.com/acme/app/pull/12",
+      },
+    ]);
   });
 });

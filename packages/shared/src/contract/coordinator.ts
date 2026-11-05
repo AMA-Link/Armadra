@@ -37,6 +37,15 @@ const taskRowWire = z.object({
   stage: z.enum(WORK_ITEM_STAGES),
   report: workItemReportSchema.nullable(),
   attention: workItemAttentionSchema.nullable(),
+  /** 绑定的 PR（§103.1）：页面显示编号，点开是 `url`（可能为空）。 */
+  pulls: z.array(
+    z.object({
+      repo: z.string(),
+      number: z.number().int().positive(),
+      own: z.boolean(),
+      url: z.string(),
+    }),
+  ),
   /** 协调者经 `canvas notify` 说的最新一句话（§101.2）；没有是 null。 */
   reply: workItemReplySchema.nullable(),
 });

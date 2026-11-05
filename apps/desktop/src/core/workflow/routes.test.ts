@@ -439,6 +439,7 @@ describe("协调者任务（契约 §15.7）", () => {
         stage: "person/failed",
         report: null,
         attention: null,
+        pulls: [],
         reply: null,
       },
     ]);

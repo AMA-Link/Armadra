@@ -432,6 +432,12 @@ export function taskRowJson(
     stage,
     report: run.report,
     attention: run.attention,
+    pulls: run.threads.map((thread) => ({
+      repo: thread.repo,
+      number: thread.number,
+      own: thread.own,
+      url: thread.url,
+    })),
     reply:
       reply === null
         ? null
