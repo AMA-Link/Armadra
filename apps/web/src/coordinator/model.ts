@@ -43,6 +43,8 @@ export interface DispatchMember {
   readonly stalled?: AgentStallKind;
   /** 协调者说的最新一句话（契约 §101）；没有为 `null`。 */
   readonly reply: DispatchTask["reply"];
+  /** 绑定的 PR（契约 §103）；没有为空数组。 */
+  readonly pulls: DispatchTask["pulls"];
 }
 
 export interface DispatchSummary {
@@ -214,6 +216,7 @@ export function buildDispatch(input: DispatchInput): DispatchModel {
       retryable: task.retryable && task.status !== "running",
       stage: task.stage,
       reply: task.reply,
+      pulls: task.pulls,
       ...markOf(node.id, status),
     });
   }
@@ -234,6 +237,7 @@ export function buildDispatch(input: DispatchInput): DispatchModel {
       retryable: false,
       stage: null,
       reply: null,
+      pulls: [],
       ...markOf(node.id, status),
     });
   }

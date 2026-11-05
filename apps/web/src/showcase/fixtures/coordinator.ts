@@ -128,6 +128,7 @@ function task(
     report: null,
     attention: null,
     reply: null,
+    pulls: [],
     ...patch,
   };
 }

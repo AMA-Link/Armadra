@@ -149,6 +149,7 @@ function task(
     report: null,
     attention: null,
     reply: null,
+    pulls: [],
     ...patch,
   };
 }
@@ -666,6 +667,42 @@ describe("DispatchDrawer", () => {
       document.querySelectorAll('[data-slot="dispatch-member"][data-fresh]'),
     ).toHaveLength(1);
     await waitFor(() => expect(api.readReplies).toHaveBeenCalledWith(BOARD));
+  });
+
+  it("shows the bound pull numbers on the member row and links only web addresses", async () => {
+    api.tasks.mockResolvedValue([
+      {
+        ...TASKS[1],
+        pulls: [
+          {
+            repo: "github.com/acme/app",
+            number: 12,
+            own: true,
+            url: "https://github.com/acme/app/pull/12",
+          },
+          {
+            repo: "github.com/acme/app",
+            number: 13,
+            own: false,
+            url: "javascript:alert(1)",
+          },
+        ],
+      },
+    ]);
+    openDispatchDrawer(ID.lead);
+    render(
+      <TestProviders>
+        <DispatchDrawer />
+      </TestProviders>,
+    );
+    const link = await screen.findByRole("link", { name: "打开 PR #12" });
+    expect(link.getAttribute("href")).toBe(
+      "https://github.com/acme/app/pull/12",
+    );
+    expect(link.getAttribute("rel")).toContain("noopener");
+    expect(screen.getByText("#12")).toBeTruthy();
+    // 不是 http(s) 的地址只显示编号，不成为链接。
+    expect(screen.getByText("#13").closest("a")).toBeNull();
   });
 
   it("does not mark anything read when nothing is unread", async () => {

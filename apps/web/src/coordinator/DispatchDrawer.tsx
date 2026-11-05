@@ -285,6 +285,38 @@ function MemberRow({
           }
           spinning={member.status.tone === "working"}
         />
+        {member.pulls.length > 0 ? (
+          <div className="flex flex-wrap gap-x-2" data-slot="dispatch-pulls">
+            {member.pulls.map((pull) =>
+              /^https?:\/\//i.test(pull.url) ? (
+                <Button
+                  key={`${pull.repo}#${pull.number}`}
+                  asChild
+                  variant="link"
+                  size="xs"
+                  className="h-auto p-0"
+                >
+                  <a
+                    href={pull.url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    aria-label={t("coordinator.pull", { number: pull.number })}
+                    data-own={pull.own ? "true" : undefined}
+                  >
+                    #{pull.number}
+                  </a>
+                </Button>
+              ) : (
+                <span
+                  key={`${pull.repo}#${pull.number}`}
+                  className="text-meta text-muted-foreground"
+                >
+                  #{pull.number}
+                </span>
+              ),
+            )}
+          </div>
+        ) : null}
         {member.reply !== null ? (
           <ItemDescription
             data-slot="dispatch-reply"
