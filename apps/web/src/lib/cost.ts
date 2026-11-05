@@ -43,7 +43,7 @@ export function totalTokens(tokens: CostTokens): number {
   return tokens.input + tokens.output + tokens.cacheRead + tokens.cacheCreation;
 }
 
-/** `1234` → `1.2K`，`1234567` → `1.2M`。柱状图与表格共用一个刻度。 */
+/** `1234` → `1.2K`，`1234567` → `1.2M`，`1000000` → `1M`。柱状图与表格共用一个刻度。 */
 export function formatTokens(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return "0";
   if (value < 1000) return String(Math.round(value));
@@ -55,7 +55,9 @@ export function formatTokens(value: number): string {
   for (const [scale, suffix] of units) {
     if (value >= scale) {
       const scaled = value / scale;
-      return `${scaled >= 100 ? Math.round(scaled) : scaled.toFixed(1)}${suffix}`;
+      const digits =
+        scaled >= 100 ? String(Math.round(scaled)) : scaled.toFixed(1);
+      return `${digits.replace(/\.0$/, "")}${suffix}`;
     }
   }
   return String(Math.round(value));
