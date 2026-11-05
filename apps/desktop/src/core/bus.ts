@@ -269,6 +269,19 @@ export interface WorkspaceEventPayloads {
     readonly nodeId: string;
     readonly status: "running" | "done" | "failed" | "stopped";
   };
+  /**
+   * 协调者经 `canvas notify` 对人说了一句话（契约 §101）：页面据此重读任务行、推送
+   * 规则据此对 `result` / `attention` 叫人。帧里不带 `--text`。
+   */
+  "workflow.reply": {
+    readonly replyId: string;
+    readonly taskId: string;
+    readonly boardId: string;
+    readonly coordinatorNodeId: string;
+    /** 成员节点：推送的深链指向它。 */
+    readonly nodeId: string;
+    readonly purpose: "answer" | "result" | "attention";
+  };
   /*
    * ACP 驱动的会话（契约 §14.3）。`sessionId` 是 `terminal_sessions.id`；会话内容
    * 走 `timeline.*`（契约 §82），不在这里。
@@ -430,6 +443,7 @@ export const WORKSPACE_EVENT_TYPES = [
   "workflow.run",
   "workflow.gate",
   "workflow.task",
+  "workflow.reply",
   "schedule.fired",
   "schedule.failed",
   "schedule.attention",

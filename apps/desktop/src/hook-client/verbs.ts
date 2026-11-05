@@ -128,6 +128,8 @@ export const ENUMS = {
     "idle",
     "working",
   ],
+  /** `collab/router-replies.ts::REPLY_PURPOSES` */
+  notifyPurposes: ["answer", "result", "attention"],
   /** `collab/wake.ts::INBOX_WAKE_MODES` */
   inboxWake: ["off", "notify", "deliver"],
   /** `collab/control/board.ts::NODE_PALETTE` */
@@ -426,6 +428,19 @@ const CANVAS: Record<ControlVerb, Row> = {
     description:
       "Read the unacknowledged coordinator events (reports, handbacks, stalls, finished tasks, follow-ups, inbox notes), oldest first. Acknowledge each handled one with ack --event; an unacknowledged event shows up on the next card.",
     properties: { limit: int("how many, 1–50 (default 20)", 1) },
+  },
+  notify: {
+    description:
+      "Coordinator only: tell the person one thing about a work item you dispatched. purpose result (the item is awaiting review), attention (text must contain the item's open question verbatim) or answer (needs --followup EVENT-ID of a person's follow-up). Progress is refused; once per target.",
+    properties: {
+      purpose: oneOf(ENUMS.notifyPurposes, "why you are speaking"),
+      item: str("the work item id"),
+      text: str(
+        "what to tell the person, at most 100 characters (attention: at most 300)",
+      ),
+      followup: str("answer only: the followup event id you are answering"),
+    },
+    required: ["purpose", "item", "text"],
   },
 };
 

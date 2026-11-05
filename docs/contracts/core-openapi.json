@@ -6782,6 +6782,42 @@
                                   "type": "object",
                                   "properties": {
                                     "type": {
+                                      "const": "workflow.reply"
+                                    },
+                                    "replyId": {
+                                      "type": "string"
+                                    },
+                                    "taskId": {
+                                      "type": "string"
+                                    },
+                                    "boardId": {
+                                      "type": "string"
+                                    },
+                                    "coordinatorNodeId": {
+                                      "type": "string"
+                                    },
+                                    "nodeId": {
+                                      "type": "string"
+                                    },
+                                    "purpose": {
+                                      "enum": ["answer", "result", "attention"],
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "type",
+                                    "replyId",
+                                    "taskId",
+                                    "boardId",
+                                    "coordinatorNodeId",
+                                    "nodeId",
+                                    "purpose"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "type": {
                                       "const": "schedule.fired"
                                     },
                                     "planId": {
