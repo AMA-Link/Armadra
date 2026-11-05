@@ -306,6 +306,12 @@ function socketIsHeld(path: string): Promise<"held" | "stale" | "unknown"> {
 export interface PipeSecurity {
   readonly channel: Pick<Channel, "label" | "key">;
   readonly harden?: (path: string) => Promise<HardenResult>;
+  /**
+   * The channel is only safe on a hardened DACL (the identity channel signs
+   * tickets): when hardening fails the pipe is closed and the bind throws,
+   * instead of serving on the handshake alone.
+   */
+  readonly requireHardened?: boolean;
   readonly onWarning?: (message: string, detail: unknown) => void;
 }
 
@@ -335,6 +341,12 @@ async function bindPipe(
   });
   await listening(server, () => server.listen(path));
   const hardened = await (secured.harden ?? hardenPipe)(path);
+  if (!hardened.ok && secured.requireHardened === true) {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    throw new Error(
+      `could not restrict pipe:${name} to this user: ${hardened.reason}`,
+    );
+  }
   recordPipeAcl(name, hardened.ok ? "hardened" : "default");
   if (!hardened.ok) {
     secured.onWarning?.(

@@ -29,11 +29,14 @@ export const ENDPOINTS_VERSION = 1;
 export const RUNTIME_SERVICE = "runtime";
 export const HOST_SERVICE = "host";
 export const CONTROLLER_SERVICE = "controller";
+/** The identity private channel on Windows: a random pipe name per run (§102.4). */
+export const CONTROL_SERVICE = "control";
 
 export type ServiceName =
   | typeof RUNTIME_SERVICE
   | typeof HOST_SERVICE
-  | typeof CONTROLLER_SERVICE;
+  | typeof CONTROLLER_SERVICE
+  | typeof CONTROL_SERVICE;
 
 export interface ServiceEndpoint {
   /** Identifies this *run*; it changes on every restart. */
@@ -55,6 +58,7 @@ export interface EndpointsDocument {
   runtime?: ServiceEndpoint | undefined;
   host?: ServiceEndpoint | undefined;
   controller?: ServiceEndpoint | undefined;
+  control?: ServiceEndpoint | undefined;
 }
 
 /** A record for this process, stamped now. */
@@ -104,6 +108,7 @@ export function read(path: string): EndpointsDocument {
     runtime: endpointOf(record.runtime),
     host: endpointOf(record.host),
     controller: endpointOf(record.controller),
+    control: endpointOf(record.control),
   };
 }
 
@@ -166,6 +171,7 @@ function serialize(document: EndpointsDocument): Record<string, unknown> {
     RUNTIME_SERVICE,
     HOST_SERVICE,
     CONTROLLER_SERVICE,
+    CONTROL_SERVICE,
   ] as const) {
     const endpoint = document[service];
     if (endpoint === undefined) continue;
