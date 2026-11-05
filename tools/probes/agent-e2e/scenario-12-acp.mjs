@@ -69,6 +69,7 @@ import {
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 
 import { CREDENTIAL_VARIABLES, probeHome } from "../probe-home.mjs";
@@ -244,7 +245,14 @@ export function selfTestPlan(scratch, shims) {
   writeScript(shims, "claude", [
     `exec -a claude ${quote(process.execPath)} ${quote(tui)} claude "$@"`,
   ]);
-  return { plan, kept: [...Object.values(ACP_PROGRAMS), "claude"] };
+  // Pi 的入口是 core 自己的 `<数据目录>/bin/ama`（排在 PATH 之前，垫片压不住它）：
+  // 自检把「随包的 ama」换成跑假 ACP Agent 的脚本，桥就不会去起真 pi。
+  const bundle = join(scratch, "fake-ama.cjs");
+  writeFileSync(
+    bundle,
+    `import(${JSON.stringify(pathToFileURL(FAKE_AGENT).href)});\n`,
+  );
+  return { plan, kept: [...Object.values(ACP_PROGRAMS), "claude"], bundle };
 }
 
 /** 真跑：每家一个隔离包装；装不上、凭据复制不出来的整家 skipped。 */
@@ -348,22 +356,19 @@ export function realPlan(scratch, shims, project) {
     }
   }
 
-  /* Pi：ama 的 pi 桥再起 pi，两个都经包装。 */
+  /* Pi：core 随包的 ama 起桥（ama 是 core 自己的，不垫），桥再起的 pi 经包装。 */
   {
-    const acp = found("pi");
     const cli = homes.pi;
-    if (!acp.installed) skip("pi", "没有 ama（npm i -g @armadra/agent）");
-    else if (cli.skip) skip("pi", cli.skip);
+    if (cli.skip) skip("pi", cli.skip);
     else {
       writeFileSync(
         join(cli.agentDir, "settings.json"),
         `${JSON.stringify({ defaultProvider: "moonshotai-cn", defaultModel: "kimi-k2.6", defaultThinkingLevel: "off" }, null, 2)}\n`,
       );
       const env = cliEnvLines(scratch, "pi", cli);
-      writeScript(shims, "ama", [...env, `exec ${quote(acp.path)} "$@"`]);
       writeScript(shims, "pi", [...env, `exec ${quote(cli.program)} "$@"`]);
-      kept.push("ama", "pi");
-      plan.pi = { program: acp.program };
+      kept.push("pi");
+      plan.pi = { program: ACP_PROGRAMS.pi };
     }
   }
 
@@ -459,9 +464,9 @@ export default async function run12() {
 
     const shims = join(scratch, "bin");
     mkdirSync(shims);
-    const { plan, kept } = selfTest
+    const { plan, kept, bundle } = selfTest
       ? selfTestPlan(scratch, shims)
-      : realPlan(scratch, shims, project);
+      : { ...realPlan(scratch, shims, project), bundle: undefined };
     const blocked = blockRealClis(shims, join(scratch, "blocked.log"), kept);
     for (const id of FAMILIES)
       if (!CHOSEN.has(id)) plan[id] = { skip: "ARMADRA_E2E_ACP_ONLY 没选这家" };
@@ -497,6 +502,7 @@ export default async function run12() {
       ARMADRA_SECRET_BACKEND: "file",
       ARMADRA_NO_GLOBAL_WRITES: "1",
       ARMADRA_TEST_ECO_IDLE_SECONDS: String(ECO_SECONDS),
+      ...(bundle === undefined ? {} : { ARMADRA_AMA_BUNDLE: bundle }),
       PI_CODING_AGENT_DIR: join(coreHome, ".pi/agent"),
     };
     for (const name of [
