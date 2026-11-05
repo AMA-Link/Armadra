@@ -7,14 +7,21 @@
  * | 壳经 `CorePlatform.secrets` 给了一个（服务器壳） | 它                       | 它的                     |
  * | 桌面壳写了 `ARMADRA_SECRET_SEALER=ipc:<kind>`  | `safeStorage` 经 IPC 封存 | `dpapi` / `libsecret`    |
  * | Windows，找得到 `armadra-winsec.exe`，且没有旧明文条目 | DPAPI（该工具）封存 | `dpapi`          |
- * | macOS                                        | `security(1)` 钥匙串      | `keychain`               |
+ * | macOS，默认数据目录                            | `security(1)` 钥匙串      | `keychain`               |
+ * | macOS，别的数据目录（开发、探针、隔离实例）       | 数据目录里的 master key   | `file-encrypted`         |
  * | 其余                                         | 0600 明文                | `file`                   |
  *
  * 壳说了要用 `safeStorage` 但通道不在（core 被别的壳接管）时，后端拒绝一切而不是
  * 降级成明文。
+ *
+ * 钥匙串条目按名字寻址、整个账户共用一份，所以只给默认数据目录（契约 §102.1）：
+ * 指了别的数据目录的实例要是也用它，就会读到、覆盖真实应用的值。
  */
 
-import { join } from "node:path";
+import { userInfo } from "node:os";
+import { join, resolve } from "node:path";
+
+import { dataDir as platformDataDir } from "../paths";
 
 import { findWinsecExe } from "../windows/acl";
 import { type SecretBackend, unavailableBackend } from "./backend";
@@ -65,9 +72,11 @@ export {
   type SealerKind,
 } from "./ipc";
 export {
+  defaultKeychain,
   keychainBackend,
   realSecurityTool,
   type KeychainAddress,
+  type KeychainOptions,
   type SecurityTool,
 } from "./keychain";
 export {
@@ -117,6 +126,11 @@ export interface ResolveOptions {
   readonly winsec?: string | undefined;
   /** 跑那个工具的方式；测试注入。 */
   readonly dpapiRunner?: DpapiRunner;
+  /**
+   * 这个账户的默认数据目录（macOS 上只有它用钥匙串）；不给时按账户记录里的家目录
+   * 算（{@link standardDataDir}）。测试注入。
+   */
+  readonly standardDataDir?: string | undefined;
 }
 
 export interface ResolvedSecrets {
@@ -124,6 +138,36 @@ export interface ResolvedSecrets {
   readonly dataDir: string;
   /** 读旧钥匙串条目用的工具；只在 `backend.kind === "keychain"` 时有意义。 */
   readonly security: SecurityTool;
+}
+
+/**
+ * 这个账户在 macOS 上的默认数据目录。家目录取账户记录（`os.userInfo()`），**不随
+ * `HOME` 变**：临时 HOME 下起的实例（探针、打包冒烟）不会被当成真实应用。拿不到
+ * 账户记录时 `undefined`——那就没有哪个目录算默认。
+ */
+export function standardDataDir(): string | undefined {
+  let home: string;
+  try {
+    home = userInfo().homedir;
+  } catch {
+    return undefined;
+  }
+  if (home === "") return undefined;
+  return platformDataDir("darwin", { HOME: home });
+}
+
+/** 两个数据目录是不是同一个（按解析后的绝对路径比，同单实例锁）。 */
+export function sameDataDir(a: string, b: string): boolean {
+  return resolve(a) === resolve(b);
+}
+
+/** 数据目录里的 master key 封存（服务器壳的默认，也是非默认数据目录在 macOS 上的）。 */
+function dataDirEncrypted(directory: string): SecretBackend {
+  return encryptedFileBackend({
+    directory,
+    keyFile: join(directory, "master.key"),
+    createKey: true,
+  });
 }
 
 export function resolveSecretBackend(options: ResolveOptions): ResolvedSecrets {
@@ -136,15 +180,7 @@ export function resolveSecretBackend(options: ResolveOptions): ResolvedSecrets {
     security,
   });
   if (forcedFileBackend(env)) return done(plainFileBackend(directory));
-  if (forcedEncryptedBackend(env)) {
-    return done(
-      encryptedFileBackend({
-        directory,
-        keyFile: join(directory, "master.key"),
-        createKey: true,
-      }),
-    );
-  }
+  if (forcedEncryptedBackend(env)) return done(dataDirEncrypted(directory));
   if (options.injected !== undefined) return done(options.injected);
   const sealer = sealerKindFromEnv(env);
   if (sealer !== undefined) {
@@ -155,7 +191,17 @@ export function resolveSecretBackend(options: ResolveOptions): ResolvedSecrets {
     return done(sealedFileBackend(directory, ipcSealer(sealer, channel)));
   }
   const platform = options.platform ?? process.platform;
-  if (platform === "darwin") return done(keychainBackend(security));
+  if (platform === "darwin") {
+    const standard =
+      "standardDataDir" in options
+        ? options.standardDataDir
+        : standardDataDir();
+    return done(
+      standard !== undefined && sameDataDir(options.dataDir, standard)
+        ? keychainBackend(security)
+        : dataDirEncrypted(directory),
+    );
+  }
   // 目录里已有明文条目（此前没有 DPAPI 时存下的）就继续用明文：换成 DPAPI 会让
   // 它们读不到（两种后端各读各的文件），启动时宁可不换。要换的话先 `secrets set`
   // 重存、清掉旧 `.token`。

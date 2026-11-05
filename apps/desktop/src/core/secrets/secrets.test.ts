@@ -9,6 +9,7 @@ import {
   writeFileSync,
   chmodSync,
 } from "node:fs";
+import { userInfo } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -25,6 +26,7 @@ import {
   checkSecretName,
   encryptedFileBackend,
   ipcSealer,
+  defaultKeychain,
   keychainBackend,
   realSecurityTool,
   legacyFile,
@@ -39,6 +41,7 @@ import {
   rotateMasterKey,
   sealedFileBackend,
   secretsDirectory,
+  standardDataDir,
 } from "./index";
 import { copilotLegacySecrets } from "../usage/service";
 
@@ -64,11 +67,21 @@ function memoryBackend(
   };
 }
 
+/** 一个空的「钥匙串文件」，假 `security default-keychain` 报它。 */
+function fakeKeychainFile(): string {
+  const path = join(tempDir("armadra-fake-keychain-"), "login.keychain-db");
+  writeFileSync(path, "");
+  return path;
+}
+
 /**
  * 一个假的 `security(1)`：按 (service, account) 存在内存里，并记下每次调用的参数，
- * 好断言值从不出现在命令行上。
+ * 好断言值从不出现在命令行上。`keychain` 是 `default-keychain` 报的路径；`null`
+ * 时它像没有默认钥匙串那样失败退出。
  */
-function fakeSecurity(): SecurityTool & {
+function fakeSecurity(
+  keychain: string | null = fakeKeychainFile(),
+): SecurityTool & {
   entries: Map<string, string>;
   calls: string[][];
 } {
@@ -92,6 +105,11 @@ function fakeSecurity(): SecurityTool & {
   const tool = (async (args: readonly string[], stdin?: string) => {
     calls.push([...args]);
     const [verb] = args;
+    if (verb === "default-keychain") {
+      return keychain === null
+        ? { code: 1, stdout: "" }
+        : { code: 0, stdout: `    "${keychain}"\n` };
+    }
     if (verb === "find-generic-password") {
       const at = find(args);
       return at === undefined
@@ -402,10 +420,93 @@ describe("钥匙串后端（假 security(1)）", () => {
   });
 
   it("工具别的失败报不可用，而不是「没有」", async () => {
-    const backend = keychainBackend(async () => ({ code: 1, stdout: "" }));
+    const keychain = fakeKeychainFile();
+    const backend = keychainBackend(async (args) =>
+      args[0] === "default-keychain"
+        ? { code: 0, stdout: `"${keychain}"\n` }
+        : { code: 1, stdout: "" },
+    );
     await expect(backend.get("armadra-x")).rejects.toBeInstanceOf(
       SecretUnavailable,
     );
+  });
+
+  it("条目命令都显式带上默认钥匙串的路径，存的那条也是", async () => {
+    const keychain = fakeKeychainFile();
+    const fake = fakeSecurity(keychain);
+    const stdins: string[] = [];
+    const tool: SecurityTool = (args, stdin) => {
+      if (stdin !== undefined) stdins.push(stdin);
+      return fake(args, stdin);
+    };
+    const backend = keychainBackend(tool);
+    await backend.set("armadra-hook-secret", "v");
+    await backend.get("armadra-hook-secret");
+    await backend.delete("armadra-hook-secret");
+    const items = fake.calls.filter((call) => call[0] !== "default-keychain");
+    expect(items.map((call) => call[0])).toEqual([
+      "-i",
+      "find-generic-password",
+      "find-generic-password",
+      "delete-generic-password",
+    ]);
+    for (const call of items.slice(1)) expect(call.at(-1)).toBe(keychain);
+    expect(stdins).toEqual([
+      `add-generic-password -U "-a" "armadra-hook-secret" "-s" "armadra-hook-secret" -w "v" "${keychain}"\n`,
+    ]);
+  });
+
+  it("默认钥匙串只问一次", async () => {
+    const tool = fakeSecurity();
+    const backend = keychainBackend(tool);
+    await backend.get("armadra-a");
+    await backend.get("armadra-b");
+    await keychainBackend(tool).get("armadra-c");
+    expect(
+      tool.calls.filter((call) => call[0] === "default-keychain"),
+    ).toHaveLength(1);
+  });
+
+  it("没有默认钥匙串：不可用，一条条目命令都不跑（不会弹「找不到钥匙串」）", async () => {
+    const tool = fakeSecurity(null);
+    const backend = keychainBackend(tool);
+    for (const attempt of [
+      backend.get("armadra-hook-secret"),
+      backend.set("armadra-hook-secret", "v"),
+      backend.delete("armadra-hook-secret"),
+    ]) {
+      await expect(attempt).rejects.toMatchObject({
+        reason: "keychain_missing",
+      });
+    }
+    expect(tool.calls.every((call) => call[0] === "default-keychain")).toBe(
+      true,
+    );
+  });
+
+  it("默认钥匙串说了一个不存在的文件（临时 HOME）：同样不可用", async () => {
+    const missing = join(tempDir("armadra-no-keychain-"), "login.keychain");
+    const tool = fakeSecurity(missing);
+    await expect(
+      keychainBackend(tool).set("armadra-hook-secret", "v"),
+    ).rejects.toMatchObject({ reason: "keychain_missing" });
+    expect(tool.calls.some((call) => call[0] === "-i")).toBe(false);
+  });
+
+  it("defaultKeychain：`login.keychain` 在磁盘上是 `-db` 也认", async () => {
+    const file = fakeKeychainFile();
+    const bare = file.replace(/-db$/, "");
+    await expect(
+      defaultKeychain(async () => ({ code: 0, stdout: `    "${bare}"\n` })),
+    ).resolves.toBe(file);
+    await expect(
+      defaultKeychain(async () => {
+        throw new Error("spawn failed");
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      defaultKeychain(async () => ({ code: 0, stdout: "login.keychain\n" })),
+    ).resolves.toBeUndefined();
   });
 });
 
@@ -553,12 +654,14 @@ describe("挑后端", () => {
         platform: "linux",
       }).backend.kind,
     ).toBe("libsecret");
+    const standard = dataDir();
     expect(
       resolveSecretBackend({
-        dataDir: dataDir(),
+        dataDir: standard,
         env: {},
         platform: "darwin",
         security: fakeSecurity(),
+        standardDataDir: standard,
       }).backend.kind,
     ).toBe("keychain");
     expect(
@@ -570,6 +673,82 @@ describe("挑后端", () => {
         .backend.kind,
     ).toBe("file");
   });
+});
+
+describe("macOS 上钥匙串只给默认数据目录", () => {
+  const untouchable: SecurityTool = () => {
+    throw new Error("the keychain must not be touched");
+  };
+
+  it("别的数据目录是数据目录里的 file-encrypted，一次 security 都不跑", async () => {
+    const standard = tempDir("armadra-standard-");
+    const isolated = tempDir("armadra-isolated-");
+    const resolved = resolveSecretBackend({
+      dataDir: isolated,
+      env: {},
+      platform: "darwin",
+      security: untouchable,
+      standardDataDir: standard,
+    });
+    expect(resolved.backend.kind).toBe("file-encrypted");
+    await resolved.backend.set("armadra-hook-secret", "isolated-value");
+    expect(await resolved.backend.get("armadra-hook-secret")).toBe(
+      "isolated-value",
+    );
+    expect(existsSync(join(secretsDirectory(isolated), "master.key"))).toBe(
+      true,
+    );
+  });
+
+  it("两个隔离目录互不相见", async () => {
+    const standard = tempDir("armadra-standard-");
+    const [a, b] = [tempDir("armadra-a-"), tempDir("armadra-b-")].map(
+      (dir) =>
+        resolveSecretBackend({
+          dataDir: dir,
+          env: {},
+          platform: "darwin",
+          security: untouchable,
+          standardDataDir: standard,
+        }).backend,
+    );
+    await a!.set("armadra-hook-secret", "a");
+    expect(await b!.get("armadra-hook-secret")).toBeUndefined();
+  });
+
+  it("同一个目录换种写法（相对段、末尾斜杠）仍算默认", () => {
+    const standard = tempDir("armadra-standard-");
+    expect(
+      resolveSecretBackend({
+        dataDir: `${standard}/sub/../`,
+        env: {},
+        platform: "darwin",
+        security: fakeSecurity(),
+        standardDataDir: standard,
+      }).backend.kind,
+    ).toBe("keychain");
+  });
+
+  it("算不出默认数据目录时一律不用钥匙串", () => {
+    expect(
+      resolveSecretBackend({
+        dataDir: tempDir("armadra-secrets-"),
+        env: {},
+        platform: "darwin",
+        security: untouchable,
+        standardDataDir: undefined,
+      }).backend.kind,
+    ).toBe("file-encrypted");
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "默认数据目录按账户记录的家目录算（不读 HOME）",
+    () => {
+      expect(standardDataDir()).toBe(
+        join(userInfo().homedir, "Library/Application Support/Armadra"),
+      );
+    },
+  );
 });
 
 describe("旧名字迁移", () => {
@@ -658,6 +837,7 @@ describe("旧名字迁移", () => {
       env: {},
       platform: "darwin",
       security: tool,
+      standardDataDir: dataDir,
     });
     let migrations = 0;
     const store = new SecretStore(resolved.backend, "armadra-copilot", () => {
