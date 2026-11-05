@@ -296,7 +296,7 @@ services:
 
   # serve 不自动迁移：一次性服务，迁移完成后 cloud 才启动（命令幂等）。
   migrate:
-    image: ghcr.io/ama-link/armadra-cloud:0.14.0
+    image: ghcr.io/ama-link/armadra-cloud:0.15.0
     profiles: ["platform"]
     command: ["migrate"]
     environment:
@@ -314,7 +314,7 @@ services:
   # 入口是 armadra-cloud（Go，distroless，没有 shell）：先等 migrate 跑完再 serve；
   # 连非回环库必须 sslmode=require（platform-postgres 在上面开了 TLS）。
   cloud:
-    image: ghcr.io/ama-link/armadra-cloud:0.14.0
+    image: ghcr.io/ama-link/armadra-cloud:0.15.0
     profiles: ["platform"]
     command: ["serve"]
     environment:
@@ -339,7 +339,7 @@ services:
     restart: unless-stopped
 
   relay:
-    image: ghcr.io/ama-link/armadra-relay:0.14.0
+    image: ghcr.io/ama-link/armadra-relay:0.15.0
     profiles: ["platform"]
     command: ["saas", "serve"]
     environment:
@@ -367,7 +367,7 @@ services:
   # 与中继共用网络命名空间（见下面的 armadra-server-nat-personal），它连 127.0.0.1:8103
   # 就是连中继自己。自签 CA 的指纹由 dev-stack.mjs 在中继起来后取出来交给 core。
   relay-personal:
-    image: ghcr.io/ama-link/armadra-relay:0.14.0
+    image: ghcr.io/ama-link/armadra-relay:0.15.0
     profiles: ["personal"]
     command:
       - personal

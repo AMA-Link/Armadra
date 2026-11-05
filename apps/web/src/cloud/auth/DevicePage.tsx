@@ -14,7 +14,6 @@ import { Button } from "@/ui/button";
 import { Card, CardContent } from "@/ui/card";
 import { Checkbox } from "@/ui/checkbox";
 import { Field, FieldError, FieldLabel } from "@/ui/field";
-import { Input } from "@/ui/input";
 import {
   InputOTP,
   InputOTPGroup,
@@ -27,6 +26,7 @@ import type { CloudClient } from "../api/client";
 import { useCloudApi } from "../api/context";
 import { describeFailure, isSessionError, toCloudError } from "../api/errors";
 import { AuthLayout } from "./AuthLayout";
+import { StepUpDialog } from "./StepUpDialog";
 import { APP_RETURN_URL, isMobilePlatform, returnToApp } from "./app-return";
 import {
   USER_CODE_ALPHABET,
@@ -267,23 +267,7 @@ export function DevicePage({
       </AuthLayout>
     );
 
-  if (stage.kind === "stepUp")
-    return (
-      <StepUp
-        busy={busy}
-        onCancel={() => {
-          setStage({
-            kind: "ready",
-            userCode: stage.userCode,
-            request: stage.request,
-          });
-          setError("");
-        }}
-        onVerified={() => decide(stage.userCode, stage.request, true)}
-      />
-    );
-
-  if (stage.kind === "ready") {
+  if (stage.kind === "ready" || stage.kind === "stepUp") {
     const { userCode, request } = stage;
     const Icon = isPlatform(request.platform)
       ? PLATFORM_ICON[request.platform]
@@ -370,6 +354,15 @@ export function DevicePage({
             {t("cloud.auth.deviceApprove")}
           </Button>
         </div>
+        {stage.kind === "stepUp" && (
+          <StepUpDialog
+            onCancel={() => {
+              setStage({ kind: "ready", userCode, request });
+              setError("");
+            }}
+            onVerified={() => decide(userCode, request, true)}
+          />
+        )}
       </AuthLayout>
     );
   }
@@ -436,114 +429,6 @@ export function DevicePage({
         </Field>
         <Button type="submit" size="lg" className="w-full" disabled={!complete}>
           {t("cloud.auth.continue")}
-        </Button>
-      </form>
-    </AuthLayout>
-  );
-}
-
-/**
- * 批准要求提权（`mfa_required`）：口令或验证码二选一，`auth.stepUp` 成功（10 分钟窗口）后
- * 回到上层重试批准。
- */
-function StepUp({
-  busy,
-  onCancel,
-  onVerified,
-}: {
-  busy: boolean;
-  onCancel: () => void;
-  /** 重试批准；答错误文案（没有错误是 `""`）。 */
-  onVerified: () => Promise<string>;
-}) {
-  const t = useT();
-  const api = useCloudApi();
-  const id = React.useId();
-  const field = React.useRef<HTMLInputElement>(null);
-  const [useCode, setUseCode] = React.useState(false);
-  const [value, setValue] = React.useState("");
-  const [error, setError] = React.useState("");
-  const [working, setWorking] = React.useState(false);
-
-  React.useEffect(() => {
-    if (error !== "") field.current?.focus();
-  }, [error]);
-
-  const submit = async () => {
-    if (working || busy || value.trim() === "") return;
-    setWorking(true);
-    setError("");
-    try {
-      await api.client.auth.stepUp(
-        useCode ? { totpCode: value.trim() } : { password: value },
-      );
-      setValue("");
-      setError(await onVerified());
-    } catch (failure) {
-      setError(describeFailure(failure));
-    } finally {
-      setWorking(false);
-    }
-  };
-
-  return (
-    <AuthLayout title={t("cloud.auth.stepUpTitle")}>
-      <form
-        className="flex flex-col gap-3"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void submit();
-        }}
-      >
-        <Field data-invalid={error !== "" || undefined}>
-          <FieldLabel htmlFor={`${id}-secret`}>
-            {useCode ? t("auth.mfa.code") : t("auth.password")}
-          </FieldLabel>
-          <Input
-            key={useCode ? "code" : "password"}
-            ref={field}
-            id={`${id}-secret`}
-            type={useCode ? "text" : "password"}
-            name={useCode ? "totp" : "password"}
-            // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
-            autoFocus
-            autoComplete={useCode ? "one-time-code" : "current-password"}
-            inputMode={useCode ? "numeric" : undefined}
-            value={value}
-            disabled={working || busy}
-            aria-invalid={error !== "" || undefined}
-            aria-describedby={error === "" ? undefined : `${id}-error`}
-            onChange={(event) => {
-              setValue(event.target.value);
-              setError("");
-            }}
-          />
-          <FieldError id={`${id}-error`}>{error}</FieldError>
-        </Field>
-        <Button
-          type="submit"
-          size="lg"
-          className="w-full"
-          disabled={value.trim() === ""}
-          loading={working || busy}
-        >
-          {t("cloud.auth.stepUpConfirm")}
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() => {
-            setUseCode(!useCode);
-            setValue("");
-            setError("");
-          }}
-        >
-          {useCode
-            ? t("cloud.auth.stepUpPassword")
-            : t("cloud.auth.stepUpCode")}
-        </Button>
-        <Button type="button" variant="ghost" onClick={onCancel}>
-          {t("cloud.auth.stepUpCancel")}
         </Button>
       </form>
     </AuthLayout>

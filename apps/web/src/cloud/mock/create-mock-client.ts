@@ -94,6 +94,14 @@ export interface MockOptions
    * 与「更改口令」（`auth.password-change`）。
    */
   readonly capabilities?: readonly string[];
+  /** 会话一开始就已提权（缺省 false；契约测试的黄金入参要它）。 */
+  readonly elevated?: boolean;
+  /** 一开始就绑着的提供方（`me.signInMethods.providers`，缺省没有）。 */
+  readonly linkedProviders?: readonly string[];
+  /** 账号设过口令（缺省 true）；没有口令时 `me.signInMethods.password` 为 false。 */
+  readonly hasPassword?: boolean;
+  /** `auth.oauthLinkFinish` 失败：错误码与细节（缺省成功）。 */
+  readonly linkFinish?: { readonly error: string; readonly details?: unknown };
   /** `auth.oauthFinish` 的结果（缺省直接登录）：两步验证挑战，或指定的失败码与错误细节。 */
   readonly oauthFinish?:
     | "session"
@@ -175,6 +183,13 @@ interface State {
   admin: AdminState;
   /** 已提权（`auth.stepUp` 成功过）。 */
   elevated: boolean;
+  /** 已绑定的第三方登录身份（`me.signInMethods`）。 */
+  linked: {
+    provider: string;
+    login: string;
+    email: string;
+    linkedAtMs: number;
+  }[];
   /** 个人空间页的数据：主机目录、链接、设备、安全日志。 */
   directory: DirectoryState;
   /** 团队空间（U4）的带状态数据：团队、成员、邀请、设置。 */
@@ -423,6 +438,19 @@ const TEAM_HANDLERS_AS_STATE: Readonly<Record<string, Handler>> =
     ]),
   );
 
+/** 授权地址（提权与绑定共用 `auth.oauthStart` 的形状）；提供方没开答 404。 */
+function oauthAuthorization(input: Input, options: MockOptions) {
+  const provider = String(input.provider);
+  if (!(options.capabilities ?? []).includes(`auth.oauth.${provider}`))
+    throw new CloudConsoleError("not_found", 404);
+  const redirect = encodeURIComponent(String(input.redirectUri));
+  return {
+    authorizationUrl: `https://${provider}.test/login/oauth/authorize?state=${MOCK_OAUTH_STATE}&redirect_uri=${redirect}`,
+    state: MOCK_OAUTH_STATE,
+    expiresAtMs: Date.now() + 600_000,
+  };
+}
+
 /** 带状态的处理器；没有的过程答黄金夹具。 */
 const HANDLERS: Readonly<Record<string, Handler>> = {
   ...ADMIN_HANDLERS,
@@ -492,6 +520,19 @@ const HANDLERS: Readonly<Record<string, Handler>> = {
   },
   "auth.emailVerifyResend": () => ({}),
   "auth.stepUp": (input, state) => {
+    const oauth = input.oauth as
+      | { provider: string; state: string }
+      | undefined;
+    if (oauth !== undefined) {
+      // 只认已绑定的身份（主体对得上）。
+      if (
+        oauth.state !== MOCK_OAUTH_STATE ||
+        !state.linked.some((row) => row.provider === oauth.provider)
+      )
+        throw new CloudConsoleError("credentials_invalid", 401);
+      state.elevated = true;
+      return { elevatedUntilMs: Date.now() + 600_000 };
+    }
     if (input.password === "wrong")
       throw new CloudConsoleError("credentials_invalid", 401);
     if (input.totpCode === "000000")
@@ -624,6 +665,69 @@ const HANDLERS: Readonly<Record<string, Handler>> = {
     DIRECTORY_HANDLERS["auth.changePassword"]!(input, state.directory);
     return sessionOf(state);
   },
+  "auth.stepUpOAuthStart": (input, _state, options) =>
+    oauthAuthorization(input, options),
+  "auth.oauthLinkStart": (input, state, options) => {
+    if (!state.elevated) throw new CloudConsoleError("mfa_required", 401);
+    return oauthAuthorization(input, options);
+  },
+  "auth.oauthLinkFinish": (input, state, options) => {
+    if (!state.elevated) throw new CloudConsoleError("mfa_required", 401);
+    const failure = options.linkFinish;
+    if (failure !== undefined)
+      throw new CloudConsoleError(
+        failure.error,
+        isErrorCode(failure.error) ? errorStatus(failure.error) : 400,
+        failure.error,
+        failure.details,
+      );
+    const provider = String(input.provider);
+    if (state.linked.some((row) => row.provider === provider))
+      throw new CloudConsoleError("conflict", 409, "conflict", {
+        reason: "provider_linked",
+      });
+    const row = {
+      provider,
+      login: `mock-${provider}`,
+      email: MOCK_ACCOUNT.email,
+      linkedAtMs: Date.now(),
+    };
+    state.linked.push(row);
+    return row;
+  },
+  "auth.oauthUnlink": (input, state, options) => {
+    if (!state.elevated) throw new CloudConsoleError("mfa_required", 401);
+    const provider = String(input.provider);
+    if (!state.linked.some((row) => row.provider === provider))
+      throw new CloudConsoleError("not_found", 404);
+    // 至少留一种此刻能用的登录方式。
+    if (state.linked.length <= 1 && options.hasPassword === false)
+      throw new CloudConsoleError("conflict", 409);
+    state.linked = state.linked.filter((row) => row.provider !== provider);
+    return {};
+  },
+  "me.signInMethods": (_input, state, options) => {
+    const password =
+      options.hasPassword !== false &&
+      (options.capabilities ?? MOCK_CAPABILITIES).includes("auth.password");
+    return {
+      password,
+      totp: false,
+      providers: state.linked.map((row) => ({ ...row })),
+      stepUp: [
+        ...(password ? ["password"] : []),
+        // mock 的 `auth.stepUp` 接受任何验证码（`000000` 除外），设备码的提权用例要它。
+        ...(options.hasPassword === false ? [] : ["totp"]),
+        ...(state.linked.length > 0 ? ["oauth"] : []),
+      ],
+    };
+  },
+  "me.emailChange": (input, state) => {
+    // 带口令照旧；不带则要在提权窗口内。
+    if (input.password === undefined && !state.elevated)
+      throw new CloudConsoleError("mfa_required", 401);
+    return DIRECTORY_HANDLERS["me.emailChange"]!(input, state.directory);
+  },
 };
 
 /** 这个调用满足范围表（「满足其一即可」）吗。 */
@@ -700,7 +804,13 @@ export function createMockApi(options: MockOptions = {}): MockApi {
     teams: createTeamsState(options),
     grants: createGrantsState(options),
     audit: createAuditState(options),
-    elevated: false,
+    elevated: options.elevated ?? false,
+    linked: (options.linkedProviders ?? []).map((provider) => ({
+      provider,
+      login: `mock-${provider}`,
+      email: MOCK_ACCOUNT.email,
+      linkedAtMs: Date.now() - 86_400_000,
+    })),
     decided: new Set(),
   };
   const lost = new Set<() => void>();
@@ -816,6 +926,20 @@ export function mockOptionsFromSearch(search: string): MockOptions {
           ],
         }
       : {}),
+    // 绑着 GitHub，能绑定 / 解绑 / 用提供方提权；`mockNoPassword` 去掉口令。
+    ...(params.has("mockLinked")
+      ? {
+          capabilities: [
+            ...MOCK_CAPABILITIES,
+            "auth.oauth.github",
+            "auth.oauth.google",
+            "auth.oauth-link",
+            "auth.step-up-oauth",
+          ],
+          linkedProviders: ["github"],
+        }
+      : {}),
+    ...(params.has("mockNoPassword") ? { hasPassword: false } : {}),
     ...(params.has("mockOauthOnly")
       ? {
           capabilities: [

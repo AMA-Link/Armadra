@@ -388,6 +388,12 @@
 | 通知     |   M2    | 每类一行 `Switch`：邀请、访问申请、主机上下线；「安全」一行 `Switch` 恒开且 `disabled`                                                                                                                                                                                                                                                                      | 失败回滚 + sonner                                                                                                                                     | `me.notificationPrefs`、`me.notificationPrefsUpdate`                                                                                |
 | 数据     |   M2    | 「导出数据」→ 生成后行内出现文件名 + 「下载」，生成中 `StatusPill queued`「排队中」；「注销账号」destructive → 输入邮箱确认的 `ResponsiveAlertDialog`；冷静期内本页顶 `Alert`「账号将于 {date} 注销」+「取消注销」                                                                                                                                          | `team_owner_required` → `ResponsiveAlertDialog` 内一行 + 名下团队的链接列表                                                                           | `me.export`、`me.delete`、`me.deleteCancel`                                                                                         |
 
+账号页的「登录方式」与再验证（协议包 0.15.0，armadra-cloud#195）：
+
+- 「安全」页签多一个 `SettingsGroup`「登录方式」：每个开放的提供方（`auth.oauth.<提供方>`）一行，已绑的给登录名与「解绑」，没绑的给「绑定」（`auth.oauth-link`）；此刻只剩一种能用的登录方式时，那一行的「解绑」禁用。页签在既没有 `auth.password-change` 也没有 `auth.oauth-link` 时才收起。
+- `StepUpDialog` 是共用的再验证对话框（原先设备授权页的整页步骤）：可用的方式取 `me.signInMethods.stepUp`（口令、验证码、已绑定的提供方），任何 `mfa_required` 都由 `useStepUp().run(op)` 打开它，验证成功后重试原操作；关掉则静默放弃。用提供方验证要整页跳走：跳转前把意图（`reauth` / `link`、回到的页面、待续的操作）存进 sessionStorage，`OAuthCallbackPage` 按意图调 `auth.stepUp { oauth }` 或 `auth.oauthLinkFinish`，没有意图是登录；目的以服务端 state 为准，对不上答 401。回到原页面后，页面取走待续的操作自动接着做（改邮箱、绑定、解绑）。
+- 「更改邮箱」只有账号有可用口令（`me.signInMethods.password`）才显示口令框；没有口令则先提权。
+
 #### 3.2.6 API 令牌 `/me/tokens`、`/t/:team/tokens`（M2）
 
 | 项   | 内容                                                                                                                                                                                                        |

@@ -8,11 +8,13 @@ import {
 import { useCloudApi } from "../api/context";
 import type { CloudClient } from "../api/client";
 import { cloudKeys } from "../api/keys";
-import { meQuery } from "../api/queries";
+import { meQuery, signInMethodsQuery } from "../api/queries";
 
 /** 账号页的数据层：资料、口令、邮箱、设备与安全日志。 */
 type Me = CloudClient["me"];
 export type Device = Awaited<ReturnType<Me["devices"]>>["devices"][number];
+export type SignInMethods = Awaited<ReturnType<Me["signInMethods"]>>;
+export type LinkedProvider = SignInMethods["providers"][number];
 export type SecurityEvent = Awaited<
   ReturnType<Me["securityLog"]>
 >["events"][number];
@@ -34,7 +36,8 @@ export function useRenameAccount() {
 export function useChangeEmail() {
   const api = useCloudApi();
   return useMutation({
-    mutationFn: (input: { newEmail: string; password: string }) =>
+    // 口令可省：没有口令的账号先提权（`mfa_required` 由调用方的提权对话框接住）。
+    mutationFn: (input: { newEmail: string; password?: string }) =>
       api.client.me.emailChange(input),
   });
 }
@@ -90,5 +93,22 @@ export function useSecurityLog() {
         ...(pageParam === undefined ? {} : { cursor: pageParam }),
       }),
     getNextPageParam: (page) => page.nextCursor ?? undefined,
+  });
+}
+
+export function useSignInMethods() {
+  const api = useCloudApi();
+  return useQuery(signInMethodsQuery(api));
+}
+
+/** 解绑一个提供方；会话要在提权窗口内（否则 `mfa_required`）。 */
+export function useUnlinkProvider() {
+  const api = useCloudApi();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (provider: LinkedProvider["provider"]) =>
+      api.client.auth.oauthUnlink({ provider }),
+    onSettled: () =>
+      client.invalidateQueries({ queryKey: cloudKeys.signInMethods }),
   });
 }

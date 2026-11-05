@@ -13,6 +13,8 @@ export interface SignInOptions {
   readonly password: boolean;
   /** 账号页的「更改口令」（`auth.password-change`）。 */
   readonly passwordChange: boolean;
+  /** 账号页能绑定 / 解绑登录方式（`auth.oauth-link`）。 */
+  readonly linkable: boolean;
   /** 开放的第三方登录（`auth.oauth.<提供方>`），顺序固定。 */
   readonly providers: readonly OAuthProvider[];
 }
@@ -28,6 +30,7 @@ export function useSignInOptions(): SignInOptions {
       loading: true,
       password: false,
       passwordChange: false,
+      linkable: false,
       providers: [],
     };
   if (info.data === undefined)
@@ -35,6 +38,7 @@ export function useSignInOptions(): SignInOptions {
       loading: false,
       password: true,
       passwordChange: true,
+      linkable: false,
       providers: [],
     };
   const caps = new Set(info.data.capabilities);
@@ -42,6 +46,7 @@ export function useSignInOptions(): SignInOptions {
     loading: false,
     password: caps.has("auth.password"),
     passwordChange: caps.has("auth.password-change"),
+    linkable: caps.has("auth.oauth-link"),
     providers: OAUTH_PROVIDERS.filter((provider) =>
       caps.has(`auth.oauth.${provider}`),
     ),

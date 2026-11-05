@@ -229,7 +229,7 @@ describe("设备授权页", () => {
     confirmCode();
     fireEvent.click(screen.getByRole("button", { name: "授权" }));
     await screen.findByRole("heading", { name: "再验证一次" });
-    const secret = screen.getByLabelText("口令") as HTMLInputElement;
+    const secret = (await screen.findByLabelText("口令")) as HTMLInputElement;
     expect(secret.getAttribute("autocomplete")).toBe("current-password");
     fireEvent.change(secret, { target: { value: "wrong" } });
     fireEvent.submit(secret.closest("form")!);
@@ -249,7 +249,7 @@ describe("设备授权页", () => {
     confirmCode();
     fireEvent.click(screen.getByRole("button", { name: "授权" }));
     await screen.findByRole("heading", { name: "再验证一次" });
-    fireEvent.click(screen.getByRole("button", { name: "改用验证码" }));
+    fireEvent.click(await screen.findByRole("button", { name: "改用验证码" }));
     const input = screen.getByLabelText("验证码") as HTMLInputElement;
     expect(input.getAttribute("autocomplete")).toBe("one-time-code");
     fireEvent.change(input, { target: { value: "123456" } });
