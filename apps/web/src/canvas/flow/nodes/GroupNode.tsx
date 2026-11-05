@@ -10,6 +10,7 @@ import { WorktreeBindingBadge } from "../overlays/WorktreeBindingBadge";
 import { clearDrafts, setDraft } from "../drafts";
 import type { ArmadraFlowNode } from "../../sync/project";
 import { ConnectionHandles } from "./ConnectionHandles";
+import { useStableResizeHandlers } from "./stable-resize";
 
 /**
  * 分组 = Frame（React Flow 计划 F05 / F08，归属 B1）。
@@ -54,19 +55,23 @@ export function GroupNode({
 }: NodeProps<ArmadraFlowNode>) {
   const node = data;
   const bound = frameBindingOf(node) !== null;
+  // 回调身份必须稳定，否则手指拉伸到第一帧就断（`stable-resize.ts`，#819）。
+  const resize = useStableResizeHandlers({
+    onResize: (_event, params) =>
+      setDraft(node.id, {
+        position: { x: params.x, y: params.y },
+        size: { width: params.width, height: params.height },
+      }),
+    onResizeEnd: (_event, params) => onResizeEnd(node, params),
+  });
   return (
     <>
       <NodeResizer
         isVisible={selected}
         minWidth={NODE_META.group.minSize.width}
         minHeight={NODE_META.group.minSize.height}
-        onResize={(_event, params) =>
-          setDraft(node.id, {
-            position: { x: params.x, y: params.y },
-            size: { width: params.width, height: params.height },
-          })
-        }
-        onResizeEnd={(_event, params) => onResizeEnd(node, params)}
+        onResize={resize.onResize}
+        onResizeEnd={resize.onResizeEnd}
       />
       <div
         data-slot="group-frame"
