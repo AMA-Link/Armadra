@@ -11,8 +11,13 @@ import { SkeletonSettings, SkeletonTable } from "@/ui/skeletons";
 import { EmptyState } from "@/ui/state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
 import { toast } from "@/ui/toast";
+import { useCloudApi } from "../api/context";
 import { describeFailure, toCloudError } from "../api/errors";
-import { useSignInOptions } from "../auth/sign-in-options";
+import { oauthRedirectUri } from "../auth/OAuthButtons";
+import { rememberOAuthIntent, takePendingAction } from "../auth/oauth-intent";
+import { external } from "../auth/redirect";
+import { isStepUpCancelled, useStepUp } from "../auth/StepUpDialog";
+import { isOAuthProvider, useSignInOptions } from "../auth/sign-in-options";
 import { navigate, type RouteMatch } from "../router";
 import { PageHeader } from "../shell/PageHeader";
 import { ConfirmAction } from "../ui/ConfirmAction";
@@ -22,12 +27,16 @@ import { PageState } from "../ui/PageState";
 import { RelativeTime } from "../ui/RelativeTime";
 import { ChangeEmailDialog, ChangePasswordDialog } from "./AccountForms";
 import {
+  useChangeEmail,
   useDevices,
   useMe,
   useRenameAccount,
   useRevokeDevices,
   useSecurityLog,
+  useSignInMethods,
+  useUnlinkProvider,
   type Device,
+  type LinkedProvider,
   type SecurityEvent,
 } from "./account-data";
 
@@ -58,8 +67,32 @@ function ProfileTab({
   const t = useT();
   const me = useMe();
   const rename = useRenameAccount();
+  const methods = useSignInMethods();
+  const change = useChangeEmail();
+  const step = useStepUp();
   const [name, setName] = React.useState<string | null>(null);
   const [dialog, setDialog] = React.useState(false);
+
+  // 提权要整页跳去提供方：回来后接着发出改邮箱的申请（一次性）。
+  const resumed = React.useRef(false);
+  React.useEffect(() => {
+    if (resumed.current) return;
+    resumed.current = true;
+    const action = takePendingAction(["emailChange"]);
+    if (action === null) return;
+    void (async () => {
+      try {
+        await step.run(
+          () => change.mutateAsync({ newEmail: action.newEmail }),
+          action,
+        );
+        toast.success(t("cloud.account.emailSent", { email: action.newEmail }));
+        onPending(action.newEmail);
+      } catch (failure) {
+        if (!isStepUpCancelled(failure)) toast.error(describeFailure(failure));
+      }
+    })();
+  }, [step, change, t, onPending]);
 
   if (me.isPending) return <SkeletonSettings rows={2} />;
   if (me.isError)
@@ -117,30 +150,198 @@ function ProfileTab({
       </SettingsGroup>
       {dialog ? (
         <ChangeEmailDialog
+          // 取不到登录方式（旧服务端）按有口令处理。
+          hasPassword={methods.data?.password ?? true}
           onClose={() => setDialog(false)}
           onRequested={onPending}
         />
       ) : null}
+      {step.dialog}
+    </>
+  );
+}
+
+const SECURITY_PATH = "/me/account?tab=security";
+
+/** 登录方式：每个开放的提供方一行，已绑的给登录名、邮箱与「解绑」，没绑的给「绑定」。 */
+function SignInMethodsGroup() {
+  const t = useT();
+  const api = useCloudApi();
+  const options = useSignInOptions();
+  const methods = useSignInMethods();
+  const unlink = useUnlinkProvider();
+  const step = useStepUp();
+  const [target, setTarget] = React.useState<LinkedProvider["provider"] | null>(
+    null,
+  );
+  const lastTarget = React.useRef(target);
+  if (target !== null) lastTarget.current = target;
+
+  const startLink = React.useCallback(
+    async (provider: LinkedProvider["provider"]) => {
+      try {
+        const answer = await step.run(
+          () =>
+            api.client.auth.oauthLinkStart({
+              provider,
+              redirectUri: oauthRedirectUri(provider),
+            }),
+          { kind: "linkProvider", provider },
+        );
+        rememberOAuthIntent({ purpose: "link", provider }, SECURITY_PATH);
+        external.go(answer.authorizationUrl);
+      } catch (failure) {
+        if (!isStepUpCancelled(failure)) toast.error(describeFailure(failure));
+      }
+    },
+    [api, step],
+  );
+
+  const doUnlink = React.useCallback(
+    async (provider: LinkedProvider["provider"]) => {
+      await step.run(() => unlink.mutateAsync(provider), {
+        kind: "unlinkProvider",
+        provider,
+      });
+      toast.success(
+        t("cloud.account.providerUnlinked", {
+          provider: t(`cloud.account.provider.${provider}`),
+        }),
+      );
+    },
+    [step, unlink, t],
+  );
+
+  // 提权要整页跳去提供方：回来后接着绑定 / 解绑（一次性）。
+  const resumed = React.useRef(false);
+  React.useEffect(() => {
+    if (resumed.current) return;
+    resumed.current = true;
+    const action = takePendingAction(["linkProvider", "unlinkProvider"]);
+    if (action === null) return;
+    if (action.kind === "linkProvider") void startLink(action.provider);
+    else
+      void doUnlink(action.provider).catch((failure: unknown) => {
+        if (!isStepUpCancelled(failure)) toast.error(describeFailure(failure));
+      });
+  }, [startLink, doUnlink]);
+
+  if (methods.isPending) return <SkeletonSettings rows={2} />;
+  if (methods.isError)
+    return (
+      <InlineError
+        error={methods.error}
+        onRetry={() => void methods.refetch()}
+      />
+    );
+  const linked = new Map(
+    methods.data.providers.map((row) => [row.provider, row]),
+  );
+  // 开放的提供方，加上已绑但服务端已不再开放的。
+  const shown = [
+    ...new Set([
+      ...options.providers,
+      ...methods.data.providers.map((row) => row.provider),
+    ]),
+  ].filter(isOAuthProvider);
+  if (shown.length === 0) return null;
+  // 此刻能用的登录方式：口令，加上仍开放的已绑提供方；只剩一种时不许解绑它。
+  const usable =
+    (methods.data.password ? 1 : 0) +
+    methods.data.providers.filter((row) =>
+      (options.providers as readonly string[]).includes(row.provider),
+    ).length;
+  const shownTarget = lastTarget.current;
+
+  return (
+    <>
+      <SettingsGroup title={t("cloud.account.signInMethods")}>
+        {shown.map((provider) => {
+          const row = linked.get(provider);
+          const name = t(`cloud.account.provider.${provider}`);
+          const isUsable = (options.providers as readonly string[]).includes(
+            provider,
+          );
+          return (
+            <SettingsRow key={provider} label={name}>
+              {row ? (
+                <>
+                  <span
+                    className="min-w-0 truncate text-muted-foreground"
+                    translate="no"
+                  >
+                    {row.login ?? row.email}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isUsable && usable <= 1}
+                    onClick={() => setTarget(provider)}
+                  >
+                    {t("cloud.account.unlink")}
+                  </Button>
+                </>
+              ) : options.linkable ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void startLink(provider)}
+                >
+                  {t("cloud.account.link")}
+                </Button>
+              ) : null}
+            </SettingsRow>
+          );
+        })}
+      </SettingsGroup>
+      <ConfirmAction
+        open={target !== null}
+        onOpenChange={(open) => !open && setTarget(null)}
+        title={
+          shownTarget
+            ? t("cloud.account.unlinkTitle", {
+                provider: t(`cloud.account.provider.${shownTarget}`),
+              })
+            : ""
+        }
+        actionLabel={t("cloud.account.unlink")}
+        consequence={t("cloud.account.unlinkConsequence")}
+        onConfirm={async () => {
+          if (!target) return;
+          try {
+            await doUnlink(target);
+          } catch (failure) {
+            if (!isStepUpCancelled(failure))
+              toast.error(describeFailure(failure));
+            throw failure;
+          }
+        }}
+      />
+      {step.dialog}
     </>
   );
 }
 
 function SecurityTab() {
   const t = useT();
+  const options = useSignInOptions();
   const [dialog, setDialog] = React.useState(false);
   return (
-    <>
-      <SettingsGroup>
-        <SettingsRow label={t("cloud.account.password")}>
-          <Button variant="outline" size="sm" onClick={() => setDialog(true)}>
-            {t("cloud.account.changePassword")}
-          </Button>
-        </SettingsRow>
-      </SettingsGroup>
+    <div className="flex flex-col gap-6">
+      {options.passwordChange ? (
+        <SettingsGroup>
+          <SettingsRow label={t("cloud.account.password")}>
+            <Button variant="outline" size="sm" onClick={() => setDialog(true)}>
+              {t("cloud.account.changePassword")}
+            </Button>
+          </SettingsRow>
+        </SettingsGroup>
+      ) : null}
+      <SignInMethodsGroup />
       {dialog ? (
         <ChangePasswordDialog onClose={() => setDialog(false)} />
       ) : null}
-    </>
+    </div>
   );
 }
 
@@ -355,10 +556,13 @@ export function AccountPage({ match }: { match: RouteMatch }) {
   const me = useMe();
   const [pendingEmail, setPendingEmail] = React.useState<string | null>(null);
   const options = useSignInOptions();
-  // 服务端不报 `auth.password-change`（只用第三方登录）：安全页只有「更改口令」，整页签收起。
+  // 服务端既不报 `auth.password-change` 也不报 `auth.oauth-link`：安全页没有可放的，整页签收起。
   const tabs = TABS.filter(
     (entry) =>
-      entry !== "security" || options.loading || options.passwordChange,
+      entry !== "security" ||
+      options.loading ||
+      options.passwordChange ||
+      options.linkable,
   );
   const requested = match.query.get("tab");
   const tab: Tab = tabs.find((entry) => entry === requested) ?? "profile";

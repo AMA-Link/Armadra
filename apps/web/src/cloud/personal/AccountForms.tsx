@@ -16,6 +16,7 @@ import { TurnstileWidget } from "../../challenge/TurnstileWidget";
 import { TURNSTILE_PASSWORD_ACTION } from "../../challenge/turnstile";
 import { useCloudApi } from "../api/context";
 import { describeFailure, toCloudError } from "../api/errors";
+import { isStepUpCancelled, useStepUp } from "../auth/StepUpDialog";
 import { useChangeEmail, useChangePassword } from "./account-data";
 
 /** 一个必填口令 / 邮箱字段，错误贴在字段下（§3.0 表单）。 */
@@ -189,16 +190,23 @@ export function ChangePasswordDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** 更改邮箱：新邮箱 + 当前口令；新地址验证前旧邮箱照常生效，成功后由页面记下「待验证」。 */
+/**
+ * 更改邮箱：新邮箱，有口令的账号另填当前口令，没有口令的先提权（`mfa_required` 打开再验证对话框，
+ * 成功后重试）；新地址验证前旧邮箱照常生效，成功后由页面记下「待验证」。
+ */
 export function ChangeEmailDialog({
+  hasPassword,
   onClose,
   onRequested,
 }: {
+  /** 账号有可用的口令：显示口令框。 */
+  hasPassword: boolean;
   onClose: () => void;
   onRequested: (email: string) => void;
 }) {
   const t = useT();
   const change = useChangeEmail();
+  const step = useStepUp();
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [errors, setErrors] = React.useState({ email: "", password: "" });
@@ -207,16 +215,24 @@ export function ChangeEmailDialog({
 
   const submit = async () => {
     const next = email.trim();
-    if (next === "" || password === "") {
+    if (next === "" || (hasPassword && password === "")) {
       (next === "" ? emailRef : passwordRef).current?.focus();
       return;
     }
     try {
-      await change.mutateAsync({ newEmail: next, password });
+      const send = () =>
+        change.mutateAsync({
+          newEmail: next,
+          ...(hasPassword ? { password } : {}),
+        });
+      await (hasPassword
+        ? send()
+        : step.run(send, { kind: "emailChange", newEmail: next }));
       toast.success(t("cloud.account.emailSent", { email: next }));
       onRequested(next);
       onClose();
     } catch (failure) {
+      if (isStepUpCancelled(failure)) return;
       const { code } = toCloudError(failure);
       const message = describeFailure(failure);
       if (code === "credentials_invalid") {
@@ -230,57 +246,62 @@ export function ChangeEmailDialog({
   };
 
   return (
-    <ResponsiveDialog open onOpenChange={(open) => !open && onClose()}>
-      <ResponsiveDialogContent aria-describedby={undefined}>
-        <ResponsiveDialogHeader>
-          <ResponsiveDialogTitle>
-            {t("cloud.account.changeEmail")}
-          </ResponsiveDialogTitle>
-        </ResponsiveDialogHeader>
-        <form
-          className="contents"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void submit();
-          }}
-        >
-          <TextField
-            label={t("cloud.account.newEmail")}
-            type="email"
-            name="email"
-            autoComplete="email"
-            spellCheck={false}
-            value={email}
-            error={errors.email}
-            inputRef={emailRef}
-            onChange={(event) => {
-              setEmail(event.target.value);
-              setErrors((previous) => ({ ...previous, email: "" }));
+    <>
+      <ResponsiveDialog open onOpenChange={(open) => !open && onClose()}>
+        <ResponsiveDialogContent aria-describedby={undefined}>
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>
+              {t("cloud.account.changeEmail")}
+            </ResponsiveDialogTitle>
+          </ResponsiveDialogHeader>
+          <form
+            className="contents"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submit();
             }}
-          />
-          <TextField
-            label={t("cloud.account.currentPassword")}
-            type="password"
-            name="current-password"
-            autoComplete="current-password"
-            value={password}
-            error={errors.password}
-            inputRef={passwordRef}
-            onChange={(event) => {
-              setPassword(event.target.value);
-              setErrors((previous) => ({ ...previous, password: "" }));
-            }}
-          />
-          <ResponsiveDialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
-              {t("cloud.common.cancel")}
-            </Button>
-            <Button type="submit" loading={change.isPending}>
-              {t("cloud.common.save")}
-            </Button>
-          </ResponsiveDialogFooter>
-        </form>
-      </ResponsiveDialogContent>
-    </ResponsiveDialog>
+          >
+            <TextField
+              label={t("cloud.account.newEmail")}
+              type="email"
+              name="email"
+              autoComplete="email"
+              spellCheck={false}
+              value={email}
+              error={errors.email}
+              inputRef={emailRef}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                setErrors((previous) => ({ ...previous, email: "" }));
+              }}
+            />
+            {hasPassword ? (
+              <TextField
+                label={t("cloud.account.currentPassword")}
+                type="password"
+                name="current-password"
+                autoComplete="current-password"
+                value={password}
+                error={errors.password}
+                inputRef={passwordRef}
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                  setErrors((previous) => ({ ...previous, password: "" }));
+                }}
+              />
+            ) : null}
+            <ResponsiveDialogFooter>
+              <Button type="button" variant="outline" onClick={onClose}>
+                {t("cloud.common.cancel")}
+              </Button>
+              <Button type="submit" loading={change.isPending}>
+                {t("cloud.common.save")}
+              </Button>
+            </ResponsiveDialogFooter>
+          </form>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
+      {step.dialog}
+    </>
   );
 }
