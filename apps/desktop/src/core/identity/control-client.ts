@@ -56,13 +56,19 @@ export interface ControlAnswer {
   readonly body: Buffer;
 }
 
-/** One HTTP request to the channel; a pipe completes the handshake first. */
+/**
+ * One HTTP request to a private channel; a pipe completes the handshake
+ * first. Also the askpass helper's transport (contract §102.8).
+ */
 export function requestControl(
   target: ControlTarget,
   options: {
     readonly method: string;
     readonly path: string;
     readonly body?: Buffer;
+    /** Extra request headers (the askpass helper's bearer and host). */
+    readonly headers?: Readonly<Record<string, string>>;
+    readonly contentType?: string;
     readonly timeoutMs?: number;
     readonly limit?: number;
   },
@@ -86,9 +92,10 @@ export function requestControl(
   return new Promise((resolve, reject) => {
     const headers: Record<string, string> = {};
     if (options.body !== undefined) {
-      headers["content-type"] = "application/json";
+      headers["content-type"] = options.contentType ?? "application/json";
       headers["content-length"] = String(options.body.byteLength);
     }
+    Object.assign(headers, options.headers);
     const outgoing = httpRequest(
       {
         ...(channel === undefined
