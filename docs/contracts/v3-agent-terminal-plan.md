@@ -253,7 +253,7 @@ Runtime 在现有 `127.0.0.1:43120` 之外**再监听一个 Unix socket**（`<da
 
 校验三分：`verified`（本实例 kid 且 mac 正确，常量时间比较）/ `legacy`（无令牌或外来 kid，允许，仅作标记）/ `forged`（本实例 kid 但 mac 错，403）。状态回报路由 `legacy` 也接受；控制/消息路由要求 `verified`。
 
-> 实例密钥自 #751 起不再是 `<data>/hook-secret` 文件，而是 core 密钥后端里的 `armadra-hook-secret`（见 [core JSON 契约 §102.1](core-json-api.md)）；派生与三分校验不变。
+> 实例密钥自 #751 起不再是 `<data>/hook-secret` 文件，而是 core 密钥后端里的 `armadra-hook-key`（见 [core JSON 契约 §102.1](core-json-api.md)）；派生与三分校验不变。
 
 ### 5.3 Hook 客户端与安装器
 
