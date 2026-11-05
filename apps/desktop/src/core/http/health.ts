@@ -1,3 +1,4 @@
+import { type PipeAcl, pipeAclSummary } from "../private-pipe/state";
 import { basename } from "node:path";
 import { BUILD, instanceId } from "../instance";
 import { defaultShell } from "../terminal/environment";
@@ -56,6 +57,12 @@ export interface HealthDocument {
    */
   readonly platform: string;
   readonly defaultShell: string;
+  /**
+   * Windows only: `hardened` when every private pipe of this run has the
+   * restricted DACL, `default` when at least one is served on the handshake
+   * alone (contract §102.3). Absent where there are no pipes.
+   */
+  readonly pipeAcl?: PipeAcl;
 }
 
 export interface HealthSource {
@@ -73,6 +80,7 @@ export interface HealthSource {
 export const NO_HOOK_SERVICE: HookHealth = { ok: false };
 
 export function healthDocument(source: HealthSource): HealthDocument {
+  const pipeAcl = pipeAclSummary();
   return {
     status: "ok",
     version: source.version,
@@ -82,5 +90,6 @@ export function healthDocument(source: HealthSource): HealthDocument {
     capabilities: source.capabilities?.() ?? {},
     platform: process.platform,
     defaultShell: basename(defaultShell().replace(/\\/g, "/")),
+    ...(pipeAcl === undefined ? {} : { pipeAcl }),
   };
 }

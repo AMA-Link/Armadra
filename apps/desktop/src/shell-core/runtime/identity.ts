@@ -197,7 +197,15 @@ export function publishedRuntimeBases(
 /** The address this shell asked the Runtime to listen on. */
 export type RuntimeAddress =
   | { readonly kind: "socket"; readonly path: string }
-  | { readonly kind: "pipe"; readonly name: string }
+  | {
+      readonly kind: "pipe";
+      readonly name: string;
+      /**
+       * The data directory whose `pipe.key` the handshake uses (contract
+       * §102.3). Not part of the address: it is not on the command line.
+       */
+      readonly directory?: string | undefined;
+    }
   | { readonly kind: "tcp"; readonly authority: string };
 
 export function listenArgument(address: RuntimeAddress): string {

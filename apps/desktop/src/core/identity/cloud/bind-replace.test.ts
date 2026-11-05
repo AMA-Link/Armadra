@@ -1,5 +1,6 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import {
+  Agent,
   type IncomingMessage,
   type Server,
   createServer,
@@ -13,6 +14,7 @@ import { TLSSocket } from "node:tls";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { allowOrigins } from "../../http/cors";
+import { channelKey, connectPrivate } from "../../private-pipe";
 import { installContract } from "../../http/rpc";
 import { accessCookieName } from "../../gateway/admission";
 import { openGateway } from "../../gateway/listener";
@@ -20,7 +22,7 @@ import { markChannelSocket } from "../../relay/e2e/peer";
 import {
   type ListenSpec,
   PIPE_PREFIX,
-  bind as bindListener,
+  bind as rawBind,
   release,
 } from "../../listen";
 import { markGatewayRequest, viaGateway } from "../http";
@@ -127,6 +129,74 @@ afterEach(async () => {
   await core.server.close();
   core.close();
 });
+
+/** The Windows pipe is served only behind the `armadra-pipe/1` handshake (§102.3). */
+const PIPE_ROOT = Buffer.alloc(32, 5);
+function bindListener(server: Server, spec: ListenSpec): Promise<ListenSpec> {
+  return rawBind(
+    server,
+    spec,
+    spec.kind === "pipe"
+      ? {
+          channel: { label: "runtime", key: channelKey(PIPE_ROOT, "runtime") },
+          harden: async () => ({ ok: false, reason: "test" }),
+        }
+      : undefined,
+  );
+}
+
+/** One request to the private channel; a pipe completes the handshake first. */
+function requestPrivate(
+  channel: { spec: ListenSpec; address: string },
+  options: { method: string; path: string; body?: string },
+): Promise<{ status: number; text: string }> {
+  const agent = new Agent({ keepAlive: false });
+  if (channel.spec.kind === "pipe") {
+    const handshake = {
+      label: "runtime",
+      pipe: channel.spec.name,
+      key: channelKey(PIPE_ROOT, "runtime"),
+    };
+    (agent as unknown as { createConnection: unknown }).createConnection = (
+      _options: unknown,
+      callback: (error: Error | null, socket?: Socket) => void,
+    ) => {
+      connectPrivate(channel.address, handshake, 5000).then(
+        (socket) => callback(null, socket),
+        (error: Error) => callback(error),
+      );
+    };
+  }
+  return new Promise((done, failed) => {
+    const headers: Record<string, string> = {};
+    if (options.body !== undefined) {
+      headers["content-type"] = "application/json";
+      headers["content-length"] = String(Buffer.byteLength(options.body));
+    }
+    const client = httpRequest(
+      {
+        ...(channel.spec.kind === "pipe"
+          ? { agent, host: "localhost" }
+          : { socketPath: channel.address }),
+        path: options.path,
+        method: options.method,
+        headers,
+      },
+      (response) => {
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk: Buffer) => chunks.push(chunk));
+        response.on("end", () =>
+          done({
+            status: response.statusCode ?? 0,
+            text: Buffer.concat(chunks).toString("utf8"),
+          }),
+        );
+      },
+    );
+    client.on("error", failed);
+    client.end(options.body);
+  });
+}
 
 /**
  * 本机私有通道：Unix 类平台是目录里的 unix socket，Windows 是命名管道（`--listen pipe:NAME`）。
@@ -481,21 +551,8 @@ describe("bind 替换自动成员（契约 §88.5）", () => {
     });
     const spec = await bindListener(privateServer, channel.spec);
     try {
-      const text = await new Promise<string>((done, failed) => {
-        const client = httpRequest(
-          { socketPath: channel.address, path: "/" },
-          (response) => {
-            const chunks: Buffer[] = [];
-            response.on("data", (chunk: Buffer) => chunks.push(chunk));
-            response.on("end", () =>
-              done(Buffer.concat(chunks).toString("utf8")),
-            );
-          },
-        );
-        client.on("error", failed);
-        client.end();
-      });
-      expect(text).toBe("true");
+      const reply = await requestPrivate(channel, { method: "GET", path: "/" });
+      expect(reply.text).toBe("true");
     } finally {
       await new Promise((done) => privateServer.close(done));
       release(spec);
@@ -518,33 +575,16 @@ describe("bind 替换自动成员（契约 §88.5）", () => {
       const payload = JSON.stringify({
         json: { assertion: sub("acct:private") },
       });
-      const answer = await new Promise<Answer>((done, failed) => {
-        const client = httpRequest(
-          {
-            socketPath: channel.address,
-            path: "/api/rpc/identity/cloud/bind",
-            method: "POST",
-            headers: {
-              "content-type": "application/json",
-              "content-length": String(Buffer.byteLength(payload)),
-            },
-          },
-          (response) => {
-            const chunks: Buffer[] = [];
-            response.on("data", (chunk: Buffer) => chunks.push(chunk));
-            response.on("end", () => {
-              const text = Buffer.concat(chunks).toString("utf8");
-              done({
-                status: response.statusCode ?? 0,
-                text,
-                body: JSON.parse(text) as Record<string, unknown>,
-              });
-            });
-          },
-        );
-        client.on("error", failed);
-        client.end(payload);
+      const reply = await requestPrivate(channel, {
+        method: "POST",
+        path: "/api/rpc/identity/cloud/bind",
+        body: payload,
       });
+      const answer: Answer = {
+        status: reply.status,
+        text: reply.text,
+        body: JSON.parse(reply.text) as Record<string, unknown>,
+      };
       expect(answer.status, answer.text).toBe(200);
       expect(answer.body).toEqual({ json: { bound: true, replaced: true } });
     } finally {

@@ -2,11 +2,18 @@ import { type ChildProcess, execFile, fork } from "node:child_process";
 import { createInterface } from "node:readline";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { connect } from "node:net";
+import { type Socket, connect } from "node:net";
 import { createHash } from "node:crypto";
 import { userInfo } from "node:os";
 import { join, resolve } from "node:path";
 import { dataDir, endpointsFile } from "../shell-core/paths";
+import {
+  type Channel,
+  channelKey,
+  connectPrivate,
+  readPipeKey,
+} from "../core/private-pipe";
+import { RUNTIME_LABEL } from "../core/private-pipe/labels";
 import { sendQuitIntent } from "../core/quit";
 import { attachTicketChannel } from "./core-ticket";
 import {
@@ -354,6 +361,7 @@ export async function socketHealth(
     localEndpoint(address),
     "/health",
     timeoutMs,
+    pipeChannel(address),
   );
   return body === undefined ? undefined : parseHealth(body);
 }
@@ -372,38 +380,84 @@ export async function httpHealth(
   }
 }
 
-/** Minimal HTTP/1.1 GET over a Unix socket; returns the body, or nothing. */
+/**
+ * The handshake channel of a Windows pipe address, or `undefined` for a Unix
+ * socket (whose file mode is its authentication). A pipe whose key cannot be
+ * read yet is a core that has not started: `null`, answered as "nothing there".
+ */
+function pipeChannel(address: RuntimeAddress): Channel | undefined | null {
+  if (address.kind !== "pipe") return undefined;
+  try {
+    return {
+      label: RUNTIME_LABEL,
+      pipe: address.name,
+      key: channelKey(
+        readPipeKey(address.directory ?? dataDir()),
+        RUNTIME_LABEL,
+      ),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Minimal HTTP/1.1 GET over a Unix socket or a private pipe; returns the body,
+ * or nothing. A pipe completes the `armadra-pipe/1` handshake first, so a
+ * process squatting the name never sees the request.
+ */
 function requestOverSocket(
   path: string,
   route: string,
   timeoutMs: number,
+  channel?: Channel | null,
 ): Promise<string | undefined> {
+  if (channel === null) return Promise.resolve(undefined);
   return new Promise((done) => {
     let settled = false;
+    let socket: Socket | undefined;
     const finish = (value: string | undefined): void => {
       if (settled) return;
       settled = true;
-      socket.destroy();
+      socket?.destroy();
       done(value);
     };
-    const socket = connect(path);
-    socket.setTimeout(timeoutMs, () => finish(undefined));
-    socket.on("error", () => finish(undefined));
-    socket.on("connect", () => {
-      socket.write(
+    const timer = setTimeout(() => finish(undefined), timeoutMs);
+    timer.unref();
+    const read = (stream: Socket): void => {
+      const chunks: Buffer[] = [];
+      stream.on("data", (chunk) => chunks.push(chunk));
+      stream.on("end", () => {
+        const raw = Buffer.concat(chunks).toString("utf8");
+        const split = raw.indexOf("\r\n\r\n");
+        if (split < 0) return finish(undefined);
+        const statusLine = raw.slice(0, raw.indexOf("\r\n"));
+        if (!/^HTTP\/1\.[01] 2\d\d/.test(statusLine)) return finish(undefined);
+        finish(raw.slice(split + 4));
+      });
+    };
+    const attach = (connected: Socket): void => {
+      socket = connected;
+      if (settled) {
+        connected.destroy();
+        return;
+      }
+      connected.setTimeout(timeoutMs, () => finish(undefined));
+      connected.on("error", () => finish(undefined));
+      connected.write(
         `GET ${route} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n`,
       );
-    });
-    const chunks: Buffer[] = [];
-    socket.on("data", (chunk) => chunks.push(chunk));
-    socket.on("end", () => {
-      const raw = Buffer.concat(chunks).toString("utf8");
-      const split = raw.indexOf("\r\n\r\n");
-      if (split < 0) return finish(undefined);
-      const statusLine = raw.slice(0, raw.indexOf("\r\n"));
-      if (!/^HTTP\/1\.[01] 2\d\d/.test(statusLine)) return finish(undefined);
-      finish(raw.slice(split + 4));
-    });
+      read(connected);
+    };
+    if (channel === undefined) {
+      const raw = connect(path);
+      raw.on("error", () => finish(undefined));
+      raw.on("connect", () => attach(raw));
+    } else {
+      connectPrivate(path, channel, timeoutMs).then(attach, () =>
+        finish(undefined),
+      );
+    }
   });
 }
 
@@ -673,7 +727,7 @@ export function ownedRuntimeAddress(
   directory: string = dataDir(),
 ): RuntimeAddress {
   if (platform === "win32") {
-    return { kind: "pipe", name: runtimePipeName(directory) };
+    return { kind: "pipe", name: runtimePipeName(directory), directory };
   }
   return { kind: "socket", path: join(directory, "runtime.sock") };
 }

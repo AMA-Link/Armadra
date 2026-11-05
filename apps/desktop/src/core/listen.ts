@@ -3,6 +3,9 @@ import { existsSync, lstatSync, mkdirSync, unlinkSync } from "node:fs";
 import type { Server } from "node:http";
 import { dirname } from "node:path";
 import { hardenDirectory, hardenFile } from "./paths";
+import { type Channel, guardServer } from "./private-pipe";
+import { forgetPipeAcl, recordPipeAcl } from "./private-pipe/state";
+import { type HardenResult, hardenPipe } from "./windows/acl";
 
 /**
  * Where the core accepts HTTP and WebSocket requests.
@@ -188,6 +191,7 @@ function markPrivateChannel(server: Server): void {
 export async function bind(
   server: Server,
   spec: ListenSpec,
+  secured?: PipeSecurity,
 ): Promise<ListenSpec> {
   switch (spec.kind) {
     case "tcp":
@@ -195,7 +199,7 @@ export async function bind(
     case "unix":
       return bindUnix(server, spec.path);
     case "pipe":
-      return bindPipe(server, spec.name);
+      return bindPipe(server, spec.name, secured);
   }
 }
 
@@ -295,18 +299,49 @@ function socketIsHeld(path: string): Promise<"held" | "stale" | "unknown"> {
   });
 }
 
-async function bindPipe(server: Server, name: string): Promise<ListenSpec> {
+/**
+ * What a Windows pipe needs to be served (contract §102.3): the channel its
+ * handshake is bound to, and optionally the hardener (tests replace it).
+ */
+export interface PipeSecurity {
+  readonly channel: Pick<Channel, "label" | "key">;
+  readonly harden?: (path: string) => Promise<HardenResult>;
+  readonly onWarning?: (message: string, detail: unknown) => void;
+}
+
+async function bindPipe(
+  server: Server,
+  name: string,
+  secured: PipeSecurity | undefined,
+): Promise<ListenSpec> {
   if (process.platform !== "win32") {
     throw new Error(
       `--listen pipe:${name} needs Windows; use --listen unix:PATH here`,
     );
   }
-  // TODO(R6): `node:net` creates an ordinary pipe instance. The first-instance
-  // flag, `reject_remote_clients` and the per-connection client SID check the
-  // Rust listener applies have no Node equivalent and need the session-host's
-  // native layer; until then a Windows core is development-only.
+  if (secured === undefined) {
+    // A pipe nobody can authenticate is the thing this layer exists to avoid.
+    throw new Error(`pipe:${name} cannot be served without a handshake key`);
+  }
+  const path = `${PIPE_PREFIX}${name}`;
   markPrivateChannel(server);
-  await listening(server, () => server.listen(`${PIPE_PREFIX}${name}`));
+  // Registered before `listen`, so not one connection reaches the HTTP layer
+  // without completing the handshake — including the one the DACL helper
+  // makes, which simply never finishes it.
+  guardServer(server, {
+    channel: { ...secured.channel, pipe: name },
+    onReject: (reason) =>
+      secured.onWarning?.("a pipe connection was refused", { name, reason }),
+  });
+  await listening(server, () => server.listen(path));
+  const hardened = await (secured.harden ?? hardenPipe)(path);
+  recordPipeAcl(name, hardened.ok ? "hardened" : "default");
+  if (!hardened.ok) {
+    secured.onWarning?.(
+      "could not restrict the pipe to this user; it is served on the handshake alone",
+      { name, reason: hardened.reason },
+    );
+  }
   return { kind: "pipe", name };
 }
 
@@ -315,6 +350,7 @@ async function bindPipe(server: Server, name: string): Promise<ListenSpec> {
  * replaced by a newer core — is left alone.
  */
 export function release(spec: ListenSpec): void {
+  if (spec.kind === "pipe") forgetPipeAcl(spec.name);
   if (spec.kind !== "unix") return;
   try {
     if (lstatSync(spec.path).isSocket()) unlinkSync(spec.path);

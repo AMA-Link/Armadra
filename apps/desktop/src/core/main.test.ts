@@ -372,7 +372,12 @@ describe("what the core answers", () => {
     const first = await (await fetch(`${base(core)}/health`)).json();
     const second = await (await fetch(`${base(core)}/api/health`)).json();
     expect(first).toEqual(second);
-    expect(first).toEqual({
+    // `pipeAcl` (contract §102.3) is only there while a private pipe is bound,
+    // and which pipes are bound by now depends on the platform and on what
+    // else has started: when present it is one of the two states.
+    const { pipeAcl, ...document } = first as Record<string, unknown>;
+    expect([undefined, "hardened", "default"]).toContain(pipeAcl);
+    expect(document).toEqual({
       status: "ok",
       version: VERSION,
       instanceId: core.instanceId,
