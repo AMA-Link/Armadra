@@ -141,6 +141,21 @@ describe("样式表抄写的判据", () => {
     },
   );
 
+  it("phone-scale.css 的缩放判据 = 手机竖屏 + 手机横屏，且不动字号（#822）", () => {
+    const css = read("phone-scale.css");
+    expect(css).toContain(
+      `@media ${COMPACT_QUERY}, ${PHONE_LANDSCAPE_QUERY} {`,
+    );
+    expect(css).toContain("--spacing: calc(0.25rem * var(--phone-scale));");
+    expect(css.replace(/\/\*[\s\S]*?\*\//g, "")).not.toMatch(
+      /font-size|--text-/,
+    );
+    // 设置工作台有自己的全屏版式，不进缩放名单。
+    expect(css).toContain(":not(:has(.settings-layout))");
+    expect(read("app.css")).toContain('@import "./phone-scale.css";');
+    expect(read("tokens.css")).toContain("--phone-scale: 0.8;");
+  });
+
   it("short 变体与 --mobile-nav-h 的矮屏取值按高度 ≤ 500px", () => {
     expect(APP).toContain(
       "@custom-variant short { @media (max-height: 500px) {",

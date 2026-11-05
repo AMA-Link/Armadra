@@ -17,6 +17,8 @@
 /* 关键帧与动效工具类（设计系统 §8）、设置工作台的容器查询规则 */
 @import "./motion.css";
 @import "./settings.css";
+/* 手机统一缩放：浮层、面板与表格的 `--spacing` 乘 `--phone-scale`（#822） */
+@import "./phone-scale.css";
 
 /*
  * 深色是默认（没有 data-theme 属性时即深色），浅色靠 `[data-theme=light]`。
