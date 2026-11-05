@@ -33,6 +33,7 @@ const env = {
   ...process.env,
   ARMADRA_NO_GLOBAL_WRITES: "1",
   ARMADRA_DATA_DIR: dataDir,
+  ARMADRA_SECRET_BACKEND: "file",
   ARMADRA_CONTROLLER_PROFILES_DIR: join(temporary, "profiles"),
   PATH: bin + ":" + process.env.PATH,
   SHELL: "/bin/sh",

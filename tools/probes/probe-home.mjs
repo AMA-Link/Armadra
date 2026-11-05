@@ -70,14 +70,28 @@ export function probeHome(prefix = "armadra-probe-home-") {
 export const LOOPBACK_OWNER_ENV = { ARMADRA_LOOPBACK_OWNER: "1" };
 
 /**
- * 给 Armadra 进程的完整环境：当前环境去掉凭据变量，叠上临时 HOME 与
- * {@link LOOPBACK_OWNER_ENV}，再叠上调用方自己的键（`extra` 最后，所以它能覆盖
- * 前面任何一个）。
+ * macOS 上探针的 core 用数据目录里的 0600 文件存密钥：登录钥匙串整个账户只有一份，
+ * 临时 HOME 下也没有默认钥匙串（契约 §102.1）。core 对非默认数据目录本来就不碰
+ * 钥匙串，这里再显式写一遍。别的平台不设：Windows 验收要走真实的 DPAPI 后端。
+ */
+export const SECRET_BACKEND_ENV =
+  process.platform === "darwin" ? { ARMADRA_SECRET_BACKEND: "file" } : {};
+
+/**
+ * 给 Armadra 进程的完整环境：当前环境去掉凭据变量，叠上临时 HOME、
+ * {@link LOOPBACK_OWNER_ENV} 与 {@link SECRET_BACKEND_ENV}，再叠上调用方自己的键
+ * （`extra` 最后，所以它能覆盖前面任何一个）。
  */
 export function isolatedEnv(home, extra = {}) {
   const base = { ...process.env };
   for (const name of CREDENTIAL_VARIABLES) delete base[name];
-  return { ...base, ...home.env, ...LOOPBACK_OWNER_ENV, ...extra };
+  return {
+    ...base,
+    ...home.env,
+    ...LOOPBACK_OWNER_ENV,
+    ...SECRET_BACKEND_ENV,
+    ...extra,
+  };
 }
 
 /**

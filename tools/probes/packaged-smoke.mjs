@@ -377,6 +377,7 @@ async function main() {
         LANG: "zh_CN.UTF-8",
         TMPDIR: process.env.TMPDIR ?? tmpdir(),
         ARMADRA_DATA_DIR: data,
+        ARMADRA_SECRET_BACKEND: "file",
         ARMADRA_TEST_ECO_IDLE_SECONDS: String(ECO_IDLE_SECONDS),
         ...(linux
           ? Object.fromEntries(

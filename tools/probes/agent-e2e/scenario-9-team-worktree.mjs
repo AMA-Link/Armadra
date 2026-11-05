@@ -83,6 +83,7 @@ async function setupFake() {
   const environment = {
     ...process.env,
     ARMADRA_DATA_DIR: data,
+    ARMADRA_SECRET_BACKEND: "file",
     ...LOOPBACK_OWNER_ENV,
   };
   delete environment.TMUX;
