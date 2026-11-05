@@ -7,7 +7,8 @@
  *   1. **取本机会话**：读 `endpoints.json` 找 core 的回环地址，向数据目录下 0600 的
  *      私有通道（`core-control.sock`）要一张一次性票，在回环上 `POST
  *      /api/identity/pair` 换一份 Bearer。文件权限就是鉴权——和桌面壳、探针同一条路。
- *      Windows 上私有通道不开，这些命令不可用。
+ *      Windows 上同一条通道是命名管道（随机名字，`endpoints.json` 的 `control`），
+ *      先过 `armadra-pipe/1` 握手（契约 §102.4）。
  *   2. **直接问远程服务**（只有 `cloud login` 与 `invite --cloud-link --group` 需要）：
  *      用 core 持有的远程服务会话（`sources.remoteSession`）向中继要注册令牌、断言、
  *      建链接。经 core 的 `networkTransport`，按指纹钉扎。Armadra 云的设备码登录、
@@ -17,10 +18,11 @@
  * 唯一打印的秘密是分享链接本身（它就是这条命令的产物）。
  */
 
-import { request as httpRequest } from "node:http";
-import { join } from "node:path";
 import { read as readEndpoints } from "../../desktop/src/core/endpoints";
-import { CONTROL_SOCKET } from "../../desktop/src/core/identity/control";
+import {
+  requestControl,
+  resolveControlTarget,
+} from "../../desktop/src/core/identity/control-client";
 import { endpointsFile } from "../../desktop/src/core/paths";
 import {
   type Transport,
@@ -105,55 +107,44 @@ export function defaultDeps(
 
 /* ------------------------------- 本机会话 -------------------------------- */
 
-function controlTicket(dataDir: string, origin: string): Promise<string> {
+async function controlTicket(dataDir: string, origin: string): Promise<string> {
+  const target = resolveControlTarget(dataDir);
+  if (target === undefined) {
+    throw new CloudCliError(
+      "host_unavailable",
+      "连不上运行中的服务器壳的私有通道：先启动 armadra-server serve（同一个 --data-dir）",
+    );
+  }
   const body = Buffer.from(
     JSON.stringify({ origin, deviceName: DEVICE_NAME }),
     "utf8",
   );
-  return new Promise((resolve, reject) => {
-    const outgoing = httpRequest(
-      {
-        socketPath: join(dataDir, CONTROL_SOCKET),
-        path: "/control/identity/ticket",
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "content-length": String(body.byteLength),
-        },
-        timeout: 5_000,
-      },
-      (response) => {
-        const chunks: Buffer[] = [];
-        response.on("data", (chunk: Buffer) => chunks.push(chunk));
-        response.on("end", () => {
-          if (response.statusCode !== 200) {
-            reject(new CloudCliError("control_refused", "私有通道拒绝签票"));
-            return;
-          }
-          try {
-            const parsed = JSON.parse(
-              Buffer.concat(chunks).toString("utf8"),
-            ) as { ticket?: unknown };
-            if (typeof parsed.ticket !== "string") throw new Error("shape");
-            resolve(parsed.ticket);
-          } catch {
-            reject(new CloudCliError("control_refused", "私有通道的答案不对"));
-          }
-        });
-        response.on("error", reject);
-      },
+  let answer: Awaited<ReturnType<typeof requestControl>>;
+  try {
+    answer = await requestControl(target, {
+      method: "POST",
+      path: "/control/identity/ticket",
+      body,
+      timeoutMs: 5_000,
+    });
+  } catch {
+    throw new CloudCliError(
+      "host_unavailable",
+      "连不上运行中的服务器壳：先启动 armadra-server serve（同一个 --data-dir）",
     );
-    outgoing.on("timeout", () => outgoing.destroy(new Error("timeout")));
-    outgoing.on("error", () =>
-      reject(
-        new CloudCliError(
-          "host_unavailable",
-          "连不上运行中的服务器壳：先启动 armadra-server serve（同一个 --data-dir）",
-        ),
-      ),
-    );
-    outgoing.end(body);
-  });
+  }
+  if (answer.status !== 200) {
+    throw new CloudCliError("control_refused", "私有通道拒绝签票");
+  }
+  try {
+    const parsed = JSON.parse(answer.body.toString("utf8")) as {
+      ticket?: unknown;
+    };
+    if (typeof parsed.ticket !== "string") throw new Error("shape");
+    return parsed.ticket;
+  } catch {
+    throw new CloudCliError("control_refused", "私有通道的答案不对");
+  }
 }
 
 function failureOf(status: number, text: string): CloudCliError {
@@ -170,12 +161,6 @@ function failureOf(status: number, text: string): CloudCliError {
 }
 
 export async function connectLocalCore(dataDir: string): Promise<LocalCore> {
-  if (process.platform === "win32") {
-    throw new CloudCliError(
-      "unsupported_platform",
-      "Windows 上服务器壳没有私有通道，这条命令不可用",
-    );
-  }
   const base = readEndpoints(endpointsFile(dataDir)).runtime?.http;
   if (base === undefined) {
     throw new CloudCliError(
