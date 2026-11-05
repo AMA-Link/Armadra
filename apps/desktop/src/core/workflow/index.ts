@@ -17,11 +17,17 @@
 import { collab } from "../agent";
 import { setStallSource } from "../agent/stalled";
 import { loadSession } from "../collab/nodes";
-import { recordStalled, recordTaskDone } from "../collab/router-sources";
+import {
+  deliverRecoveryHint,
+  recordInterrupted,
+  recordStalled,
+  recordTaskDone,
+} from "../collab/router-sources";
 import type { CoreContext } from "../main";
 import { settingsDomain } from "../settings";
-import { timelineDomainOf } from "../timeline";
+import { rowLiveness, timelineDomainOf } from "../timeline";
 import { WorkflowEngine } from "./engine";
+import { RECOVERY_GRACE_MS, RecoveryScan } from "./recovery";
 import {
   DEFAULT_NEEDS_HUMAN_MINUTES,
   DEFAULT_STALLED_MINUTES,
@@ -100,12 +106,65 @@ export function install(context: CoreContext): WorkflowDomain | undefined {
     log: (message, fields) => context.log.info(message, fields),
   });
   setStallSource(watchdog);
+  // 重启恢复（契约 §101.5）：同样搭 60 秒兜底扫描的便车；成员续接后第一次报告
+  // 空闲时补投恢复提示。
+  const recovery = new RecoveryScan({
+    database,
+    alive: (nodeId) => {
+      const session = loadSession(database, nodeId);
+      if (session?.status === "running") return true;
+      if (session === undefined) return false;
+      // 休眠着等接回的节点（Eco 模式）不算中断。
+      return (
+        collab()?.terminals?.sleeping?.(nodeId) === true ||
+        rowLiveness(database, session.sessionId) === "sleeping"
+      );
+    },
+    record: (run, atMs) => {
+      const ctx = collab();
+      return ctx === undefined ? false : recordInterrupted(ctx, run, atMs);
+    },
+    deliver: (run) => {
+      const ctx = collab();
+      return ctx === undefined ? false : deliverRecoveryHint(ctx, run);
+    },
+    log: (message, fields) => context.log.info(message, fields),
+  });
+  const offStatus = context.bus.on("workspace.event", ({ event }) => {
+    if (event.type !== "agent.status") return;
+    const status = event.status as { nodeId?: unknown; state?: unknown };
+    if (typeof status.nodeId !== "string") return;
+    try {
+      recovery.onStatus(
+        status.nodeId,
+        typeof status.state === "string" ? status.state : undefined,
+      );
+    } catch (error) {
+      context.log.info("恢复提示没有投成", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+  // 启动后过了宽限先扫一次，不等第一个 60 秒。
+  const firstScan = setTimeout(() => {
+    try {
+      recovery.scan();
+    } catch (error) {
+      context.log.info("启动扫描失败", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }, RECOVERY_GRACE_MS + 1_000);
+  firstScan.unref?.();
   const tasks = new TaskWatch({
     database,
     bus: context.bus,
     publish: () => collab()?.publish,
     log: (message, fields) => context.log.info(message, fields),
-    onTick: () => watchdog.scan(),
+    onTick: () => {
+      watchdog.scan();
+      recovery.scan();
+    },
     onSettled: (run, status) => {
       const ctx = collab();
       if (ctx !== undefined) recordTaskDone(ctx, run, status);
@@ -117,6 +176,8 @@ export function install(context: CoreContext): WorkflowDomain | undefined {
     service,
     stop: async () => {
       tasks.stop();
+      offStatus();
+      clearTimeout(firstScan);
       setStallSource(undefined);
       watchdog.reset();
       await engine.stop();
