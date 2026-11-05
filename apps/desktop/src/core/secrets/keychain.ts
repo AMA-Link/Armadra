@@ -13,6 +13,7 @@
 
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
+import { isAbsolute } from "node:path";
 
 import {
   type SecretBackend,
@@ -151,7 +152,7 @@ export async function defaultKeychain(
   if (result.code !== 0) return undefined;
   const quoted = /"([^"]+)"/.exec(result.stdout);
   const path = (quoted?.[1] ?? result.stdout).trim();
-  if (!path.startsWith("/")) return undefined;
+  if (!isAbsolute(path)) return undefined;
   if (exists(path)) return path;
   return exists(`${path}-db`) ? `${path}-db` : undefined;
 }

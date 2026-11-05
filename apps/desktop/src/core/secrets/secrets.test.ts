@@ -440,9 +440,9 @@ describe("钥匙串后端（假 security(1)）", () => {
       return fake(args, stdin);
     };
     const backend = keychainBackend(tool);
-    await backend.set("armadra-hook-secret", "v");
-    await backend.get("armadra-hook-secret");
-    await backend.delete("armadra-hook-secret");
+    await backend.set("armadra-hook-key", "v");
+    await backend.get("armadra-hook-key");
+    await backend.delete("armadra-hook-key");
     const items = fake.calls.filter((call) => call[0] !== "default-keychain");
     expect(items.map((call) => call[0])).toEqual([
       "-i",
@@ -452,7 +452,7 @@ describe("钥匙串后端（假 security(1)）", () => {
     ]);
     for (const call of items.slice(1)) expect(call.at(-1)).toBe(keychain);
     expect(stdins).toEqual([
-      `add-generic-password -U "-a" "armadra-hook-secret" "-s" "armadra-hook-secret" -w "v" "${keychain}"\n`,
+      `add-generic-password -U "-a" "armadra-hook-key" "-s" "armadra-hook-key" -w "v" "${keychain}"\n`,
     ]);
   });
 
@@ -471,9 +471,9 @@ describe("钥匙串后端（假 security(1)）", () => {
     const tool = fakeSecurity(null);
     const backend = keychainBackend(tool);
     for (const attempt of [
-      backend.get("armadra-hook-secret"),
-      backend.set("armadra-hook-secret", "v"),
-      backend.delete("armadra-hook-secret"),
+      backend.get("armadra-hook-key"),
+      backend.set("armadra-hook-key", "v"),
+      backend.delete("armadra-hook-key"),
     ]) {
       await expect(attempt).rejects.toMatchObject({
         reason: "keychain_missing",
@@ -488,7 +488,7 @@ describe("钥匙串后端（假 security(1)）", () => {
     const missing = join(tempDir("armadra-no-keychain-"), "login.keychain");
     const tool = fakeSecurity(missing);
     await expect(
-      keychainBackend(tool).set("armadra-hook-secret", "v"),
+      keychainBackend(tool).set("armadra-hook-key", "v"),
     ).rejects.toMatchObject({ reason: "keychain_missing" });
     expect(tool.calls.some((call) => call[0] === "-i")).toBe(false);
   });
@@ -691,8 +691,8 @@ describe("macOS 上钥匙串只给默认数据目录", () => {
       standardDataDir: standard,
     });
     expect(resolved.backend.kind).toBe("file-encrypted");
-    await resolved.backend.set("armadra-hook-secret", "isolated-value");
-    expect(await resolved.backend.get("armadra-hook-secret")).toBe(
+    await resolved.backend.set("armadra-hook-key", "isolated-value");
+    expect(await resolved.backend.get("armadra-hook-key")).toBe(
       "isolated-value",
     );
     expect(existsSync(join(secretsDirectory(isolated), "master.key"))).toBe(
@@ -712,8 +712,8 @@ describe("macOS 上钥匙串只给默认数据目录", () => {
           standardDataDir: standard,
         }).backend,
     );
-    await a!.set("armadra-hook-secret", "a");
-    expect(await b!.get("armadra-hook-secret")).toBeUndefined();
+    await a!.set("armadra-hook-key", "a");
+    expect(await b!.get("armadra-hook-key")).toBeUndefined();
   });
 
   it("同一个目录换种写法（相对段、末尾斜杠）仍算默认", () => {

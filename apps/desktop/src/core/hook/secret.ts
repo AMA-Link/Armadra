@@ -17,8 +17,13 @@ import {
  * file of the server shell), so a copy of the data directory — a backup, a
  * sync folder, a diagnostic bundle — no longer carries the key that mints
  * every node token.
+ *
+ * The name is `armadra-hook-key`, not the `armadra-hook-secret` that unreleased
+ * builds used: those builds shared one login-keychain item across every data
+ * directory, so an item under the old name may hold a value an isolated run
+ * wrote. Nothing reads the old name (contract §102.1).
  */
-export const HOOK_SECRET_NAME = "armadra-hook-secret";
+export const HOOK_SECRET_NAME = "armadra-hook-key";
 export const HOOK_SECRET_BYTES = 32;
 
 /** The legacy plaintext file. Only the one-time migration reads it. */
@@ -50,6 +55,9 @@ export function hookSecretStore(secrets: ResolvedSecrets): SecretStore {
           HOOK_SECRET_NAME,
           legacyHookSecretFile(secrets.dataDir),
           HOOK_SECRET_BYTES,
+          // The file is what every issued token derives from: it wins over
+          // whatever already sits under the new name.
+          { authoritative: true },
         ),
       ],
       migrationRecordFile(secrets.dataDir),
