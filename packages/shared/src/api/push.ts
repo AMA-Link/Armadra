@@ -36,6 +36,8 @@ export const PUSH_KINDS = [
   "resources",
   "comment",
   "workflowGate",
+  "result",
+  "attention",
   "deviceEndorsed",
   "test",
 ] as const;
