@@ -1197,7 +1197,7 @@ describe("契约与 core 的两张表（workflows、coordinator）", () => {
       entry.name.startsWith("coordinator."),
   );
 
-  it("15 + 2 条都在契约里，每条都有旧路径", () => {
+  it("15 + 3 条都在契约里，每条都有旧路径", () => {
     expect(entries.map((entry) => entry.name).sort()).toEqual(
       [
         "workflows.answerGate",
@@ -1215,6 +1215,7 @@ describe("契约与 core 的两张表（workflows、coordinator）", () => {
         "workflows.templates",
         "workflows.updateTemplate",
         "workflows.upgradeSchedules",
+        "coordinator.readReplies",
         "coordinator.retry",
         "coordinator.tasks",
       ].sort(),

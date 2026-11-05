@@ -148,6 +148,7 @@ const WORKFLOW_RUN =
   /^\/api\/workflows\/runs\/([^/]+)(\/cancel|\/gates\/[^/]+)?$/;
 /** 协调者任务（契约 §15.7）：列表按画板，重试按任务查。 */
 const WORKFLOW_TASKS = /^\/api\/workflows\/tasks$/;
+const WORKFLOW_TASK_READ_REPLIES = /^\/api\/workflows\/tasks\/read-replies$/;
 const WORKFLOW_TASK_RETRY = /^\/api\/workflows\/tasks\/([^/]+)\/retry$/;
 
 /** Agent 状态的三条路由各要什么。 */
@@ -291,6 +292,21 @@ export function createRouteGuard(options: RouteAccessOptions): RouteGuard {
         subject,
         "canvas:read",
         lookups.boardWorkspace(request.query.get("boardId") ?? ""),
+      );
+    }
+    // 标已读（契约 §101.2）：体里带画板，看得见画布就行。
+    if (WORKFLOW_TASK_READ_REPLIES.test(path) && !reading) {
+      let boardId = "";
+      try {
+        const body = request.json<{ boardId?: unknown }>();
+        if (typeof body.boardId === "string") boardId = body.boardId;
+      } catch {
+        // 体不是 JSON：认不出画板，下面拒绝。
+      }
+      return onWorkspace(
+        subject,
+        "canvas:read",
+        lookups.boardWorkspace(boardId),
       );
     }
     const retry = WORKFLOW_TASK_RETRY.exec(path);

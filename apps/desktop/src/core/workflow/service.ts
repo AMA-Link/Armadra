@@ -38,6 +38,11 @@ import {
   type GateDecision,
   type WorkflowDraft,
 } from "./types";
+import {
+  type RouterReply,
+  latestReplies,
+  markRepliesRead,
+} from "../collab/router-replies";
 import { stageOf } from "./work-items";
 
 /**
@@ -297,6 +302,31 @@ export class WorkflowService {
   /** 一行此刻的阶段（契约 §90.2）：由事实推出。 */
   stageOf(run: TaskRun): WorkItemStage {
     return stageOf(this.database, run, Math.floor(this.clock() / 1000));
+  }
+
+  /** 一个协调者名下每个工作项的最新一条回复（契约 §101.2）。 */
+  replies(coordinatorNodeId: string): Map<string, RouterReply> {
+    return latestReplies(this.database, coordinatorNodeId);
+  }
+
+  /**
+   * 人打开分派抽屉：这块画板上协调者的回复都标为已读（契约 §101.2）。答标了几条。
+   */
+  readReplies(boardId: unknown): number {
+    if (typeof boardId !== "string" || boardId === "") {
+      throw new DomainError(400, "bad_request", "boardId 不能缺。");
+    }
+    const coordinators = this.database
+      .prepare(
+        "SELECT DISTINCT coordinator_node_id AS id FROM workflow_task_runs WHERE coordinator_node_id IN " +
+          "(SELECT id FROM nodes WHERE board_id = ?)",
+      )
+      .all(boardId) as { id: string }[];
+    return markRepliesRead(
+      this.database,
+      coordinators.map((row) => row.id),
+      this.clock(),
+    );
   }
 
   /** 一块画板上协调者分派出去的任务（契约 §15.7）。 */
