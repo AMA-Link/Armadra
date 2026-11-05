@@ -523,6 +523,7 @@ SQLite 的迁移只有一个目录——`apps/desktop/src/core/db/migrations/`�
 | `0058_work_item_ledger.sql`     | `workflow_task_runs` 加工作项账本的列：`title`、`origin_json`、`mandate_json`、`report_json`、`reports_json`、`attention_json`、`handback_json`、`stage`（只加列，契约 §90）                                                                               |
 | `0059_router_events.sql`        | `router_events`（协调者的统一事件队列：报告、交回、看门狗、任务结束、人的追问、留言先落这一张表，再合并成卡片投递，契约 §93）                                                                                                                              |
 | `0061_router_replies.sql`       | `router_replies`（协调者经 `canvas notify` 对人说的话：回复 id 由用途和目标确定，用来去重、消耗 `followup`，并供分派抽屉读）                                                                                                                               |
+| `0062_recovery_pending.sql`     | `workflow_task_runs` 加 `recovery_pending`（启动扫描发现中断时置 1，成员续接后投过一次恢复提示即清零）                                                                                                                                                     |
 
 `core/db/open.ts` 在同一 `BEGIN IMMEDIATE` 事务内先检查迁移账本，再执行已知迁移与启动恢复。未知版本、校验和不符、脏记录、损坏账本、无账本的非空 schema 或迁移历史缺口均拒绝启动；失败回滚并关闭连接，不改名、删除或重建原库。账本表与校验和算法沿用最初那套（SHA-384），所以装过旧版本的库照常打得开。既有 SQL 迁移文件保持原字节。
 
