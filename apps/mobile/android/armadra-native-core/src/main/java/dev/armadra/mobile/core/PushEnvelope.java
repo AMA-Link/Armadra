@@ -23,7 +23,7 @@ public final class PushEnvelope {
     public static final String ALGORITHM = "x25519-hkdf-sha256-a256gcm";
     public static final Set<String> KINDS = Set.of(
             "approval", "agentDone", "agentError", "agentWaiting", "stalled", "deliveryFailed", "schedule",
-            "resources", "comment", "workflowGate", "deviceEndorsed", "test");
+            "resources", "comment", "workflowGate", "result", "attention", "deviceEndorsed", "test");
     private static final byte[] INFO = "armadra-push-v1".getBytes(StandardCharsets.UTF_8);
 
     private PushEnvelope() {}
