@@ -256,3 +256,91 @@ describe("fork 的 IPC 通道上签票", () => {
     ).toBe(false);
   });
 });
+
+/**
+ * Windows runner only: a real named pipe, hardened by the compiled helper,
+ * published in `endpoints.json`, reached through the handshake.
+ */
+describe.skipIf(process.platform !== "win32")(
+  "the private control channel on Windows",
+  () => {
+    it("serves a ticket over a hardened pipe and withdraws its record", async () => {
+      const { compileWinsecExe } = await import(
+        "../../../scripts/winsec-exe.mjs" as string
+      );
+      const exe = compileWinsecExe(
+        join(tempDir("armadra-winsec-"), "armadra-winsec.exe"),
+      ) as string;
+      const previous = process.env.ARMADRA_WINSEC_EXE;
+      process.env.ARMADRA_WINSEC_EXE = exe;
+      try {
+        const dataDir = tempDir("armadra-control-");
+        const opened = openDatabase({
+          file: join(dataDir, "canvas.db"),
+          migrationsDir,
+        });
+        closing.push(opened.close);
+        const service = new IdentityService(
+          new IdentityStore(opened.database),
+          INSTANCE,
+        );
+        const started = await startControlChannel({
+          service,
+          instanceId: INSTANCE,
+          dataDir,
+        });
+        expect(started?.spec.kind).toBe("pipe");
+        const { requestControl, resolveControlTarget } = await import(
+          "./control-client"
+        );
+        const target = resolveControlTarget(dataDir);
+        expect(target?.channel).toBeDefined();
+        const answer = await requestControl(target as never, {
+          method: "POST",
+          path: "/control/identity/ticket",
+          body: Buffer.from(
+            JSON.stringify({ origin: ORIGIN, deviceName: "本机桌面" }),
+          ),
+        });
+        expect(answer.status).toBe(200);
+        expect(JSON.parse(answer.body.toString("utf8")).ticket).toMatch(
+          /^[0-9a-f]{32}\./,
+        );
+        await started?.close();
+        expect(resolveControlTarget(dataDir)).toBeUndefined();
+      } finally {
+        if (previous === undefined) delete process.env.ARMADRA_WINSEC_EXE;
+        else process.env.ARMADRA_WINSEC_EXE = previous;
+      }
+    }, 60_000);
+
+    it("does not open when the pipe cannot be hardened", async () => {
+      const previous = process.env.ARMADRA_WINSEC_EXE;
+      // A real program that is not the helper: it exits non-zero, so the pipe
+      // cannot be hardened and (no PowerShell fallback after a failing helper)
+      // the channel must stay closed.
+      process.env.ARMADRA_WINSEC_EXE = process.execPath;
+      try {
+        const dataDir = tempDir("armadra-control-");
+        const opened = openDatabase({
+          file: join(dataDir, "canvas.db"),
+          migrationsDir,
+        });
+        closing.push(opened.close);
+        const service = new IdentityService(
+          new IdentityStore(opened.database),
+          INSTANCE,
+        );
+        const started = await startControlChannel({
+          service,
+          instanceId: INSTANCE,
+          dataDir,
+        });
+        expect(started).toBeUndefined();
+      } finally {
+        if (previous === undefined) delete process.env.ARMADRA_WINSEC_EXE;
+        else process.env.ARMADRA_WINSEC_EXE = previous;
+      }
+    }, 60_000);
+  },
+);

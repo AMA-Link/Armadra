@@ -5220,6 +5220,12 @@ ACP 会话经 `session/new.mcpServers` 拿到 `armadra-hook mcp`（§14、`core/
 - **运行时管道**：`bind(server, {kind:"pipe"}, secured)` 要求带 `secured`，没有密钥的管道不予服务（`listen.ts` 里的 `TODO(R6)` 删除）。握手守卫在 `listen` 之前装好，之后用 `armadra-winsec` 收紧 DACL 并核对（§102.2）；收紧失败只告警，管道转而只靠握手，`GET /health` 的 `pipeAcl` 报 `default`，全部收紧成功报 `hardened`，没有管道的运行（所有非 Windows 运行）不带这个键。
 - **壳侧**：桌面壳对运行时管道的健康检查（`main/runtime-process.ts` 的 `socketHealth`）读 `<data>/pipe.key`、完成握手之后才发 `GET /health`；密钥文件还不存在表示 core 没起来，按「没有答复」处理。Unix socket 不变（文件权限就是鉴权）。
 
+### 102.4 Windows 身份私有通道（P4）
+
+- **通道**：Windows 上身份私有通道（`POST /control/identity/ticket`，§3.2）是一条命名管道 `\\.\pipe\armadra-control-<32 位十六进制>`：名字每次启动随机（128 位），写进 `endpoints.json` 的 `control` 记录（`pipe` 字段，其余字段同 `runtime`），core 关停时撤回。连接先过 `armadra-pipe/1` 握手（label `control`，密钥由 `pipe.key` 派生，§102.3）。
+- **失败策略**：这条通道签的票能换全权会话，所以只靠握手不够——**DACL 收紧失败（§102.2）就不开这条通道**（`bind` 的 `requireHardened`），关掉已绑的管道、不写 `control` 记录、告警，`pipe.key` 收紧失败同样不开。桌面壳不受影响：它在 Windows 上仍然经 fork 的 IPC 通道取票（`armadra:identity-ticket`，只有起这个 core 的壳在另一头，是最窄的一条路，保留）。
+- **客户端**：服务器壳的 `armadra-server cloud …` 与 `invite --cloud-link` 经 `core/identity/control-client.ts` 取票：Unix 上是数据目录里的 socket，Windows 上读 `endpoints.json` 的 `control.pipe`、`pipe.key`，完成握手后再发请求。找不到管道、没有密钥或握手失败都答 `host_unavailable`。原先 Windows 上这些命令直接答 `unsupported_platform` 的分支删除。
+
 ## 101. 协调者的回复闸门、重启恢复与记忆约定（`#704`，R3）
 
 > 状态：实施契约（AMA-Link/Armadra#704）。迁移 0061 新增 `router_replies`；`canvas` 多一个动词 `notify`；多一种工作空间事件 `workflow.reply`；协议版本不变，只加字段与种类。
