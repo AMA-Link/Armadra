@@ -74711,7 +74711,9 @@
                                 "schedule",
                                 "resources",
                                 "comment",
-                                "workflowGate"
+                                "workflowGate",
+                                "result",
+                                "attention"
                               ],
                               "type": "string"
                             }
@@ -74922,7 +74924,9 @@
                               "schedule",
                               "resources",
                               "comment",
-                              "workflowGate"
+                              "workflowGate",
+                              "result",
+                              "attention"
                             ],
                             "type": "string"
                           }
@@ -75082,7 +75086,9 @@
                               "schedule",
                               "resources",
                               "comment",
-                              "workflowGate"
+                              "workflowGate",
+                              "result",
+                              "attention"
                             ],
                             "type": "string"
                           }
