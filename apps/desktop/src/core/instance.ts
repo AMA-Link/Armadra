@@ -18,7 +18,7 @@ import { randomUUID } from "node:crypto";
  */
 
 /** The product version both implementations report. Asserted against `package.json`. */
-export const VERSION = "0.14.0";
+export const VERSION = "0.15.0";
 
 /**
  * Commit (or `version+timestamp`) this build came from.
