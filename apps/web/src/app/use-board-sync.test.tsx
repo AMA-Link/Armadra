@@ -88,6 +88,7 @@ function document(x: number, updatedAt = stamp): BoardDocument {
 }
 
 let remote = document(0);
+const openWorkspace = vi.fn(async (): Promise<unknown> => undefined);
 const loadBoard = vi.fn(async () => JSON.parse(JSON.stringify(remote)));
 
 /** 在线表：缺省只有自己，心跳就拿到租约（core JSON §9）。 */
@@ -110,7 +111,7 @@ const leavePresence = vi.fn(async () => undefined);
 vi.mock("../api/client", () => ({
   runtimeApi: {
     listBoards: vi.fn(async () => [board]),
-    openWorkspace: vi.fn(async () => undefined),
+    openWorkspace: (...args: unknown[]) => openWorkspace(...(args as [])),
     loadBoard: (...args: unknown[]) => loadBoard(...(args as [])),
     presenceHeartbeat: (...args: unknown[]) =>
       presenceHeartbeat(...(args as [string, string, { clientId: string }])),
@@ -144,8 +145,10 @@ vi.mock("../api/board-presence", () => ({
   },
 }));
 
+/** 列表：缺省一次就到；恢复的用例改成先空后到（#826）。 */
+let listed: Workspace[] = [workspace];
 vi.mock("./workspaces-query", () => ({
-  useWorkspacesQuery: () => ({ data: [workspace] }),
+  useWorkspacesQuery: () => ({ data: listed }),
 }));
 
 vi.mock("../save/autosave", () => ({
@@ -203,6 +206,9 @@ const positionOf = () =>
 
 beforeEach(() => {
   remote = document(0);
+  listed = [workspace];
+  openWorkspace.mockReset();
+  openWorkspace.mockResolvedValue(undefined);
   loadBoard.mockClear();
   presenceHeartbeat.mockClear();
   leavePresence.mockClear();
@@ -461,5 +467,50 @@ describe("useBoardSync", () => {
       board.id,
       presenceClientId(),
     );
+  });
+
+  it("第一次列表是空的不落锁：列表到齐后照样恢复（#826）", async () => {
+    listed = [];
+    const { rerender } = renderHook(() => useBoardSync(), { wrapper });
+    await act(async () => undefined);
+    expect(useCanvasStore.getState().workspace).toBeNull();
+    listed = [workspace];
+    rerender();
+    await waitFor(() =>
+      expect(useCanvasStore.getState().workspace?.id).toBe(workspace.id),
+    );
+    await waitFor(() => expect(positionOf()).toBe(0));
+  });
+
+  it("用户关掉最后一个工作空间后不再自动打开", async () => {
+    const { rerender } = renderHook(() => useBoardSync(), { wrapper });
+    await waitFor(() =>
+      expect(useCanvasStore.getState().workspace?.id).toBe(workspace.id),
+    );
+    act(() => useCanvasStore.getState().setWorkspace(null));
+    rerender();
+    await act(async () => undefined);
+    expect(useCanvasStore.getState().workspace).toBeNull();
+  });
+
+  it("open 不是 not_found 的失败（中转超时）保留工作空间（#826）", async () => {
+    openWorkspace.mockRejectedValue(
+      Object.assign(new Error("relay"), {
+        status: 502,
+        code: "relay_unavailable",
+      }),
+    );
+    renderHook(() => useBoardSync(), { wrapper });
+    await waitFor(() => expect(openWorkspace).toHaveBeenCalled());
+    await act(async () => undefined);
+    expect(useCanvasStore.getState().workspace?.id).toBe(workspace.id);
+  });
+
+  it("open 答 not_found 时退回空状态", async () => {
+    openWorkspace.mockRejectedValue(
+      Object.assign(new Error("gone"), { status: 404, code: "not_found" }),
+    );
+    renderHook(() => useBoardSync(), { wrapper });
+    await waitFor(() => expect(useCanvasStore.getState().workspace).toBeNull());
   });
 });
