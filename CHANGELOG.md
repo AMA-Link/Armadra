@@ -2,15 +2,36 @@
 
 每个版本一节，按发布倒序。括号里是合入的 PR 编号（github.com/AMA-Link/Armadra，2026-10-11 前为 Owlbay/Armadra，旧编号照常跳转）。兼容范围以 `tools/release/compatibility.json` 为准，发布说明里的 `armadra-compatibility` 围栏由它渲染。桌面、服务器与手机 / 平板 App 共用一条版本线和一个标签 `vX.Y.Z`（规则见 `docs/guides/ci-release.md`「版本规则」）；有手机端改动的版本，在「手机与平板」小节里写，其余写在「桌面 / 服务器」下。2026-10-10 之前手机端曾单独编号（1.0.0、1.1.0），内容并入对应的 0.2.5、0.2.6。
 
-## 未发布 / Unreleased
+## 0.15.1（2026-11-06）
 
-手机与平板：打开后不再停在空画布、侧栏没有选中项——第一次工作空间列表答空（经中转时授予同步之前）不再算「恢复过了」，列表到齐后照常进上次的工作空间；`workspaces.open` 只有 `not_found` 才退回空状态，中转超时之类的失败保留当前工作空间（Closes #826）。设置在手机竖屏与横屏都铺满整屏、让开刘海与主页横条，横屏保留可滚动的导航列与紧凑顶栏，字号与密度同桌面，导航项与关闭钮命中区 44（Closes #828）。设置「通用」新增界面方向：跟随系统 / 竖屏 / 横屏，点一下即转，按设备记住，只在手机 App 里出现（Closes #827）。
+版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.15.1。随包 `@armadra/agent` 0.15.1（维护版，没有用户可见的变化）与平台协议包 0.15.1（没有形状变化，协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.15.1。本版主题：macOS 发布包的签名修复（0.14.0、0.15.0 的 macOS 包过不了 `codesign --verify`，建议升级），手机打开恢复上次工作空间、设置整屏与界面方向、浮层等比缩小，协调者的来源与主动接单（先 observe 后 auto）。
 
-Phone and tablet: the app no longer opens on an empty canvas with nothing selected in the sidebar. An empty first workspace list (over the relay, before the grant sync) no longer counts as "restored", so the last workspace opens once the list arrives; `workspaces.open` falls back to the empty state only on `not_found`, and failures such as relay timeouts keep the current workspace (Closes #826). Settings fill the screen on phones in portrait and landscape and respect the notch and home indicator; landscape keeps a scrolling navigation column and a compact top bar, with desktop type and density and 44pt targets for nav items and the close button (Closes #828). General settings gain Orientation: System / Portrait / Landscape, applied on tap, remembered per device, shown only in the phone app (Closes #827).
+Version aligned with armadra-cloud and armadra-agent (all three ship 0.15.1), with `@armadra/agent` 0.15.1 (maintenance, no user-visible changes) and platform protocol 0.15.1 (no shape changes, still protocol 1.4); matching images `armadra-cloud` / `armadra-relay` 0.15.1. Highlights: properly signed macOS release packages (the 0.14.0 and 0.15.0 macOS packages fail `codesign --verify`; upgrading is recommended), the phone restores the last workspace, full-screen settings, an orientation setting and smaller overlays, and coordinator sources with active pickup (observe before auto).
 
-macOS：没有证书的发布包改为对整个 `.app` 做 ad-hoc 签名，标识符 `dev.armadra.desktop`，`codesign --verify --deep --strict` 能过；此前 0.14.0、0.15.0 的包只有链接器签名（标识符 `Electron`、资源未封装，x64 完全未签名）。发布作业对最终 zip 解出、dmg 挂载出的应用都验签名与标识符，不过就失败（Closes #839）。
+### 桌面 / 服务器
 
-macOS: release builds without a certificate now ad-hoc sign the whole `.app` as `dev.armadra.desktop`, so `codesign --verify --deep --strict` passes; the 0.14.0 and 0.15.0 apps carried only the linker's signature (identifier `Electron`, no sealed resources; x64 unsigned). The release job now checks the signature and identifier of the app inside the final zip and dmg and fails otherwise (Closes #839).
+- macOS：没有证书的发布包改为对整个 `.app` 做 ad-hoc 签名，标识符 `dev.armadra.desktop`，`codesign --verify --deep --strict` 能过；此前 0.14.0、0.15.0 的包只有链接器签名（标识符 `Electron`、资源未封装，x64 完全未签名）。发布作业对最终 zip 解出、dmg 挂载出的应用都验签名与标识符，不过就失败（Closes #839）。
+  macOS: release builds without a certificate now ad-hoc sign the whole `.app` as `dev.armadra.desktop`, so `codesign --verify --deep --strict` passes; the 0.14.0 and 0.15.0 apps carried only the linker's signature (identifier `Electron`, no sealed resources; x64 unsigned). The release job now checks the signature and identifier of the app inside the final zip and dmg and fails otherwise (Closes #839).
+- 协调者的来源与主动接单（#831、#833、#835–#838、#841，Closes #830）：分派抽屉多「来源」与「候选」两页，人给协调者配要盯的仓库（issue / PR、允许名单、规则文件）；core 轮询来源，新线程成为候选并给协调者一条 `intake` 事件，协调者用 `canvas intake` 判定、`open-agent / team --candidate` 接单。来源缺省 observe，只记判定、不起工作项；切到 auto 要求允许名单非空、规则文件已确认。接单的工作项只看地绑上 issue / PR 线程，远端的新评论原样投给成员，正文不进协调者的模型请求。
+  Coordinator sources and active pickup (#831, #833, #835–#838, #841, Closes #830): the dispatch drawer gains Sources and Candidates tabs where people point a coordinator at repositories (issues / PRs, an allow list, a rules file); core polls the sources, each new thread becomes a candidate plus one `intake` event for the coordinator, which decides with `canvas intake` and picks up with `open-agent / team --candidate`. Sources default to observe, which records decisions without starting work items; switching to auto requires a non-empty allow list and a confirmed rules file. A picked-up work item binds the issue / PR thread watch-only, new remote comments go to the member as they are, and their text never reaches the coordinator's model requests.
+- 中转隧道的静默看门狗到期先发一帧 `PING` 探测，有界窗口内仍无回应才断开，负载高时不再误断（#832）。
+  The relay tunnel's silence watchdog now sends a probe `PING` and only disconnects if nothing arrives within a bounded window, so busy machines no longer drop the tunnel spuriously (#832).
+- 依赖安全升级：electron 42.11.18、mermaid 12.3.0、shadcn 4.23.0、vitest 4.1.12 与传递依赖（#844，Closes #843）。
+  Dependency security updates: electron 42.11.18, mermaid 12.3.0, shadcn 4.23.0, vitest 4.1.12 and transitive dependencies (#844, Closes #843).
+
+### 手机与平板
+
+- 手机端浮层、面板与表格不再比桌面端大得多（Closes #822）：手机竖屏与手机横屏里，Popover、菜单、Select、对话框与 Sheet、工作面板、整页焦点页和表格容器内的间距刻度统一乘 `--phone-scale`（0.8），宽、高、内边距、间隙同比缩小，版式与桌面一致；字号不变、输入框仍 16px，控件命中区不低于 28px，设置页不受影响。
+  Phone overlays, panels and tables are no longer oversized next to desktop (Closes #822): in phone portrait and phone landscape, the spacing scale inside popovers, menus, selects, dialogs and sheets, work panels, the full-page focus view and table containers is multiplied by `--phone-scale` (0.8), so widths, heights, paddings and gaps shrink together and the layout matches desktop; font sizes and 16px inputs are unchanged, controls keep at least a 28px hit area, and the settings dialog is untouched.
+- 打开后不再停在空画布、侧栏没有选中项——第一次工作空间列表答空（经中转时授予同步之前）不再算「恢复过了」，列表到齐后照常进上次的工作空间；`workspaces.open` 只有 `not_found` 才退回空状态，中转超时之类的失败保留当前工作空间（Closes #826）。设置在手机竖屏与横屏都铺满整屏、让开刘海与主页横条，横屏保留可滚动的导航列与紧凑顶栏，字号与密度同桌面，导航项与关闭钮命中区 44（Closes #828）。设置「通用」新增界面方向：跟随系统 / 竖屏 / 横屏，点一下即转，按设备记住，只在手机 App 里出现（Closes #827）。
+  The app no longer opens on an empty canvas with nothing selected in the sidebar. An empty first workspace list (over the relay, before the grant sync) no longer counts as "restored", so the last workspace opens once the list arrives; `workspaces.open` falls back to the empty state only on `not_found`, and failures such as relay timeouts keep the current workspace (Closes #826). Settings fill the screen on phones in portrait and landscape and respect the notch and home indicator; landscape keeps a scrolling navigation column and a compact top bar, with desktop type and density and 44pt targets for nav items and the close button (Closes #828). General settings gain Orientation: System / Portrait / Landscape, applied on tap, remembered per device, shown only in the phone app (Closes #827).
+
+### 部署说明
+
+- 新的数据库迁移 0064（`router_sources`、`router_intake`），core 启动时自动执行。
+- 契约：新增 §104（协调者的来源与主动接单）；§103 的工作项线程多一种只看的 `issue`。
+- macOS：没有发布证书时包是 ad-hoc 签名，不公证，Gatekeeper 首次打开照样提示；应用内更新用发布公钥验过包后替换 `.app`，只在从「应用程序」运行时可装。
+- 配套镜像 `ghcr.io/ama-link/armadra-cloud:0.15.1`、`ghcr.io/ama-link/armadra-relay:0.15.1` 与协议包 0.15.1 同号（cloud 只有一条邮件作业修复与开发链依赖升级，没有新迁移；控制台页面取自本版服务器壳镜像）；推送中继镜像 `ghcr.io/ama-link/armadra-push-relay:0.15.1` 与服务器壳镜像同号。发版顺序沿用 0.15.0：先打 Armadra `v0.15.1`，再打 armadra-cloud `v0.15.1`。
 
 ## 0.15.0（2026-11-05）
 
@@ -42,10 +63,6 @@ Version aligned with armadra-cloud and armadra-agent (all three ship 0.15.0), wi
 - Windows：会话宿主协议 `PROTOCOL_MAJOR` 由 1 升到 2，升级当次仍在运行的终端会话会丢失一次，之后照常跨重启保留；`HOOK_CLIENT_REVISION` 升到 6。
 - 契约：新增 §100（Pi 的桥）、§101（协调者回复闸门与重启恢复）、§102（私有通道与 hook 密钥）、§103（工作项绑定 PR）；§26.3 已由 §100 取代。
 - 配套镜像 `ghcr.io/ama-link/armadra-cloud:0.15.0`、`ghcr.io/ama-link/armadra-relay:0.15.0` 与协议包 0.15.0 同号（cloud 新增只用第三方登录账号的提权、改邮箱与绑定，没有新迁移；控制台页面取自本版服务器壳镜像）；推送中继镜像 `ghcr.io/ama-link/armadra-push-relay:0.15.0` 与服务器壳镜像同号。发版顺序沿用 0.14.0：先打 Armadra `v0.15.0`，再打 armadra-cloud `v0.15.0`。
-
-手机端浮层、面板与表格不再比桌面端大得多（Closes #822）：手机竖屏与手机横屏里，Popover、菜单、Select、对话框与 Sheet、工作面板、整页焦点页和表格容器内的间距刻度统一乘 `--phone-scale`（0.8），宽、高、内边距、间隙同比缩小，版式与桌面一致；字号不变、输入框仍 16px，控件命中区不低于 28px，设置页不受影响。
-
-Phone overlays, panels and tables are no longer oversized next to desktop (Closes #822): in phone portrait and phone landscape, the spacing scale inside popovers, menus, selects, dialogs and sheets, work panels, the full-page focus view and table containers is multiplied by `--phone-scale` (0.8), so widths, heights, paddings and gaps shrink together and the layout matches desktop; font sizes and 16px inputs are unchanged, controls keep at least a 28px hit area, and the settings dialog is untouched.
 
 ## 0.14.0（2026-11-05）
 
