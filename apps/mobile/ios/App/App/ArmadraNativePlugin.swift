@@ -47,6 +47,7 @@ public class ArmadraNativePlugin: CAPPlugin, CAPBridgedPlugin, NotificationHandl
         CAPPluginMethod(name: "ackPushRotation", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "openExternal", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "appInfo", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setOrientation", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "installApk", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "e2eDeviceSeed", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "trafficLoad", returnType: CAPPluginReturnPromise),
@@ -435,6 +436,23 @@ public class ArmadraNativePlugin: CAPPlugin, CAPBridgedPlugin, NotificationHandl
             "version": info["CFBundleShortVersionString"] as? String ?? "",
             "build": info["CFBundleVersion"] as? String ?? "",
         ])
+    }
+
+    /// 界面方向（#827）：`auto` 跟随系统，`portrait` / `landscape` 锁定。锁在视图控制器上
+    /// （`ArmadraBridgeViewController.orientationLock`），iOS 16 起立即转过去。
+    @objc func setOrientation(_ call: CAPPluginCall) {
+        guard let mode = OrientationLock(rawValue: call.getString("mode") ?? "") else {
+            call.reject("invalid orientation")
+            return
+        }
+        DispatchQueue.main.async { [weak self] in
+            guard let controller = self?.bridge?.viewController as? ArmadraBridgeViewController else {
+                call.reject("no view controller")
+                return
+            }
+            controller.lockOrientation(mode)
+            call.resolve()
+        }
     }
 
     /// 与 Android 同名同形；iOS 不能侧载，页面只显示版本与说明链接。

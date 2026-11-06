@@ -2,6 +2,8 @@ package dev.armadra.mobile;
 
 import android.Manifest;
 import android.content.Intent;
+import android.app.Activity;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.net.Uri;
@@ -674,6 +676,33 @@ public class ArmadraNativePlugin extends Plugin {
         } catch (PackageManager.NameNotFoundException missing) {
             call.reject("no package info");
         }
+    }
+
+    /**
+     * 界面方向（#827）：{@code auto} 跟随系统，{@code portrait} / {@code landscape}
+     * 锁定（仍跟传感器在两个竖向或两个横向之间转）。活动声明了 {@code configChanges}，
+     * 转向不重建活动，页面不重载。
+     */
+    @PluginMethod
+    public void setOrientation(PluginCall call) {
+        String mode = call.getString("mode", "");
+        final int requested;
+        if ("auto".equals(mode)) requested = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
+        else if ("portrait".equals(mode)) requested = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT;
+        else if ("landscape".equals(mode)) requested = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE;
+        else {
+            call.reject("invalid orientation");
+            return;
+        }
+        Activity activity = getActivity();
+        if (activity == null) {
+            call.reject("no activity");
+            return;
+        }
+        activity.runOnUiThread(() -> {
+            activity.setRequestedOrientation(requested);
+            call.resolve();
+        });
     }
 
     // ---------------------------------------------------------------- 深链
