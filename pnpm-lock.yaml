@@ -302,8 +302,8 @@ importers:
         version: 13.6.33
     devDependencies:
       '@armadra/agent':
-        specifier: 0.15.0
-        version: 0.15.0
+        specifier: 0.15.1
+        version: 0.15.1
       '@electron/rebuild':
         specifier: ^4.2.0
         version: 4.2.0(supports-color@7.2.0)
@@ -665,8 +665,8 @@ packages:
   '@antfu/install-pkg@2.1.0':
     resolution: {integrity: sha512-sdg9NxU3zR4Mnawfbc/x6GB5Wf17WYud5qOuEuxXjaKpYpMkISSJEjItGebXJ2bQ4DIcly4NYH23mtkGJjvKUw==}
 
-  '@armadra/agent@0.15.0':
-    resolution: {integrity: sha512-zfQWZJxjbJZNKvVTeIpkmvgCbJWWrdtR6KULV7jNJ6PA17jiXm9DrGUHW5b5LpsxVQCndHkP1DM4A6ZpN0QOGA==}
+  '@armadra/agent@0.15.1':
+    resolution: {integrity: sha512-xDEukk2pweXFK6TRn+xGHdjU8Sg6Dtlqd4yeV/LaOucGVRoiCGvQY6Y4GeFfC4eKY9w3uh4ufzUbt56cFjvbmA==}
     engines: {node: '>=22'}
     hasBin: true
 
@@ -7095,7 +7095,7 @@ snapshots:
       package-manager-detector: 1.8.0
       tinyexec: 1.3.1
 
-  '@armadra/agent@0.15.0': {}
+  '@armadra/agent@0.15.1': {}
 
   '@armadra/platform-protocol@file:tools/vendor/armadra-platform-protocol-0.15.1.tgz(@opentelemetry/api@1.9.1)(zod@4.6.6)':
     dependencies:
