@@ -8,7 +8,8 @@
  * ```
  *
  * 心跳：每 `heartbeatMs` 发 `PING`，连续两次没有 `PONG` 断开；另有静默看门狗，
- * 就绪后 `heartbeatMisses × heartbeatMs` 没收到任何帧也断开（都记 `heartbeat_timeout`）。
+ * 就绪后 `heartbeatMisses × heartbeatMs` 没收到任何帧时先发一帧 `PING` 探测，探测窗口内
+ * 仍没有任何帧才断开（都记 `heartbeat_timeout`）。
  *
  * 旁路保证：`start()` 不等任何网络，失败只进状态（`lastError`）与退避；隧道断开时
  * 只是这条隧道上的流以 `RST sourceGone` 结束，Node 的 HTTP 层自己收拾这些连接。
@@ -57,6 +58,12 @@ export interface TunnelErrorInfo {
   readonly code: string;
   readonly message: string;
 }
+
+/**
+ * 静默看门狗到期后探测窗口的上限。生产心跳 20 s，探测只多等 2 s；取不超过半个
+ * 心跳周期，探测结论总在「连续两次没有 PONG」的第三拍之前出来。
+ */
+const SILENCE_PROBE_MS = 2_000;
 
 /** 退避：`min(60 s, 1 s × 2^attempt) × (0.5 + random)`。 */
 export function backoffDelay(
@@ -450,6 +457,9 @@ class TunnelConnection {
    */
   private watchdog: NodeJS.Timeout | undefined;
   private silenceLimitMs = 0;
+  /** 静默到期后等探测 `PING` 回音的窗口：`min(heartbeatMs / 2, 2 s)`，见 `checkSilence`。 */
+  private silenceProbeMs = 0;
+  private probing = false;
   private lastHeardAt = 0;
   private handshakeTimer: NodeJS.Timeout | undefined;
   private graceTimer: NodeJS.Timeout | undefined;
@@ -617,6 +627,7 @@ class TunnelConnection {
       this.heartbeat = setInterval(() => this.tick(), heartbeatMs);
       this.heartbeat.unref();
       this.silenceLimitMs = LIMITS.heartbeatMisses * heartbeatMs;
+      this.silenceProbeMs = Math.min(heartbeatMs / 2, SILENCE_PROBE_MS);
       this.lastHeardAt = performance.now();
       this.watch(this.silenceLimitMs);
       this.events.ready(this.relayNode ?? "");
@@ -825,20 +836,24 @@ class TunnelConnection {
     this.watchdog.unref();
   }
 
-  private checkSilence(confirming = false): void {
+  private checkSilence(): void {
     this.watchdog = undefined;
     if (this.phase === "closed") return;
     const silentMs = performance.now() - this.lastHeardAt;
     if (silentMs < this.silenceLimitMs) {
+      this.probing = false;
       this.watch(this.silenceLimitMs - silentMs);
       return;
     }
-    // 到期的计时器在事件循环里先于 socket 读跑：本进程自己卡过一阵（GC、同步
-    // 读盘、CI 上抢不到 CPU）之后，积压在 socket 里的帧还没读，量出来的「静默」
-    // 有一截是自己没去读。让过一轮 I/O（setImmediate 排在 poll 之后）再判一次，
-    // 还是静默才断。
-    if (!confirming) {
-      setImmediate(() => this.checkSilence(true));
+    // 到期时量出来的「静默」可能有一截是本进程自己卡住（GC、同步读盘、CI 上抢不到
+    // CPU）没去读 socket 的时间，那段时间本来就观察不到中继。不凭一轮 I/O 就下结论
+    // （回环投递时机因平台而异），而是发一帧 PING 等一个有界窗口：中继活着就会回
+    // PONG（或积压的帧此时读到），任何帧都会刷新 `lastHeardAt`；窗口过了仍静默才断。
+    // 探测不计入 `missed`，「连续两次没有 PONG」照旧按心跳拍数。
+    if (!this.probing) {
+      this.probing = true;
+      this.send({ type: "ping", ts: Date.now() });
+      this.watch(this.silenceProbeMs);
       return;
     }
     this.error = {

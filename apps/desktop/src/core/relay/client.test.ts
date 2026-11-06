@@ -156,8 +156,8 @@ describe("心跳、GOAWAY 与退避", () => {
       () => current.tunnels.status(issuer).state === "backoff",
       5_000,
     );
-    // 由静默看门狗（最后一帧起两个周期）判定，而不是等到第三拍的「两次没有 PONG」：
-    // 用判定原因代替墙钟上限，CI 上事件循环卡顿不会误报。
+    // 由静默看门狗（最后一帧起两个周期，再加半个周期的 PING 探测）判定，而不是等到
+    // 第三拍的「两次没有 PONG」：用判定原因代替墙钟上限，CI 上事件循环卡顿不会误报。
     expect(world.tunnels.status(issuer).lastError).toEqual({
       code: "heartbeat_timeout",
       message: "中继超过两个心跳周期没有任何帧",
@@ -183,9 +183,10 @@ describe("心跳、GOAWAY 与退避", () => {
     });
   });
 
-  it("本进程卡过一阵：积压在 socket 里的帧先读完再判，静默看门狗不误判", async () => {
-    // 计时器在事件循环里先于 socket 读：同步卡住超过静默阈值之后，到期的看门狗
-    // 先跑，那时中继其间发来的帧还没读。CI 上 GC、同步读盘、抢不到 CPU 都会这样卡。
+  it("本进程卡过一阵：静默到期先发 PING 探测，中继回了 PONG 就不误判", async () => {
+    // 同步卡住超过静默阈值之后到期的看门狗先跑，那段时间本进程根本没去读 socket。
+    // 卡住前停掉中继侧的帧，卡住后也不恢复：只有看门狗自己的探测 PING 换来的 PONG
+    // 能证明中继活着，不靠回环投递时机。CI 上 GC、同步读盘、抢不到 CPU 都会这样卡。
     const heartbeatMs = 100;
     world = await relayCore({ relay: { heartbeatMs } });
     await world.register();
@@ -194,20 +195,48 @@ describe("心跳、GOAWAY 与退避", () => {
     const issuer = current.cloud.registrations()[0]!.issuer;
     await until(() => current.tunnels.status(issuer).state === "ready");
     const chatter = setInterval(() => first.ping(), 10);
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 3 * heartbeatMs));
-      const stalledUntil = performance.now() + 4 * heartbeatMs;
-      while (performance.now() < stalledUntil) {
-        // 同步卡住两倍静默阈值。
-      }
-      await new Promise((resolve) => setTimeout(resolve, 3 * heartbeatMs));
-    } finally {
-      clearInterval(chatter);
+    await new Promise((resolve) => setTimeout(resolve, 3 * heartbeatMs));
+    clearInterval(chatter);
+    // 卡住前不留在途的帧：等中继收到下一拍心跳 PING（它当即回 PONG），再给回环
+    // 一小段时间把这帧 PONG 送到；下一拍还在大半个周期之后。
+    const pingsSeen = first.pings;
+    await until(() => first.pings > pingsSeen);
+    await new Promise((resolve) => setTimeout(resolve, heartbeatMs / 5));
+    const pingsBefore = first.pings;
+    const stalledUntil = performance.now() + 4 * heartbeatMs;
+    while (performance.now() < stalledUntil) {
+      // 同步卡住两倍静默阈值。
     }
+    await new Promise((resolve) => setTimeout(resolve, 3 * heartbeatMs));
     expect(first.closeCode).toBeUndefined();
+    expect(first.pings).toBeGreaterThan(pingsBefore);
     expect(world.tunnels.status(issuer)).toMatchObject({
       state: "ready",
       lastError: null,
+    });
+  });
+
+  it("本进程卡过一阵而中继真的静默（收 PING 不回）：探测窗口过后照样断开", async () => {
+    const heartbeatMs = 100;
+    world = await relayCore({
+      relay: { heartbeatMs },
+      backoff: () => 60_000,
+    });
+    await world.register();
+    const first = await world.relay.nextTunnel(0);
+    const current = world;
+    const issuer = current.cloud.registrations()[0]!.issuer;
+    await until(() => current.tunnels.status(issuer).state === "ready");
+    first.silent = true;
+    const stalledUntil = performance.now() + 4 * heartbeatMs;
+    while (performance.now() < stalledUntil) {
+      // 同步卡住两倍静默阈值。
+    }
+    await until(() => current.tunnels.status(issuer).state === "backoff");
+    // 探测窗口是半个心跳周期，先于「连续两次没有 PONG」的第三拍：判定原因是静默。
+    expect(world.tunnels.status(issuer).lastError).toEqual({
+      code: "heartbeat_timeout",
+      message: "中继超过两个心跳周期没有任何帧",
     });
   });
 
