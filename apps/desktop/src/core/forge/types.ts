@@ -114,6 +114,9 @@ export interface ForgeConversationItem {
   readonly createdAtMs: number;
 }
 
+/** 讨论线程的种类：PR（GitLab 的 MR）或 issue。 */
+export type ForgeThreadKind = "pull" | "issue";
+
 export interface ForgeConversation {
   readonly items: readonly ForgeConversationItem[];
   /** 服务端要求的最小轮询间隔（`x-poll-interval`，毫秒）；没给 `null`。 */
@@ -251,8 +254,15 @@ export interface Forge {
   createPull(repo: ForgeRepo, input: CreatePullInput): Promise<ForgePull>;
   pullFiles(repo: ForgeRepo, number: number): Promise<readonly ForgeFile[]>;
   checks(repo: ForgeRepo, number: number): Promise<ForgeChecks>;
-  /** 这个 PR 的评论与评审，按时间从早到晚（契约 §103.2）。 */
-  conversation(repo: ForgeRepo, number: number): Promise<ForgeConversation>;
+  /**
+   * 这个 PR（或 issue）的评论与评审，按时间从早到晚（契约 §103.2）。`kind` 缺省
+   * `pull`；`issue` 只读 issue 的评论（没有行内评论与评审）。
+   */
+  conversation(
+    repo: ForgeRepo,
+    number: number,
+    kind?: ForgeThreadKind,
+  ): Promise<ForgeConversation>;
   merge(
     repo: ForgeRepo,
     number: number,

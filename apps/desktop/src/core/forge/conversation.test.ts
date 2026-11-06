@@ -95,6 +95,37 @@ describe("GitHub", () => {
       url: "",
     });
   });
+
+  it("issue 只读 issue 的评论，不读行内评论与评审", async () => {
+    fake.route("GET /repos/octo/repo/issues/5/comments", {
+      body: [
+        {
+          id: 51,
+          user: { login: "dave" },
+          body: "能接这个吗",
+          html_url: "https://github.com/octo/repo/issues/5#issuecomment-51",
+          created_at: "2026-10-01T11:00:00Z",
+        },
+      ],
+    });
+    const client = fake.client();
+    const service = {
+      client: () => client,
+      repository: () => ({ owner: "octo", name: "repo" }),
+      credentials: { noteSuccess() {}, noteFailure() {} },
+      now: () => 0,
+    } as unknown as GithubService;
+    const forge = new GithubForge(service);
+    const conversation = await forge.conversation(
+      { host: "github.com", owner: "octo", name: "repo" },
+      5,
+      "issue",
+    );
+    expect(conversation.items.map((item) => [item.id, item.author])).toEqual([
+      ["c51", "dave"],
+    ]);
+    expect(conversation.pollIntervalMs).toBeNull();
+  });
 });
 
 describe("Gitea", () => {
@@ -145,6 +176,15 @@ describe("Gitea", () => {
       kind: "invalid",
     });
   });
+
+  it("issue 只读评论，不读评审", async () => {
+    fake.comments.set(6, [{ id: 9, login: "dave", body: "接吗", at: 10 }]);
+    fake.reviews.set(6, [
+      { id: 10, login: "bob", body: "x", state: "APPROVED", at: 20 },
+    ]);
+    const conversation = await forge.conversation(repo, 6, "issue");
+    expect(conversation.items.map((item) => item.id)).toEqual(["c9"]);
+  });
 });
 
 describe("GitLab", () => {
@@ -177,5 +217,32 @@ describe("GitLab", () => {
         createdAtMs: Date.parse("2026-10-02T12:06:00.000Z"),
       },
     ]);
+  });
+  it("issue 的备注走 issues 的路径，链接由 issue 地址拼出", async () => {
+    const tape = replay(["notes"], ["issue-7"]);
+    const forge = new GitlabForge({
+      apiBase: GITLAB_FIXTURE.apiBase,
+      token: async () => GITLAB_FIXTURE.token,
+      fetch: tape.fetch,
+    });
+    const conversation = await forge.conversation(
+      GITLAB_FIXTURE.repo,
+      7,
+      "issue",
+    );
+    expect(conversation.items).toEqual([
+      {
+        id: "c9102",
+        kind: "comment",
+        author: "dave",
+        body: "能接这个吗",
+        state: null,
+        url: "https://gitlab.example.test/acme/app/-/issues/7#note_9102",
+        createdAtMs: Date.parse("2026-10-03T08:05:00.000Z"),
+      },
+    ]);
+    expect(
+      tape.requests.some((request) => request.path.includes("merge_requests")),
+    ).toBe(false);
   });
 });

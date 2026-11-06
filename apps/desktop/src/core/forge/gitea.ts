@@ -24,6 +24,7 @@ import {
   type ForgeChecks,
   type ForgeConversation,
   type ForgeConversationItem,
+  type ForgeThreadKind,
   MAX_CONVERSATION_PAGES,
   ForgeError,
   type ForgeFile,
@@ -618,6 +619,7 @@ export class GiteaForge implements Forge {
   async conversation(
     repo: ForgeRepo,
     number: number,
+    kind: ForgeThreadKind = "pull",
   ): Promise<ForgeConversation> {
     const index = numbered(number);
     let intervalSec = 0;
@@ -647,7 +649,8 @@ export class GiteaForge implements Forge {
     };
     const items = [
       ...(await read(`/issues/${index}/comments`, "c")),
-      ...(await read(`/pulls/${index}/reviews`, "v")),
+      // issue 没有评审。
+      ...(kind === "issue" ? [] : await read(`/pulls/${index}/reviews`, "v")),
     ].sort((a, b) => a.createdAtMs - b.createdAtMs);
     return {
       items,

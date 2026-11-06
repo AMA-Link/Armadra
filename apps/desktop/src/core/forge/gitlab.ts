@@ -37,6 +37,7 @@ import {
   type ForgeChecks,
   type ForgeConversation,
   type ForgeConversationItem,
+  type ForgeThreadKind,
   MAX_CONVERSATION_PAGES,
   ForgeError,
   type ForgeFile,
@@ -777,9 +778,15 @@ export class GitlabForge implements Forge {
   async conversation(
     repo: ForgeRepo,
     number: number,
+    kind: ForgeThreadKind = "pull",
   ): Promise<ForgeConversation> {
     const index = numbered(number);
-    const pull = toPull(await this.rawPull(repo, number));
+    // 链接由线程地址和备注编号拼出：MR 读 MR，issue 读 issue。
+    const threadUrl =
+      kind === "issue"
+        ? (await this.getIssue(repo, number)).url
+        : toPull(await this.rawPull(repo, number)).url;
+    const notes = kind === "issue" ? "issues" : "merge_requests";
     const items: ForgeConversationItem[] = [];
     let intervalSec = 0;
     let page = 1;
@@ -791,7 +798,7 @@ export class GitlabForge implements Forge {
       };
       if (page > 1) query.page = String(page);
       const response = await this.http.get(
-        projectPath(repo, `/merge_requests/${index}/notes`),
+        projectPath(repo, `/${notes}/${index}/notes`),
         query,
       );
       intervalSec = Math.max(intervalSec, response.pollIntervalSec ?? 0);
@@ -808,7 +815,7 @@ export class GitlabForge implements Forge {
           author: login === "" ? null : login,
           body: text(value.body, MAX_BODY),
           state: null,
-          url: pull.url === "" ? "" : `${pull.url}#note_${id}`,
+          url: threadUrl === "" ? "" : `${threadUrl}#note_${id}`,
           createdAtMs: at,
         });
       }
