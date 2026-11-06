@@ -32,6 +32,7 @@ import { isNativeAppPage } from "../api/runtime-url";
  * | `trafficLoad()`                       | `{ rows: NativeTrafficRow[] }`（客户端流量的日桶，原生存储：iOS UserDefaults / Android SharedPreferences，保留 90 天；设计 §6.4） |
  * | `trafficSave({ rows })`               | —（整份替换；原生校验形状与上限，越界整份拒绝）     |
  * | `e2eDeviceSeed()`                     | `{ seed }`（端到端通道的设备钥种子，32 字节 base64url，没有就生成，只在钥匙串 / Keystore；契约 §78） |
+ * | `setOrientation({ mode })`            | —（界面方向：`auto` 跟随系统、`portrait` / `landscape` 锁定；iOS 视图控制器 / Android 活动，#827） |
  *
  * 事件（`addListener`）：`pushTokenRotated`——App 开着时令牌换了（Android
  * `onNewToken`、UnifiedPush 新端点、iOS 启动时 APNs 给了新令牌）；
@@ -123,6 +124,15 @@ export interface NativeTrafficRow {
   readonly streams: number;
 }
 
+/** 界面方向（#827）：跟随系统，或锁定竖屏 / 横屏。 */
+export type NativeOrientation = "auto" | "portrait" | "landscape";
+
+export const NATIVE_ORIENTATIONS: readonly NativeOrientation[] = [
+  "auto",
+  "portrait",
+  "landscape",
+];
+
 /** 原生 App 跑在哪个系统上；不在原生 App 里是 `null`。 */
 export type NativePlatform = "android" | "ios";
 
@@ -132,6 +142,10 @@ export interface NativeBridge {
   readonly platform: NativePlatform | null;
   /** 原生 App 能扫码（相机）。 */
   readonly canScan: boolean;
+  /** 原生 App 能锁定界面方向（#827）。 */
+  readonly canLockOrientation: boolean;
+  /** 跟随系统或锁定方向；做不到（旧安装包、不在原生 App 里）是 `false`。 */
+  setOrientation(mode: NativeOrientation): Promise<boolean>;
   getSessions(): Promise<StoredSession[]>;
   setSession(session: StoredSession): Promise<void>;
   removeSession(sourceId: string, origin?: string): Promise<void>;
@@ -192,6 +206,7 @@ interface ArmadraNativePlugin {
   appInfo?(): Promise<unknown>;
   installApk?(options: { url: string; sha256: string }): Promise<unknown>;
   e2eDeviceSeed?(): Promise<unknown>;
+  setOrientation?(options: { mode: NativeOrientation }): Promise<unknown>;
   trafficLoad?(): Promise<unknown>;
   trafficSave?(options: {
     rows: readonly NativeTrafficRow[];
@@ -432,6 +447,8 @@ const WEB_BRIDGE: NativeBridge = {
   available: false,
   platform: null,
   canScan: false,
+  canLockOrientation: false,
+  setOrientation: () => Promise.resolve(false),
   getSessions: () => Promise.resolve([]),
   setSession: () => Promise.resolve(),
   removeSession: () => Promise.resolve(),
@@ -506,6 +523,15 @@ export function nativeBridge(): NativeBridge {
     available: true,
     platform: nativePlatform(),
     canScan: typeof native.scan === "function",
+    canLockOrientation: typeof native.setOrientation === "function",
+    setOrientation: (mode) =>
+      NATIVE_ORIENTATIONS.includes(mode)
+        ? quiet(
+            native.setOrientation && (() => native.setOrientation!({ mode })),
+            () => true,
+            false,
+          )
+        : Promise.resolve(false),
     getSessions: () =>
       quiet(
         native.getSessions && (() => native.getSessions!()),

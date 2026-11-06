@@ -10,13 +10,20 @@ import { SettingsRow } from "../SettingsRow";
 import { useRuntimeSettings } from "../use-runtime-settings";
 import { Input } from "@/ui/input";
 import { Switch } from "@/ui/switch";
+import { ToggleGroup, ToggleGroupItem } from "@/ui/toggle-group";
+import {
+  nativeBridge,
+  NATIVE_ORIENTATIONS,
+} from "../../../mobile/native-bridge";
+import { useOrientationStore } from "../../../mobile/orientation";
 
 /** 右侧控件统一宽度，让一页里的 Select 右边缘对齐（§24.2 的 8pt 网格）。 */
 export const CONTROL_WIDTH = "w-[168px]";
 
 /**
- * 设置 → 通用（§2.1）：侧栏、启动动画、恢复上次工作空间、系统文件、用量
- * 徽标。主题与语言在「默认」页，崩溃上报在「本机服务」页。
+ * 设置 → 通用（§2.1）：界面方向（只在手机 App 里，#827）、侧栏、启动动画、
+ * 恢复上次工作空间、系统文件、用量徽标。主题与语言在「默认」页，崩溃上报在
+ * 「本机服务」页。
  */
 export function GeneralPage() {
   const t = useT();
@@ -42,6 +49,7 @@ export function GeneralPage() {
     <>
       <SettingsPageHeader />
       <SettingsGroup>
+        {nativeBridge().canLockOrientation && <OrientationRow />}
         <SettingsRow label={t("settings.sidebar")}>
           <Switch
             checked={sidebarOpen}
@@ -85,6 +93,35 @@ export function GeneralPage() {
         </SettingsRow>
       </SettingsGroup>
     </>
+  );
+}
+
+/** 界面方向：跟随系统 / 竖屏 / 横屏，点一下就转过去并记在这台设备上（#827）。 */
+function OrientationRow() {
+  const t = useT();
+  const orientation = useOrientationStore((state) => state.orientation);
+  const setOrientation = useOrientationStore((state) => state.setOrientation);
+  return (
+    <SettingsRow label={t("settings.orientation")}>
+      <ToggleGroup
+        type="single"
+        size="sm"
+        variant="outline"
+        spacing={0}
+        aria-label={t("settings.orientation")}
+        value={orientation}
+        onValueChange={(next) => {
+          const mode = NATIVE_ORIENTATIONS.find((value) => value === next);
+          if (mode) setOrientation(mode);
+        }}
+      >
+        {NATIVE_ORIENTATIONS.map((mode) => (
+          <ToggleGroupItem key={mode} value={mode}>
+            {t(`settings.orientation.${mode}`)}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+    </SettingsRow>
   );
 }
 
