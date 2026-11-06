@@ -91,6 +91,8 @@ const lookups = {
   workflowDraftWorkspace: (id: string) => (id === "d1" ? "w1" : ""),
   workflowRunWorkspace: (id: string) => (id === "r1" ? "w1" : ""),
   workflowTaskWorkspace: (id: string) => (id === "k1" ? "w1" : ""),
+  workflowSourceWorkspace: (id: string) => (id === "s1" ? "w1" : ""),
+  workflowCandidateWorkspace: (id: string) => (id === "i1" ? "w1" : ""),
   confirmWorkspace: (id: string) => (id === "c1" ? "w1" : ""),
 };
 
@@ -424,6 +426,45 @@ describe("契约 §23：创建者 = 触发者与工作流", () => {
     );
     expect(row(decide, "POST", "/api/workflows/tasks/k9/retry")).toBe("owner");
     expect(row(decide, "GET", "/api/workflows/tasks/k1/retry")).toBe("owner");
+  });
+
+  it("来源与候选：列表按画板看画布，配、删与复核是 operator（契约 §104.7）", () => {
+    const { decide } = harness();
+    const reads = "owner,driver,operator,editor,viewer";
+    expect(
+      row(decide, "GET", "/api/workflows/sources", undefined, {
+        boardId: "b1",
+      }),
+    ).toBe(reads);
+    expect(
+      row(decide, "GET", "/api/workflows/intake", undefined, { boardId: "b1" }),
+    ).toBe(reads);
+    expect(
+      row(decide, "GET", "/api/workflows/sources", undefined, {
+        boardId: "b9",
+      }),
+    ).toBe("owner");
+    expect(row(decide, "GET", "/api/workflows/intake")).toBe("owner");
+    expect(
+      row(decide, "POST", "/api/workflows/sources", {
+        coordinatorNodeId: "n1",
+      }),
+    ).toBe("owner,driver,operator");
+    expect(
+      row(decide, "POST", "/api/workflows/sources", {
+        coordinatorNodeId: "other",
+      }),
+    ).toBe("owner");
+    expect(row(decide, "DELETE", "/api/workflows/sources/s1")).toBe(
+      "owner,driver,operator",
+    );
+    expect(row(decide, "DELETE", "/api/workflows/sources/s9")).toBe("owner");
+    expect(row(decide, "POST", "/api/workflows/intake/i1/review")).toBe(
+      "owner,driver,operator",
+    );
+    expect(row(decide, "POST", "/api/workflows/intake/i9/review")).toBe(
+      "owner",
+    );
   });
 
   it("节点记过触发者时，起它的人不改写创建者", () => {

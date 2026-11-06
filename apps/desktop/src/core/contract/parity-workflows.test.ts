@@ -23,6 +23,15 @@ import { GATE_SCOPE, installWorkflowRoutes } from "../workflow/routes";
 import { WorkflowService } from "../workflow/service";
 import { finishTask, recordTaskStart } from "../workflow/task-runs";
 import { createWorkspace } from "../workspaces/table";
+import { rulesOf } from "../workflow/rules";
+import { setForgeService } from "../forge/registry";
+import type { ForgeService } from "../forge/service";
+import {
+  getSource,
+  insertCandidate,
+  recordVerdict,
+  saveSource,
+} from "../workflow/intake";
 import { type JsonValue, canonicalJson } from "./message";
 
 /**
@@ -841,6 +850,158 @@ describe("协调者任务", () => {
   });
 });
 
+/* ------------------------ §43.3 来源与候选（§104.7） ------------------------ */
+
+describe("来源与候选", () => {
+  const fakeForge = {
+    resolve: (remote: string) => {
+      const { host, pathname } = new URL(remote);
+      const [owner, name] = pathname.split("/").filter(Boolean);
+      return { forge: "github", repository: { host, owner, name } };
+    },
+  } as unknown as ForgeService;
+  const SOURCE_VOLATILE = new Set([...VOLATILE, "repo"]);
+  beforeAll(() => setForgeService(fakeForge));
+  afterAll(() => setForgeService(undefined));
+
+  it("saveSource、sources：建一个来源，三种答法同形；列表同形", async () => {
+    const answers = await thrice((kind, index) => {
+      const body = {
+        coordinatorNodeId: coordinator,
+        repo: `github.com/acme/parity${index}`,
+        kinds: ["issue", "pull"],
+        mode: "observe",
+        allow: ["Alice"],
+        enabled: true,
+      };
+      return ask(
+        kind,
+        "POST",
+        `${W}/sources`,
+        "coordinator.saveSource",
+        body,
+        body,
+      );
+    });
+    expect(answers[0].status).toBe(200);
+    expect(answers[0].body).toMatchObject({ source: { allow: ["alice"] } });
+    expectParity(answers, SOURCE_VOLATILE);
+    const list = [
+      await table("GET", `${W}/sources?boardId=${boardId}`),
+      await legacy("GET", `${W}/sources?boardId=${boardId}`),
+      await procedure("coordinator.sources", { boardId }),
+    ] as const;
+    expect((list[0].body as { sources: unknown[] }).sources).toHaveLength(3);
+    expectParity(list, VOLATILE);
+  });
+
+  it("saveSource：auto 缺前置按原话拒绝，形状错由契约先答 400", async () => {
+    const body = {
+      coordinatorNodeId: coordinator,
+      repo: "github.com/acme/refused",
+      kinds: ["issue"],
+      mode: "auto",
+      allow: ["alice"],
+      enabled: true,
+    };
+    const refused = [
+      await table("POST", `${W}/sources`, body),
+      await legacy("POST", `${W}/sources`, body),
+      await procedure("coordinator.saveSource", body),
+    ] as const;
+    expect(refused[0].status).toBe(400);
+    expectParity(refused);
+    const wild = { ...body, mode: "wild" };
+    for (const answer of [
+      await legacy("POST", `${W}/sources`, wild),
+      await procedure("coordinator.saveSource", wild),
+    ]) {
+      expect(answer).toMatchObject({
+        status: 400,
+        body: { code: "bad_request" },
+      });
+    }
+  });
+
+  it("intake、reviewIntake、deleteSource：分页、复核与删除三种答法同形", async () => {
+    const listed = await table("GET", `${W}/sources?boardId=${boardId}`);
+    const [first] = (listed.body as { sources: { id: string }[] }).sources;
+    const source = getSource(f.database, first!.id)!;
+    const ids = [1, 2].map(
+      (number) =>
+        insertCandidate(
+          f.database,
+          {
+            source,
+            kind: "issue",
+            number,
+            version: String(number),
+            title: `标题 ${number}`,
+            author: "Alice",
+            url: `https://github.com/acme/parity0/issues/${number}`,
+            request: { by: "Alice", via: "thread", at: 1_000 + number },
+            sourceAt: 1_000 + number,
+          },
+          2_000 + number,
+        ).id,
+    );
+    recordVerdict(
+      f.database,
+      ids[0]!,
+      { verdict: "skip", reason: "不是 bug", rulesHash: "", mode: "observe" },
+      3_000,
+    );
+    for (const [query, extra] of [
+      ["", {}],
+      ["&limit=1&offset=1", { limit: 1, offset: 1 }],
+      ["&decided=true", { decided: true }],
+    ] as const) {
+      const answers = [
+        await table("GET", `${W}/intake?boardId=${boardId}${query}`),
+        await legacy("GET", `${W}/intake?boardId=${boardId}${query}`),
+        await procedure("coordinator.intake", { boardId, ...extra }),
+      ] as const;
+      expect(answers[0].status, query).toBe(200);
+      expectParity(answers);
+    }
+    const path = `${W}/intake/${encodeURIComponent(ids[0]!)}/review`;
+    const reviewed = [
+      await table("POST", path, { review: "disagree" }),
+      await legacy("POST", path, { review: "disagree" }),
+      await procedure("coordinator.reviewIntake", {
+        candidateId: ids[0],
+        review: "disagree",
+      }),
+    ] as const;
+    expect(reviewed[0].body).toMatchObject({
+      candidate: { review: "disagree", verdict: "skip", reason: "不是 bug" },
+    });
+    expectParity(reviewed);
+    const undecided = `${W}/intake/${encodeURIComponent(ids[1]!)}/review`;
+    const refused = [
+      await table("POST", undecided, { review: "agree" }),
+      await legacy("POST", undecided, { review: "agree" }),
+      await procedure("coordinator.reviewIntake", {
+        candidateId: ids[1],
+        review: "agree",
+      }),
+    ] as const;
+    expect(refused[0].status).toBe(409);
+    expectParity(refused);
+    const gone = [
+      await table("DELETE", `${W}/sources/gone`),
+      await legacy("DELETE", `${W}/sources/gone`),
+      await procedure("coordinator.deleteSource", { id: "gone" }),
+    ] as const;
+    expect(gone[0].body).toEqual({ deleted: false });
+    expectParity(gone);
+    const removed = await procedure("coordinator.deleteSource", {
+      id: first!.id,
+    });
+    expect(removed.body).toEqual({ deleted: true });
+  });
+});
+
 /* -------------------------------- 投递门 --------------------------------- */
 
 const GRANTS: Record<string, Record<"w1" | "w2", ShareRole | undefined>> = {
@@ -1143,6 +1304,94 @@ describe("投递门：成员经旧路径与 procedure 被同一道路由门拦�
     const ok = await procedure("coordinator.retry", { taskId }, "operator");
     expect(ok.status).toBe(200);
   });
+
+  it("来源与候选：看是看画布，配、删、复核要 operator；被拒时一个字节都没变", async () => {
+    const created = saveSource(
+      f.database,
+      {
+        coordinatorNodeId: coordinator,
+        workspaceId,
+        repo: "github.com/acme/gate",
+        kinds: ["issue"],
+        mode: "observe",
+        allow: [],
+        enabled: true,
+      },
+      rulesOf(new Uint8Array()),
+      1_000,
+    );
+    const candidate = insertCandidate(
+      f.database,
+      {
+        source: created,
+        kind: "issue",
+        number: 7,
+        version: "7",
+        title: "门",
+        author: null,
+        url: "",
+        request: { by: "a", via: "thread", at: 1 },
+        sourceAt: 1,
+      },
+      2_000,
+    );
+    recordVerdict(
+      f.database,
+      candidate.id,
+      { verdict: "accept", reason: "r", rulesHash: "", mode: "observe" },
+      3_000,
+    );
+    const [seen] = await both(
+      "viewer",
+      "GET",
+      `${W}/intake?boardId=${boardId}`,
+      undefined,
+      "coordinator.intake",
+      { boardId },
+    );
+    expect(seen.status).toBe(200);
+    const save = {
+      coordinatorNodeId: coordinator,
+      repo: "github.com/acme/other",
+      kinds: ["issue"],
+      mode: "observe",
+      allow: [],
+      enabled: true,
+    };
+    const review = `${W}/intake/${encodeURIComponent(candidate.id)}/review`;
+    const writes = [
+      ["POST", `${W}/sources`, save, "coordinator.saveSource", save],
+      [
+        "POST",
+        review,
+        { review: "agree" },
+        "coordinator.reviewIntake",
+        { candidateId: candidate.id, review: "agree" },
+      ],
+      [
+        "DELETE",
+        `${W}/sources/${created.id}`,
+        undefined,
+        "coordinator.deleteSource",
+        { id: created.id },
+      ],
+    ] as const;
+    for (const as of ["viewer", "editor", "outsider", "stranger"]) {
+      for (const [method, path, body, name, input] of writes) {
+        const [rest] = await both(as, method, path, body, name, input);
+        expect(rest.status, `${as} ${name}`).toBe(403);
+        expect(rest.body).toEqual(FORBIDDEN);
+      }
+    }
+    expect(getSource(f.database, created.id)).toBeDefined();
+    const row = f.database
+      .prepare("SELECT review FROM router_intake WHERE id = ?")
+      .get(candidate.id) as { review: string | null };
+    expect(row.review).toBeNull();
+    for (const [, , , name, input] of writes.slice(1)) {
+      expect((await procedure(name, input, "operator")).status).toBe(200);
+    }
+  });
 });
 
 /* ------------------------------ 入参形状错 ------------------------------ */
@@ -1197,7 +1446,7 @@ describe("契约与 core 的两张表（workflows、coordinator）", () => {
       entry.name.startsWith("coordinator."),
   );
 
-  it("15 + 3 条都在契约里，每条都有旧路径", () => {
+  it("15 + 8 条都在契约里，每条都有旧路径", () => {
     expect(entries.map((entry) => entry.name).sort()).toEqual(
       [
         "workflows.answerGate",
@@ -1215,8 +1464,13 @@ describe("契约与 core 的两张表（workflows、coordinator）", () => {
         "workflows.templates",
         "workflows.updateTemplate",
         "workflows.upgradeSchedules",
+        "coordinator.deleteSource",
+        "coordinator.intake",
         "coordinator.readReplies",
         "coordinator.retry",
+        "coordinator.reviewIntake",
+        "coordinator.saveSource",
+        "coordinator.sources",
         "coordinator.tasks",
       ].sort(),
     );

@@ -44,6 +44,22 @@ import {
   markRepliesRead,
 } from "../collab/router-replies";
 import { stageOf } from "./work-items";
+import { forgeService } from "../forge/registry";
+import type { ForgeService } from "../forge/service";
+import {
+  type IntakeCandidate,
+  type IntakeSource,
+  type Review,
+  deleteSource,
+  getCandidate,
+  getSource,
+  listCandidates,
+  reviewCandidate,
+  saveSource,
+  sourceStats,
+  sourcesForBoard,
+} from "./intake";
+import { readRules } from "./rules";
 
 /**
  * 工作流的服务层：草案存取与确认、模板 CRUD、运行的起停与关卡（契约 §15.2–
@@ -56,9 +72,19 @@ export interface WorkflowServiceOptions {
   readonly engine: WorkflowEngine;
   readonly collab: () => CollabContext | undefined;
   readonly clock?: () => number;
+  /** 托管平台服务；缺省取装配好的那个（契约 §104.7 认仓库用）。 */
+  readonly forge?: () => ForgeService | undefined;
 }
 
 const RULES = { validAgentId };
+
+/** 一个来源加上规则文件此刻的状态与最近 20 条判定的统计。 */
+export interface SourceView {
+  readonly source: IntakeSource;
+  readonly rulesCurrentHash: string;
+  readonly rulesPresent: boolean;
+  readonly stats: ReturnType<typeof sourceStats>;
+}
 
 export class WorkflowService {
   readonly database: DatabaseSync;
@@ -393,6 +419,234 @@ export class WorkflowService {
       publishTask(this.database, collab.publish, taskId);
     }
     return taskRun(this.database, taskId) as TaskRun;
+  }
+
+  /* ------------------------- 来源与候选（契约 §104.7） ------------------------- */
+
+  /** 一块画板上协调者节点的标识；画板不存在答 404。 */
+  private boardCoordinators(boardId: unknown): string[] {
+    if (typeof boardId !== "string" || boardId === "") {
+      throw new DomainError(400, "bad_request", "boardId 不能缺。");
+    }
+    const board = this.database
+      .prepare("SELECT id FROM boards WHERE id = ?")
+      .get(boardId);
+    if (board === undefined) throw notFound("没有这块画板。");
+    return (
+      this.database
+        .prepare("SELECT id FROM nodes WHERE board_id = ?")
+        .all(boardId) as { id: string }[]
+    ).map((row) => row.id);
+  }
+
+  /** 一个来源连同规则文件此刻的状态与统计。 */
+  sourceView(source: IntakeSource): SourceView {
+    const rules = readRules(this.database, source.workspaceId);
+    return {
+      source,
+      rulesCurrentHash: rules.hash,
+      rulesPresent: rules.present,
+      stats: sourceStats(this.database, source.id),
+    };
+  }
+
+  sources(boardId: unknown): SourceView[] {
+    this.boardCoordinators(boardId);
+    return sourcesForBoard(this.database, boardId as string).map((source) =>
+      this.sourceView(source),
+    );
+  }
+
+  /**
+   * 仓库写法：网页地址或 `<主机>/<owner>/<名字>`，交给托管平台域的 `resolve` 认并
+   * 规范化。认不出 400，托管平台域没装配 409 `forge_not_wired`。
+   */
+  private resolveRepo(raw: string, workspaceId: string): string {
+    const forge = (this.options.forge ?? forgeService)();
+    if (forge === undefined) {
+      throw new DomainError(
+        409,
+        "forge_not_wired",
+        "托管平台域没有装配，不能配置来源。",
+      );
+    }
+    const bad = () =>
+      new DomainError(
+        400,
+        "bad_request",
+        "repo 要给网页地址或 <主机>/<owner>/<名字>，且在已配置的 GitHub / Gitea / GitLab 上。",
+      );
+    const text = raw.trim();
+    let remote: string;
+    if (/^https?:\/\//i.test(text)) {
+      let url: URL;
+      try {
+        url = new URL(text);
+      } catch {
+        throw bad();
+      }
+      if (url.username !== "" || url.password !== "") throw bad();
+      // 线程或页面的地址：截掉 issue / PR / 树等尾巴，只留仓库。
+      const segments = url.pathname.split("/").filter((part) => part !== "");
+      const tail = segments.findIndex((part) =>
+        [
+          "issues",
+          "pull",
+          "pulls",
+          "merge_requests",
+          "-",
+          "tree",
+          "blob",
+        ].includes(part),
+      );
+      const project = tail < 0 ? segments : segments.slice(0, tail);
+      remote = `${url.protocol}//${url.host}/${project.join("/")}`;
+    } else {
+      if (/\s/.test(text) || text.includes("://") || text.includes("@")) {
+        throw bad();
+      }
+      remote = `https://${text}`;
+    }
+    let detection;
+    try {
+      detection = forge.resolve(remote, workspaceId);
+    } catch {
+      throw bad();
+    }
+    if (detection.forge === null) throw bad();
+    const repo = detection.repository;
+    return `${repo.host}/${repo.owner}/${repo.name}`;
+  }
+
+  saveSource(body: Record<string, unknown>): SourceView {
+    const text = (value: unknown, name: string): string => {
+      if (typeof value !== "string" || value.trim() === "") {
+        throw new DomainError(400, "bad_request", `${name} 不能缺。`);
+      }
+      return value;
+    };
+    const list = (value: unknown, name: string): unknown[] => {
+      if (!Array.isArray(value)) {
+        throw new DomainError(400, "bad_request", `${name} 必须是数组。`);
+      }
+      return value;
+    };
+    const flag = (value: unknown, name: string): boolean => {
+      if (typeof value !== "boolean") {
+        throw new DomainError(400, "bad_request", `${name} 必须是布尔值。`);
+      }
+      return value;
+    };
+    const coordinatorNodeId = text(body.coordinatorNodeId, "coordinatorNodeId");
+    const raw = text(body.repo, "repo");
+    const id =
+      body.id === undefined || body.id === null
+        ? undefined
+        : text(body.id, "id");
+    const place = this.database
+      .prepare(
+        "SELECT b.workspace_id AS workspace_id FROM nodes n JOIN boards b ON b.id = n.board_id WHERE n.id = ?",
+      )
+      .get(coordinatorNodeId) as { workspace_id?: unknown } | undefined;
+    if (typeof place?.workspace_id !== "string") {
+      throw new DomainError(404, "not_found", "协调者节点不在任何画板上。");
+    }
+    const workspaceId = place.workspace_id;
+    const existing =
+      id === undefined ? undefined : getSource(this.database, id);
+    // 仓库没改就不必再问托管平台域（只切开关、模式或名单时它可以没装配）。
+    const repo =
+      existing !== undefined && existing.repo === raw.trim()
+        ? existing.repo
+        : this.resolveRepo(raw, workspaceId);
+    const confirm = body.confirmRules;
+    const saved = saveSource(
+      this.database,
+      {
+        id,
+        coordinatorNodeId,
+        workspaceId,
+        repo,
+        kinds: list(body.kinds, "kinds"),
+        mode: body.mode,
+        allow: list(body.allow, "allow"),
+        enabled: flag(body.enabled, "enabled"),
+        confirmRules:
+          confirm === undefined ? undefined : flag(confirm, "confirmRules"),
+      },
+      readRules(this.database, workspaceId),
+      this.clock(),
+    );
+    return this.sourceView(saved);
+  }
+
+  deleteSource(id: unknown): boolean {
+    if (typeof id !== "string" || id === "") {
+      throw new DomainError(400, "bad_request", "id 不能缺。");
+    }
+    return deleteSource(this.database, id);
+  }
+
+  /** 一块画板上协调者的候选，一页。 */
+  intake(
+    boardId: unknown,
+    page: { limit?: unknown; offset?: unknown; decided?: unknown },
+  ): { candidates: IntakeCandidate[]; total: number; next: number | null } {
+    const coordinatorNodeIds = this.boardCoordinators(boardId);
+    const number = (value: unknown, name: string, fallback: number) => {
+      if (value === undefined || value === "") return fallback;
+      const parsed = typeof value === "number" ? value : Number(value);
+      if (!Number.isInteger(parsed) || parsed < 0) {
+        throw new DomainError(400, "bad_request", `${name} 必须是非负整数。`);
+      }
+      return parsed;
+    };
+    const limit = Math.min(Math.max(number(page.limit, "limit", 50), 1), 200);
+    const offset = number(page.offset, "offset", 0);
+    let decided: boolean | undefined;
+    if (page.decided === true || page.decided === "true") decided = true;
+    else if (page.decided === false || page.decided === "false")
+      decided = false;
+    else if (page.decided !== undefined && page.decided !== "") {
+      throw new DomainError(
+        400,
+        "bad_request",
+        "decided 只能是 true 或 false。",
+      );
+    }
+    const { candidates, total } = listCandidates(this.database, {
+      coordinatorNodeIds,
+      decided,
+      limit,
+      offset,
+      // 没判定的按协调者处理的顺序（最早在前），其余最近在前。
+      order: decided === false ? "oldest" : "newest",
+    });
+    const end = offset + candidates.length;
+    return { candidates, total, next: end < total ? end : null };
+  }
+
+  /** 人的复核；`null` 撤回。 */
+  reviewIntake(candidateId: unknown, review: unknown): IntakeCandidate {
+    if (typeof candidateId !== "string" || candidateId === "") {
+      throw new DomainError(400, "bad_request", "candidateId 不能缺。");
+    }
+    if (review !== null && review !== "agree" && review !== "disagree") {
+      throw new DomainError(
+        400,
+        "bad_request",
+        "review 只能是 agree、disagree 或 null。",
+      );
+    }
+    if (getCandidate(this.database, candidateId) === undefined) {
+      throw new DomainError(404, "candidate_not_found", "候选不存在");
+    }
+    return reviewCandidate(
+      this.database,
+      candidateId,
+      review as Review | null,
+      this.clock(),
+    );
   }
 
   /* --------------------------------- 发布 --------------------------------- */
