@@ -7,6 +7,14 @@ import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Empty, EmptyHeader, EmptyTitle } from "@/ui/empty";
 import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemFooter,
+  ItemGroup,
+  ItemTitle,
+} from "@/ui/item";
+import {
   Pagination,
   PaginationContent,
   PaginationItem,
@@ -16,14 +24,6 @@ import {
   paginationRange,
 } from "@/ui/pagination";
 import { SkeletonList } from "@/ui/skeletons";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/ui/table";
 import { toast } from "@/ui/toast";
 import { ToggleGroup, ToggleGroupItem } from "@/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
@@ -36,7 +36,7 @@ import {
   INTAKE_PAGE_SIZE,
 } from "./api";
 import { outcomeOf, pageCount } from "./model";
-import { failureMessage } from "./SourcesTab";
+import { failureText, reasonText } from "./errors";
 
 /**
  * 分派抽屉的「候选」页（契约 §104.7）：来源仓库里没人认领的线程、协调者的判定与
@@ -84,6 +84,8 @@ export function IntakeView({
 }: IntakeViewProps) {
   const t = useT();
   const count = pageCount(total);
+  // 读失败时不留旧行。
+  const rows = error ? [] : candidates;
 
   return (
     <div
@@ -113,7 +115,7 @@ export function IntakeView({
       {error ? (
         <Alert variant="destructive" data-slot="intake-error">
           <AlertTitle className="text-meta">
-            {t("coordinator.error")}
+            {t("coordinator.intake.error")}
           </AlertTitle>
           {onReload ? (
             <AlertAction>
@@ -140,34 +142,19 @@ export function IntakeView({
           </Empty>
         )
       ) : (
-        <Table size="sm" data-slot="intake-table">
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("coordinator.intake.kind")}</TableHead>
-              <TableHead>#</TableHead>
-              <TableHead>{t("coordinator.intake.title")}</TableHead>
-              <TableHead>{t("coordinator.intake.author")}</TableHead>
-              <TableHead>{t("coordinator.intake.authorized")}</TableHead>
-              <TableHead>{t("coordinator.intake.verdict")}</TableHead>
-              <TableHead>{t("coordinator.sources.mode")}</TableHead>
-              <TableHead>{t("coordinator.intake.review")}</TableHead>
-              <TableHead>{t("coordinator.intake.outcome")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {candidates.map((candidate) => (
-              <CandidateRow
-                key={candidate.id}
-                candidate={candidate}
-                locked={offline || !canEdit}
-                offline={offline}
-                nodeId={nodeOf?.(candidate.itemId)}
-                {...(onReview ? { onReview } : {})}
-                {...(onOpenNode ? { onOpenNode } : {})}
-              />
-            ))}
-          </TableBody>
-        </Table>
+        <ItemGroup className="gap-1" data-slot="intake-table">
+          {rows.map((candidate) => (
+            <CandidateRow
+              key={candidate.id}
+              candidate={candidate}
+              locked={offline || !canEdit}
+              offline={offline}
+              nodeId={nodeOf?.(candidate.itemId)}
+              {...(onReview ? { onReview } : {})}
+              {...(onOpenNode ? { onOpenNode } : {})}
+            />
+          ))}
+        </ItemGroup>
       )}
 
       {count > 1 ? (
@@ -251,50 +238,68 @@ function CandidateRow({
   );
 
   return (
-    <TableRow data-slot="candidate-row" data-candidate-id={candidate.id}>
-      <TableCell>
-        <Badge variant="secondary" size="sm">
-          {t(`coordinator.sources.kind.${candidate.kind}`)}
-        </Badge>
-      </TableCell>
-      <TableCell>
-        {link ? (
-          <Button asChild variant="link" size="xs" className="h-auto p-0">
-            <a
-              href={candidate.url}
-              target="_blank"
-              rel="noreferrer noopener"
-              aria-label={t("coordinator.intake.link", {
-                number: candidate.number,
-              })}
+    <Item
+      size="xs"
+      variant="outline"
+      className="px-2"
+      data-slot="candidate-row"
+      data-candidate-id={candidate.id}
+    >
+      <ItemContent className="min-w-0">
+        <ItemTitle className="w-full min-w-0">
+          {link ? (
+            <Button
+              asChild
+              variant="link"
+              size="xs"
+              className="h-auto shrink-0 p-0"
             >
-              {label}
-            </a>
-          </Button>
-        ) : (
-          <span className="text-muted-foreground">{label}</span>
-        )}
-      </TableCell>
-      <TableCell className="max-w-48 truncate" title={candidate.title}>
-        {candidate.title}
-      </TableCell>
-      <TableCell className="text-muted-foreground">
-        {candidate.author ?? ""}
-      </TableCell>
-      <TableCell>
-        <Badge
-          variant={candidate.authorized ? "brand" : "outline"}
-          size="sm"
-          data-slot="candidate-authorized"
-        >
-          {t(
-            candidate.authorized
-              ? "coordinator.intake.authorized.yes"
-              : "coordinator.intake.authorized.no",
+              <a
+                href={candidate.url}
+                target="_blank"
+                rel="noreferrer noopener"
+                aria-label={t("coordinator.intake.link", {
+                  number: candidate.number,
+                })}
+              >
+                {label}
+              </a>
+            </Button>
+          ) : (
+            <span className="shrink-0 text-muted-foreground">{label}</span>
           )}
-        </Badge>
-      </TableCell>
-      <TableCell>
+          <span className="truncate" title={candidate.title}>
+            {candidate.title}
+          </span>
+        </ItemTitle>
+        <div className="flex flex-wrap items-center gap-1 pt-1 text-meta text-muted-foreground">
+          <Badge variant="secondary" size="sm">
+            {t(`coordinator.sources.kind.${candidate.kind}`)}
+          </Badge>
+          {candidate.author ? (
+            <span className="min-w-0 max-w-32 truncate">
+              {candidate.author}
+            </span>
+          ) : null}
+          <Badge
+            variant={candidate.authorized ? "brand" : "outline"}
+            size="sm"
+            data-slot="candidate-authorized"
+          >
+            {t(
+              candidate.authorized
+                ? "coordinator.intake.authorized.yes"
+                : "coordinator.intake.authorized.no",
+            )}
+          </Badge>
+          {candidate.modeAtVerdict ? (
+            <span>
+              {t(`coordinator.sources.mode.${candidate.modeAtVerdict}`)}
+            </span>
+          ) : null}
+        </div>
+      </ItemContent>
+      <ItemActions>
         {candidate.reason ? (
           <Tooltip>
             <TooltipTrigger asChild>{verdict}</TooltipTrigger>
@@ -303,13 +308,8 @@ function CandidateRow({
         ) : (
           verdict
         )}
-      </TableCell>
-      <TableCell className="text-muted-foreground">
-        {candidate.modeAtVerdict
-          ? t(`coordinator.sources.mode.${candidate.modeAtVerdict}`)
-          : ""}
-      </TableCell>
-      <TableCell>
+      </ItemActions>
+      <ItemFooter className="gap-1">
         <ToggleGroup
           type="single"
           variant="outline"
@@ -334,8 +334,6 @@ function CandidateRow({
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
-      </TableCell>
-      <TableCell>
         {outcome?.kind === "dispatched" ? (
           nodeId !== undefined ? (
             <Button
@@ -353,12 +351,17 @@ function CandidateRow({
             </Badge>
           )
         ) : outcome?.kind === "refused" ? (
-          <Badge variant="warn" size="sm" data-slot="candidate-refused">
-            {outcome.code}
+          <Badge
+            variant="warn"
+            size="sm"
+            data-slot="candidate-refused"
+            data-code={outcome.code}
+          >
+            {reasonText(outcome.code, t)}
           </Badge>
         ) : null}
-      </TableCell>
-    </TableRow>
+      </ItemFooter>
+    </Item>
   );
 }
 
@@ -409,7 +412,7 @@ export function IntakeTab({
       });
     },
     onError: (error) =>
-      toast.error(failureMessage(error, t("coordinator.intake.reviewFailed"))),
+      toast.error(failureText(error, t, t("coordinator.intake.reviewFailed"))),
   });
   const total = intake.data?.total ?? 0;
   // 最后一页被清空（过滤切换、候选被删）时回退到最后有内容的一页。

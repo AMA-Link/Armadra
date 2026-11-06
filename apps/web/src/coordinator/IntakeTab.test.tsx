@@ -221,7 +221,59 @@ describe("IntakeTab", () => {
     const { onOpenNode } = mount();
     fireEvent.click(await screen.findByRole("button", { name: "已派发" }));
     expect(onOpenNode).toHaveBeenCalledWith("node-pi");
-    expect(screen.getByText("rules_changed")).toBeTruthy();
+    expect(screen.getByText("规则已变更")).toBeTruthy();
+    expect(screen.queryByText("rules_changed")).toBeNull();
+  });
+
+  it("result reasons follow the UI language; an unknown code shows the code", async () => {
+    usePreferencesStore.setState({ locale: "en" });
+    api.intake.mockResolvedValue(
+      page([
+        candidate(1, { outcome: "refused:forge_not_wired" }),
+        candidate(2, { outcome: "refused:not_authorized" }),
+        candidate(3, { outcome: "refused:intake_rate_limited" }),
+        candidate(4, { outcome: "refused:brand_new_code" }),
+      ]),
+    );
+    mount();
+    expect(await screen.findByText("Forge not connected")).toBeTruthy();
+    expect(
+      screen.getByText("Not authorized", { selector: "[data-code]" }),
+    ).toBeTruthy();
+    expect(screen.getByText("Rate limited")).toBeTruthy();
+    expect(screen.getByText("brand_new_code")).toBeTruthy();
+  });
+
+  it("a failed read shows its own copy and no rows; a failed review toasts a localized message", async () => {
+    api.intake.mockRejectedValue(new Error("down"));
+    mount();
+    expect(await screen.findByText("读不到候选")).toBeTruthy();
+    expect(screen.queryByText("读不到分派记录")).toBeNull();
+    expect(document.querySelector('[data-slot="candidate-row"]')).toBeNull();
+  });
+
+  it("a review refused with a core code toasts the localized message", async () => {
+    api.intake.mockResolvedValue(
+      page([candidate(1, { verdict: "accept", reason: "r" })]),
+    );
+    api.reviewIntake.mockRejectedValue(
+      Object.assign(new Error("x"), {
+        code: "candidate_not_found",
+        coreMessage: "候选不存在了",
+      }),
+    );
+    mount();
+    fireEvent.click(await screen.findByRole("radio", { name: "同意" }));
+    await waitFor(() =>
+      expect(toasts.error).toHaveBeenCalledWith("候选不存在"),
+    );
+  });
+
+  it("rows are cards that fit the drawer, not a table", async () => {
+    api.intake.mockResolvedValue(page([candidate(1)]));
+    mount();
+    await screen.findByText("标题 1");
+    expect(document.querySelector("table")).toBeNull();
   });
 
   it("does not fetch while the tab is not active", () => {

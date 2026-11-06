@@ -18,6 +18,14 @@ import { Button } from "@/ui/button";
 import { Checkbox } from "@/ui/checkbox";
 import { Empty, EmptyHeader, EmptyTitle } from "@/ui/empty";
 import { IconButton } from "@/ui/icon-button";
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemFooter,
+  ItemGroup,
+  ItemTitle,
+} from "@/ui/item";
 import { Input } from "@/ui/input";
 import { Label } from "@/ui/label";
 import {
@@ -29,14 +37,6 @@ import {
 } from "@/ui/select";
 import { SkeletonList } from "@/ui/skeletons";
 import { Switch } from "@/ui/switch";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/ui/table";
 import { toast } from "@/ui/toast";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 import {
@@ -49,6 +49,7 @@ import {
   coordinatorApi,
   coordinatorKeys,
 } from "./api";
+import { failureText } from "./errors";
 import {
   type CoordinatorOption,
   type RulesState,
@@ -85,7 +86,10 @@ export interface SourcesViewProps {
   /** 正在保存的来源 id（添加时是 `"new"`）。 */
   readonly saving?: string | null;
   readonly onReload?: () => void;
-  readonly onSave?: (input: SaveSourceInput) => void;
+  /** 返回失败文案表示没存成（添加表单据此保持打开）；别的返回值都算成功。 */
+  readonly onSave?: (
+    input: SaveSourceInput,
+  ) => void | null | string | Promise<void | null | string>;
   readonly onDelete?: (id: string) => void;
 }
 
@@ -109,6 +113,8 @@ export function SourcesView({
     null,
   );
   const locked = offline || !canEdit;
+  // 读失败时不留旧行：看到的就是 core 现在的样子，或者什么也没有。
+  const rows = error ? [] : sources;
 
   return (
     <div
@@ -118,7 +124,7 @@ export function SourcesView({
       {error ? (
         <Alert variant="destructive" data-slot="sources-error">
           <AlertTitle className="text-meta">
-            {t("coordinator.error")}
+            {t("coordinator.sources.error")}
           </AlertTitle>
           {onReload ? (
             <AlertAction>
@@ -134,7 +140,7 @@ export function SourcesView({
         <div data-slot="sources-loading">
           <SkeletonList rows={3} size="tall" label={t("state.loading")} />
         </div>
-      ) : sources.length === 0 && !adding && !error ? (
+      ) : rows.length === 0 && !adding && !error ? (
         <Empty className="border-0 p-6" data-slot="sources-empty">
           <EmptyHeader>
             <EmptyTitle className="text-body font-normal text-muted-foreground">
@@ -142,37 +148,19 @@ export function SourcesView({
             </EmptyTitle>
           </EmptyHeader>
         </Empty>
-      ) : sources.length > 0 ? (
-        <Table size="sm" data-slot="sources-table">
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("coordinator.sources.repo")}</TableHead>
-              <TableHead>{t("coordinator.sources.kinds")}</TableHead>
-              <TableHead>{t("coordinator.sources.mode")}</TableHead>
-              <TableHead>{t("coordinator.sources.allow")}</TableHead>
-              <TableHead>{t("coordinator.sources.rules")}</TableHead>
-              <TableHead>{t("coordinator.sources.stats")}</TableHead>
-              <TableHead>{t("coordinator.sources.enabled")}</TableHead>
-              <TableHead>
-                <span className="sr-only">
-                  {t("coordinator.sources.delete")}
-                </span>
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sources.map((source) => (
-              <SourceRow
-                key={source.id}
-                source={source}
-                locked={locked}
-                saving={saving === source.id}
-                {...(onSave ? { onSave } : {})}
-                onDelete={() => setPendingDelete(source)}
-              />
-            ))}
-          </TableBody>
-        </Table>
+      ) : rows.length > 0 ? (
+        <ItemGroup className="gap-1" data-slot="sources-table">
+          {rows.map((source) => (
+            <SourceRow
+              key={source.id}
+              source={source}
+              locked={locked}
+              saving={saving === source.id}
+              {...(onSave ? { onSave } : {})}
+              onDelete={() => setPendingDelete(source)}
+            />
+          ))}
+        </ItemGroup>
       ) : null}
 
       {adding ? (
@@ -181,9 +169,11 @@ export function SourcesView({
           defaultCoordinator={defaultCoordinator}
           saving={saving === "new"}
           onCancel={() => setAdding(false)}
-          onSave={(input) => {
-            onSave?.(input);
+          onSave={async (input) => {
+            const failed = await onSave?.(input);
+            if (typeof failed === "string") return failed;
             setAdding(false);
+            return null;
           }}
         />
       ) : canEdit && coordinators.length > 0 ? (
@@ -245,7 +235,7 @@ function SourceRow({
   source: IntakeSource;
   locked: boolean;
   saving: boolean;
-  onSave?: (input: SaveSourceInput) => void;
+  onSave?: (input: SaveSourceInput) => unknown;
   onDelete: () => void;
 }) {
   const t = useT();
@@ -260,30 +250,95 @@ function SourceRow({
       setAllow(shown);
       return;
     }
-    onSave?.(sourceInput(source, { allow: next }));
+    void onSave?.(sourceInput(source, { allow: next }));
   };
   const { stats } = source;
 
   return (
-    <TableRow data-slot="source-row" data-source-id={source.id}>
-      <TableCell className="max-w-40 truncate" title={source.repo}>
-        {source.repo}
-      </TableCell>
-      <TableCell>
-        <div className="flex gap-1">
+    <Item
+      size="xs"
+      variant="outline"
+      className="px-2"
+      data-slot="source-row"
+      data-source-id={source.id}
+    >
+      <ItemContent className="min-w-0">
+        <ItemTitle className="w-full min-w-0">
+          <span className="truncate" title={source.repo}>
+            {source.repo}
+          </span>
+        </ItemTitle>
+        <div className="flex flex-wrap items-center gap-1 pt-1">
           {source.kinds.map((kind) => (
             <Badge key={kind} variant="secondary" size="sm">
               {t(`coordinator.sources.kind.${kind}`)}
             </Badge>
           ))}
+          <Badge
+            variant={RULES_TONE[state]}
+            size="sm"
+            data-slot="source-rules"
+            data-state={state}
+          >
+            {t(`coordinator.sources.rules.${state}`)}
+          </Badge>
+          {state !== "confirmed" && state !== "missing" && !locked ? (
+            <Button
+              size="xs"
+              variant="outline"
+              disabled={saving}
+              data-slot="source-confirm"
+              onClick={() =>
+                void onSave?.(sourceInput(source, { confirmRules: true }))
+              }
+            >
+              {t("coordinator.sources.rules.confirm")}
+            </Button>
+          ) : null}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                className="tabular-nums"
+                data-slot="source-stats"
+              >
+                {stats.decided} · {stats.agreed} · {stats.disagreed}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {t("coordinator.sources.stats.tip")}
+            </TooltipContent>
+          </Tooltip>
         </div>
-      </TableCell>
-      <TableCell>
+      </ItemContent>
+      <ItemActions>
+        <Switch
+          size="sm"
+          aria-label={t("coordinator.sources.enabled")}
+          checked={source.enabled}
+          disabled={locked || saving}
+          onCheckedChange={(enabled) =>
+            void onSave?.(sourceInput(source, { enabled }))
+          }
+        />
+        {locked ? null : (
+          <IconButton
+            label={t("coordinator.sources.delete")}
+            disabled={saving}
+            onClick={onDelete}
+          >
+            <Trash2 />
+          </IconButton>
+        )}
+      </ItemActions>
+      <ItemFooter className="gap-1">
         <Select
           value={source.mode}
           disabled={locked || saving}
           onValueChange={(mode) =>
-            onSave?.(sourceInput(source, { mode: mode as SourceMode }))
+            void onSave?.(sourceInput(source, { mode: mode as SourceMode }))
           }
         >
           <SelectTrigger
@@ -301,11 +356,9 @@ function SourceRow({
             ))}
           </SelectContent>
         </Select>
-      </TableCell>
-      <TableCell>
         <Input
           size="sm"
-          className="min-w-32"
+          className="min-w-0 flex-1"
           aria-label={t("coordinator.sources.allow")}
           placeholder={t("coordinator.sources.allow.placeholder")}
           data-slot="source-allow"
@@ -318,71 +371,8 @@ function SourceRow({
             if (event.key === "Enter") event.currentTarget.blur();
           }}
         />
-      </TableCell>
-      <TableCell>
-        <div className="flex items-center gap-1">
-          <Badge
-            variant={RULES_TONE[state]}
-            size="sm"
-            data-slot="source-rules"
-            data-state={state}
-          >
-            {t(`coordinator.sources.rules.${state}`)}
-          </Badge>
-          {state !== "confirmed" && state !== "missing" && !locked ? (
-            <Button
-              size="xs"
-              variant="outline"
-              disabled={saving}
-              data-slot="source-confirm"
-              onClick={() =>
-                onSave?.(sourceInput(source, { confirmRules: true }))
-              }
-            >
-              {t("coordinator.sources.rules.confirm")}
-            </Button>
-          ) : null}
-        </div>
-      </TableCell>
-      <TableCell>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="xs"
-              className="tabular-nums"
-              data-slot="source-stats"
-            >
-              {stats.decided} · {stats.agreed} · {stats.disagreed}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t("coordinator.sources.stats.tip")}</TooltipContent>
-        </Tooltip>
-      </TableCell>
-      <TableCell>
-        <Switch
-          size="sm"
-          aria-label={t("coordinator.sources.enabled")}
-          checked={source.enabled}
-          disabled={locked || saving}
-          onCheckedChange={(enabled) =>
-            onSave?.(sourceInput(source, { enabled }))
-          }
-        />
-      </TableCell>
-      <TableCell>
-        {locked ? null : (
-          <IconButton
-            label={t("coordinator.sources.delete")}
-            disabled={saving}
-            onClick={onDelete}
-          >
-            <Trash2 />
-          </IconButton>
-        )}
-      </TableCell>
-    </TableRow>
+      </ItemFooter>
+    </Item>
   );
 }
 
@@ -397,7 +387,8 @@ function AddSource({
   defaultCoordinator: string | null;
   saving: boolean;
   onCancel: () => void;
-  onSave: (input: SaveSourceInput) => void;
+  /** 失败返回文案：表单保持打开、输入不丢。 */
+  onSave: (input: SaveSourceInput) => Promise<string | null>;
 }) {
   const t = useT();
   const first = coordinators.find((one) => one.nodeId === defaultCoordinator);
@@ -406,17 +397,28 @@ function AddSource({
   );
   const [repo, setRepo] = React.useState("");
   const [kinds, setKinds] = React.useState<readonly SourceKind[]>(["issue"]);
+  const [failure, setFailure] = React.useState<string | null>(null);
+  const [pending, setPending] = React.useState(false);
+  const busy = saving || pending;
   const ready = repo.trim() !== "" && kinds.length > 0 && coordinator !== "";
-  const submit = () => {
-    if (!ready) return;
-    onSave({
-      coordinatorNodeId: coordinator,
-      repo: repo.trim(),
-      kinds,
-      mode: "observe",
-      allow: [],
-      enabled: true,
-    });
+  const submit = async () => {
+    if (!ready || busy) return;
+    setPending(true);
+    setFailure(null);
+    try {
+      const failed = await onSave({
+        coordinatorNodeId: coordinator,
+        repo: repo.trim(),
+        kinds,
+        mode: "observe",
+        allow: [],
+        enabled: true,
+      });
+      // 成功时父级会卸掉这个表单。
+      setFailure(failed);
+    } finally {
+      setPending(false);
+    }
   };
 
   return (
@@ -425,13 +427,14 @@ function AddSource({
       className="flex flex-col gap-2"
       onSubmit={(event) => {
         event.preventDefault();
-        submit();
+        void submit();
       }}
     >
       <Input
         size="sm"
         aria-label={t("coordinator.sources.repo")}
         placeholder={t("coordinator.sources.repo.placeholder")}
+        aria-invalid={failure !== null || undefined}
         value={repo}
         onChange={(event) => setRepo(event.target.value)}
       />
@@ -471,8 +474,17 @@ function AddSource({
           </Select>
         ) : null}
       </div>
+      {failure !== null ? (
+        <p
+          role="alert"
+          data-slot="sources-add-error"
+          className="text-meta text-destructive"
+        >
+          {failure}
+        </p>
+      ) : null}
       <div className="flex gap-2">
-        <Button size="sm" type="submit" disabled={!ready} loading={saving}>
+        <Button size="sm" type="submit" disabled={!ready} loading={busy}>
           {t("dialog.save")}
         </Button>
         <Button size="sm" type="button" variant="ghost" onClick={onCancel}>
@@ -484,15 +496,6 @@ function AddSource({
 }
 
 /* ------------------------------- 真页面 ------------------------------- */
-
-/** 一次保存失败：core 的原话（auto 缺什么前置、仓库认不出……）原样提示。 */
-export function failureMessage(error: unknown, fallback: string): string {
-  const core = (error as { coreMessage?: unknown } | null)?.coreMessage;
-  if (typeof core === "string" && core !== "") return core;
-  return error instanceof Error && error.message !== ""
-    ? error.message
-    : fallback;
-}
 
 export function SourcesTab({
   boardId,
@@ -525,17 +528,31 @@ export function SourcesTab({
     mutationFn: (input: SaveSourceInput) => coordinatorApi.saveSource(input),
     onSuccess: reload,
     // 选择器 / 输入框显示 core 的值：失败后重读一次，把本地改动收回去。
-    onError: (error) => {
-      toast.error(failureMessage(error, t("coordinator.sources.saveFailed")));
-      reload();
-    },
+    onError: reload,
   });
   const remove = useMutation({
     mutationFn: (id: string) => coordinatorApi.deleteSource(id),
     onSuccess: reload,
     onError: (error) =>
-      toast.error(failureMessage(error, t("coordinator.sources.saveFailed"))),
+      toast.error(failureText(error, t, t("coordinator.sources.saveFailed"))),
   });
+  /** 添加失败返回文案交给表单就地显示；改已有来源失败弹 toast。 */
+  const onSave = async (input: SaveSourceInput): Promise<string | null> => {
+    try {
+      await save.mutateAsync(input);
+      return null;
+    } catch (error) {
+      const text = failureText(
+        error,
+        t,
+        t("coordinator.sources.saveFailed"),
+        input.mode === "auto",
+      );
+      if (input.id === undefined) return text;
+      toast.error(text);
+      return null;
+    }
+  };
   const saving = save.isPending ? (save.variables?.id ?? "new") : null;
 
   return (
@@ -549,7 +566,7 @@ export function SourcesTab({
       canEdit={canEdit}
       saving={saving}
       onReload={() => void sources.refetch()}
-      onSave={(input) => save.mutate(input)}
+      onSave={onSave}
       onDelete={(id) => remove.mutate(id)}
     />
   );
