@@ -832,6 +832,17 @@ describe("协调者的来源与候选（契约 §104.7）", () => {
       review: "agree",
     });
     expect(agreed.body.candidate).toMatchObject({ review: "agree" });
+    expect(
+      fixture.events
+        .map((entry) => entry.event)
+        .filter((event) => event.type === "workflow.intake"),
+    ).toEqual([
+      expect.objectContaining({
+        type: "workflow.intake",
+        boardId: fixture.boardId,
+        candidateId: ids[0],
+      }),
+    ]);
     expect((await sources()).body.sources as Record<string, unknown>[]).toEqual(
       [
         expect.objectContaining({

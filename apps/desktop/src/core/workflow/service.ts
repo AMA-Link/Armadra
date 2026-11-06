@@ -60,6 +60,7 @@ import {
   sourcesForBoard,
 } from "./intake";
 import { readRules } from "./rules";
+import { publishIntake } from "../collab/intake-fanout";
 
 /**
  * 工作流的服务层：草案存取与确认、模板 CRUD、运行的起停与关卡（契约 §15.2–
@@ -641,12 +642,15 @@ export class WorkflowService {
     if (getCandidate(this.database, candidateId) === undefined) {
       throw new DomainError(404, "candidate_not_found", "候选不存在");
     }
-    return reviewCandidate(
+    const reviewed = reviewCandidate(
       this.database,
       candidateId,
       review as Review | null,
       this.clock(),
     );
+    // 复核也推一帧（契约 §104.4）：别的页面据此重读统计。
+    publishIntake(this.database, this.options.collab()?.publish, reviewed);
+    return reviewed;
   }
 
   /* --------------------------------- 发布 --------------------------------- */
