@@ -23,6 +23,9 @@
  *     APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID
  *                                              Apple ID notarization — fallback
  *     ARMADRA_MAC_ADHOC_SIGN=1                 local rehearsal: ad-hoc `codesign -s -`
+ *     (none of the above, on CI or with CSC_IDENTITY_AUTO_DISCOVERY=false)
+ *                                              ad-hoc as well, so the bundle's
+ *                                              signature is complete (#839)
  *
  *   Windows (exactly one of)
  *     AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET
@@ -37,12 +40,21 @@
  * Can be run directly for the post-build assertions the release workflow makes:
  *
  *   node apps/desktop/scripts/signing-electron.mjs verify-mac [--dir <release dir>]
+ *   node apps/desktop/scripts/signing-electron.mjs verify-mac-packages --dir <dir of .zip/.dmg>
  *   node apps/desktop/scripts/signing-electron.mjs verify-windows [--dir <release dir>]
  *   node apps/desktop/scripts/signing-electron.mjs check-publisher --subject <certificate CN>
  */
-import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { execFileSync, spawnSync } from "node:child_process";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  statSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** The p12 certificate (base64 or a file path) electron-builder signs with. */
@@ -65,6 +77,12 @@ export const APPLE_API_ISSUER_ENV = "APPLE_API_ISSUER";
 export const ADHOC_ENV = "ARMADRA_MAC_ADHOC_SIGN";
 /** Set by CI to turn "skip" into a failure: a release must be signed. */
 export const REQUIRE_ENV = "ARMADRA_REQUIRE_SIGNED_BUNDLE";
+/** Set on every CI runner; there the keychain has no identity to discover. */
+export const CI_ENV = "CI";
+/** electron-builder's own switch for searching the keychain for an identity. */
+export const AUTO_DISCOVERY_ENV = "CSC_IDENTITY_AUTO_DISCOVERY";
+/** The bundle identifier the main `.app` is signed under (electron-builder.yml `appId`). */
+export const APP_ID = "dev.armadra.desktop";
 /** Where a *published* release's updater manifest lives; never baked into a local build. */
 export const ENDPOINTS_ENV = "ARMADRA_UPDATER_ENDPOINTS";
 
@@ -152,6 +170,22 @@ function fields(env, names) {
 
 function required(env) {
   return present(env[REQUIRE_ENV]) && env[REQUIRE_ENV] !== "0";
+}
+
+/**
+ * Whether electron-builder's keychain search can only come back empty: on a
+ * CI runner (`CI`, which GitHub Actions always sets) the keychain holds
+ * nothing unless the workflow imported a certificate, and that path sets
+ * `CSC_LINK`; `CSC_IDENTITY_AUTO_DISCOVERY=false` turns the search off.
+ * Outside both, a developer's own identity (Apple Development) is still found
+ * and used, which is what keeps a local install's keychain access stable.
+ */
+function noIdentityToDiscover(env) {
+  const ci = (env[CI_ENV] ?? "").trim().toLowerCase();
+  return (
+    (ci !== "" && ci !== "0" && ci !== "false") ||
+    (env[AUTO_DISCOVERY_ENV] ?? "").trim().toLowerCase() === "false"
+  );
 }
 
 function macPlan(env, fileExists) {
@@ -269,11 +303,34 @@ function macPlan(env, fileExists) {
         `Provide the certificate (base64 .p12) and ${CERT_PASSWORD_ENV}, or unset ${REQUIRE_ENV}.`,
     );
   }
+  if (noIdentityToDiscover(env)) {
+    // Left to itself electron-builder finds no identity here and skips
+    // signing, and the bundle keeps only the arm64 linker's signature on the
+    // renamed Electron binary: identifier `Electron`, no sealed resources, and
+    // `codesign --verify` fails (#839). The ad-hoc identity signs the whole
+    // `.app` inside-out — helpers, frameworks, unpacked addons, then the
+    // bundle as `dev.armadra.desktop` — before zip and dmg are made from it.
+    return {
+      mode: "sign",
+      reason: "adHocFallback",
+      message:
+        `${CERT_ENV} is not set and there is no keychain identity to discover, so this build is ` +
+        'signed ad-hoc (identity "-"): the signature is complete and verifiable, but not ' +
+        "notarized — Gatekeeper still warns on first launch, and updates install through the " +
+        "release key rather than Squirrel.Mac.",
+      notarize: false,
+      notarizeWith: null,
+      configOverride: { mac: { identity: "-", notarize: false } },
+      unsetEnv: [],
+    };
+  }
   return {
     mode: "skip",
     reason: "certMissing",
     message:
-      `${CERT_ENV} is not set, so this build produces an unsigned, unnotarized bundle. ` +
+      `${CERT_ENV} is not set, so this build is not notarized: electron-builder signs with a ` +
+      "keychain identity if it finds one and leaves the bundle unsigned if it does not " +
+      `(set ${AUTO_DISCOVERY_ENV}=false to sign ad-hoc instead). ` +
       "Gatekeeper will warn on first launch. To make a signed build, set " +
       `${CERT_ENV}/${CERT_PASSWORD_ENV} (and ${APPLE_API_KEY_ENV}/${APPLE_API_KEY_ID_ENV}/${APPLE_API_ISSUER_ENV}, ` +
       `or ${APPLE_ID_ENV}/${APPLE_PASSWORD_ENV}/${APPLE_TEAM_ENV}, to notarize).`,
@@ -496,6 +553,111 @@ export function verifyMacApps(
   return { checked: apps, problems };
 }
 
+/** Runs a tool; what it printed and how it exited (`null`: could not start). */
+function runTool(file, args) {
+  const result = spawnSync(file, args, {
+    encoding: "utf8",
+    stdio: "pipe",
+    timeout: 300_000,
+  });
+  return {
+    status: result.error ? null : result.status,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? String(result.error?.message ?? ""),
+  };
+}
+
+/** The `.zip` and `.dmg` files directly in `dir` — what a macOS release ships. */
+export function macPackages(dir) {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((name) => name.endsWith(".zip") || name.endsWith(".dmg"))
+    .map((name) => join(dir, name))
+    .sort();
+}
+
+/** `Identifier=` from `codesign --display --verbose=2` (which reports on stderr). */
+export function signedIdentifier(output) {
+  const match = /^Identifier=(.+)$/m.exec(output);
+  return match ? match[1].trim() : null;
+}
+
+/**
+ * Checks the `.app` exactly as a user receives it: unpacked from the final
+ * `.zip` with `ditto` (what the release-key update path and Finder both do)
+ * and read from the `.dmg` mounted read-only. Each must pass
+ * `codesign --verify --deep --strict` and carry `identifier` as its signing
+ * identifier — an app that still says `Electron` was never signed as this
+ * app, only linked (#839). A signature checked before packaging says nothing
+ * about the bytes that ship, so this runs on the packages themselves.
+ */
+export function verifyMacPackages(
+  dir,
+  { identifier = APP_ID, run = runTool, scratch = tmpdir() } = {},
+) {
+  const packages = macPackages(dir);
+  if (packages.length === 0)
+    return { checked: [], problems: [`no .zip or .dmg under ${dir}`] };
+  const problems = [];
+  const fail = (pkg, detail) => problems.push(`${basename(pkg)}: ${detail}`);
+  for (const pkg of packages) {
+    const work = mkdtempSync(join(scratch, "armadra-verify-"));
+    const dmg = pkg.endsWith(".dmg");
+    const root = join(work, dmg ? "mount" : "unzipped");
+    let mounted = false;
+    try {
+      mkdirSync(root);
+      const open = dmg
+        ? run("hdiutil", [
+            "attach",
+            "-nobrowse",
+            "-readonly",
+            "-noautoopen",
+            "-mountpoint",
+            root,
+            pkg,
+          ])
+        : run("ditto", ["-x", "-k", pkg, root]);
+      if (open.status !== 0) {
+        fail(
+          pkg,
+          `could not ${dmg ? "mount" : "unpack"}: ${open.stderr.trim()}`,
+        );
+        continue;
+      }
+      mounted = dmg;
+      const apps = readdirSync(root).filter((name) => name.endsWith(".app"));
+      if (apps.length !== 1) {
+        fail(pkg, `expected one .app, found ${apps.length}`);
+        continue;
+      }
+      const app = join(root, apps[0]);
+      const verify = run("codesign", [
+        "--verify",
+        "--deep",
+        "--strict",
+        "--verbose=2",
+        app,
+      ]);
+      if (verify.status !== 0) {
+        fail(pkg, `${apps[0]} does not verify: ${verify.stderr.trim()}`);
+        continue;
+      }
+      const display = run("codesign", ["--display", "--verbose=2", app]);
+      const found = signedIdentifier(`${display.stderr}${display.stdout}`);
+      if (found !== identifier)
+        fail(
+          pkg,
+          `${apps[0]} is signed as ${found ?? "(none)"}, not ${identifier}`,
+        );
+    } finally {
+      if (mounted) run("hdiutil", ["detach", root, "-force"]);
+      rmSync(work, { recursive: true, force: true });
+    }
+  }
+  return { checked: packages, problems };
+}
+
 /** The installers and portable executables electron-builder left in `release/`. */
 export function windowsExecutables(releaseDir) {
   if (!existsSync(releaseDir)) return [];
@@ -581,6 +743,14 @@ function main(argv) {
     for (const problem of problems) console.error(`✗ ${problem}`);
     return problems.length === 0 ? 0 : 1;
   }
+  if (command === "verify-mac-packages") {
+    const { checked, problems } = verifyMacPackages(releaseDir, {
+      identifier: flag(argv, "identifier") || APP_ID,
+    });
+    for (const file of checked) console.log(`checked ${file}`);
+    for (const problem of problems) console.error(`✗ ${problem}`);
+    return problems.length === 0 ? 0 : 1;
+  }
   if (command === "check-publisher") {
     const result = checkPublisher({
       subject: flag(argv, "subject"),
@@ -603,7 +773,7 @@ function main(argv) {
     return plan.mode === "refuse" ? 1 : 0;
   }
   console.error(
-    "usage: node apps/desktop/scripts/signing-electron.mjs <verify-mac | verify-windows | check-publisher --subject CN | plan> [--dir <release dir>]",
+    "usage: node apps/desktop/scripts/signing-electron.mjs <verify-mac | verify-mac-packages [--identifier ID] | verify-windows | check-publisher --subject CN | plan> [--dir <release dir>]",
   );
   return 2;
 }

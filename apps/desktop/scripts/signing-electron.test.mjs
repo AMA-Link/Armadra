@@ -1,11 +1,23 @@
 import { strict as assert } from "node:assert";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
+import { load } from "js-yaml";
 
 import {
   ADHOC_ENV,
+  APP_ID,
+  AUTO_DISCOVERY_ENV,
+  CI_ENV,
   APPLE_API_ISSUER_ENV,
   APPLE_API_KEY_ENV,
   APPLE_API_KEY_ID_ENV,
@@ -27,8 +39,11 @@ import {
   checkPublisher,
   configOverride,
   macApps,
+  macPackages,
+  signedIdentifier,
   signingPlan,
   verifyMacApps,
+  verifyMacPackages,
   verifyWindowsExecutables,
   windowsExecutables,
 } from "./signing-electron.mjs";
@@ -172,6 +187,42 @@ test("no certificate skips signing and turns notarization off", () => {
     JSON.stringify({ mac: { notarize: false } }),
   ]);
   assert.match(plan.message, /Gatekeeper will warn/);
+});
+
+test("no certificate where no identity can be discovered signs ad-hoc (#839)", () => {
+  for (const env of [
+    { [CI_ENV]: "true" },
+    { [CI_ENV]: "1" },
+    { [AUTO_DISCOVERY_ENV]: "false" },
+  ]) {
+    const plan = mac(env);
+    assert.equal(plan.mode, "sign", JSON.stringify(env));
+    assert.equal(plan.reason, "adHocFallback");
+    assert.equal(plan.notarize, false);
+    assert.deepEqual(plan.configOverride, {
+      mac: { identity: "-", notarize: false },
+    });
+  }
+  // A developer's machine keeps electron-builder's own keychain search.
+  assert.equal(mac({ [CI_ENV]: "false" }).mode, "skip");
+  assert.equal(mac({ [AUTO_DISCOVERY_ENV]: "true" }).mode, "skip");
+  // A certificate still wins, and a release that must be signed still refuses.
+  assert.equal(
+    mac({ [CI_ENV]: "true", ...certEnv() }).reason,
+    "certificatePresent",
+  );
+  assert.equal(
+    mac({ [CI_ENV]: "true", [REQUIRE_ENV]: "1" }).reason,
+    "certRequired",
+  );
+});
+
+test("APP_ID is electron-builder.yml's appId", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const config = load(
+    readFileSync(join(here, "..", "electron-builder.yml"), "utf8"),
+  );
+  assert.equal(APP_ID, config.appId);
 });
 
 test("a release build refuses to be unsigned", () => {
@@ -366,6 +417,138 @@ test("codesign --verify --deep --strict runs over every built .app", () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+/**
+ * A fake toolbox: `ditto` / `hdiutil attach` put `apps` into the destination,
+ * `codesign` answers from `verify` / `identifier`.
+ */
+function packageTools({
+  apps = ["Armadra.app"],
+  verify = 0,
+  identifier = APP_ID,
+} = {}) {
+  const calls = [];
+  const run = (file, args) => {
+    calls.push([file, ...args]);
+    const ok = { status: 0, stdout: "", stderr: "" };
+    if (file === "ditto" || (file === "hdiutil" && args[0] === "attach")) {
+      const dest =
+        file === "ditto" ? args[3] : args[args.indexOf("-mountpoint") + 1];
+      for (const app of apps)
+        mkdirSync(join(dest, app, "Contents"), { recursive: true });
+      return ok;
+    }
+    if (file === "codesign" && args[0] === "--verify")
+      return verify === 0
+        ? ok
+        : {
+            status: verify,
+            stdout: "",
+            stderr:
+              "code has no resources but signature indicates they must be present",
+          };
+    if (file === "codesign" && args[0] === "--display")
+      return {
+        status: 0,
+        stdout: "",
+        stderr: `Executable=/x\nIdentifier=${identifier}\nSignature=adhoc\n`,
+      };
+    return ok;
+  };
+  return { run, calls };
+}
+
+function packageDir() {
+  const dir = mkdtempSync(join(tmpdir(), "armadra-packages-"));
+  writeFileSync(join(dir, "Armadra_0.15.1_darwin-aarch64.zip"), "");
+  writeFileSync(join(dir, "Armadra_0.15.1_darwin-aarch64.dmg"), "");
+  writeFileSync(join(dir, "latest-darwin-aarch64-mac.yml"), "");
+  return dir;
+}
+
+test("the app inside the final zip and dmg must verify and carry the app's identifier", () => {
+  const dir = packageDir();
+  const scratch = mkdtempSync(join(tmpdir(), "armadra-scratch-"));
+  try {
+    assert.deepEqual(
+      macPackages(dir).map((file) => file.slice(dir.length + 1)),
+      [
+        "Armadra_0.15.1_darwin-aarch64.dmg",
+        "Armadra_0.15.1_darwin-aarch64.zip",
+      ],
+    );
+    const tools = packageTools();
+    const ok = verifyMacPackages(dir, { run: tools.run, scratch });
+    assert.deepEqual(ok.problems, []);
+    assert.equal(ok.checked.length, 2);
+    // The zip is unpacked with ditto, the dmg mounted read-only and detached again.
+    assert.ok(
+      tools.calls.some(
+        ([file, ...args]) => file === "ditto" && args[0] === "-x",
+      ),
+    );
+    const attach = tools.calls.find(
+      ([file, verb]) => file === "hdiutil" && verb === "attach",
+    );
+    assert.ok(attach.includes("-readonly"));
+    assert.ok(
+      tools.calls.some(
+        ([file, verb]) => file === "hdiutil" && verb === "detach",
+      ),
+    );
+    assert.equal(
+      tools.calls.filter(
+        ([file, verb]) => file === "codesign" && verb === "--verify",
+      ).length,
+      2,
+    );
+    for (const call of tools.calls.filter(([, verb]) => verb === "--verify"))
+      assert.deepEqual(call.slice(1, 4), ["--verify", "--deep", "--strict"]);
+    // Nothing is left behind in the scratch directory.
+    assert.deepEqual(readdirSync(scratch), []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+test("a linker-only signature or the Electron identifier fails the package check", () => {
+  const dir = packageDir();
+  try {
+    const broken = verifyMacPackages(dir, {
+      run: packageTools({ verify: 1 }).run,
+    });
+    assert.equal(broken.problems.length, 2);
+    assert.match(broken.problems[0], /has no resources/);
+    const electron = verifyMacPackages(dir, {
+      run: packageTools({ identifier: "Electron" }).run,
+    });
+    assert.match(
+      electron.problems[0],
+      /signed as Electron, not dev\.armadra\.desktop/,
+    );
+    const none = verifyMacPackages(dir, {
+      run: packageTools({ apps: [] }).run,
+    });
+    assert.match(none.problems[0], /expected one \.app, found 0/);
+    assert.match(
+      verifyMacPackages(join(dir, "none")).problems[0],
+      /no \.zip or \.dmg/,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("signedIdentifier reads codesign's Identifier line", () => {
+  assert.equal(
+    signedIdentifier(
+      "Executable=/a\nIdentifier=dev.armadra.desktop\nFormat=app",
+    ),
+    "dev.armadra.desktop",
+  );
+  assert.equal(signedIdentifier("code object is not signed at all"), null);
 });
 
 test("every installer and the unpacked app must report Authenticode Valid", () => {
