@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { intakeCandidateSchema, intakeSourceSchema } from "./api";
 import { dispatchTaskSchema } from "./api";
 
 /**
@@ -47,5 +48,43 @@ describe("dispatchTaskSchema", () => {
       dispatchTaskSchema.parse({ ...ROW, reply: { ...reply, purpose: "chat" } })
         .reply,
     ).toBeNull();
+  });
+});
+
+describe("来源与候选的解析（契约 §104.7）", () => {
+  const SOURCE = {
+    id: "s1",
+    coordinatorNodeId: "lead",
+    repo: "github.com/acme/app",
+    kinds: ["issue", "mail"],
+    mode: "later",
+  };
+
+  it("drops unknown kinds, reads an unknown mode as observe and defaults the rest", () => {
+    const parsed = intakeSourceSchema.parse(SOURCE);
+    expect(parsed.kinds).toEqual(["issue"]);
+    expect(parsed.mode).toBe("observe");
+    expect(parsed.allow).toEqual([]);
+    expect(parsed.rulesPresent).toBe(false);
+    expect(parsed.stats.window).toBe(20);
+  });
+
+  it("reads a candidate with unknown verdict, mode or review as undecided", () => {
+    const parsed = intakeCandidateSchema.parse({
+      id: "c1",
+      sourceId: "s1",
+      kind: "issue",
+      repo: "r",
+      number: 3,
+      title: "t",
+      seenAt: "2026-11-06T08:00:00.000Z",
+      verdict: "maybe",
+      modeAtVerdict: "later",
+      review: "meh",
+    });
+    expect(parsed.verdict).toBeNull();
+    expect(parsed.modeAtVerdict).toBeNull();
+    expect(parsed.review).toBeNull();
+    expect(parsed.outcome).toBeNull();
   });
 });

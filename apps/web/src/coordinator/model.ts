@@ -7,7 +7,12 @@ import type {
 } from "@armadra/shared";
 
 import type { StatusTone } from "@/ui/status-pill";
-import type { DispatchTask } from "./api";
+import {
+  INTAKE_PAGE_SIZE,
+  type IntakeSource,
+  type SaveSourceInput,
+  type DispatchTask,
+} from "./api";
 
 /**
  * 分派抽屉的数据（设计系统 §5.4）：一个协调者、它分派出去的成员、汇总便签。
@@ -287,4 +292,88 @@ export function memberCount(
     states: {},
     now: 0,
   }).members.length;
+}
+
+/* ----------------------- 来源与候选（契约 §104.7） ----------------------- */
+
+/** 规则文件对人确认过的那一份：已确认 / 已变更 / 还没确认 / 缺失。 */
+export type RulesState = "confirmed" | "changed" | "unconfirmed" | "missing";
+
+export function rulesState(
+  source: Pick<IntakeSource, "rulesPresent" | "rulesHash" | "rulesCurrentHash">,
+): RulesState {
+  if (!source.rulesPresent) return "missing";
+  if (source.rulesHash === "") return "unconfirmed";
+  return source.rulesHash === source.rulesCurrentHash ? "confirmed" : "changed";
+}
+
+/** 允许名单输入框的文字 → 登录名列表：逗号、空白分隔，去掉 `@` 与重复。 */
+export function parseAllow(text: string): string[] {
+  const seen = new Set<string>();
+  for (const part of text.split(/[\s,\uff0c]+/)) {
+    const login = part.replace(/^@/, "").trim();
+    if (login !== "") seen.add(login);
+  }
+  return [...seen];
+}
+
+/** 一个来源改一两项之后的保存入参（其余照旧）。 */
+export function sourceInput(
+  source: IntakeSource,
+  patch: Partial<Omit<SaveSourceInput, "id" | "coordinatorNodeId">> = {},
+): SaveSourceInput {
+  return {
+    id: source.id,
+    coordinatorNodeId: source.coordinatorNodeId,
+    repo: source.repo,
+    kinds: source.kinds,
+    mode: source.mode,
+    allow: source.allow,
+    enabled: source.enabled,
+    ...patch,
+  };
+}
+
+export interface CoordinatorOption {
+  readonly nodeId: string;
+  readonly title: string;
+}
+
+/** 这块画板上的协调者（ama 终端节点）。 */
+export function coordinatorsOf(
+  nodes: readonly CanvasNode[],
+): CoordinatorOption[] {
+  return nodes
+    .filter(
+      (node) => node.data.kind === "terminal" && node.data.agent?.id === "ama",
+    )
+    .map((node) => ({ nodeId: node.id, title: node.title }));
+}
+
+/** 候选的结果列：派发了、被拒了（带原因码）或还没有。 */
+export function outcomeOf(
+  outcome: string | null,
+):
+  | { readonly kind: "dispatched" }
+  | { readonly kind: "refused"; readonly code: string }
+  | null {
+  if (outcome === "dispatched") return { kind: "dispatched" };
+  if (outcome !== null && outcome.startsWith("refused:")) {
+    return { kind: "refused", code: outcome.slice("refused:".length) };
+  }
+  return null;
+}
+
+/** 候选总数 → 页数（至少一页）。 */
+export function pageCount(total: number): number {
+  return Math.max(1, Math.ceil(total / INTAKE_PAGE_SIZE));
+}
+
+/** 工作项（任务）→ 成员节点，用来从「已派发」定位到画布上的节点。 */
+export function nodeOfItem(
+  tasks: readonly DispatchTask[],
+  itemId: string | null,
+): string | undefined {
+  if (itemId === null) return undefined;
+  return tasks.find((task) => task.taskId === itemId)?.nodeId;
 }

@@ -7,7 +7,7 @@ import {
   workItemReportSchema,
 } from "@armadra/shared";
 
-import { clientFor } from "@/api/client";
+import { clientFor, errorCode } from "@/api/client";
 
 /**
  * 分派抽屉的调用面（契约 §15.7、§43.3）：协调者在这块画板上分派出去的任务，与失败行
@@ -55,10 +55,129 @@ const tasksSchema = z.object({ tasks: z.array(dispatchTaskSchema) });
 const taskSchema = z.object({ task: dispatchTaskSchema });
 const readSchema = z.object({ read: z.number() });
 
+/* ----------------------- 来源与候选（契约 §104.7） ----------------------- */
+
+export const SOURCE_KINDS = ["issue", "pull"] as const;
+export type SourceKind = (typeof SOURCE_KINDS)[number];
+export const SOURCE_MODES = ["observe", "auto"] as const;
+export type SourceMode = (typeof SOURCE_MODES)[number];
+export const REVIEWS = ["agree", "disagree"] as const;
+export type Review = (typeof REVIEWS)[number];
+/** 候选一页的条数。 */
+export const INTAKE_PAGE_SIZE = 20;
+
+const NO_STATS = {
+  decided: 0,
+  accepted: 0,
+  agreed: 0,
+  disagreed: 0,
+  window: 20,
+};
+
+export const intakeSourceSchema = z.object({
+  id: z.string(),
+  coordinatorNodeId: z.string(),
+  repo: z.string(),
+  // 更新的 core 多出来的种类与模式：丢掉 / 当作观察，不让整张列表解析失败。
+  kinds: z
+    .array(z.string())
+    .transform((list) =>
+      list.filter((kind): kind is SourceKind =>
+        (SOURCE_KINDS as readonly string[]).includes(kind),
+      ),
+    ),
+  mode: z.enum(SOURCE_MODES).catch("observe"),
+  allow: z.array(z.string()).default([]),
+  enabled: z.boolean().default(true),
+  rulesHash: z.string().default(""),
+  rulesCurrentHash: z.string().default(""),
+  rulesPresent: z.boolean().default(false),
+  stats: z
+    .object({
+      decided: z.number(),
+      accepted: z.number(),
+      agreed: z.number(),
+      disagreed: z.number(),
+      window: z.number(),
+    })
+    .default(NO_STATS)
+    .catch(NO_STATS),
+});
+
+export type IntakeSource = z.infer<typeof intakeSourceSchema>;
+
+export const intakeCandidateSchema = z.object({
+  id: z.string(),
+  sourceId: z.string(),
+  kind: z.enum(SOURCE_KINDS).catch("issue"),
+  repo: z.string(),
+  number: z.number(),
+  title: z.string(),
+  author: z.string().nullable().default(null),
+  url: z.string().default(""),
+  authorized: z.boolean().default(false),
+  seenAt: z.string(),
+  verdict: z.enum(["accept", "skip"]).nullable().default(null).catch(null),
+  reason: z.string().nullable().default(null),
+  verdictAt: z.string().nullable().default(null),
+  modeAtVerdict: z.enum(SOURCE_MODES).nullable().default(null).catch(null),
+  review: z.enum(REVIEWS).nullable().default(null).catch(null),
+  itemId: z.string().nullable().default(null),
+  outcome: z.string().nullable().default(null),
+});
+
+export type IntakeCandidate = z.infer<typeof intakeCandidateSchema>;
+
+const sourcesSchema = z.object({ sources: z.array(intakeSourceSchema) });
+const sourceSchema = z.object({ source: intakeSourceSchema });
+const intakeSchema = z.object({
+  candidates: z.array(intakeCandidateSchema),
+  total: z.number(),
+  next: z.number().nullable().default(null),
+});
+const candidateSchema = z.object({ candidate: intakeCandidateSchema });
+const deletedSchema = z.object({ deleted: z.boolean() });
+
+export interface IntakePage {
+  readonly candidates: IntakeCandidate[];
+  readonly total: number;
+  readonly next: number | null;
+}
+
+export interface SaveSourceInput {
+  readonly id?: string;
+  readonly coordinatorNodeId: string;
+  /** 网页地址或 `<主机>/<owner>/<名字>`。 */
+  readonly repo: string;
+  readonly kinds: readonly SourceKind[];
+  readonly mode: SourceMode;
+  readonly allow: readonly string[];
+  readonly enabled: boolean;
+  readonly confirmRules?: boolean;
+}
+
+/** 旧 core 没有这几条 procedure：答 `not_found`，当作没有来源与候选。 */
+async function orEmpty<T>(call: () => Promise<T>, empty: T): Promise<T> {
+  try {
+    return await call();
+  } catch (error) {
+    if (errorCode(error) === "not_found") return empty;
+    throw error;
+  }
+}
+
 export const coordinatorKeys = {
   /** 挂在 `workflow` 之下：`workflow.*` 帧整组重读时它跟着重读。 */
   tasks: (boardId: string) =>
     [...srcPrefix(), "workflow", "tasks", boardId] as const,
+  /** 来源与候选与 `tasks` 同前缀；`workflow.intake` 帧重读这两组。 */
+  sources: (boardId: string) =>
+    [...srcPrefix(), "workflow", "sources", boardId] as const,
+  intake: (boardId: string, decided: boolean, page: number) =>
+    [...srcPrefix(), "workflow", "intake", boardId, decided, page] as const,
+  /** 候选的整组（任意过滤与页码）。 */
+  intakeAll: (boardId: string) =>
+    [...srcPrefix(), "workflow", "intake", boardId] as const,
 };
 
 export const coordinatorApi = {
@@ -74,4 +193,51 @@ export const coordinatorApi = {
   retry: async (taskId: string, source = activeSource()) =>
     taskSchema.parse(await clientFor(source).coordinator.retry({ taskId }))
       .task,
+  sources: async (boardId: string, source = activeSource()) =>
+    (
+      await orEmpty(
+        async () =>
+          sourcesSchema.parse(
+            await clientFor(source).coordinator.sources({ boardId }),
+          ),
+        { sources: [] as IntakeSource[] },
+      )
+    ).sources,
+  saveSource: async (input: SaveSourceInput, source = activeSource()) =>
+    sourceSchema.parse(
+      await clientFor(source).coordinator.saveSource({
+        ...input,
+        kinds: [...input.kinds],
+        allow: [...input.allow],
+      }),
+    ).source,
+  deleteSource: async (id: string, source = activeSource()) =>
+    deletedSchema.parse(
+      await clientFor(source).coordinator.deleteSource({ id }),
+    ).deleted,
+  intake: async (
+    boardId: string,
+    page: { decided: boolean; offset: number },
+    source = activeSource(),
+  ): Promise<IntakePage> =>
+    orEmpty(
+      async () =>
+        intakeSchema.parse(
+          await clientFor(source).coordinator.intake({
+            boardId,
+            decided: page.decided,
+            offset: page.offset,
+            limit: INTAKE_PAGE_SIZE,
+          }),
+        ),
+      { candidates: [], total: 0, next: null },
+    ),
+  reviewIntake: async (
+    candidateId: string,
+    review: Review | null,
+    source = activeSource(),
+  ) =>
+    candidateSchema.parse(
+      await clientFor(source).coordinator.reviewIntake({ candidateId, review }),
+    ).candidate,
 };
