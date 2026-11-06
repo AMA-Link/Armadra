@@ -53,6 +53,7 @@ export const ARMADRA_MCP_TOOLS = [
   "canvas_items",
   "canvas_events",
   "canvas_notify",
+  "canvas_intake",
   "context_list",
   "context_summary",
   "context_transcript",

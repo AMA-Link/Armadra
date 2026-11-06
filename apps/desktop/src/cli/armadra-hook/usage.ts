@@ -54,15 +54,18 @@ export const CANVAS_USAGE = `CANVAS:
                                       [--after-turn current|next] [--ttl MIN]
                                       [--worktree NAME_OR_PATH] [--cwd DIR]
                                       [--resume SESSION_ID] [--origin TEXT]
+                                      [--candidate ID]
                                       open an agent
                                       node, link it, and give it a first task
                                       once it reports idle; --worktree puts it
                                       in that checkout's Frame (created if
                                       missing); --cwd starts it in a directory
                                       inside the workspace; --resume continues
-                                      that CLI's own session
+                                      that CLI's own session; --candidate
+                                      dispatches an accepted intake candidate
+                                      (auto sources only, not with --origin)
   team --member "AGENT[@MODEL]|TITLE|TASK[|worktree=DIR][|cwd=DIR][|resume=ID]"...
-       [--chain] [--gather "AGENT|TITLE|TASK"] [--after ID] [--cwd DIR]
+       [--chain] [--gather "AGENT|TITLE|TASK"] [--after ID] [--cwd DIR] [--candidate ID]
                                       open up to 6 agents at once; --chain
                                       makes each wait for the previous one,
                                       --gather adds one that waits for all;
@@ -100,6 +103,13 @@ export const CANVAS_USAGE = `CANVAS:
                                       (reason <= 100 chars, once per item)
   events [--limit N]                   read the coordinator's unacknowledged events
                                       (oldest first, default 20, max 50)
+  intake [--limit N]                   coordinator only: undecided candidates from
+                                      your sources (oldest first)
+  intake --candidate ID [--verdict accept|skip --reason TEXT]
+                                      read the rules and the thread, or decide
+                                      once (reason <= 100 chars; deciding
+                                      acknowledges the event)
+  intake --rules                       read the person's intake rules only
   notify --purpose answer|result|attention --item ID --text TEXT
          [--followup EVENT-ID]       coordinator only: tell the person one thing
                                       (text <= 100 chars; result needs the item
