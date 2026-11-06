@@ -40,7 +40,7 @@ import { type Outcome, result } from "./outcome";
  *
  * 候选只属于它来源的协调者：别人的与不存在的同答 `404 candidate_not_found`。
  * 判定不带任何授权；能不能起工作项由 `open-agent / team --candidate` 的检查决定
- * （{@link prepareCandidate}）。正文是第三方写的资料，现读、不落库。
+ * （{@link checkCandidate}）。正文是第三方写的资料，现读、不落库。
  */
 
 /** 正文最多交给模型这么多字。 */
@@ -507,16 +507,25 @@ function refuse(
   return new Refused(status, code, message, detail);
 }
 
+/** 读好资料、还没做检查的一次接单（`--candidate` 给了才有）。 */
+export interface CandidateLoad {
+  readonly id: string;
+  readonly material: ThreadMaterial;
+}
+
+/** 正在接单的候选：同一个候选同一时刻只有一次接单在路上。 */
+const inFlight = new Set<string>();
+
 /**
- * `open-agent / team --candidate <id>` 的检查（契约 §104.5 的拒绝表，按序，第一个
- * 不满足就拒）与账本里的来源、授权。没给 `--candidate` 答 `undefined`。
+ * `--candidate` 的第一步：参数、归属（第 1 条，§104.5）与资料。资料是纯读（远端
+ * 正文与请求评论），放在检查**之前**：检查与之后建节点、落账之间不再有等待远端的
+ * 空当，并发的第二次调用读不到半截状态。没给 `--candidate` 答 `undefined`。
  */
-export async function prepareCandidate(
+export async function loadCandidate(
   context: CollabContext,
   caller: Caller,
   args: Args,
-  taskKey: string | undefined,
-): Promise<CandidateDispatch | undefined> {
+): Promise<CandidateLoad | undefined> {
   const wanted = args.value("candidate");
   if (wanted === undefined) return undefined;
   const id = args.text("candidate");
@@ -526,10 +535,44 @@ export async function prepareCandidate(
   if (args.text("origin") !== undefined) {
     throw bad("--candidate 与 --origin 只能给一个：候选自带来源。");
   }
-  const database = context.database;
-  const nowMs = nowDate(context).getTime();
   // 1. 存在、属于调用者。
   const { candidate } = ownCandidate(context, caller, id);
+  return { id, material: await readMaterial(context, candidate) };
+}
+
+/**
+ * 占住这个候选直到这次接单结束（建节点、落账或失败）。已经有一次在路上答
+ * `409 intake_dispatched`。答释放函数。
+ */
+export function holdCandidate(load: CandidateLoad | undefined): () => void {
+  if (load === undefined) return () => {};
+  if (inFlight.has(load.id)) {
+    throw new Refused(
+      409,
+      "intake_dispatched",
+      "这条候选正在接单（另一次 open-agent / team --candidate 还没结束）。",
+    );
+  }
+  inFlight.add(load.id);
+  return () => {
+    inFlight.delete(load.id);
+  };
+}
+
+/**
+ * `open-agent / team --candidate <id>` 的检查（契约 §104.5 的拒绝表，按序，第一个
+ * 不满足就拒）与账本里的来源、授权。**同步**：候选与来源此刻从库里重读，调用方
+ * 在同一段同步代码里接着查 `--task-id` 的旧行、建节点前不再等远端。
+ */
+export function checkCandidate(
+  context: CollabContext,
+  caller: Caller,
+  load: CandidateLoad,
+  taskKey: string | undefined,
+): CandidateDispatch {
+  const database = context.database;
+  const nowMs = nowDate(context).getTime();
+  const { candidate } = ownCandidate(context, caller, load.id);
   const source = getSource(database, candidate.sourceId) as IntakeSource;
   // 2. 来源启用且是 auto。
   if (!source.enabled || source.mode !== "auto") {
@@ -626,7 +669,7 @@ export async function prepareCandidate(
       `接单太多：每个来源每小时至多 ${MAX_DISPATCH_PER_HOUR} 单，每个协调者同时至多 ${MAX_RUNNING_INTAKE} 个进行中的接单工作项。`,
     );
   }
-  const material = await readMaterial(context, candidate);
+  const material = load.material;
   const parts = [EXTERNAL_MARK, threadLine(candidate)];
   if (material.request !== null) {
     parts.push(

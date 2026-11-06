@@ -70,7 +70,14 @@ import {
 } from "./worktree";
 import { newNodeView } from "./agent-driver";
 import { addLink } from "./edits";
-import { candidateTaskId, finishCandidate, prepareCandidate } from "./intake";
+import {
+  type CandidateLoad,
+  candidateTaskId,
+  checkCandidate,
+  finishCandidate,
+  holdCandidate,
+  loadCandidate,
+} from "./intake";
 import { type Outcome, result } from "./outcome";
 import { checkBody, refuse as sendRefusal } from "./send";
 import { launchRoleNode } from "../../workflow/dispatch";
@@ -240,6 +247,23 @@ export async function openAgent(
   caller: Caller,
   args: Args,
 ): Promise<Outcome> {
+  // `--candidate`（契约 §104.5）：资料先读（纯读），再占住候选直到这次结束——
+  // 同一个候选并发的第二次调用当场拒绝，不会建出第二个节点。
+  const intake = await loadCandidate(context, caller, args);
+  const release = holdCandidate(intake);
+  try {
+    return await openAgentHeld(context, caller, args, intake);
+  } finally {
+    release();
+  }
+}
+
+async function openAgentHeld(
+  context: CollabContext,
+  caller: Caller,
+  args: Args,
+  intake: CandidateLoad | undefined,
+): Promise<Outcome> {
   const agentId = requireAgent(
     context,
     args.text("agent"),
@@ -267,13 +291,10 @@ export async function openAgent(
   const after = args.list("after");
   const condition = readCondition(args);
   const ttlMinutes = readTtl(args);
-  // `--candidate`（契约 §104.5）：先过接单的八条检查；没给 `--task-id` 时工作项
-  // id 由候选定，重试也是同一个。
-  const candidateKey = args.text("candidate");
+  // 没给 `--task-id` 时接单的工作项 id 由候选定，重试也是同一个。
   const taskKey =
     readTaskId(args) ??
-    (candidateKey === undefined ? undefined : candidateTaskId(candidateKey));
-  const pickup = await prepareCandidate(context, caller, args, taskKey);
+    (intake === undefined ? undefined : candidateTaskId(intake.id));
   const cwd = await readCwd(context, caller, args, worktreeSpec);
   const rawResume = args.text("resume");
   const resume =
@@ -282,6 +303,11 @@ export async function openAgent(
       : resolveResume(context, caller, agentId, rawResume);
   // 远端工作区：成员起在执行主机上（G5-07）。
   const ssh = memberSsh(context, caller);
+  // 接单的八条检查（同步）：与下面查旧行、建节点之间不再等远端。
+  const pickup =
+    intake === undefined
+      ? undefined
+      : checkCandidate(context, caller, intake, taskKey);
   // `--task-id` 是幂等键（契约 §15.5）：同一个协调者重试同一个任务，节点还在
   // 就答回那个节点，不起第二个。
   const previous =
@@ -801,6 +827,21 @@ export async function team(
   caller: Caller,
   args: Args,
 ): Promise<Outcome> {
+  const intake = await loadCandidate(context, caller, args);
+  const release = holdCandidate(intake);
+  try {
+    return await teamHeld(context, caller, args, intake);
+  } finally {
+    release();
+  }
+}
+
+async function teamHeld(
+  context: CollabContext,
+  caller: Caller,
+  args: Args,
+  intake: CandidateLoad | undefined,
+): Promise<Outcome> {
   const specs = args.all("member");
   if (specs.length === 0) {
     throw Refusal.badRequest(
@@ -824,7 +865,11 @@ export async function team(
   const inboxWake = readInboxWake(args);
   // `--candidate`（契约 §104.5）：每个成员行带同一份来源与授权，线程绑到汇总行
   // （没有汇总节点时是第一个成员）。
-  const pickup = await prepareCandidate(context, caller, args, undefined);
+  // 检查是同步的，且候选从这里起一直被占住，建节点之前就拒掉不成立的接单。
+  const pickup =
+    intake === undefined
+      ? undefined
+      : checkCandidate(context, caller, intake, undefined);
   // 权限模式是全队一个：哪个成员的 CLI 没有这个模式，整队当场拒绝。
   const modes = roster.map((role) =>
     readPermissionMode(context, role.agentId, args),
