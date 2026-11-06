@@ -316,7 +316,15 @@ await h.run(async () => {
   const capture = async (file, width, { inViewport = false } = {}) => {
     const metrics = await page.call("Page.getLayoutMetrics");
     const contentHeight = Math.ceil(metrics.cssContentSize.height);
-    const height = Math.min(contentHeight, MAX_HEIGHT);
+    // 不越界截图时只能截到视口为止：布局没收敛或内容超过上限时按视口裁，
+    // 不让 clip 伸出视口外（那一截是空白）。
+    const height = Math.min(
+      contentHeight,
+      MAX_HEIGHT,
+      inViewport
+        ? Math.floor(metrics.cssLayoutViewport.clientHeight)
+        : Number.POSITIVE_INFINITY,
+    );
     const shot = await page.call("Page.captureScreenshot", {
       format: "png",
       captureBeyondViewport: !inViewport,
