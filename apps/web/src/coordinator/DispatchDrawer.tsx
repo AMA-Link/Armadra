@@ -35,6 +35,7 @@ import {
 import { ScrollArea } from "@/ui/scroll-area";
 import { SheetTitle } from "@/ui/sheet";
 import { SkeletonList } from "@/ui/skeletons";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
 import { StatusLine } from "@/ui/status-pill";
 import { toast } from "@/ui/toast";
 import { coordinatorApi, coordinatorKeys } from "./api";
@@ -42,7 +43,11 @@ import {
   type DispatchMember,
   type DispatchModel,
   buildDispatch,
+  coordinatorsOf,
+  nodeOfItem,
 } from "./model";
+import { IntakeTab } from "./IntakeTab";
+import { SourcesTab } from "./SourcesTab";
 import { closeDispatchDrawer, useDispatchTarget } from "./store";
 
 /**
@@ -397,6 +402,8 @@ function revealNode(nodeId: string, focusInput = false): void {
   if (focusInput) terminalHandle(nodeId)?.focus();
 }
 
+type DrawerTab = "members" | "sources" | "intake";
+
 export function DispatchDrawer() {
   const t = useT();
   const mode = useCanvasStore((state) => state.panels.dispatch);
@@ -410,6 +417,8 @@ export function DispatchDrawer() {
   const online = useWorkspaceOnline(workspaceId);
   const client = useQueryClient();
   const open = mode === "drawer";
+  const canEdit = access.can("agent:launch", workspaceId ?? "");
+  const [tab, setTab] = React.useState<DrawerTab>("members");
 
   const tasks = useQuery({
     queryKey: coordinatorKeys.tasks(boardId ?? ""),
@@ -499,7 +508,17 @@ export function DispatchDrawer() {
         </SheetTitle>
         <IconButton
           label={t("coordinator.reload")}
-          onClick={() => void tasks.refetch()}
+          onClick={() => {
+            void tasks.refetch();
+            if (boardId) {
+              for (const queryKey of [
+                coordinatorKeys.sources(boardId),
+                coordinatorKeys.intakeAll(boardId),
+              ]) {
+                void client.invalidateQueries({ queryKey });
+              }
+            }
+          }}
         >
           <RotateCw />
         </IconButton>
@@ -510,24 +529,67 @@ export function DispatchDrawer() {
           <X />
         </IconButton>
       </div>
-      <ScrollArea className="min-h-0 flex-1">
-        <DispatchView
-          model={model}
-          tree={tree}
-          loading={tasks.isPending && tasks.fetchStatus !== "idle"}
-          error={tasks.isError}
-          offline={!online}
-          canRetry={access.can("agent:launch", workspaceId ?? "")}
-          retrying={retry.isPending ? (retry.variables ?? null) : null}
-          fresh={fresh}
-          onReload={() => void tasks.refetch()}
-          onRetry={(taskId) => retry.mutate(taskId)}
-          onOpen={(nodeId) => revealNode(nodeId)}
-          onFocusLead={() => {
-            if (coordinatorId) revealNode(coordinatorId, true);
-          }}
-        />
-      </ScrollArea>
+      <Tabs
+        value={tab}
+        onValueChange={(next) => setTab(next as DrawerTab)}
+        className="min-h-0 flex-1 gap-0"
+      >
+        <TabsList variant="line" className="mx-3 mt-2 shrink-0">
+          <TabsTrigger value="members">
+            {t("coordinator.tab.members")}
+          </TabsTrigger>
+          <TabsTrigger value="sources">
+            {t("coordinator.tab.sources")}
+          </TabsTrigger>
+          <TabsTrigger value="intake">
+            {t("coordinator.tab.intake")}
+          </TabsTrigger>
+        </TabsList>
+        <ScrollArea className="min-h-0 flex-1">
+          <TabsContent value="members">
+            <DispatchView
+              model={model}
+              tree={tree}
+              loading={tasks.isPending && tasks.fetchStatus !== "idle"}
+              error={tasks.isError}
+              offline={!online}
+              canRetry={canEdit}
+              retrying={retry.isPending ? (retry.variables ?? null) : null}
+              fresh={fresh}
+              onReload={() => void tasks.refetch()}
+              onRetry={(taskId) => retry.mutate(taskId)}
+              onOpen={(nodeId) => revealNode(nodeId)}
+              onFocusLead={() => {
+                if (coordinatorId) revealNode(coordinatorId, true);
+              }}
+            />
+          </TabsContent>
+          <TabsContent value="sources">
+            {boardId ? (
+              <SourcesTab
+                boardId={boardId}
+                coordinators={coordinatorsOf(document?.nodes ?? [])}
+                defaultCoordinator={coordinatorId}
+                offline={!online}
+                canEdit={canEdit}
+                active={open && tab === "sources"}
+              />
+            ) : null}
+          </TabsContent>
+          <TabsContent value="intake">
+            {boardId ? (
+              <IntakeTab
+                boardId={boardId}
+                offline={!online}
+                canEdit={canEdit}
+                active={open && tab === "intake"}
+                nodeOf={(itemId) => nodeOfItem(tasks.data ?? [], itemId)}
+                onOpenNode={(nodeId) => revealNode(nodeId)}
+              />
+            ) : null}
+          </TabsContent>
+        </ScrollArea>
+      </Tabs>
     </WorkPanelSheet>
   );
 }

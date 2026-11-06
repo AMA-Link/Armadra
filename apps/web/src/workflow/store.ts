@@ -103,6 +103,15 @@ export function useWorkflowEvents(): void {
             queryKey: [...workflowKeys.all, "tasks"],
           }),
       ),
+      // 协调者的来源与候选（契约 §104.7）：两个 Tab 的查询键都挂在 `workflow` 下。
+      onWorkspaceEvent("workflow.intake", () => {
+        void client.invalidateQueries({
+          queryKey: [...workflowKeys.all, "sources"],
+        });
+        void client.invalidateQueries({
+          queryKey: [...workflowKeys.all, "intake"],
+        });
+      }),
     ];
     return () => offs.forEach((off) => off());
   }, [client]);
