@@ -31,6 +31,7 @@ import {
   type ForgeChecks,
   type ForgeConversation,
   type ForgeConversationItem,
+  type ForgeThreadKind,
   type ForgeError,
   type ForgeFile,
   type ForgeFileStatus,
@@ -493,7 +494,11 @@ export class GithubForge implements Forge {
     });
   }
 
-  conversation(repo: ForgeRepo, number: number): Promise<ForgeConversation> {
+  conversation(
+    repo: ForgeRepo,
+    number: number,
+    kind: ForgeThreadKind = "pull",
+  ): Promise<ForgeConversation> {
     return this.run(async () => {
       const { client, ref } = this.target(repo);
       const index = numbered(number);
@@ -523,8 +528,13 @@ export class GithubForge implements Forge {
       };
       const items = [
         ...(await read(`issues/${index}/comments`, "c")),
-        ...(await read(`pulls/${index}/comments`, "r")),
-        ...(await read(`pulls/${index}/reviews`, "v")),
+        // issue 没有行内评论与评审。
+        ...(kind === "issue"
+          ? []
+          : [
+              ...(await read(`pulls/${index}/comments`, "r")),
+              ...(await read(`pulls/${index}/reviews`, "v")),
+            ]),
       ].sort((a, b) => a.createdAtMs - b.createdAtMs);
       return {
         items,

@@ -4,7 +4,7 @@ import { finishTask, recordTaskStart, taskRun } from "./task-runs";
 import {
   MAX_THREADS,
   POLL_RETENTION_MS,
-  bindPull,
+  bindThread,
   botRounds,
   pollableItems,
   recordThreadEvent,
@@ -17,6 +17,7 @@ import {
 let fixture: AgentFixture;
 
 const PULL = {
+  kind: "pull" as const,
   repo: "github.com/acme/app",
   number: 7,
   own: true,
@@ -38,26 +39,26 @@ beforeEach(() => {
 });
 afterEach(() => fixture.close());
 
-describe("bindPull", () => {
+describe("bindThread", () => {
   it("writes one thread with the bind time and reads it back", () => {
     start();
     expect(taskRun(fixture.database, "t1")!.threads).toEqual([]);
-    const bound = bindPull(fixture.database, "t1", PULL, 5_000);
+    const bound = bindThread(fixture.database, "t1", PULL, 5_000);
     expect(bound.kind).toBe("bound");
     expect(taskRun(fixture.database, "t1")!.threads).toEqual([
-      { kind: "pull", ...PULL, boundAt: 5_000 },
+      { ...PULL, boundAt: 5_000 },
     ]);
   });
 
   it("binds the same pull once; own only ever goes up", () => {
     start();
-    bindPull(fixture.database, "t1", { ...PULL, own: false }, 5_000);
+    bindThread(fixture.database, "t1", { ...PULL, own: false }, 5_000);
     expect(
-      bindPull(fixture.database, "t1", { ...PULL, own: false }, 6_000).kind,
+      bindThread(fixture.database, "t1", { ...PULL, own: false }, 6_000).kind,
     ).toBe("unchanged");
-    expect(bindPull(fixture.database, "t1", PULL, 7_000).kind).toBe("bound");
+    expect(bindThread(fixture.database, "t1", PULL, 7_000).kind).toBe("bound");
     expect(
-      bindPull(fixture.database, "t1", { ...PULL, own: false }, 8_000).kind,
+      bindThread(fixture.database, "t1", { ...PULL, own: false }, 8_000).kind,
     ).toBe("unchanged");
     const threads = taskRun(fixture.database, "t1")!.threads;
     expect(threads).toHaveLength(1);
@@ -67,10 +68,10 @@ describe("bindPull", () => {
   it("caps the number of threads", () => {
     start();
     for (let number = 1; number <= MAX_THREADS; number += 1) {
-      bindPull(fixture.database, "t1", { ...PULL, number }, 1);
+      bindThread(fixture.database, "t1", { ...PULL, number }, 1);
     }
     expect(
-      bindPull(fixture.database, "t1", { ...PULL, number: 99 }, 1).kind,
+      bindThread(fixture.database, "t1", { ...PULL, number: 99 }, 1).kind,
     ).toBe("full");
   });
 
@@ -114,14 +115,14 @@ describe("thread events", () => {
 
   it("starts the cursor at the bind time and follows the latest comment or review", () => {
     start();
-    bindPull(fixture.database, "t1", PULL, 5_000);
+    bindThread(fixture.database, "t1", PULL, 5_000);
     const bound = taskRun(fixture.database, "t1")!.threads[0]!;
     expect(threadCursor(fixture.database, "t1", bound)).toBe(5_000);
     recordThreadEvent(
       fixture.database,
       {
         itemId: "t1",
-        eventId: "a",
+        eventId: "pr-comment:x#7:ca",
         thread,
         kind: "comment",
         delivered: true,
@@ -134,7 +135,7 @@ describe("thread events", () => {
       fixture.database,
       {
         itemId: "t1",
-        eventId: "b",
+        eventId: "pr-checks:x#7:b",
         thread,
         kind: "checks",
         delivered: true,
@@ -157,7 +158,7 @@ describe("thread events", () => {
         fixture.database,
         {
           itemId: "t1",
-          eventId: id,
+          eventId: `pr-comment:x#7:c${id}`,
           thread,
           kind: "comment",
           actor,
@@ -208,7 +209,7 @@ describe("thread events", () => {
       fixture.database,
       {
         itemId: "t1",
-        eventId: "a",
+        eventId: "pr-comment:x#7:ca",
         thread,
         kind: "comment",
         delivered: true,
@@ -227,15 +228,71 @@ describe("thread events", () => {
   });
 });
 
+describe("issue threads", () => {
+  const ISSUE = {
+    kind: "issue" as const,
+    repo: "github.com/acme/app",
+    number: 7,
+    own: true,
+    url: "https://github.com/acme/app/issues/7",
+  };
+
+  it("binds an issue apart from a pull with the same number, never as own", () => {
+    start();
+    expect(bindThread(fixture.database, "t1", PULL, 1).kind).toBe("bound");
+    expect(bindThread(fixture.database, "t1", ISSUE, 2).kind).toBe("bound");
+    expect(bindThread(fixture.database, "t1", ISSUE, 3).kind).toBe("unchanged");
+    expect(taskRun(fixture.database, "t1")!.threads).toEqual([
+      { ...PULL, boundAt: 1 },
+      { ...ISSUE, own: false, boundAt: 2 },
+    ]);
+  });
+
+  it("keeps the cursor and the outcome of an issue apart from the pull", () => {
+    start();
+    bindThread(fixture.database, "t1", PULL, 1);
+    bindThread(fixture.database, "t1", ISSUE, 1);
+    const [pull, issue] = taskRun(fixture.database, "t1")!.threads;
+    recordThreadEvent(
+      fixture.database,
+      {
+        itemId: "t1",
+        eventId: "issue-comment:github.com/acme/app#7:c5",
+        thread: issue!,
+        kind: "comment",
+        delivered: true,
+        sourceAt: 50,
+      },
+      50,
+    );
+    recordThreadEvent(
+      fixture.database,
+      {
+        itemId: "t1",
+        eventId: "issue-state:github.com/acme/app#7:closed",
+        thread: issue!,
+        kind: "state",
+        delivered: true,
+        sourceAt: 60,
+      },
+      60,
+    );
+    expect(threadCursor(fixture.database, "t1", issue!)).toBe(50);
+    expect(threadCursor(fixture.database, "t1", pull!)).toBe(1);
+    expect(threadOutcome(fixture.database, "t1", issue!)).toBe("closed");
+    expect(threadOutcome(fixture.database, "t1", pull!)).toBeNull();
+  });
+});
+
 describe("pollableItems", () => {
   it("lists running items with threads, and ended ones for 14 days", () => {
     start("live");
-    bindPull(fixture.database, "live", PULL, 1);
+    bindThread(fixture.database, "live", PULL, 1);
     start("done-fresh");
-    bindPull(fixture.database, "done-fresh", { ...PULL, number: 8 }, 1);
+    bindThread(fixture.database, "done-fresh", { ...PULL, number: 8 }, 1);
     finishTask(fixture.database, "done-fresh", "done", null, 1_000_000);
     start("done-old");
-    bindPull(fixture.database, "done-old", { ...PULL, number: 9 }, 1);
+    bindThread(fixture.database, "done-old", { ...PULL, number: 9 }, 1);
     finishTask(fixture.database, "done-old", "done", null, 1_000);
     start("unbound");
     const now = 1_000_000 + POLL_RETENTION_MS - 1;

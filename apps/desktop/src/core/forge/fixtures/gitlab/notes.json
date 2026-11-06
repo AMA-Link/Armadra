@@ -1,5 +1,5 @@
 {
-  "$comment": "按 GitLab REST v4（17.x）的答复形状整理的回放夹具：备注（评论）与系统备注混在一起，系统备注要被丢掉。主机名、编号与时间换成了虚构值。",
+  "$comment": "按 GitLab REST v4（17.x）的答复形状整理的回放夹具：备注（评论）与系统备注混在一起，系统备注要被丢掉。主机名、编号与时间换成了虚构值。issue 的备注走 `/issues/<iid>/notes`，链接由 issue 地址拼出。",
   "apiBase": "https://gitlab.example.test/api/v4",
   "interactions": [
     {
@@ -51,6 +51,76 @@
             "system": false,
             "created_at": "2026-10-02T12:06:00.000Z",
             "noteable_iid": 12
+          }
+        ]
+      }
+    },
+    {
+      "name": "issue-7",
+      "request": {
+        "method": "GET",
+        "path": "/projects/acme%2Fapp/issues/7"
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json"
+        },
+        "body": {
+          "id": 1007,
+          "iid": 7,
+          "project_id": 42,
+          "title": "登录页按钮错位",
+          "description": "复现步骤见附件",
+          "state": "opened",
+          "author": {
+            "username": "alice"
+          },
+          "web_url": "https://gitlab.example.test/acme/app/-/issues/7",
+          "created_at": "2026-09-20T08:00:00.000Z",
+          "updated_at": "2026-10-01T09:30:00.000Z",
+          "closed_at": null,
+          "labels": ["bug"]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "path": "/projects/acme%2Fapp/issues/7/notes",
+        "query": {
+          "sort": "asc"
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json",
+          "x-page": "1",
+          "x-next-page": ""
+        },
+        "body": [
+          {
+            "id": 9101,
+            "type": null,
+            "body": "changed the description",
+            "author": {
+              "username": "alice"
+            },
+            "system": true,
+            "created_at": "2026-10-03T08:00:00.000Z",
+            "noteable_iid": 7
+          },
+          {
+            "id": 9102,
+            "type": null,
+            "body": "能接这个吗",
+            "author": {
+              "username": "dave"
+            },
+            "system": false,
+            "created_at": "2026-10-03T08:05:00.000Z",
+            "noteable_iid": 7
           }
         ]
       }

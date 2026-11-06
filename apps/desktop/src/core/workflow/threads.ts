@@ -1,6 +1,11 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { ForgeConversationItem } from "../forge/types";
-import { type PullThread, type TaskRun, taskRun } from "./task-runs";
+import {
+  type Thread,
+  type ThreadKind,
+  type TaskRun,
+  taskRun,
+} from "./task-runs";
 
 /**
  * 工作项绑定的外部线程（契约 §103，#705）：绑定的读写，和轮询读到的事件的账
@@ -41,8 +46,22 @@ export interface PullBatch {
 }
 
 /** 线程的显示名与事件 id 里的写法：`<仓库>#<编号>`。 */
-export function threadKey(thread: Pick<PullThread, "repo" | "number">): string {
+export function threadKey(thread: Pick<Thread, "repo" | "number">): string {
   return `${thread.repo}#${thread.number}`;
+}
+
+/** 线程事件 id 的前缀：PR 是 `pr-`，issue 是 `issue-`（契约 §103.3）。 */
+export function eventPrefix(kind: ThreadKind): "pr" | "issue" {
+  return kind === "issue" ? "issue" : "pr";
+}
+
+type ThreadRef = Pick<Thread, "repo" | "number"> & {
+  readonly kind?: ThreadKind;
+};
+
+/** 账表里属于这个线程的事件：同一个仓库里 issue 与 PR 的编号可能重，按前缀分开。 */
+function eventLike(thread: ThreadRef): string {
+  return `${eventPrefix(thread.kind ?? "pull")}-%`;
 }
 
 export type BindResult =
@@ -51,14 +70,15 @@ export type BindResult =
   | { readonly kind: "full"; readonly run: TaskRun };
 
 /**
- * 给工作项绑一个 PR。同一个 PR（仓库 + 编号）再绑只会把 `own` 升成 `true`
- * （自己开的不会被降成只看），其余不动，所以成员每次 `report --pr` 都带着编号
- * 也不会重复。
+ * 给工作项绑一个线程（PR 或 issue）。同一个线程（种类 + 仓库 + 编号）再绑只会把
+ * PR 的 `own` 升成 `true`（自己开的不会被降成只看），其余不动，所以成员每次
+ * `report --pr` 都带着编号也不会重复。issue 不收尾，`own` 恒为 `false`。
  */
-export function bindPull(
+export function bindThread(
   database: DatabaseSync,
   taskId: string,
-  pull: {
+  bound: {
+    readonly kind: ThreadKind;
     readonly repo: string;
     readonly number: number;
     readonly own: boolean;
@@ -67,27 +87,32 @@ export function bindPull(
   nowMs: number,
 ): BindResult {
   const run = taskRun(database, taskId) as TaskRun;
+  const own = bound.kind === "pull" && bound.own;
   const existing = run.threads.find(
-    (thread) => thread.repo === pull.repo && thread.number === pull.number,
+    (thread) =>
+      thread.kind === bound.kind &&
+      thread.repo === bound.repo &&
+      thread.number === bound.number,
   );
-  let next: PullThread[];
+  let next: Thread[];
   if (existing !== undefined) {
-    if (existing.own || !pull.own) return { kind: "unchanged", run };
+    if (existing.own || !own) return { kind: "unchanged", run };
     next = run.threads.map((thread) =>
       thread === existing ? { ...thread, own: true } : thread,
-    );
+    ) as Thread[];
   } else {
     if (run.threads.length >= MAX_THREADS) return { kind: "full", run };
+    const base = {
+      repo: bound.repo,
+      number: bound.number,
+      url: bound.url,
+      boundAt: nowMs,
+    };
     next = [
       ...run.threads,
-      {
-        kind: "pull",
-        repo: pull.repo,
-        number: pull.number,
-        own: pull.own,
-        url: pull.url,
-        boundAt: nowMs,
-      },
+      bound.kind === "issue"
+        ? { kind: "issue", own: false, ...base }
+        : { kind: "pull", own, ...base },
     ];
   }
   database
@@ -99,7 +124,7 @@ export function bindPull(
 export interface NewThreadEvent {
   readonly itemId: string;
   readonly eventId: string;
-  readonly thread: Pick<PullThread, "repo" | "number">;
+  readonly thread: Pick<Thread, "repo" | "number">;
   readonly kind: ThreadEventKind;
   readonly actor?: string | null;
   readonly delivered: boolean;
@@ -135,15 +160,17 @@ export function recordThreadEvent(
 export function botRounds(
   database: DatabaseSync,
   itemId: string,
-  thread: Pick<PullThread, "repo" | "number">,
+  thread: ThreadRef,
   actor: string,
 ): number {
   const row = database
     .prepare(
       "SELECT COUNT(*) AS total FROM thread_events WHERE item_id = ? AND repo = ? AND number = ? " +
-        "AND actor = ? AND delivered = 1",
+        "AND actor = ? AND delivered = 1 AND event_id LIKE ?",
     )
-    .get(itemId, thread.repo, thread.number, actor) as { total: number };
+    .get(itemId, thread.repo, thread.number, actor, eventLike(thread)) as {
+    total: number;
+  };
   return Number(row.total);
 }
 
@@ -154,29 +181,31 @@ export function botRounds(
 export function threadCursor(
   database: DatabaseSync,
   itemId: string,
-  thread: PullThread,
+  thread: Thread,
 ): number {
   const row = database
     .prepare(
       "SELECT MAX(source_at) AS at FROM thread_events WHERE item_id = ? AND repo = ? AND number = ? " +
-        "AND kind IN ('comment','review')",
+        "AND kind IN ('comment','review') AND event_id LIKE ?",
     )
-    .get(itemId, thread.repo, thread.number) as { at: number | null };
+    .get(itemId, thread.repo, thread.number, eventLike(thread)) as {
+    at: number | null;
+  };
   return Math.max(thread.boundAt, row.at === null ? 0 : Number(row.at));
 }
 
-/** 这个线程的终态（`merged` / `closed`）；PR 还开着是 `null`。 */
+/** 这个线程的终态（`merged` / `closed`）；还开着是 `null`。 */
 export function threadOutcome(
   database: DatabaseSync,
   itemId: string,
-  thread: Pick<PullThread, "repo" | "number">,
+  thread: ThreadRef,
 ): "merged" | "closed" | null {
   const row = database
     .prepare(
       "SELECT event_id FROM thread_events WHERE item_id = ? AND repo = ? AND number = ? AND kind = 'state' " +
-        "ORDER BY source_at DESC LIMIT 1",
+        "AND event_id LIKE ? ORDER BY source_at DESC LIMIT 1",
     )
-    .get(itemId, thread.repo, thread.number) as
+    .get(itemId, thread.repo, thread.number, eventLike(thread)) as
     | { event_id?: string }
     | undefined;
   if (row?.event_id === undefined) return null;
