@@ -39,6 +39,12 @@
 //      时间与 token，断言不自己执行、对人说话只走 `notify` 且内容对。只在
 //      `--only 14` 时跑；缺 `ARMADRA_E2E_REAL=1` 或模型就记 skipped 并写原因。
 //      `--self-test` 用脚本化模型走一遍探针本身。
+//   15. 协调者主动接单（契约 §104，#830）：本地假 Gitea 出一个 issue → 协调者卡片有
+//      `intake` 行 → 脚本化模型 `canvas_intake` 读详情并判定 accept → observe 下不派
+//      发 → 人经 HTTP 切 auto 并确认规则 → `canvas_open_agent {candidate}`，工作项
+//      `mandate.basis = rule`、issue 线程已绑 → 假 forge 加评论 → 成员收到原文、协
+//      调者只多一行 `external`。自己起 core，不要登录与真模型；等 60 / 120 秒定时器，
+//      约 4–6 分钟，只在 `--only 15` 时跑。
 //   10. 六家互读（设计 cli-collaboration §8）：六种 CLI 各起一个交互式 TUI 节点
 //      连成环，下游 `context summary / transcript` 读上游、沿环 send、拒收一条
 //      排队看回执、交接 prepare → accept、会话索引与成本每家都有。没装或认证
@@ -99,6 +105,7 @@ import scenario11 from "./agent-e2e/scenario-11-coordinator.mjs";
 import scenario12 from "./agent-e2e/scenario-12-acp.mjs";
 import scenario13 from "./agent-e2e/scenario-13-timeline.mjs";
 import scenario14 from "./agent-e2e/scenario-14-dispatch-bench.mjs";
+import scenario15 from "./agent-e2e/scenario-15-intake.mjs";
 import { cliPrerequisites, planScenarios } from "./agent-e2e/preflight.mjs";
 import { homedir } from "node:os";
 
@@ -115,7 +122,7 @@ const SCENARIOS = [
 ];
 
 /** 自己起一套 core 的场景：不走 `setup()`（不要真 CLI 的登录，也不起共用页面）。 */
-const STANDALONE = new Set(["9", "11", "12", "13", "14"]);
+const STANDALONE = new Set(["9", "11", "12", "13", "14", "15"]);
 
 async function main() {
   // C 档门：要起真 CLI / 真模型的，没设开关就在起任何进程之前退出。
@@ -191,6 +198,11 @@ async function main() {
   if (only.has("14")) {
     report.safety.before ??= fingerprint();
     await scenario14();
+  }
+  // 场景 15：协调者主动接单（#830），脚本化模型 + 本地假 Gitea；要等定时器，不进缺省。
+  if (only.has("15")) {
+    report.safety.before ??= fingerprint();
+    await scenario15();
   }
   for (const [id, reason] of Object.entries(plan.skip))
     scenario(id).skip(reason);
