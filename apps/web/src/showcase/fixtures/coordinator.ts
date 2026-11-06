@@ -1,7 +1,11 @@
 import type { AgentState, CanvasNode, WorkflowDraftRow } from "@armadra/shared";
 import type { MirroredStatus } from "@/agent/status-store";
 import type { SubagentCardModel } from "@/agent/subagent-store";
-import type { DispatchTask } from "@/coordinator/api";
+import type {
+  DispatchTask,
+  IntakeCandidate,
+  IntakeSource,
+} from "@/coordinator/api";
 import { mirroredFor } from "./status";
 
 /**
@@ -212,3 +216,88 @@ export const DRAFT: WorkflowDraftRow = {
     ],
   },
 };
+
+/** 来源与候选（契约 §104.7）：一个观察中的来源、一个已确认规则的自动来源。 */
+export const INTAKE_SOURCES: IntakeSource[] = [
+  {
+    id: "src-1",
+    coordinatorNodeId: COORDINATOR_IDS.lead,
+    repo: "github.com/acme/app",
+    kinds: ["issue", "pull"],
+    mode: "observe",
+    allow: ["alice", "bob"],
+    enabled: true,
+    rulesHash: "0123456789abcdef",
+    rulesCurrentHash: "0123456789abcdef",
+    rulesPresent: true,
+    stats: { decided: 20, accepted: 18, agreed: 17, disagreed: 2, window: 20 },
+  },
+  {
+    id: "src-2",
+    coordinatorNodeId: COORDINATOR_IDS.lead,
+    repo: "git.example.com/team/docs",
+    kinds: ["issue"],
+    mode: "auto",
+    allow: ["carol"],
+    enabled: false,
+    rulesHash: "0123456789abcdef",
+    rulesCurrentHash: "fedcba9876543210",
+    rulesPresent: true,
+    stats: { decided: 3, accepted: 2, agreed: 0, disagreed: 0, window: 20 },
+  },
+];
+
+function candidate(
+  number: number,
+  patch: Partial<IntakeCandidate>,
+): IntakeCandidate {
+  return {
+    id: `intake:github.com/acme/app#${number}:issue:x`,
+    sourceId: "src-1",
+    kind: "issue",
+    repo: "github.com/acme/app",
+    number,
+    title: "",
+    author: "alice",
+    url: `https://github.com/acme/app/issues/${number}`,
+    authorized: true,
+    seenAt: AT,
+    verdict: null,
+    reason: null,
+    verdictAt: null,
+    modeAtVerdict: null,
+    review: null,
+    itemId: null,
+    outcome: null,
+    ...patch,
+  };
+}
+
+export const INTAKE_CANDIDATES: IntakeCandidate[] = [
+  candidate(41, { title: "登录页白屏" }),
+  candidate(42, {
+    title: "补充迁移说明",
+    author: "mallory",
+    authorized: false,
+    verdict: "skip",
+    reason: "不在规则范围内",
+    verdictAt: AT,
+    modeAtVerdict: "observe",
+  }),
+  candidate(43, {
+    title: "导出 CSV 乱码",
+    verdict: "accept",
+    reason: "是缺陷，有复现步骤",
+    verdictAt: AT,
+    modeAtVerdict: "observe",
+    review: "agree",
+  }),
+  candidate(44, {
+    title: "升级依赖",
+    verdict: "accept",
+    reason: "符合规则",
+    verdictAt: AT,
+    modeAtVerdict: "auto",
+    outcome: "refused:rules_changed",
+  }),
+];

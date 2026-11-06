@@ -46,6 +46,8 @@ const api = vi.hoisted(() => ({
   tasks: vi.fn(),
   retry: vi.fn(),
   readReplies: vi.fn(),
+  sources: vi.fn(),
+  intake: vi.fn(),
 }));
 
 vi.mock("./api", async (original) => ({
@@ -179,6 +181,10 @@ beforeEach(() => {
   api.retry.mockReset();
   api.readReplies.mockReset();
   api.readReplies.mockResolvedValue(0);
+  api.sources.mockReset();
+  api.intake.mockReset();
+  api.sources.mockResolvedValue([]);
+  api.intake.mockResolvedValue({ candidates: [], total: 0, next: null });
   useAgentStatusStore.setState({ statuses: {} });
   useCanvasStore.setState({
     boardId: BOARD,
@@ -734,5 +740,92 @@ describe("DispatchDrawer", () => {
     await screen.findByText("分派");
     fireEvent.click(screen.getByRole("button", { name: "关闭" }));
     expect(useCanvasStore.getState().panels.dispatch).toBe("closed");
+  });
+});
+
+describe("来源与候选两个 Tab（契约 §104.7）", () => {
+  function Events() {
+    useWorkflowEvents();
+    return null;
+  }
+  const open = () => {
+    api.tasks.mockResolvedValue(TASKS);
+    openDispatchDrawer(ID.lead);
+    render(
+      <TestProviders>
+        <Events />
+        <DispatchDrawer />
+      </TestProviders>,
+    );
+  };
+  const pick = (name: string) =>
+    fireEvent.mouseDown(screen.getByRole("tab", { name }), { button: 0 });
+
+  it("starts on the members tab and reads sources and candidates only when opened", async () => {
+    open();
+    await waitFor(() => expect(api.tasks).toHaveBeenCalled());
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "成员",
+      "来源",
+      "候选",
+    ]);
+    expect(api.sources).not.toHaveBeenCalled();
+    expect(api.intake).not.toHaveBeenCalled();
+    pick("来源");
+    await waitFor(() => expect(api.sources).toHaveBeenCalledWith(BOARD));
+    expect(api.intake).not.toHaveBeenCalled();
+    pick("候选");
+    await waitFor(() =>
+      expect(api.intake).toHaveBeenCalledWith(BOARD, {
+        decided: false,
+        offset: 0,
+      }),
+    );
+  });
+
+  it("an older core (empty answers) shows empty states, not an error", async () => {
+    open();
+    pick("来源");
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-slot="sources-empty"]'),
+      ).toBeTruthy(),
+    );
+    pick("候选");
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="intake-empty"]')).toBeTruthy(),
+    );
+    expect(document.querySelector('[data-slot="intake-error"]')).toBeNull();
+  });
+
+  it("re-reads the open tab on a workflow.intake frame and the other one when opened", async () => {
+    open();
+    pick("来源");
+    await waitFor(() => expect(api.sources).toHaveBeenCalledTimes(1));
+    act(() => {
+      dispatchWorkspaceEvent({
+        type: "workflow.intake",
+        boardId: BOARD,
+        coordinatorNodeId: ID.lead,
+        candidateId: "c1",
+        sourceId: "s1",
+      });
+    });
+    await waitFor(() => expect(api.sources).toHaveBeenCalledTimes(2));
+    // 候选页没开过，帧不会替它取；也不会动任务行。
+    expect(api.intake).not.toHaveBeenCalled();
+    expect(api.tasks).toHaveBeenCalledTimes(1);
+    pick("候选");
+    await waitFor(() => expect(api.intake).toHaveBeenCalledTimes(1));
+    act(() => {
+      dispatchWorkspaceEvent({
+        type: "workflow.intake",
+        boardId: BOARD,
+        coordinatorNodeId: ID.lead,
+        candidateId: "c2",
+        sourceId: "s1",
+      });
+    });
+    await waitFor(() => expect(api.intake).toHaveBeenCalledTimes(2));
   });
 });

@@ -18,6 +18,8 @@ import { displayOfStatus } from "@/agent/display";
 import { agentColorVar } from "@/agent/launch";
 import { edgeTypes } from "@/canvas/flow/edges/edge-types";
 import { DispatchView } from "@/coordinator/DispatchDrawer";
+import { IntakeView } from "@/coordinator/IntakeTab";
+import { SourcesView } from "@/coordinator/SourcesTab";
 import { buildDispatch } from "@/coordinator/model";
 import { NodeShell } from "@/nodes/NodeShell";
 import { Badge } from "@/ui/badge";
@@ -35,6 +37,8 @@ import {
   DISPATCH_STATES,
   DISPATCH_TASKS,
   DRAFT,
+  INTAKE_CANDIDATES,
+  INTAKE_SOURCES,
   SUMMARY_NODE,
   WORKING_STEP,
 } from "../fixtures/coordinator";
@@ -185,6 +189,29 @@ export default function CoordinatorSection() {
         <div className="min-w-0 max-w-[360px]">
           <DraftCard row={DRAFT} />
         </div>
+      </div>
+      <div className="flex min-w-0 flex-col gap-6">
+        <DrawerFrame>
+          <SourcesView
+            sources={INTAKE_SOURCES}
+            coordinators={[{ nodeId: COORDINATOR_IDS.lead, title: "ama" }]}
+          />
+        </DrawerFrame>
+        <DrawerFrame>
+          <SourcesView
+            sources={INTAKE_SOURCES}
+            coordinators={[]}
+            canEdit={false}
+          />
+        </DrawerFrame>
+        <DrawerFrame>
+          <IntakeView
+            candidates={INTAKE_CANDIDATES}
+            total={INTAKE_CANDIDATES.length}
+            filter="decided"
+            page={0}
+          />
+        </DrawerFrame>
       </div>
     </div>
   );
