@@ -5475,3 +5475,51 @@ core 的工作流域搭任务行兜底扫描（每 60 秒，§15.7）的便车�
 - **清理**：每小时一次，删掉没接单、`seen_at` 超过 90 天的候选。
 
 每条新候选写一条协调者事件（§93）：`kind: "intake"`、`id` 与候选 id 相同（超过 200 字截断）、`item_id` 与 `source_node_id` 空、`summary` 为 `候选 <issue|pull> <repo>#<n>「<标题前 60 字>」 · <作者> · <observe|auto> · <已授权|未授权>`；空闲的协调者经 `nudge` 拿到卡片（§93.2 不变）。**不投任何成员**。同时推 `workflow.intake` 帧（§15.4）。卡片里有 `intake` 行时多一句用法：先 `canvas intake --candidate <id>` 读规则和正文，再 `--verdict accept|skip --reason <一句话>` 判定；判定即确认，不用 `ack`。
+
+### 104.5 动词 `intake` 与 `open-agent / team --candidate`
+
+经 `POST /control/intake`（与 §90.3 同一道门）；`armadra-hook canvas intake`、MCP 与 ama 的 `canvas_intake` 同一份实现。调用者必须是候选所属来源的协调者，否则与不存在的同答 `404 candidate_not_found`。
+
+- **`intake`** / `intake --limit N`（1–50，缺省 20）：调用者名下没判定的候选，最早的在前。`message` 第一行是来源清单（`来源：<repo> · issue,pull · observe；…`；没有来源时说明来源只能由人配），之后每候选一行 `id · 种类 · <repo>#<n> · 标题 · 作者 · 已授权/未授权`。`result: { sources: [{ repo, kinds, mode }], candidates: [{ id, kind, repo, number, title, author, authorized, url, seenAt }], total }`。
+- **`intake --candidate <id>`**：详情，`message` 四段，顺序固定：
+  1. **规则**：`以下是人写的接单规则（哈希 \`<16 位>\`）：` + 规则正文（§104.3）；缺失时「没有规则文件：一律 skip，理由写『没有规则』」；远端工作区时写明本机读不到、只能 observe。
+  2. **候选**：id、种类、`<repo>#<n>`、标题、作者；issue 的标签，PR 的草稿 / 来自 fork / 目标分支；创建时刻、链接、模式、是否已授权与请求人；重新提起的附「请求」段（评论作者 + 前 600 字，外部资料）。
+  3. **正文**：第一行是 `EXTERNAL_MARK`（与 §103.4 同一行），之后 `body` 前 2000 字（去控制字符，超长截断并标注）；现读 `getIssue` / `getPull`，读不到写「正文读取失败（<ForgeError.kind>）」，不算整条失败。
+  4. **用法**：`--verdict accept|skip --reason <≤100 字>`；observe 写「本模式只记录，不要派发」；auto 且已授权时写 accept 之后用 `open-agent --candidate <id>`（或 `team --candidate`）起工作项；auto 未授权写不能派发。
+     `result: { candidate: { …同列表项, labels, draft, fromFork, request, mode, rulesHash, rulesPresent }, body: { text, truncated, error? } }`。
+- **`intake --candidate <id> --verdict accept|skip --reason <文本>`**：记判定。`--reason` 去控制字符、折叠空白后 1–100 字，缺省或超长 `400 bad_request`；`--verdict` 别的值 `400`；已判定过 `409 already_decided`（判定一次定死）。写入 `verdict / verdict_reason / verdict_at / rules_hash（此刻文件的哈希，缺失写空串）/ mode_at_verdict（此刻来源的模式）`，同一事务里确认同 id 的 `intake` 事件；推 `workflow.intake`。答 `result: { candidate, verdict, mode, authorized, next }`，`next` 为 `skipped`（skip）、`observed`（observe 下 accept）、`dispatch`（auto 下 accept 且已授权）、`unauthorized`（auto 下 accept 但未授权）。**判定不带任何授权**。
+- **`intake --rules`**：只答规则段，`result: { rulesHash, rulesPresent, remote, truncated }`（调用者所在工作区的规则文件）。
+
+**`open-agent --candidate <id> …`、`team --candidate <id> …`**（其余参数不变）：与 `--origin` 同给 `400 bad_request`；`open-agent` 没给 `--task-id` 时工作项 id 为 `intake-<候选 id 的 8 位短哈希>`（由候选定，重试同一个），给了照旧当幂等键。core 按序检查，第一个不满足就拒，并把原因码记进候选的 `outcome = refused:<code>`（第 1、4 条除外）、推 `workflow.intake`：
+
+| 顺序 | 条件                                                                  | 拒绝                                              |
+| ---- | --------------------------------------------------------------------- | ------------------------------------------------- |
+| 1    | 候选存在、属于调用者                                                  | `404 candidate_not_found`                         |
+| 2    | 来源 `enabled` 且 `mode = auto`                                       | `409 intake_observe`                              |
+| 3    | 候选 `verdict = accept`                                               | `409 intake_not_accepted`                         |
+| 4    | 候选还没接单（同一个 `--task-id` 的重试沿用原节点，不算）             | `409 intake_dispatched`，拒绝体带 `itemId`        |
+| 5    | `request.by` 此刻仍在允许名单                                         | `403 intake_unauthorized`                         |
+| 6    | 来源 `rules_hash` 非空、等于此刻文件哈希、也等于判定时的 `rules_hash` | `409 rules_changed`（`message` 写明要人重新确认） |
+| 7    | 线程此刻仍未认领（§104.2）                                            | `409 thread_claimed`，拒绝体带 `itemId`           |
+| 8    | 限流（§104.6）                                                        | `429 intake_rate_limited`                         |
+
+通过后与普通 `open-agent` 同一条路（建节点、首条任务进投递队列、`recordTaskStart`），只换账本里的两样：
+
+- `origin = { kind: "external", ref: <候选 id>, text }`，`text` = `EXTERNAL_MARK` + 一行 `<kind> <repo>#<n> <标题> by <作者> <url>` + 重新提起时的请求评论前 600 字 + 正文前 2000 字（现读，读不到就没有这一段）；至多 8000 字。
+- `mandate = { by: <协调者节点 id>, basis: "rule", scope: "intake:<来源 id>:<rules_hash>:<request.by 小写>", at }`。不带 `--candidate` 的派发仍是 `asked / dispatch`。
+- 同一事务里：线程绑到工作项（`{ kind, repo, number, own: false, url }`，§103.1，只看不收尾；成员自己开的 PR 照旧 `report --pr`），候选记 `item_id` / `dispatched_at` / `outcome = dispatched`；推 `workflow.intake` 与 `workflow.task`。
+- `team --candidate`：每个成员行（`team-<节点 id>`）都带同一份 `origin` / `mandate`，线程绑到汇总节点那一行；没有汇总节点时绑到第一个成员那一行。
+
+之后这个线程的评论与关闭走 §103.3：轮询 `issue` 线程，投给成员，协调者只拿 `external` 概要。接单不在远端留痕（不评论、不加标签、不 assign），也不推送。协调者绕开 `--candidate` 用普通 `open-agent` 派发候选，core 认不出，只有提示词约束。
+
+### 104.6 限流
+
+| 对象                           | 上限                                                | 超出                                       |
+| ------------------------------ | --------------------------------------------------- | ------------------------------------------ |
+| 每来源新候选（含重新提起）     | 20 / 小时（按 `seen_at`）                           | 这一轮停下，游标不推，下一轮再来（§104.4） |
+| 每来源读讨论（重新提起）       | 10 / 轮                                             | 这一轮停下，游标不推                       |
+| 每来源 auto 接单               | 5 / 小时（按 `dispatched_at`）                      | `429 intake_rate_limited`                  |
+| 每协调者同时进行中的接单工作项 | 5（候选 `item_id` 指向的、`status = running` 的项） | `429 intake_rate_limited`                  |
+| 每线程进行中的工作项           | 1                                                   | `409 thread_claimed`（§104.5 第 7 条）     |
+
+超出的都不是错误：候选留在表里，人能在分派抽屉里看到 `outcome`。
