@@ -408,12 +408,13 @@ export function saveSource(
       );
     return getSource(database, id) as IntakeSource;
   }
-  // 换仓库等于换了一条游标：从此刻起看，不回灌。
-  const cursorAt = existing.repo === input.repo ? existing.cursorAt : nowMs;
+  // 换仓库等于换了一个来源：游标与「来源建立的时刻」都从此刻起算。新线程按
+  // `created_at` 判定（§104.4），只重置游标会把新仓库里此前的线程回灌进来。
+  const moved = existing.repo !== input.repo;
   database
     .prepare(
       "UPDATE router_sources SET repo = ?, kinds = ?, mode = ?, allow_json = ?, rules_hash = ?, enabled = ?, " +
-        "cursor_at = ?, updated_at = ? WHERE id = ?",
+        "cursor_at = ?, created_at = ?, updated_at = ? WHERE id = ?",
     )
     .run(
       input.repo,
@@ -422,7 +423,8 @@ export function saveSource(
       JSON.stringify(allow),
       rulesHash,
       input.enabled ? 1 : 0,
-      cursorAt,
+      moved ? nowMs : existing.cursorAt,
+      moved ? nowMs : existing.createdAt,
       nowMs,
       existing.id,
     );

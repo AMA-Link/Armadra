@@ -128,6 +128,40 @@ describe("GitHub", () => {
   });
 });
 
+describe("list pages", () => {
+  let fake: FakeGithub;
+  beforeEach(async () => {
+    fake = await fakeGithub();
+  });
+  afterEach(async () => {
+    await fake.close();
+  });
+
+  it("carry the list response's x-poll-interval in milliseconds", async () => {
+    fake.route("GET /repos/octo/repo/issues", {
+      body: [],
+      headers: { "x-poll-interval": "300" },
+    });
+    fake.route("GET /repos/octo/repo/pulls", { body: [] });
+    const client = fake.client();
+    const service = {
+      client: () => client,
+      repository: () => ({ owner: "octo", name: "repo" }),
+      credentials: { noteSuccess() {}, noteFailure() {} },
+      now: () => 0,
+    } as unknown as GithubService;
+    const forge = new GithubForge(service);
+    const repo = { host: "github.com", owner: "octo", name: "repo" };
+    const options = { state: "open" as const, page: 1, limit: 50 };
+    expect((await forge.listIssues(repo, options)).pollIntervalMs).toBe(
+      300_000,
+    );
+    expect(
+      (await forge.listPulls(repo, options)).pollIntervalMs,
+    ).toBeUndefined();
+  });
+});
+
 describe("Gitea", () => {
   let fake: FakeGitea;
   let forge: GiteaForge;

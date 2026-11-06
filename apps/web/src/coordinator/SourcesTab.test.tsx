@@ -181,10 +181,11 @@ describe("SourcesView", () => {
     );
   });
 
-  it("a refused switch to auto toasts core's message and keeps observe", async () => {
+  it("a refused switch to auto toasts a localized message and keeps observe", async () => {
     api.sources.mockResolvedValue([source()]);
     api.saveSource.mockRejectedValue(
       Object.assign(new Error("x"), {
+        code: "bad_request",
         coreMessage: "切到 auto 需要先确认规则文件",
       }),
     );
@@ -193,12 +194,111 @@ describe("SourcesView", () => {
     fireEvent.keyDown(trigger, { key: "Enter" });
     fireEvent.click(await screen.findByRole("option", { name: "自动" }));
     await waitFor(() =>
-      expect(toasts.error).toHaveBeenCalledWith("切到 auto 需要先确认规则文件"),
+      expect(toasts.error).toHaveBeenCalledWith(
+        "自动需要允许名单和已确认的规则",
+      ),
     );
     await waitFor(() => expect(api.sources).toHaveBeenCalledTimes(2));
     expect(
       screen.getByRole("combobox", { name: "模式" }).textContent,
     ).toContain("观察");
+  });
+
+  it("failure toasts follow the UI language and fall back to the code", async () => {
+    usePreferencesStore.setState({ locale: "en" });
+    api.sources.mockResolvedValue([source()]);
+    api.saveSource.mockRejectedValueOnce(
+      Object.assign(new Error("x"), {
+        code: "bad_request",
+        coreMessage: "切到 auto 需要先确认规则文件",
+      }),
+    );
+    mount();
+    const trigger = await screen.findByRole("combobox", { name: "Mode" });
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    fireEvent.click(await screen.findByRole("option", { name: "Auto" }));
+    await waitFor(() =>
+      expect(toasts.error).toHaveBeenCalledWith(
+        "Auto needs an allow list and confirmed rules",
+      ),
+    );
+    api.saveSource.mockRejectedValueOnce(
+      Object.assign(new Error("x"), { code: "brand_new_code" }),
+    );
+    fireEvent.click(screen.getByRole("switch", { name: "Enabled" }));
+    await waitFor(() =>
+      expect(toasts.error).toHaveBeenCalledWith("brand_new_code"),
+    );
+  });
+
+  it("a failed add keeps the form and the typed repo, shows the error and a loading button", async () => {
+    api.sources.mockResolvedValue([]);
+    let reject: (error: unknown) => void = () => undefined;
+    api.saveSource.mockReturnValue(
+      new Promise((_, no) => {
+        reject = no;
+      }),
+    );
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "添加" }));
+    const repo = screen.getByLabelText("仓库") as HTMLInputElement;
+    fireEvent.change(repo, { target: { value: "github.com/acme/app" } });
+    const save = screen.getByRole("button", { name: "保存" });
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(
+        document.querySelector(
+          '[data-slot="sources-add-form"] [type="submit"][aria-busy="true"]',
+        ),
+      ).toBeTruthy(),
+    );
+    reject(
+      Object.assign(new Error("x"), {
+        code: "forge_not_wired",
+        coreMessage: "没接这个平台",
+      }),
+    );
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toBe("还没连接该仓库的平台");
+    expect(toasts.error).not.toHaveBeenCalled();
+    expect((screen.getByLabelText("仓库") as HTMLInputElement).value).toBe(
+      "github.com/acme/app",
+    );
+    expect(
+      (screen.getByRole("button", { name: "保存" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
+
+  it("a successful add closes the form", async () => {
+    api.sources.mockResolvedValue([]);
+    api.saveSource.mockResolvedValue(source());
+    mount();
+    fireEvent.click(await screen.findByRole("button", { name: "添加" }));
+    fireEvent.change(screen.getByLabelText("仓库"), {
+      target: { value: "github.com/acme/app" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-slot="sources-add-form"]'),
+      ).toBeNull(),
+    );
+  });
+
+  it("a failed read shows its own copy and no stale rows", async () => {
+    api.sources.mockRejectedValue(new Error("down"));
+    mount();
+    expect(await screen.findByText("读不到来源")).toBeTruthy();
+    expect(screen.queryByText("读不到分派记录")).toBeNull();
+    expect(document.querySelector('[data-slot="source-row"]')).toBeNull();
+  });
+
+  it("rows are cards that fit the drawer, not a table", async () => {
+    api.sources.mockResolvedValue([source()]);
+    mount();
+    await screen.findByText("github.com/acme/app");
+    expect(document.querySelector("table")).toBeNull();
   });
 
   it("adds a source with the default coordinator and kinds", async () => {

@@ -67,6 +67,7 @@ import {
   timeMs,
   validRefName,
   validSha,
+  pagePollInterval,
 } from "./types";
 import {
   ForgeTransport,
@@ -479,6 +480,7 @@ export class GitlabForge implements Forge {
     return {
       items: array<WireIssue>(decodeJson(response)).map(toIssue),
       nextCursor: response.nextPage > 1 ? String(response.nextPage) : null,
+      ...pagePollInterval(response),
     };
   }
 
@@ -517,6 +519,7 @@ export class GitlabForge implements Forge {
     return {
       items,
       nextCursor: response.nextPage > 1 ? String(response.nextPage) : null,
+      ...pagePollInterval(response),
     };
   }
 

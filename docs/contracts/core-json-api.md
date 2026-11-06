@@ -5415,19 +5415,19 @@ core 的工作流域搭任务行兜底扫描（每 60 秒，§15.7）的便车�
 
 `router_sources`：一个协调者节点盯着的一个仓库。
 
-| 列                          | 含义                                                                                                         |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `id`                        | uuid v7                                                                                                      |
-| `coordinator_node_id`       | 协调者节点，节点删了跟着删                                                                                   |
-| `workspace_id`              | 工作区，删了跟着删                                                                                           |
-| `repo`                      | `<主机>/<owner>/<名字>`，与 §103.1 同写法；由托管平台域的 `resolve`（§29.1）认过并规范化                     |
-| `kinds`                     | JSON 数组：`["issue"]`、`["pull"]` 或两者                                                                    |
-| `mode`                      | `observe`（缺省，只记判定）/ `auto`（判定为接且授权时可以起工作项）                                          |
-| `allow_json`                | 允许名单：远端登录名，至多 50 个，大小写不敏感，存小写                                                       |
-| `rules_hash`                | 人确认过的规则文件哈希（§104.3）；空串是没确认过                                                             |
-| `enabled`                   | 1 / 0                                                                                                        |
-| `cursor_at`                 | 列表游标（毫秒）：看过的线程里最晚的 `updatedAtMs`；建来源时记现在，**不回灌**之前的线程；换仓库时重置为现在 |
-| `created_at` / `updated_at` | 毫秒                                                                                                         |
+| 列                          | 含义                                                                                                                                                             |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                        | uuid v7                                                                                                                                                          |
+| `coordinator_node_id`       | 协调者节点，节点删了跟着删                                                                                                                                       |
+| `workspace_id`              | 工作区，删了跟着删                                                                                                                                               |
+| `repo`                      | `<主机>/<owner>/<名字>`，与 §103.1 同写法；由托管平台域的 `resolve`（§29.1）认过并规范化                                                                         |
+| `kinds`                     | JSON 数组：`["issue"]`、`["pull"]` 或两者                                                                                                                        |
+| `mode`                      | `observe`（缺省，只记判定）/ `auto`（判定为接且授权时可以起工作项）                                                                                              |
+| `allow_json`                | 允许名单：远端登录名，至多 50 个，大小写不敏感，存小写                                                                                                           |
+| `rules_hash`                | 人确认过的规则文件哈希（§104.3）；空串是没确认过                                                                                                                 |
+| `enabled`                   | 1 / 0                                                                                                                                                            |
+| `cursor_at`                 | 列表游标（毫秒）：看过的线程里最晚的 `updatedAtMs`；建来源时记现在，**不回灌**之前的线程；换仓库时与 `created_at` 一起重置为现在（新仓库里此前的线程同样不回灌） |
+| `created_at` / `updated_at` | 毫秒                                                                                                                                                             |
 
 - `UNIQUE(coordinator_node_id, repo)`，重复答 `409 conflict`；一个协调者最多 10 个来源，再加 `409 sources_full`。`kinds` 与 `mode` 取别的值、允许名单项带空白或超过 100 字、超过 50 个，`400 bad_request`。
 - **只有人能配**：经分派抽屉（§104.7）。没有任何 `canvas` 动词能建、改、删来源或改允许名单与模式。
@@ -5457,7 +5457,7 @@ core 的工作流域搭任务行兜底扫描（每 60 秒，§15.7）的便车�
 
 - id 确定，`INSERT OR IGNORE`：重放与重启都不出第二条。索引 `(coordinator_node_id, verdict)`、`(source_id, repo, number, kind)`。
 - **不存正文**：标题、作者、链接之外的东西在协调者要看时现读，候选表与事件表都不带正文。
-- **保留**：有 `item_id` 的永久；其余 `seen_at` 超过 90 天后清理。
+- **保留**：有 `item_id` 的永久；其余 `seen_at` 超过 90 天后清理。清理之后那个线程在候选表里没有行了：它之后再被更新，会按「新线程」规则（§104.4，来源建立之后创建）重新出候选，「每个线程至多 3 条」也从零重新计——这是有意的，90 天前的判定不再拦着新的请求。
 - **认领判定**：有工作项的 `threads` 含这个线程（`kind` + `repo` + `number` 相等），且那一项 `status = running` 或结束不到 14 天（与 §103.3 同口径），就算已认领。候选产生时与接单时各判一次。
 - **统计**：每个来源最近 20 条判定里的 `decided / accepted / agreed / disagreed`，只给人看，不自动提升模式。
 
@@ -5473,7 +5473,7 @@ core 的工作流域搭任务行兜底扫描（每 60 秒，§15.7）的便车�
 
 core 的工作流域搭任务行兜底扫描（每 60 秒，§15.7）的便车轮询来源，实现在 `core/workflow/intake-watch.ts`。
 
-- **间隔**：每个启用的来源至少 120 秒一次；读失败（限流、不可用、没配凭据）按 1、2、4 倍……退避，封顶 10 分钟；退避在内存里。每轮最多读 10 个来源，剩下的下一轮。失败日志只记固定的种类与原因码。
+- **间隔**：每个启用的来源至少 120 秒一次，列表响应给了更大的 `x-poll-interval` 就取它（`ForgePage.pollIntervalMs`，毫秒，没给没有这个字段）；读失败（限流、不可用、没配凭据）按 1、2、4 倍……退避，封顶 10 分钟；退避在内存里。每轮最多读 10 个来源，剩下的下一轮。失败日志只记固定的种类与原因码。
 - **列表与游标**：按 `kinds` 读 `listIssues` / `listPulls`（`state: "open"`、每页 50，三家都按更新时间倒序），从第 1 页读起，遇到 `updatedAtMs < cursor_at − 5000` 的行就停，最多 3 页。窗口里的行**全部处理完**才把 `cursor_at` 推到这一批最晚的 `updatedAtMs`；限流打断时不推，下一轮从同一处再来。
 - **新线程**：窗口里在来源建立之后创建（回退 5 秒）、还没出过候选的线程。作者登录名以 `[bot]` 结尾的不出；PR 的草稿不出（转正时更新时间变了、它仍没出过候选，那时出）；已认领的（§104.2）不出，游标照推。请求人是作者，`request = { by, via: "thread", at: createdAtMs }`，版本是 `createdAtMs` 的 36 进制。来源建立之前创建的线程不回灌。
 - **重新提起**：出过候选、最近一条已经判定、且判定为 `skip` 或（`authorized = 0` 且没接单）的线程，更新时间晚于那条的 `verdict_at`，才读 `conversation(repo, n, kind)`（§103.2），找判定之后由允许名单里的人（不含机器人）写的最早一条评论；找到且线程仍未认领，写新候选：版本 `c<评论 id>`，`request = { by, via: "comment", commentId, at }`，`authorized = 1`。没判定的线程不提起；每个线程至多 3 条候选；同一个更新时刻只读一次讨论（内存）；每个来源每轮至多读 10 个线程的讨论，超出的打断这一轮（游标不推）。
@@ -5497,7 +5497,7 @@ core 的工作流域搭任务行兜底扫描（每 60 秒，§15.7）的便车�
 - **`intake --candidate <id> --verdict accept|skip --reason <文本>`**：记判定。`--reason` 去控制字符、折叠空白后 1–100 字，缺省或超长 `400 bad_request`；`--verdict` 别的值 `400`；已判定过 `409 already_decided`（判定一次定死）。写入 `verdict / verdict_reason / verdict_at / rules_hash（此刻文件的哈希，缺失写空串）/ mode_at_verdict（此刻来源的模式）`，同一事务里确认同 id 的 `intake` 事件；推 `workflow.intake`。答 `result: { candidate, verdict, mode, authorized, next }`，`next` 为 `skipped`（skip）、`observed`（observe 下 accept）、`dispatch`（auto 下 accept 且已授权）、`unauthorized`（auto 下 accept 但未授权）。**判定不带任何授权**。
 - **`intake --rules`**：只答规则段，`result: { rulesHash, rulesPresent, remote, truncated }`（调用者所在工作区的规则文件）。
 
-**`open-agent --candidate <id> …`、`team --candidate <id> …`**（其余参数不变）：与 `--origin` 同给 `400 bad_request`；`open-agent` 没给 `--task-id` 时工作项 id 为 `intake-<候选 id 的 8 位短哈希>`（由候选定，重试同一个），给了照旧当幂等键。core 按序检查，第一个不满足就拒，并把原因码记进候选的 `outcome = refused:<code>`（第 1、4 条除外）、推 `workflow.intake`：
+**`open-agent --candidate <id> …`、`team --candidate <id> …`**（其余参数不变）：与 `--origin` 同给 `400 bad_request`；`open-agent` 没给 `--task-id` 时工作项 id 为 `intake-<候选 id 的 8 位短哈希>`（由候选定，重试同一个），给了照旧当幂等键。同一个候选同一时刻只有一次接单在路上：正文与请求评论先读（纯读），随后占住候选直到这次调用结束，另一次并发的 `open-agent / team --candidate` 当场答 `409 intake_dispatched`；下面的检查是同步的，与查 `--task-id` 的旧行、建节点之间不再等远端。core 按序检查，第一个不满足就拒，并把原因码记进候选的 `outcome = refused:<code>`（第 1、4 条除外）、推 `workflow.intake`：
 
 | 顺序 | 条件                                                                  | 拒绝                                              |
 | ---- | --------------------------------------------------------------------- | ------------------------------------------------- |

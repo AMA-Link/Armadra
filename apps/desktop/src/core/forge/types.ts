@@ -171,6 +171,16 @@ export interface ForgePage<T> {
   readonly items: readonly T[];
   /** 下一页的页码串；没有下一页时 `null`。游标是页码，从不是远端 URL。 */
   readonly nextCursor: string | null;
+  /** 服务端要求的最小轮询间隔（`x-poll-interval`，毫秒）；没给就没有这个字段。 */
+  readonly pollIntervalMs?: number;
+}
+
+/** 响应头里的 `x-poll-interval`（秒）→ 列表页的 `pollIntervalMs`。 */
+export function pagePollInterval(response: {
+  readonly pollIntervalSec?: number | undefined;
+}): { pollIntervalMs?: number } {
+  const seconds = response.pollIntervalSec ?? 0;
+  return seconds > 0 ? { pollIntervalMs: seconds * 1000 } : {};
 }
 
 export interface ListOptions {

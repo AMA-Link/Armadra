@@ -107,6 +107,8 @@ class ScriptedForge {
   failure: ForgeError | undefined;
   pullFailure: ForgeError | undefined;
   conversationReads: number[] = [];
+  /** 列表响应的 `x-poll-interval`（毫秒）。 */
+  pollIntervalMs: number | undefined;
   pagesRead = 0;
 
   private page<T extends { updatedAtMs: number }>(
@@ -119,6 +121,9 @@ class ScriptedForge {
     return {
       items,
       nextCursor: sorted.length > page * limit ? String(page + 1) : null,
+      ...(this.pollIntervalMs === undefined
+        ? {}
+        : { pollIntervalMs: this.pollIntervalMs }),
     };
   }
 
@@ -248,6 +253,37 @@ describe("new threads", () => {
         fixture.database.prepare("SELECT * FROM router_intake").all(),
       ),
     ).not.toContain("SECRET-BODY");
+  });
+
+  it("does not backfill the new repository when a source changes repo", async () => {
+    const from = source();
+    clock = T0 + 3_600_000;
+    const moved = saveSource(
+      fixture.database,
+      {
+        id: from.id,
+        coordinatorNodeId: lead,
+        workspaceId: fixture.workspaceId,
+        repo: "github.com/acme/other",
+        kinds: ["issue"],
+        mode: "observe",
+        allow: ["alice"],
+        enabled: true,
+      },
+      { present: false, remote: false, hash: "", text: "", truncated: false },
+      clock,
+    );
+    expect(moved).toMatchObject({ cursorAt: clock, createdAt: clock });
+    // 新仓库里换仓库之前建的线程，之后才有人动过：不回灌。
+    remote.issues = [
+      issue(3, T0 + 1_000, { updatedAtMs: clock + 5_000 }),
+      issue(4, clock + 6_000),
+    ];
+    clock += 10_000;
+    expect(await watch.tick()).toBe(1);
+    expect(candidates().map((row) => [row.repo, row.number])).toEqual([
+      ["github.com/acme/other", 4],
+    ]);
   });
 
   it("only advances the cursor for a claimed thread", async () => {
@@ -391,6 +427,22 @@ describe("raising again", () => {
     expect(await watch.tick()).toBe(0);
     expect(remote.conversationReads).toHaveLength(reads);
     expect(candidates()).toHaveLength(3);
+  });
+});
+
+describe("interval", () => {
+  it("waits for a larger x-poll-interval from the list response", async () => {
+    source();
+    remote.pollIntervalMs = 5 * MIN_SOURCE_POLL_MS;
+    clock = T0 + 10_000;
+    await watch.tick();
+    const pages = remote.pagesRead;
+    clock += MIN_SOURCE_POLL_MS;
+    await watch.tick();
+    expect(remote.pagesRead).toBe(pages);
+    clock += 4 * MIN_SOURCE_POLL_MS;
+    await watch.tick();
+    expect(remote.pagesRead).toBe(pages + 1);
   });
 });
 
