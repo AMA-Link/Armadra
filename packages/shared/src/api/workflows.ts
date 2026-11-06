@@ -415,6 +415,18 @@ export const workflowReplyEventSchema = z.object({
   purpose: z.enum(["answer", "result", "attention"]),
 });
 
+/**
+ * 协调者的来源里出了新候选、候选有了判定、复核或接单（§104.4）；不带标题与正文。
+ * 页面据此重读来源与候选。
+ */
+export const workflowIntakeEventSchema = z.object({
+  type: z.literal("workflow.intake"),
+  boardId: z.string(),
+  coordinatorNodeId: z.string(),
+  candidateId: z.string(),
+  sourceId: z.string(),
+});
+
 /* ------------------------------- §15.6 ------------------------------------ */
 
 /** 自动化目标的种类名（`/api/automations/*` 的 `target.kind`）。 */

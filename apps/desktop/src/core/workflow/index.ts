@@ -18,6 +18,7 @@ import { collab } from "../agent";
 import { setStallSource } from "../agent/stalled";
 import { loadSession } from "../collab/nodes";
 import { deliverPullBatch } from "../collab/pr-fanout";
+import { publishIntake, recordIntakeEvent } from "../collab/intake-fanout";
 import { forgeService } from "../forge/registry";
 import {
   deliverRecoveryHint,
@@ -35,6 +36,7 @@ import {
   DEFAULT_STALLED_MINUTES,
   ProgressWatchdog,
 } from "./progress-watchdog";
+import { IntakeWatch } from "./intake-watch";
 import { PrWatch } from "./pr-watch";
 import { installWorkflowRoutes } from "./routes";
 import { type WorkflowDomain, setWorkflowDomain } from "./registry";
@@ -177,6 +179,19 @@ export function install(context: CoreContext): WorkflowDomain | undefined {
     },
     log: (message, fields) => context.log.info(message, fields),
   });
+  // 来源的拉取式轮询（契约 §104.2）：每个来源至少 120 秒一次，新候选只写协调者的
+  // `intake` 事件，不投任何成员。
+  const intake = new IntakeWatch({
+    database,
+    forge: forgeService,
+    onCandidate: (candidate, source) => {
+      const ctx = collab();
+      if (ctx === undefined) return;
+      recordIntakeEvent(ctx, candidate, source.mode);
+      publishIntake(database, ctx.publish, candidate);
+    },
+    log: (message, fields) => context.log.info(message, fields),
+  });
   const tasks = new TaskWatch({
     database,
     bus: context.bus,
@@ -187,6 +202,11 @@ export function install(context: CoreContext): WorkflowDomain | undefined {
       recovery.scan();
       void pulls.tick().catch((error: unknown) => {
         context.log.info("PR 轮询没有跑完", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+      void intake.tick().catch((error: unknown) => {
+        context.log.info("来源轮询没有跑完", {
           error: error instanceof Error ? error.message : String(error),
         });
       });

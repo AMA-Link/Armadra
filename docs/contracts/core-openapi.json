@@ -6818,6 +6818,33 @@
                                   "type": "object",
                                   "properties": {
                                     "type": {
+                                      "const": "workflow.intake"
+                                    },
+                                    "boardId": {
+                                      "type": "string"
+                                    },
+                                    "coordinatorNodeId": {
+                                      "type": "string"
+                                    },
+                                    "candidateId": {
+                                      "type": "string"
+                                    },
+                                    "sourceId": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "type",
+                                    "boardId",
+                                    "coordinatorNodeId",
+                                    "candidateId",
+                                    "sourceId"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "type": {
                                       "const": "schedule.fired"
                                     },
                                     "planId": {

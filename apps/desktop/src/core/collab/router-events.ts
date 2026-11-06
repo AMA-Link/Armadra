@@ -28,6 +28,7 @@ export const ROUTER_EVENT_KINDS = [
   "inbox",
   "interrupted",
   "external",
+  "intake",
 ] as const;
 
 export type RouterEventKind = (typeof ROUTER_EVENT_KINDS)[number];
@@ -368,6 +369,11 @@ export function composeCard(
   ) {
     lines.push(
       "followup 的行是人的原话已排队转给成员（没投进去会另有一行「没能转给」）：你只能决定停掉那一项，不要再派一份。",
+    );
+  }
+  if (events.some((event) => event.kind === "intake")) {
+    lines.push(
+      "intake 的行是来源仓库里没人认领的 issue / PR：先 `canvas intake --candidate <id>` 读规则和正文，再 `canvas intake --candidate <id> --verdict accept|skip --reason <一句话>` 判定；判定即确认，不用 ack。",
     );
   }
   return lines.join("\n");

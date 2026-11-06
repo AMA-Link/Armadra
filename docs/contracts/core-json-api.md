@@ -935,6 +935,7 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
 - `workflow.gate`：`state` 是 `waiting` / `approved` / `rejected` / `cancelled`；`nodeId` 是运行的 Frame（运行还没有 Frame 时缺席）。推送只在 `waiting` 时叫人，深链打开这个 Frame（§19）。
 - `workflow.task`：§15.5 的一个任务行换了状态——起任务（含换绑）、结束（`wait` 或 core 自己落的）、§15.7 的重试各一帧；`status` 同任务行。`boardId` 是协调者节点所在的画板；协调者节点已不在时不推。推送不认这一帧。
 - `workflow.reply`（§101）：协调者经 `canvas notify` 对人说了一句话，`{ replyId, taskId, boardId, coordinatorNodeId, nodeId（成员）, purpose }`，**不带 `--text`**；页面据此重读任务行。
+- `workflow.intake`（§104.4）：协调者的来源出了新候选、候选有了判定、复核或接单，`{ boardId, coordinatorNodeId, candidateId, sourceId }`，**不带标题与正文**；页面据此重读来源与候选。不推送。
 
 ### 15.6 自动化目标 `WORKFLOW_RUN`
 
@@ -2647,9 +2648,9 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 
 <!-- rpc:begin contract=§35.4 -->
 
-| procedure           | kind         | input                                                | output                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | errors                                                                                     | scope         | 自  | 原路径 |
-| ------------------- | ------------ | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------- | --- | ------ |
-| `workspaces.events` | subscription | `{ workspaceId: string, cursor?: "now" \| integer }` | 迭代：`agent.context`、`agent.status`、`agent.subagent`、`agent.approval`、`agent.delivery`、`acp.turn`、`acp.driver`、`acp.starting`、`terminal.exit`、`terminal.lease`、`terminal.hibernation`、`terminal.program`、`timeline.delta`、`timeline.activity`、`board.changed`、`canvas.presence`、`board.comment`、`node.created`、`ssh.prompt`、`workspace.updated`、`control.confirm`、`resource.sample`、`browser.session`、`browser.download`、`browser.lease`、`browser.tabs`、`browser.dialog`、`browser.fileChooser`、`browser.activity`、`language.session`、`language.server`、`file.changed`、`workflow.draft`、`workflow.run`、`workflow.gate`、`workflow.task`、`workflow.reply`、`schedule.fired`、`schedule.failed`、`schedule.attention`、`cloud.tunnel`、`devices.pending`、`devices.changed`、`devices.endorsed`、`connect.used`、`resources.threshold`、`cursor` | `forbidden`、`not_found`、`snapshot_required`、`cursor_ahead`、`overflow`、`limit_reached` | `events:read` | 1.4 | —      |
+| procedure           | kind         | input                                                | output                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | errors                                                                                     | scope         | 自  | 原路径 |
+| ------------------- | ------------ | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------- | --- | ------ |
+| `workspaces.events` | subscription | `{ workspaceId: string, cursor?: "now" \| integer }` | 迭代：`agent.context`、`agent.status`、`agent.subagent`、`agent.approval`、`agent.delivery`、`acp.turn`、`acp.driver`、`acp.starting`、`terminal.exit`、`terminal.lease`、`terminal.hibernation`、`terminal.program`、`timeline.delta`、`timeline.activity`、`board.changed`、`canvas.presence`、`board.comment`、`node.created`、`ssh.prompt`、`workspace.updated`、`control.confirm`、`resource.sample`、`browser.session`、`browser.download`、`browser.lease`、`browser.tabs`、`browser.dialog`、`browser.fileChooser`、`browser.activity`、`language.session`、`language.server`、`file.changed`、`workflow.draft`、`workflow.run`、`workflow.gate`、`workflow.task`、`workflow.reply`、`workflow.intake`、`schedule.fired`、`schedule.failed`、`schedule.attention`、`cloud.tunnel`、`devices.pending`、`devices.changed`、`devices.endorsed`、`connect.used`、`resources.threshold`、`cursor` | `forbidden`、`not_found`、`snapshot_required`、`cursor_ahead`、`overflow`、`limit_reached` | `events:read` | 1.4 | —      |
 
 <!-- rpc:end -->
 
@@ -4945,17 +4946,18 @@ owner：本机作为客户端连别的电脑（`sources.session`，§33）时，
 
 事件 **id 确定**（种类 + 来源 id + 版本），同一个 id 重复写入什么也不做：
 
-| `kind`        | 来源                                                                                                                         | id                                                               |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `report`      | `report` 带 `ready` / `blocked` / `failed`（§90.3）                                                                          | `report:<工作项>:<报告时刻的 36 进制毫秒>`                       |
-| `attention`   | `report` 带 `--human-action`                                                                                                 | `attention:<工作项>:<报告时刻的 36 进制毫秒>`                    |
-| `handback`    | `handback`                                                                                                                   | `handback:<工作项>:1`                                            |
-| `task-done`   | core 自己盯着落的任务结束（`runner_done` 与 §15.7 的兜底扫描，`team` 成员也算）；`wait` 自己落的结束不写，协调者已经拿到答案 | `task-done:<工作项>:<done\|failed>`                              |
-| `stalled`     | 进展看门狗的三种判定（§91.1）                                                                                                | `stalled:<工作项>:<判定>:<指纹的短哈希>`                         |
-| `followup`    | 人对某个工作项的追问（§93.4）；排队转给成员的原话没投成时另写一行「没能转给」                                                | `followup:<工作项>:<版本>`；失败行 `followup-failed:<排队项 id>` |
-| `inbox`       | 别的节点 `post` 给协调者的普通留言（收件人派过工作项；键以 `task:` / `handoff:` 开头的另有去处，不写）                       | `inbox:<收件箱消息 id>`                                          |
-| `interrupted` | 启动扫描发现一个进行中的工作项中断了（§101.5）                                                                               | `interrupted:<工作项>:<中断时刻的 36 进制毫秒>`                  |
-| `external`    | 工作项绑定的 PR 上有新动态（评论、评审、CI 结论、合并 / 关闭，§103.3）；只写概要，**不带正文**                               | `external:<工作项>:<这一批事件 id 的短哈希>`                     |
+| `kind`        | 来源                                                                                                                                   | id                                                                      |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `report`      | `report` 带 `ready` / `blocked` / `failed`（§90.3）                                                                                    | `report:<工作项>:<报告时刻的 36 进制毫秒>`                              |
+| `attention`   | `report` 带 `--human-action`                                                                                                           | `attention:<工作项>:<报告时刻的 36 进制毫秒>`                           |
+| `handback`    | `handback`                                                                                                                             | `handback:<工作项>:1`                                                   |
+| `task-done`   | core 自己盯着落的任务结束（`runner_done` 与 §15.7 的兜底扫描，`team` 成员也算）；`wait` 自己落的结束不写，协调者已经拿到答案           | `task-done:<工作项>:<done\|failed>`                                     |
+| `stalled`     | 进展看门狗的三种判定（§91.1）                                                                                                          | `stalled:<工作项>:<判定>:<指纹的短哈希>`                                |
+| `followup`    | 人对某个工作项的追问（§93.4）；排队转给成员的原话没投成时另写一行「没能转给」                                                          | `followup:<工作项>:<版本>`；失败行 `followup-failed:<排队项 id>`        |
+| `inbox`       | 别的节点 `post` 给协调者的普通留言（收件人派过工作项；键以 `task:` / `handoff:` 开头的另有去处，不写）                                 | `inbox:<收件箱消息 id>`                                                 |
+| `interrupted` | 启动扫描发现一个进行中的工作项中断了（§101.5）                                                                                         | `interrupted:<工作项>:<中断时刻的 36 进制毫秒>`                         |
+| `external`    | 工作项绑定的 PR 上有新动态（评论、评审、CI 结论、合并 / 关闭，§103.3）；只写概要，**不带正文**                                         | `external:<工作项>:<这一批事件 id 的短哈希>`                            |
+| `intake`      | 来源仓库里没人认领的 issue / PR 出了候选（§104.4）；只写种类、线程、标题前 60 字、作者、模式与授权，**不带正文**；判定即确认（§104.5） | 与候选 id 相同（`intake:<repo>#<n>:<issue\|pull>:<版本>`，至多 200 字） |
 
 `summary` 是一行内容（去控制字符、折叠空白、至多 160 字）：只有节点名、工作项 id、种类和成员自己写的那一行，**不带终端原文**。协调者收件箱里的消息照旧在；协调者用 `canvas ack --id` 确认那条消息时，对应的 `inbox` 事件一并确认。
 
@@ -5459,3 +5461,17 @@ core 的工作流域搭任务行兜底扫描（每 60 秒，§15.7）的便车�
 - 上限 16 KB：超过的截断到 16 KB（不切开多字节字符），末尾加一行 `[规则文件超过 16 KB，已截断]`；去控制字符（保留换行与制表符），不做别的加工。
 - 哈希：全文字节的 sha256 前 16 位十六进制——截断后模型看到的和人确认的是同一份文件。空文件与不存在都算缺失，哈希为空串。
 - 工作区在远端执行主机上时本机读不到：当缺失处理，来源只能 `observe`，不能确认规则；本期不同步远端文件。
+
+### 104.4 轮询与事件 `intake`
+
+core 的工作流域搭任务行兜底扫描（每 60 秒，§15.7）的便车轮询来源，实现在 `core/workflow/intake-watch.ts`。
+
+- **间隔**：每个启用的来源至少 120 秒一次；读失败（限流、不可用、没配凭据）按 1、2、4 倍……退避，封顶 10 分钟；退避在内存里。每轮最多读 10 个来源，剩下的下一轮。失败日志只记固定的种类与原因码。
+- **列表与游标**：按 `kinds` 读 `listIssues` / `listPulls`（`state: "open"`、每页 50，三家都按更新时间倒序），从第 1 页读起，遇到 `updatedAtMs < cursor_at − 5000` 的行就停，最多 3 页。窗口里的行**全部处理完**才把 `cursor_at` 推到这一批最晚的 `updatedAtMs`；限流打断时不推，下一轮从同一处再来。
+- **新线程**：窗口里在来源建立之后创建（回退 5 秒）、还没出过候选的线程。作者登录名以 `[bot]` 结尾的不出；PR 的草稿不出（转正时更新时间变了、它仍没出过候选，那时出）；已认领的（§104.2）不出，游标照推。请求人是作者，`request = { by, via: "thread", at: createdAtMs }`，版本是 `createdAtMs` 的 36 进制。来源建立之前创建的线程不回灌。
+- **重新提起**：出过候选、最近一条已经判定、且判定为 `skip` 或（`authorized = 0` 且没接单）的线程，更新时间晚于那条的 `verdict_at`，才读 `conversation(repo, n, kind)`（§103.2），找判定之后由允许名单里的人（不含机器人）写的最早一条评论；找到且线程仍未认领，写新候选：版本 `c<评论 id>`，`request = { by, via: "comment", commentId, at }`，`authorized = 1`。没判定的线程不提起；每个线程至多 3 条候选；同一个更新时刻只读一次讨论（内存）；每个来源每轮至多读 10 个线程的讨论，超出的打断这一轮（游标不推）。
+- **规则文件缺失**（本机工作区，§104.3）的来源跳过且不推游标；远端工作区照常轮询。
+- **限流**：每个来源每小时至多 20 条新候选（按 `seen_at`），到了就打断这一轮、游标不推。
+- **清理**：每小时一次，删掉没接单、`seen_at` 超过 90 天的候选。
+
+每条新候选写一条协调者事件（§93）：`kind: "intake"`、`id` 与候选 id 相同（超过 200 字截断）、`item_id` 与 `source_node_id` 空、`summary` 为 `候选 <issue|pull> <repo>#<n>「<标题前 60 字>」 · <作者> · <observe|auto> · <已授权|未授权>`；空闲的协调者经 `nudge` 拿到卡片（§93.2 不变）。**不投任何成员**。同时推 `workflow.intake` 帧（§15.4）。卡片里有 `intake` 行时多一句用法：先 `canvas intake --candidate <id>` 读规则和正文，再 `--verdict accept|skip --reason <一句话>` 判定；判定即确认，不用 `ack`。
