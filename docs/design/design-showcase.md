@@ -88,7 +88,7 @@ node tools/probes/design-showcase.mjs [输出目录] [--only=tokens,acp] [--them
 2. `tokens-contrast.test.ts` 通过：设计系统 §2.1–§2.5 列出的每一对都 ≥ 阈值（文字 4.5、图形 3.0）。
 3. 探针 108 张图全部生成，`result.json.status === "ok"`，控制台无错误。
 4. 展示页里每个按钮、输入、开关都可 Tab 到达，焦点环可见（探针对 `components` 分区按 Tab 走一遍并数 `:focus-visible` 命中数 = 可聚焦元素数）。
-5. `prefers-reduced-motion: reduce` 下（探针用 `Emulation.setEmulatedMedia`）`canvas` 分区的光晕与流光静止（隔 700ms 的两张图逐字节相同）；`status`、`coordinator`、`motion` 三个分区没有位移 / 缩放 / 无限循环的动画（转圈除外），各存一张 `<分区>-<主题>-1440-reduced-motion.png`；`motion` 分区另跑十种配方的基线对照与指示器 / 数字当拍落位。
+5. `prefers-reduced-motion: reduce` 下（探针用 `Emulation.setEmulatedMedia`）`canvas` 分区的光晕与流光静止（视口先一次设成 1440 × 整页、连续 3 帧布局不变后再截，比较期间不改视口；隔 700ms 的两张图逐字节相同）；`status`、`coordinator`、`motion` 三个分区没有位移 / 缩放 / 无限循环的动画（转圈除外），各存一张 `<分区>-<主题>-1440-reduced-motion.png`；`motion` 分区另跑十种配方的基线对照与指示器 / 数字当拍落位。
 6. `forced-colors: active` 下 `components` 分区焦点环仍可见（一张额外截图）。
 7. `pnpm --filter @armadra/web test` 与 `typecheck` 通过；`pnpm repo:check` 通过（本页与设计系统已登记）。
 

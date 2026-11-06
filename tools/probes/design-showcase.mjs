@@ -309,14 +309,25 @@ await h.run(async () => {
     await page.evaluate(`await document.fonts.ready; return true;`);
     await sleep(300);
   };
-  /** 整页截图：视口宽 × 内容高。`file` 为空时只取字节、不落盘。 */
-  const capture = async (file, width) => {
+  /**
+   * 整页截图：视口宽 × 内容高。`file` 为空时只取字节、不落盘。`inViewport` 为真时
+   * 视口已经是整页，不越界截图（越界截图会临时改视口尺寸、触发重排）。
+   */
+  const capture = async (file, width, { inViewport = false } = {}) => {
     const metrics = await page.call("Page.getLayoutMetrics");
     const contentHeight = Math.ceil(metrics.cssContentSize.height);
-    const height = Math.min(contentHeight, MAX_HEIGHT);
+    // 不越界截图时只能截到视口为止：布局没收敛或内容超过上限时按视口裁，
+    // 不让 clip 伸出视口外（那一截是空白）。
+    const height = Math.min(
+      contentHeight,
+      MAX_HEIGHT,
+      inViewport
+        ? Math.floor(metrics.cssLayoutViewport.clientHeight)
+        : Number.POSITIVE_INFINITY,
+    );
     const shot = await page.call("Page.captureScreenshot", {
       format: "png",
-      captureBeyondViewport: true,
+      captureBeyondViewport: !inViewport,
       clip: { x: 0, y: 0, width, height, scale: 1 },
     });
     const bytes = Buffer.from(shot.data, "base64");
@@ -635,44 +646,65 @@ await h.run(async () => {
       if (running.length === 0) break;
       await sleep(250);
     }
-    // 先等画布稳定。整页截图（captureBeyondViewport）会临时改视口尺寸，触发
-    // 画布的 ResizeObserver 与句柄重排，截图结束后才落定——紧挨着的下一张图会
-    // 拿到半成品。所以：字体就绪、两帧渲染之后，每隔 300ms 截一张，连续两张
-    // 相同才算稳定（首帧测量、小地图 60ms 节流重算同样在这里落定），最多等
-    // 15 秒；稳定之后再停 300ms 才取正式的第一张。后面「隔 700ms 逐字节相同」的
+    // 越界的整页截图（captureBeyondViewport）是临时把视口拉到内容高、截完再还原：
+    // 画布分区的宽度随视口重排，每截一张就来回重排一次，两张图取在重排的不同
+    // 时刻就不同（11-04 run 41766948684：三对的差异框都是整个左栏）。这一段
+    // 改成先把视口一次设成整页，之后截图不再改视口；比完恢复。
+    let fullHeight = 0;
+    for (let round = 0; round < 5; round += 1) {
+      const metrics = await page.call("Page.getLayoutMetrics");
+      const height = Math.min(
+        Math.ceil(metrics.cssContentSize.height),
+        MAX_HEIGHT,
+      );
+      if (height === fullHeight) break;
+      fullHeight = height;
+      await setViewport({ width: 1440, height: fullHeight });
+      // 布局落定：连续 3 帧画布分区的宽高与文档内容高都不变（等的是确定状态，
+      // 不是一段时间）；字体也要就绪。
+      await page.waitFor(
+        `await document.fonts.ready;
+         const section = document.querySelector('[data-showcase-section="canvas"]');
+         const size = () => {
+           const rect = section.getBoundingClientRect();
+           return [rect.width, rect.height, document.documentElement.scrollHeight].join("x");
+         };
+         const frame = () => new Promise((done) => requestAnimationFrame(done));
+         let last = size();
+         let same = 0;
+         for (let frames = 0; frames < 120 && same < 3; frames += 1) {
+           await frame();
+           const next = size();
+           same = next === last ? same + 1 : 0;
+           last = next;
+         }
+         return same >= 3 ? last : null;`,
+        { timeout: 15_000, what: "canvas 分区在整页视口下布局落定" },
+      );
+    }
+    const inPlace = (file) => capture(file, 1440, { inViewport: true });
+    // 布局落定之后画布自己的收尾（首帧测量、小地图 60ms 节流重算）：每隔 300ms
+    // 截一张，连续两张相同才算稳定，最多等 15 秒。后面「隔 700ms 逐字节相同」的
     // 检查原样保留，永远在动的画面照样失败。
-    await page.evaluate(`
-      await document.fonts.ready;
-      await new Promise((done) =>
-        requestAnimationFrame(() => requestAnimationFrame(done)));
-      return true;
-    `);
-    let settled = (await capture(null, 1440)).bytes;
+    let settled = (await inPlace(null)).bytes;
     let stable = 0;
     for (let waited = 0; waited < 15_000 && stable < 2; waited += 300) {
       await sleep(300);
-      const next = (await capture(null, 1440)).bytes;
+      const next = (await inPlace(null)).bytes;
       stable = next.equals(settled) ? stable + 1 : 0;
       settled = next;
     }
-    await sleep(300);
     // 隔 700ms 的两张图逐字节相同才算静止。CI 的 Linux 上见过偶发的一张
     // 截图把小地图画在错位置、下一张又对了（#250，本机复现不出）；真有动画的画面连着几对都不会相同，所以最多比 3 对，
-    // 任何一对相同即静止，每一对的差异框都记进报告。
+    // 任何一对相同即静止，每一对的差异框都记进报告。两张之间视口不变。
     const boxes = [];
     let first;
     let second;
     let still = false;
     for (let attempt = 0; attempt < 3 && !still; attempt += 1) {
-      // 整页截图会临时改视口、让画布重排：CI 上见过（PR #478）每一对的第一张
-      // 都是重排之前的半成品（小地图错位、一个节点没画）、第二张已落定，三对
-      // 全败。先丢一张预热图让重排落定，再取比较的这一对；比较本身（隔 700ms
-      // 逐字节相同）不变，永远在动的画面照样失败。
-      await capture(null, 1440);
-      await sleep(300);
-      first = await capture(`canvas-${theme}-1440-reduced-motion`, 1440);
+      first = await inPlace(`canvas-${theme}-1440-reduced-motion`);
       await sleep(700);
-      second = await capture(null, 1440);
+      second = await inPlace(null);
       still = first.bytes.equals(second.bytes);
       if (!still) {
         boxes.push(differenceBox(first.bytes, second.bytes));
@@ -684,6 +716,7 @@ await h.run(async () => {
         await sleep(300);
       }
     }
+    await setViewport(VIEWPORTS[0]);
     report.reducedMotion = {
       boxes,
       running,
