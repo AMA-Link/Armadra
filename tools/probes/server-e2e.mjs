@@ -376,9 +376,7 @@ await h.run(async () => {
               .catch(() => null),
             // 票还在不在片段里：不在说明页面已取走票（配对多半已成），等不到的
             // 是之后的页面；还在说明页面没走到取票那一步。只记有无，不记票。
-            ticketInHash: await admin
-              .evaluate(`return location.hash.startsWith("#pair=");`)
-              .catch(() => null),
+            ticketInHash: await admin.ticketInHash().catch(() => null),
             text: (await admin.text().catch(() => "")).slice(0, 800),
             traffic: admin.traffic.slice(-40),
             // 页面空白又没有控制台错误时：看文档状态、根节点内容与资源加载失败。
