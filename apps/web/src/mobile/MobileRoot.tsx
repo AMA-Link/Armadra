@@ -31,6 +31,7 @@ import { createServiceProbe, useServiceProbe } from "../services/probe";
 import { loadRecent } from "../services/recent";
 import { serviceRowOf } from "../services/rows";
 import { usePushRotation } from "./push-rotation";
+import { applyStoredOrientation } from "./orientation";
 
 const ConsoleRoot = React.lazy(() => import("../cloud/ConsoleRoot"));
 const HostRoot = React.lazy(() => import("../cloud/host/HostRoot"));
@@ -44,6 +45,8 @@ export function MobileRoot({ entry: initial }: { entry: Entry }) {
   const [entry, setEntry] = React.useState(initial);
   const relay = React.useMemo(() => createRelayEnrollment(), []);
   const [connected, setConnected] = React.useState(entry.kind === "app");
+  // 记下的界面方向在第一屏就交给原生（#827），连接页也按它摆。
+  React.useEffect(applyStoredOrientation, []);
   // 主题与语言写到文档上原本只由画布（App）做：连接页与分享链接落地页在它之前，
   // 自己跟上偏好（明暗、语言），进画布后交还给 App。
   React.useEffect(

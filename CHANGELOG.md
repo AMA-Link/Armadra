@@ -2,6 +2,12 @@
 
 每个版本一节，按发布倒序。括号里是合入的 PR 编号（github.com/AMA-Link/Armadra，2026-10-11 前为 Owlbay/Armadra，旧编号照常跳转）。兼容范围以 `tools/release/compatibility.json` 为准，发布说明里的 `armadra-compatibility` 围栏由它渲染。桌面、服务器与手机 / 平板 App 共用一条版本线和一个标签 `vX.Y.Z`（规则见 `docs/guides/ci-release.md`「版本规则」）；有手机端改动的版本，在「手机与平板」小节里写，其余写在「桌面 / 服务器」下。2026-10-10 之前手机端曾单独编号（1.0.0、1.1.0），内容并入对应的 0.2.5、0.2.6。
 
+## 未发布 / Unreleased
+
+手机与平板：打开后不再停在空画布、侧栏没有选中项——第一次工作空间列表答空（经中转时授予同步之前）不再算「恢复过了」，列表到齐后照常进上次的工作空间；`workspaces.open` 只有 `not_found` 才退回空状态，中转超时之类的失败保留当前工作空间（Closes #826）。设置在手机竖屏与横屏都铺满整屏、让开刘海与主页横条，横屏保留可滚动的导航列与紧凑顶栏，字号与密度同桌面，导航项与关闭钮命中区 44（Closes #828）。设置「通用」新增界面方向：跟随系统 / 竖屏 / 横屏，点一下即转，按设备记住，只在手机 App 里出现（Closes #827）。
+
+Phone and tablet: the app no longer opens on an empty canvas with nothing selected in the sidebar. An empty first workspace list (over the relay, before the grant sync) no longer counts as "restored", so the last workspace opens once the list arrives; `workspaces.open` falls back to the empty state only on `not_found`, and failures such as relay timeouts keep the current workspace (Closes #826). Settings fill the screen on phones in portrait and landscape and respect the notch and home indicator; landscape keeps a scrolling navigation column and a compact top bar, with desktop type and density and 44pt targets for nav items and the close button (Closes #828). General settings gain Orientation: System / Portrait / Landscape, applied on tap, remembered per device, shown only in the phone app (Closes #827).
+
 ## 0.15.0（2026-11-05）
 
 版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.15.0。随包 `@armadra/agent` 0.15.0（驱动表收录 omp）与平台协议包 0.15.0（只加不改，协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.15.0。本版主题：Pi 的 ACP 改走随包 ama 的桥，协调者的回复闸门、推送与重启恢复，工作项绑定 PR，Windows 私有通道与 hook 密钥进系统凭据库，云端控制台支持只用第三方登录的账号。

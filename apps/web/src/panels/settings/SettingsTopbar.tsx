@@ -64,7 +64,7 @@ export function SettingsTopbar({
           })}
         </ol>
       </nav>
-      <div className="w-64 shrink-0">{search}</div>
+      <div className="settings-topbar-search w-64 shrink-0">{search}</div>
       <ScopeBadge
         scope={section.scope}
         pinnedLocal={section.pinnedLocal}
@@ -72,7 +72,12 @@ export function SettingsTopbar({
       />
       <Tooltip>
         <TooltipTrigger asChild>
-          <IconButton size="cluster" label={t("tab.close")} onClick={onClose}>
+          <IconButton
+            size="cluster"
+            label={t("tab.close")}
+            data-settings-close
+            onClick={onClose}
+          >
             <X />
           </IconButton>
         </TooltipTrigger>

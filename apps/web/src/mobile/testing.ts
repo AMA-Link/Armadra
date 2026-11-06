@@ -41,6 +41,8 @@ export function fakeBridge(
     available: true,
     platform: "android",
     canScan: true,
+    canLockOrientation: false,
+    setOrientation: vi.fn(async () => false),
     getSessions: vi.fn(async () => [...sessions.values()]),
     setSession: vi.fn(async (session: StoredSession) => {
       sessions.set(`${session.sourceId}|${session.via}`, session);

@@ -13,10 +13,42 @@ import os
 /// 另外把 iPadOS 窗口化时左上角窗口控件占掉的区域交给页面（`WindowControls`）：
 /// 它不在 `safe-area-inset-*` 里，页面自己量不到。布局一变（窗口缩放、横竖屏、进出
 /// 台前调度）就重算，页面每次加载完再补一次（重载会丢掉内联样式）。
+/// 页面选的界面方向（#827）：跟随系统，或锁定竖屏 / 横屏。
+enum OrientationLock: String {
+    case auto
+    case portrait
+    case landscape
+}
+
 class ArmadraBridgeViewController: CAPBridgeViewController {
     private static let log = Logger(subsystem: "dev.armadra.mobile", category: "window")
     private var windowControls: WindowControls?
     private var loadingObservation: NSKeyValueObservation?
+    private var orientationLock: OrientationLock = .auto
+
+    /// 锁定时只给那一组方向；跟随系统时交回 `Info.plist` 里的那份。
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        switch orientationLock {
+        case .auto: return super.supportedInterfaceOrientations
+        case .portrait: return .portrait
+        case .landscape: return .landscape
+        }
+    }
+
+    /// 换锁之后立即按新的一组转过去，不等用户再转一次手机。
+    func lockOrientation(_ lock: OrientationLock) {
+        orientationLock = lock
+        Self.log.info("orientation lock \(lock.rawValue, privacy: .public)")
+        if #available(iOS 16.0, *) {
+            setNeedsUpdateOfSupportedInterfaceOrientations()
+            guard lock != .auto, let scene = view.window?.windowScene else { return }
+            scene.requestGeometryUpdate(.iOS(interfaceOrientations: supportedInterfaceOrientations)) { error in
+                Self.log.error("orientation update failed: \(error.localizedDescription, privacy: .public)")
+            }
+        } else {
+            UIViewController.attemptRotationToDeviceOrientation()
+        }
+    }
 
     override open func capacitorDidLoad() {
         bridge?.registerPluginInstance(ArmadraNativePlugin())

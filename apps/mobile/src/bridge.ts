@@ -45,6 +45,10 @@ export interface ArmadraNativePlugin {
   pin(options: { origin: string; fingerprint: string }): Promise<void>;
   scan(): Promise<{ text?: string }>;
   appInfo(): Promise<{ version?: string; build?: string }>;
+  /** 界面方向：跟随系统或锁定竖屏 / 横屏（#827）。 */
+  setOrientation(options: {
+    mode: "auto" | "portrait" | "landscape";
+  }): Promise<void>;
   /** 端到端通道的设备钥种子（base64url，32 字节），没有就生成（契约 §78）。 */
   e2eDeviceSeed(): Promise<{ seed?: string }>;
   /** 客户端流量的日桶（设计 §6.4）：整份读、整份写。 */

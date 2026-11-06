@@ -62,8 +62,15 @@ import { installDomPolyfills, TestProviders } from "../app/test-harness";
 import { usePreferencesStore } from "../app/preferences-store";
 import { useCanvasStore } from "../store/canvas-store";
 import { translate } from "../i18n";
-import { SETTINGS_SHEET_CLASS, SettingsDialog } from "./SettingsDialog";
+import { SETTINGS_PHONE_CLASS, SettingsDialog } from "./SettingsDialog";
 import { visibleSettingsSections } from "./settings/nav";
+import {
+  DESKTOP,
+  PHONE_LANDSCAPE,
+  PHONE_PORTRAIT,
+  evaluate,
+  type Viewport,
+} from "../platform/layout.testkit";
 
 installDomPolyfills();
 /**
@@ -462,10 +469,19 @@ describe("SettingsDialog", () => {
     ).toBe(false);
   });
 
-  it("手机底部 Sheet 取整高，压过 Sheet 自己的 h-auto", () => {
-    expect(SETTINGS_SHEET_CLASS).toBe(
-      "data-[side=bottom]:h-[calc(100dvh-48px-var(--safe-top))]",
-    );
+  it("手机整屏：压过居中弹窗的定位、限宽限高与圆角（#828）", () => {
+    for (const token of [
+      "top-0",
+      "left-0",
+      "h-[100dvh]",
+      "max-h-none",
+      "w-screen",
+      "max-w-none",
+      "translate-x-0",
+      "translate-y-0",
+      "rounded-none",
+    ])
+      expect(SETTINGS_PHONE_CLASS.split(" ")).toContain(token);
   });
 
   it("导航列出注册表里的每个分区，顶栏有设置搜索", async () => {
@@ -713,5 +729,56 @@ describe("SettingsDialog", () => {
         page().querySelector('[data-slot="tray-value"]')?.textContent,
       ).toBe("12"),
     );
+  });
+
+  describe("手机整屏（#828）", () => {
+    const original = window.matchMedia;
+    afterEach(() => {
+      window.matchMedia = original;
+    });
+    function install(viewport: Viewport) {
+      window.matchMedia = ((query: string) => ({
+        matches: evaluate(query, viewport),
+        media: query,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      })) as unknown as typeof window.matchMedia;
+    }
+
+    it("手机横屏：整屏，左侧导航列保留并带标签，关闭钮可按", async () => {
+      install(PHONE_LANDSCAPE);
+      open();
+      const dialog = await screen.findByTestId("settings-dialog");
+      expect(dialog.dataset.phone).toBe("landscape");
+      expect(dialog.className).toContain("w-screen");
+      expect(dialog.className).not.toContain("rounded-dialog");
+      const layout = dialog.querySelector<HTMLElement>(".settings-layout")!;
+      expect(layout.dataset.phone).toBe("landscape");
+      expect(layout.dataset.narrow).toBeUndefined();
+      expect(navItem(zh("settings.section.defaults"))).toBeTruthy();
+      expect(dialog.querySelector("[data-settings-close]")).toBeTruthy();
+    });
+
+    it("手机竖屏：整屏而非离顶的底部 Sheet，导航收进顶部 Select", async () => {
+      install(PHONE_PORTRAIT);
+      open();
+      const dialog = await screen.findByTestId("settings-dialog");
+      expect(dialog.dataset.phone).toBe("portrait");
+      expect(dialog.dataset.responsive).toBeUndefined();
+      expect(
+        screen.queryByRole("navigation", { name: zh("settings.title") }),
+      ).toBeNull();
+      expect(
+        screen.getByRole("combobox", { name: zh("settings.title") }),
+      ).toBeTruthy();
+    });
+
+    it("桌面仍是居中弹窗", async () => {
+      install(DESKTOP);
+      open();
+      const dialog = await screen.findByTestId("settings-dialog");
+      expect(dialog.dataset.phone).toBeUndefined();
+      expect(dialog.className).not.toContain("w-screen");
+    });
   });
 });

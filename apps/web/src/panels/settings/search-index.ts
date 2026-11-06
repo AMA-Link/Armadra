@@ -17,6 +17,7 @@ export const SETTINGS_SEARCH: Readonly<Record<string, readonly string[]>> = {
     "settings.locale",
   ],
   general: [
+    "settings.orientation",
     "settings.sidebar",
     "settings.splashAnimation",
     "settings.restoreWorkspace",

@@ -38,7 +38,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/ui/select";
-import { useCompactLayout } from "@/platform/layout";
+import { useCompactLayout, usePhoneLandscape } from "@/platform/layout";
 
 /**
  * 弹窗尺寸（设计系统 §2.7）。桌面按视口比例取 `--settings-dialog-w/h`（四周各留
@@ -54,11 +54,18 @@ export const SETTINGS_DIALOG_CLASS = cn(
 );
 
 /**
- * 手机底部 Sheet 取整高：有导航与正文，`auto` 高度会让两者抢高度。带
- * `data-[side=bottom]:` 是为了压过 Sheet 自己那条同变体的 `h-auto`。
+ * 手机（竖屏与横屏）铺满整屏（#828）：压过居中弹窗的定位、限宽限高、圆角与边框。
+ * 安全区由里面的 `.settings-layout` 自己让（`data-phone`）。
  */
-export const SETTINGS_SHEET_CLASS =
-  "data-[side=bottom]:h-[calc(100dvh-48px-var(--safe-top))]";
+export const SETTINGS_PHONE_CLASS = cn(
+  "top-0 left-0 h-[100dvh] max-h-none w-screen max-w-none sm:max-w-none",
+  "translate-x-0 translate-y-0 rounded-none border-0 shadow-none",
+  // 弹窗外壳是 grid，宽表格（已配对设备）会把轨道撑出屏幕；整屏改成 flex 列。
+  "flex flex-col",
+);
+
+/** 手机的哪一种形态：竖屏（手机布局）、横屏（电脑布局）或不是手机。 */
+type PhoneForm = "portrait" | "landscape" | null;
 
 /** 容器窄于这个宽度（平板与更窄）导航收成 52 的图标栏。 */
 const NARROW_WIDTH = 720;
@@ -69,13 +76,20 @@ const NARROW_WIDTH = 720;
  * 大窗（四周各留 48px）：左导航贴在窗口底上，右侧顶栏（面包屑 + 搜索 + 关闭）下面是一块 16 圆角、
  * 1px 边的内容面板，里面是**当前分区独立的一页**——切分区整页替换，没有跨分区
  * 滚动。子页（SSH 主机、自定义 Agent）在同一块面板里推入，面包屑多一级，页头左侧
- * 出现「←」；不叠第二层对话框。手机是整高底部 Sheet，导航收进顶部 `Select`。
+ * 出现「←」；不叠第二层对话框。手机（竖屏与横屏）铺满整屏、让开安全区（#828）：
+ * 竖屏导航收进顶部 `Select`；横屏保留左侧导航列（独立滚动）与紧凑顶栏。
  *
  * ⌘, 打开时没有出场动画（`data-instant`），菜单或按钮打开按对话框出场。
  */
 export function SettingsDialog() {
   const t = useT();
   const compact = useCompactLayout();
+  const landscape = usePhoneLandscape();
+  const phone: PhoneForm = compact
+    ? "portrait"
+    : landscape
+      ? "landscape"
+      : null;
   const open = useCanvasStore((state) => state.panels.settings);
   const setPanel = useCanvasStore((state) => state.setPanel);
   const subpage = usePreferencesStore((state) => state.settingsSubpage);
@@ -95,6 +109,8 @@ export function SettingsDialog() {
 
   return (
     <ResponsiveDialog
+      // 手机不换底部 Sheet（竖屏会离顶 48px），对话框本身铺满整屏。
+      sheet={phone === null}
       open={open}
       onOpenChange={(next) => {
         // 关掉设置就丢掉子页：重开时该回到分区页，而不是停在一张表单上。
@@ -106,9 +122,10 @@ export function SettingsDialog() {
         showCloseButton={false}
         instant={instant}
         data-testid="settings-dialog"
+        data-phone={phone ?? undefined}
         className={cn(
           "z-[var(--z-dialog)] gap-0 overflow-hidden bg-background p-0 material-backdrop",
-          compact ? SETTINGS_SHEET_CLASS : SETTINGS_DIALOG_CLASS,
+          phone ? SETTINGS_PHONE_CLASS : SETTINGS_DIALOG_CLASS,
         )}
         // Esc 先收搜索，再退子页，最后才关弹窗。
         onEscapeKeyDown={(event) => {
@@ -126,6 +143,7 @@ export function SettingsDialog() {
         </ResponsiveDialogTitle>
         <SettingsBody
           compact={compact}
+          phone={phone}
           query={query}
           onQueryChange={setQuery}
           onClose={() => setPanel("settings", false)}
@@ -193,11 +211,13 @@ function useRowHighlight(
 
 function SettingsBody({
   compact,
+  phone,
   query,
   onQueryChange,
   onClose,
 }: {
   compact: boolean;
+  phone: PhoneForm;
   query: string;
   onQueryChange: (value: string) => void;
   onClose: () => void;
@@ -233,7 +253,9 @@ function SettingsBody({
   const pageRef = React.useRef<HTMLDivElement>(null);
   const searchRef = React.useRef<HTMLInputElement>(null);
   const narrow = useWidth(layoutRef);
-  const isNarrow = !compact && narrow > 0 && narrow <= NARROW_WIDTH;
+  // 手机横屏不收图标栏：导航是一列能滚的窄栏，标签留着（#828）。
+  const isNarrow =
+    !compact && phone === null && narrow > 0 && narrow <= NARROW_WIDTH;
 
   const [highlight, setHighlight] = React.useState<{
     label: string;
@@ -271,9 +293,15 @@ function SettingsBody({
       ref={layoutRef}
       data-narrow={isNarrow ? "true" : undefined}
       data-compact={compact ? "true" : undefined}
+      data-phone={phone ?? undefined}
       className={cn(
-        "settings-layout flex h-full min-h-0",
+        "settings-layout flex h-full min-h-0 min-w-0",
         compact ? "flex-col" : "flex-row",
+        // 整屏时让开安全区：竖屏的状态栏与主页横条，横屏的刘海一侧与主页横条。
+        phone === "portrait" &&
+          "px-3 pt-[calc(var(--safe-top)+0.5rem)] pb-[calc(var(--safe-bottom)+0.75rem)]",
+        phone === "landscape" &&
+          "pr-[var(--safe-right)] pb-[var(--safe-bottom)] pl-[var(--safe-left)]",
       )}
       // ⌘F / Ctrl+F：聚焦顶栏搜索（不让浏览器的页内查找抢走）。
       onKeyDown={(event) => {
@@ -311,7 +339,12 @@ function SettingsBody({
                 ))}
               </SelectContent>
             </Select>
-            <IconButton size="cluster" label={t("tab.close")} onClick={onClose}>
+            <IconButton
+              size="cluster"
+              label={t("tab.close")}
+              data-settings-close
+              onClick={onClose}
+            >
               <X />
             </IconButton>
           </div>
@@ -341,7 +374,7 @@ function SettingsBody({
           data-slot="settings-panel"
           className={cn(
             "min-h-0 flex-1 gap-0 rounded-float py-0",
-            compact ? "" : "mr-4 mb-4",
+            compact ? "" : phone === "landscape" ? "mr-2 mb-2" : "mr-4 mb-4",
           )}
         >
           <ScrollArea className="min-h-0 flex-1">

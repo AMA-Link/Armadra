@@ -147,15 +147,24 @@ export function useBoardSync() {
 
   /* ------------------------ 启动：恢复上次的工作空间 ---------------------- */
   /**
-   * 只在**成功拿到列表之后**才算「试过了」。
+   * 只在**拿到非空列表之后**才算「试过了」。
    *
    * Runtime 暂时连不上时列表是 error，这个 effect 什么都不做也不落锁；
    * 等 `useWorkspacesQuery` 的轮询重连成功，它会自己再跑一次，
    * 于是「服务起来了但界面停在启动页」也就自愈了。
+   *
+   * 空列表同样不落锁（#826）：手机经中转连主机时，第一次列表可能在授予同步、
+   * 端到端通道建好之前答成空的，落了锁就再也不恢复，画布空着、侧栏没有选中项。
+   * 有过工作空间（恢复成功、或用户自己打开过）才落锁：之后用户关掉最后一个，
+   * 不在这里替他重新打开。
    */
   const restoredWorkspaceRef = useRef(false);
   useEffect(() => {
-    if (workspace || restoredWorkspaceRef.current || !workspaces.data) return;
+    if (workspace) {
+      restoredWorkspaceRef.current = true;
+      return;
+    }
+    if (restoredWorkspaceRef.current || !workspaces.data?.length) return;
     restoredWorkspaceRef.current = true;
     const remembered = bootWorkspaceRef.current;
     // 什么都不记得（第一次启动，或上次把最后一个工作空间关掉了）就进列表里
@@ -169,8 +178,11 @@ export function useBoardSync() {
     if (!match) return;
     openWorkspaceTab(match.id);
     setWorkspace(match);
-    // 打不开（目录没了、Runtime 侧 404）就退回启动页，别停在一块死板上
-    void runtimeApi.openWorkspace(match.id).catch(() => {
+    // 打不开（目录没了、Runtime 侧 `not_found`）就退回启动页，别停在一块死板上。
+    // 别的失败（中转超时、网关 5xx）只是没记上「最近打开」，工作空间照常用：
+    // 收走读权限另有 `useWorkspaceAccessLost` 处理（#826）。
+    void runtimeApi.openWorkspace(match.id).catch((error: unknown) => {
+      if (!isWorkspaceGone(error)) return;
       if (useCanvasStore.getState().workspace?.id !== match.id) return;
       rememberWorkspace(null);
       setWorkspace(null);
@@ -433,4 +445,10 @@ function useBoardPresence(
       leave();
     };
   }, [boardId, reload, workspaceId]);
+}
+
+/** `workspaces.open` 的失败是不是「这个工作空间已经不在了」（`not_found` / 404）。 */
+export function isWorkspaceGone(error: unknown): boolean {
+  const failure = error as { code?: unknown; status?: unknown } | null;
+  return failure?.code === "not_found" || failure?.status === 404;
 }

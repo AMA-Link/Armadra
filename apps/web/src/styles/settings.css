@@ -50,6 +50,34 @@
   padding: var(--space-inset);
 }
 
+/*
+ * 手机横屏整屏（#828）：390 上下的高度里，内容面板与顶栏按窄栏的内边距收紧，
+ * 搜索框让出宽度给面包屑；字号与行高仍是桌面比例。
+ */
+.settings-layout[data-phone="landscape"] .settings-page {
+  padding: var(--space-block);
+}
+.settings-layout[data-phone="landscape"] .settings-topbar {
+  padding-left: calc(var(--space-block) + 1px);
+  padding-right: var(--space-group);
+  gap: var(--space-group);
+}
+.settings-layout[data-phone="landscape"] .settings-topbar-search {
+  width: 12rem;
+}
+.settings-layout[data-phone="landscape"] .settings-navigation {
+  padding-block: var(--space-group);
+}
+
+/* 手机整屏的触屏命中区：导航项与关闭钮不小于 44（竖屏导航是顶部 Select）。 */
+.settings-layout[data-phone] .settings-navigation [data-roving-item] {
+  min-height: 44px;
+}
+.settings-layout[data-phone] [data-settings-close] {
+  min-width: 44px;
+  min-height: 44px;
+}
+
 @media (max-width: 767px) {
   /* 手机宽度：控件放不下时换到标签下一行，标签不被挤成一字一行 */
   .settings-row {
