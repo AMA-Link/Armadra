@@ -50,8 +50,17 @@ export function useResponsiveDialogCompact(): boolean {
   return React.useContext(CompactContext);
 }
 
-export function ResponsiveDialog(props: React.ComponentProps<typeof Dialog>) {
-  const compact = useCompactLayout();
+export function ResponsiveDialog({
+  sheet = true,
+  ...props
+}: React.ComponentProps<typeof Dialog> & {
+  /**
+   * `false`：≤767 也不换底部 Sheet，内容层仍是 `DialogContent`，由调用方自己定形状
+   * （设置在手机上整屏，#828）。
+   */
+  sheet?: boolean;
+}) {
+  const compact = useCompactLayout() && sheet;
   return (
     <CompactContext.Provider value={compact}>
       <Dialog {...props} />
