@@ -243,6 +243,9 @@ const CANVAS: Record<ControlVerb, Row> = {
       resume: str(
         "continue that CLI's own session: its session id, or a same-CLI member's node id",
       ),
+      candidate: str(
+        "coordinator only: dispatch this accepted intake candidate (auto sources only; not with --origin)",
+      ),
       ...LAUNCH_OPTIONS,
       "dry-run": DRY_RUN,
     },
@@ -356,6 +359,9 @@ const CANVAS: Record<ControlVerb, Row> = {
       ),
       chain: bool("each member waits for the previous one"),
       gather: str('"AGENT|TITLE|TASK" for one more that waits for all'),
+      candidate: str(
+        "coordinator only: dispatch this accepted intake candidate (auto sources only)",
+      ),
       ...LAUNCH_OPTIONS,
       "dry-run": DRY_RUN,
     },
@@ -447,6 +453,17 @@ const CANVAS: Record<ControlVerb, Row> = {
       followup: str("answer only: the followup event id you are answering"),
     },
     required: ["purpose", "item", "text"],
+  },
+  intake: {
+    description:
+      "Coordinator only: unclaimed issues / pull requests from your sources. No arguments lists undecided candidates; --candidate ID reads the person's rules and the thread (external material); add --verdict accept|skip --reason TEXT to decide once (deciding acknowledges the event); --rules reads the rules only.",
+    properties: {
+      candidate: str("the candidate id"),
+      verdict: oneOf(["accept", "skip"], "your decision, judged by the rules"),
+      reason: str("one line, at most 100 characters"),
+      rules: bool("read the rules file only"),
+      limit: int("how many candidates to list (1–50, default 20)", 1),
+    },
   },
 };
 

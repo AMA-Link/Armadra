@@ -70,6 +70,7 @@ import {
 } from "./worktree";
 import { newNodeView } from "./agent-driver";
 import { addLink } from "./edits";
+import { candidateTaskId, finishCandidate, prepareCandidate } from "./intake";
 import { type Outcome, result } from "./outcome";
 import { checkBody, refuse as sendRefusal } from "./send";
 import { launchRoleNode } from "../../workflow/dispatch";
@@ -266,7 +267,13 @@ export async function openAgent(
   const after = args.list("after");
   const condition = readCondition(args);
   const ttlMinutes = readTtl(args);
-  const taskKey = readTaskId(args);
+  // `--candidate`（契约 §104.5）：先过接单的八条检查；没给 `--task-id` 时工作项
+  // id 由候选定，重试也是同一个。
+  const candidateKey = args.text("candidate");
+  const taskKey =
+    readTaskId(args) ??
+    (candidateKey === undefined ? undefined : candidateTaskId(candidateKey));
+  const pickup = await prepareCandidate(context, caller, args, taskKey);
   const cwd = await readCwd(context, caller, args, worktreeSpec);
   const rawResume = args.text("resume");
   const resume =
@@ -467,9 +474,12 @@ export async function openAgent(
           args.text("title") ??
           (task === undefined ? undefined : task.split("\n", 1)[0]) ??
           title,
-        ...originOf(caller, args),
+        ...(pickup === undefined
+          ? originOf(caller, args)
+          : { origin: pickup.origin, mandate: pickup.mandate }),
       });
     }
+    if (pickup !== undefined) finishCandidate(context, pickup, taskKey);
     publishTask(context.database, context.publish, taskKey);
   }
   // runner 起的成员由 core 起终端、敲启动行（与工作流的角色节点同一条路），
@@ -812,6 +822,9 @@ export async function team(
   const condition = readCondition(args);
   const ttlMinutes = readTtl(args);
   const inboxWake = readInboxWake(args);
+  // `--candidate`（契约 §104.5）：每个成员行带同一份来源与授权，线程绑到汇总行
+  // （没有汇总节点时是第一个成员）。
+  const pickup = await prepareCandidate(context, caller, args, undefined);
   // 权限模式是全队一个：哪个成员的 CLI 没有这个模式，整队当场拒绝。
   const modes = roster.map((role) =>
     readPermissionMode(context, role.agentId, args),
@@ -1072,8 +1085,15 @@ export async function team(
       now: nowDate(context).getTime(),
       task: role.task,
       title: role.title,
-      ...originOf(caller, args),
+      ...(pickup === undefined
+        ? originOf(caller, args)
+        : { origin: pickup.origin, mandate: pickup.mandate }),
     });
+    const bindsThread =
+      gather === undefined ? index === 0 : index === members.length;
+    if (pickup !== undefined && bindsThread) {
+      finishCandidate(context, pickup, itemId);
+    }
     publishTask(context.database, context.publish, itemId);
     // 带 `resume=` 的成员由 core 起：页面敲的是新开的行，接不回那段会话。
     // 有依赖时依赖服务本来就会起它。
