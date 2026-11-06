@@ -51,6 +51,7 @@ import {
   timeMs,
   validRefName,
   validSha,
+  pagePollInterval,
 } from "./types";
 import {
   ForgeTransport,
@@ -446,6 +447,7 @@ export class GiteaForge implements Forge {
     return {
       items: values.filter((value) => value.pull_request == null).map(toIssue),
       nextCursor: response.nextPage > 1 ? String(response.nextPage) : null,
+      ...pagePollInterval(response),
     };
   }
 
@@ -489,6 +491,7 @@ export class GiteaForge implements Forge {
     return {
       items: values.map(toPull),
       nextCursor: response.nextPage > 1 ? String(response.nextPage) : null,
+      ...pagePollInterval(response),
     };
   }
 

@@ -33,7 +33,8 @@ import type { ThreadKind } from "./task-runs";
  * 候选交给协调者判定。与 `pr-watch.ts` 同一种结构——`tick()`、内存退避、单个来源
  * 出错只退避它自己。
  *
- *   * 间隔：每个来源至少 {@link MIN_SOURCE_POLL_MS} 一次（这是「发现」不是「跟进」）；
+ *   * 间隔：每个来源至少 {@link MIN_SOURCE_POLL_MS} 一次（这是「发现」不是「跟进」），
+ *     列表响应给了更大的 `x-poll-interval` 就取它；
  *     读失败按 1、2、4 … 倍退避，封顶 10 分钟。每轮最多读 {@link MAX_SOURCES_PER_TICK}
  *     个来源。
  *   * 列表：`listIssues` / `listPulls` 按更新时间倒序，从第 1 页读起，遇到比游标
@@ -173,9 +174,11 @@ export class IntakeWatch {
         if (polled >= MAX_SOURCES_PER_TICK) continue;
         polled += 1;
         try {
-          written += await this.poll(forge, source);
+          const polled = await this.poll(forge, source);
+          written += polled.written;
+          // 服务端给了更大的 `x-poll-interval` 就听它的。
           this.schedule.set(source.id, {
-            nextAt: this.now + this.minInterval,
+            nextAt: this.now + Math.max(this.minInterval, polled.intervalMs),
             failures: 0,
           });
         } catch (error) {
@@ -211,18 +214,19 @@ export class IntakeWatch {
   private async poll(
     forge: ForgeService,
     source: IntakeSource,
-  ): Promise<number> {
+  ): Promise<{ written: number; intervalMs: number }> {
     const database = this.options.database;
     const repo = parseRepo(source.repo);
-    if (repo === undefined) return 0;
+    if (repo === undefined) return { written: 0, intervalMs: 0 };
     const rules = readRules(database, source.workspaceId);
     // 本机工作区没有规则文件：跳过且不推游标，补上文件之后不漏这段时间的线程。
-    if (!rules.present && !rules.remote) return 0;
+    if (!rules.present && !rules.remote) return { written: 0, intervalMs: 0 };
     const remote = forge.forgeFor(repo, source.workspaceId);
     const floor = source.cursorAt - REWIND_MS;
     const window: Listed[] = [];
+    const interval = { ms: 0 };
     for (const kind of source.kinds) {
-      window.push(...(await this.list(remote, repo, kind, floor)));
+      window.push(...(await this.list(remote, repo, kind, floor, interval)));
     }
     const state = { written: 0, conversations: 0 };
     try {
@@ -231,12 +235,14 @@ export class IntakeWatch {
         await this.consider(remote, repo, source, row, state);
       }
     } catch (error) {
-      if (error instanceof Interrupted) return state.written;
+      if (error instanceof Interrupted) {
+        return { written: state.written, intervalMs: interval.ms };
+      }
       throw error;
     }
     const latest = Math.max(0, ...window.map((row) => row.updatedAtMs));
     if (latest > 0) advanceCursor(database, source.id, latest);
-    return state.written;
+    return { written: state.written, intervalMs: interval.ms };
   }
 
   /** 窗口里的行：更新时间不早于 `floor` 的，最多 {@link MAX_PAGES} 页。 */
@@ -245,14 +251,21 @@ export class IntakeWatch {
     repo: ForgeRepo,
     kind: ThreadKind,
     floor: number,
+    interval: { ms: number },
   ): Promise<Listed[]> {
     const out: Listed[] = [];
     for (let page = 1; page <= MAX_PAGES; page += 1) {
       const options = { state: "open" as const, page, limit: PAGE_SIZE };
-      const listed =
-        kind === "issue"
-          ? (await remote.listIssues(repo, options)).items.map(listedIssue)
-          : (await remote.listPulls(repo, options)).items.map(listedPull);
+      let listed: Listed[];
+      if (kind === "issue") {
+        const result = await remote.listIssues(repo, options);
+        interval.ms = Math.max(interval.ms, result.pollIntervalMs ?? 0);
+        listed = result.items.map(listedIssue);
+      } else {
+        const result = await remote.listPulls(repo, options);
+        interval.ms = Math.max(interval.ms, result.pollIntervalMs ?? 0);
+        listed = result.items.map(listedPull);
+      }
       let older = false;
       for (const row of listed) {
         if (row.updatedAtMs < floor) {

@@ -55,6 +55,7 @@ import {
   rollupOf,
   validRefName,
   validSha,
+  pagePollInterval,
 } from "./types";
 import {
   type WireRepository,
@@ -366,6 +367,7 @@ export class GithubForge implements Forge {
           .filter((value) => !isPullRecord(value))
           .map((value) => fromGithubIssue(toIssue(value, ref, atMs))),
         nextCursor: response.nextPage > 1 ? String(response.nextPage) : null,
+        ...pagePollInterval(response),
       };
     });
   }
@@ -428,6 +430,7 @@ export class GithubForge implements Forge {
           fromGithubPull(toPull(value, ref, [], atMs)),
         ),
         nextCursor: response.nextPage > 1 ? String(response.nextPage) : null,
+        ...pagePollInterval(response),
       };
     });
   }
