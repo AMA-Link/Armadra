@@ -306,9 +306,24 @@ app-builder-lib 只要看到 `APPLE_ID` 就走 Apple ID 分支，所以**两套�
 一套给了一半（例如只有 `APPLE_API_KEY_ID`）预检直接失败；两套都没有才是「不公证」，`::warning::`
 后继续，`notarize` 作业把 macOS 列进未签名平台，`assemble` 把这句话写在 Release 说明顶部。
 
-**打包后断言**：签过名的构建在上传前跑
-`node apps/desktop/scripts/signing-electron.mjs verify-mac`，对每个 `.app` 做
-`codesign --verify --deep --strict`，挡住「有签名目录但 Gatekeeper 不认」的包。更新器的
+**没有证书时做 ad-hoc 签名**（#839）：没有 `CSC_LINK` 时，electron-builder 去钥匙串里找身份，CI runner
+上找不到就整步跳过签名，包里只剩 arm64 链接器给改名后的 Electron 二进制打的签名（标识符 `Electron`、
+没有封装资源，`codesign -v` 报 "code has no resources but signature indicates they must be present"；
+x64 则完全没签名）。v0.14.0、v0.15.0 的 macOS 包都是这样。现在 `signingPlan` 在没有证书、且钥匙串里
+不可能有身份时（设了 `CI`，或 `CSC_IDENTITY_AUTO_DISCOVERY=false`）给出 `adHocFallback`：
+`mac.identity: "-"`，由 electron-builder 由内而外签整个 `.app`（helper、framework、解包的原生模块，最后
+主包以 `dev.armadra.desktop` 为标识符），带 `build/entitlements.mac.plist` 与 hardened runtime（entitlements
+里的 `disable-library-validation` 让 ad-hoc 包照常加载自带的 framework），签完才打 zip 与 dmg，此后只改名、
+加 `.sig`，不再动包内容。ad-hoc 签名完整可验，但不是发布签名：不公证，Gatekeeper 首次打开照样提示。
+开发机不设这两个变量时仍由 electron-builder 用钥匙串里找到的身份（如 Apple Development）签，本地安装的
+钥匙串访问保持稳定；钥匙串里没有身份的机器要设 `CSC_IDENTITY_AUTO_DISCOVERY=false`，否则包仍只有链接器签名。
+
+**打包后断言**：上传前不论有没有证书都跑
+`node apps/desktop/scripts/signing-electron.mjs verify-mac`，对 `release/mac*` 里的每个 `.app` 做
+`codesign --verify --deep --strict`，挡住「有签名目录但 Gatekeeper 不认」的包。改名之后再跑
+`verify-mac-packages --dir artifacts`：最终 zip 用 `ditto -x -k` 解出、dmg 只读挂载，里面的 `.app`
+各自过 `codesign --verify --deep --strict`，并断言 `codesign -d` 的 `Identifier=` 是 `dev.armadra.desktop`，
+不对就让作业失败——用户拿到的是这两个包里的字节，不是打包目录里的那份。更新器的
 `signatureState` 在运行时也跑同一条 `codesign --verify --deep --strict`（每进程一次），ad-hoc
 签名答 `unknown`，与未签名一样不走 electron-updater，改走发布公钥那条路（`installPath`）：下载包对上
 资产摘要并用 `armadra-release.pub` 验过 `.sig` 后，退出时由辅助脚本替换 `.app`（只在从「应用程序」运行时可装，
@@ -317,8 +332,9 @@ app-builder-lib 只要看到 `APPLE_ID` 就走 Apple ID 分支，所以**两套�
 证书选 **Developer ID Application（G2 链）**：旧的 Developer ID Sub-CA 2027-02-01 到期，
 之后签出的东西必须来自 G2 链证书。
 
-本地演练：`ARMADRA_MAC_ADHOC_SIGN=1 ARMADRA_DIST_RELEASE=1 pnpm --filter @armadra/desktop dist`
-用 ad-hoc 身份 `-` 签，`verify-mac` 能过；Gatekeeper（`spctl --assess`）与 Squirrel.Mac 只认
+本地演练：`CSC_IDENTITY_AUTO_DISCOVERY=false ARMADRA_DIST_RELEASE=1 pnpm --filter @armadra/desktop dist`
+走的就是 CI 没证书时那条 `adHocFallback`（`ARMADRA_MAC_ADHOC_SIGN=1` 同样签 ad-hoc），`verify-mac` 与
+`verify-mac-packages --dir apps/desktop/release` 都能过；Gatekeeper（`spctl --assess`）与 Squirrel.Mac 只认
 Developer ID 签名加公证，所以 ad-hoc 包不经 Squirrel.Mac，由发布公钥验签后经辅助脚本安装（见上文与
 `tools/probes/README.md` 的自动更新端到端）。
 没有用自签的 codesign 身份演练：那要往用户的钥匙串搜索列表里加钥匙串，属于改本机安全设置。

@@ -8,6 +8,10 @@
 
 Phone and tablet: the app no longer opens on an empty canvas with nothing selected in the sidebar. An empty first workspace list (over the relay, before the grant sync) no longer counts as "restored", so the last workspace opens once the list arrives; `workspaces.open` falls back to the empty state only on `not_found`, and failures such as relay timeouts keep the current workspace (Closes #826). Settings fill the screen on phones in portrait and landscape and respect the notch and home indicator; landscape keeps a scrolling navigation column and a compact top bar, with desktop type and density and 44pt targets for nav items and the close button (Closes #828). General settings gain Orientation: System / Portrait / Landscape, applied on tap, remembered per device, shown only in the phone app (Closes #827).
 
+macOS：没有证书的发布包改为对整个 `.app` 做 ad-hoc 签名，标识符 `dev.armadra.desktop`，`codesign --verify --deep --strict` 能过；此前 0.14.0、0.15.0 的包只有链接器签名（标识符 `Electron`、资源未封装，x64 完全未签名）。发布作业对最终 zip 解出、dmg 挂载出的应用都验签名与标识符，不过就失败（Closes #839）。
+
+macOS: release builds without a certificate now ad-hoc sign the whole `.app` as `dev.armadra.desktop`, so `codesign --verify --deep --strict` passes; the 0.14.0 and 0.15.0 apps carried only the linker's signature (identifier `Electron`, no sealed resources; x64 unsigned). The release job now checks the signature and identifier of the app inside the final zip and dmg and fails otherwise (Closes #839).
+
 ## 0.15.0（2026-11-05）
 
 版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.15.0。随包 `@armadra/agent` 0.15.0（驱动表收录 omp）与平台协议包 0.15.0（只加不改，协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.15.0。本版主题：Pi 的 ACP 改走随包 ama 的桥，协调者的回复闸门、推送与重启恢复，工作项绑定 PR，Windows 私有通道与 hook 密钥进系统凭据库，云端控制台支持只用第三方登录的账号。

@@ -222,7 +222,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${APPLE_CERTIFICATE_P12_BASE64:-}" ] && [ -z "${APPLE_CERTIFICATE_PASSWORD:-}" ]; then
-            echo "::warning::没有 APPLE_CERTIFICATE_P12_BASE64 与 APPLE_CERTIFICATE_PASSWORD，macOS 产物不签名，首次打开会有 Gatekeeper 提示"
+            echo "::warning::没有 APPLE_CERTIFICATE_P12_BASE64 与 APPLE_CERTIFICATE_PASSWORD，macOS 产物只做 ad-hoc 签名、不公证，首次打开会有 Gatekeeper 提示"
             exit 0
           fi
           # 只给了一半是配置错误，不是「不签名」：在这里失败，而不是发一个悄悄没签的包。
@@ -459,17 +459,16 @@ jobs:
           ARMADRA_DIST_RELEASE: "1"
         run: pnpm --filter @armadra/desktop dist
 
-      # 「有 _CodeSignature」不等于「Gatekeeper 认」：签过名的 .app 上传前先过
-      # codesign --verify --deep --strict（外部服务 §2.1 第 3 条）。没签名就没什么可验。
+      # 「有 _CodeSignature」不等于「Gatekeeper 认」：.app 上传前先过
+      # codesign --verify --deep --strict（外部服务 §2.1 第 3 条）。没有证书时
+      # signing-electron.mjs 让 electron-builder 做 ad-hoc 签名（#839），所以
+      # 不论有没有证书都要验：只剩链接器签名的包（标识符 Electron、没有封装
+      # 资源）在这里就红。
       - name: 校验 macOS 签名
         if: startsWith(matrix.target, 'darwin-')
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "${CSC_LINK:-}" ]; then
-            echo "未签名构建，跳过 codesign --verify"
-            exit 0
-          fi
           node apps/desktop/scripts/signing-electron.mjs verify-mac --dir apps/desktop/release
 
       # Windows 签过名的安装包与包里的 armadra.exe 都必须是 Authenticode Valid。
@@ -511,6 +510,16 @@ jobs:
             --out artifacts \
             --version "${{ needs.verify.outputs.version }}" \
             --require-updater
+
+      # 用户拿到的是 zip 与 dmg 里的那份：从改名后的最终 zip 用 ditto 解出、把
+      # dmg 只读挂载，各自跑 codesign --verify --deep --strict 并断言签名标识符是
+      # dev.armadra.desktop（#839）。打包前验过不代表打出来的字节也对。
+      - name: 校验最终 zip 与 dmg 里的应用签名
+        if: startsWith(matrix.target, 'darwin-')
+        shell: bash
+        run: |
+          set -euo pipefail
+          node apps/desktop/scripts/signing-electron.mjs verify-mac-packages --dir artifacts
 
       - uses: actions/upload-artifact@v4
         with:
