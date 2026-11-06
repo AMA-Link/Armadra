@@ -76,6 +76,10 @@ export interface RouteAccessLookups {
   workflowRunWorkspace(runId: string): string;
   /** 协调者任务 → 协调者节点所在画板的工作空间（契约 §15.7）。 */
   workflowTaskWorkspace(taskId: string): string;
+  /** 协调者的来源 → 工作空间（契约 §104.7）。 */
+  workflowSourceWorkspace(sourceId: string): string;
+  /** 协调者的候选 → 工作空间（契约 §104.7）。 */
+  workflowCandidateWorkspace(candidateId: string): string;
   /** 待确认的关闭请求 → 工作空间（只在内存里）。 */
   confirmWorkspace(requestId: string): string;
   /** 这个人经 SaaS 团队准入时的团队角色（迁移 0053）；没有是 `undefined`。 */
@@ -150,6 +154,11 @@ const WORKFLOW_RUN =
 const WORKFLOW_TASKS = /^\/api\/workflows\/tasks$/;
 const WORKFLOW_TASK_READ_REPLIES = /^\/api\/workflows\/tasks\/read-replies$/;
 const WORKFLOW_TASK_RETRY = /^\/api\/workflows\/tasks\/([^/]+)\/retry$/;
+/** 协调者的来源与候选（契约 §104.7）：列表按画板，写按来源 / 候选 / 协调者节点查。 */
+const WORKFLOW_SOURCES = /^\/api\/workflows\/sources$/;
+const WORKFLOW_SOURCE = /^\/api\/workflows\/sources\/([^/]+)$/;
+const WORKFLOW_INTAKE = /^\/api\/workflows\/intake$/;
+const WORKFLOW_INTAKE_REVIEW = /^\/api\/workflows\/intake\/([^/]+)\/review$/;
 
 /** Agent 状态的三条路由各要什么。 */
 const AGENT_STATUS_PERMISSION: Readonly<Record<string, string>> = {
@@ -315,6 +324,48 @@ export function createRouteGuard(options: RouteAccessOptions): RouteGuard {
         subject,
         "agent:launch",
         lookups.workflowTaskWorkspace(decodeURIComponent(retry[1] as string)),
+      );
+    }
+    // 来源与候选（契约 §104.7）：看是看画布；配来源、删来源与复核是 operator
+    // （`agent:launch`），与重试同一档。认不出画布时一律拒绝。
+    if (WORKFLOW_SOURCES.test(path)) {
+      return reading
+        ? onWorkspace(
+            subject,
+            "canvas:read",
+            lookups.boardWorkspace(request.query.get("boardId") ?? ""),
+          )
+        : onWorkspace(
+            subject,
+            "agent:launch",
+            lookups.nodeWorkspace(bodyString(request, "coordinatorNodeId")),
+          );
+    }
+    const source = WORKFLOW_SOURCE.exec(path);
+    if (source !== null && method === "DELETE") {
+      return onWorkspace(
+        subject,
+        "agent:launch",
+        lookups.workflowSourceWorkspace(
+          decodeURIComponent(source[1] as string),
+        ),
+      );
+    }
+    if (WORKFLOW_INTAKE.test(path) && reading) {
+      return onWorkspace(
+        subject,
+        "canvas:read",
+        lookups.boardWorkspace(request.query.get("boardId") ?? ""),
+      );
+    }
+    const review = WORKFLOW_INTAKE_REVIEW.exec(path);
+    if (review !== null && !reading) {
+      return onWorkspace(
+        subject,
+        "agent:launch",
+        lookups.workflowCandidateWorkspace(
+          decodeURIComponent(review[1] as string),
+        ),
       );
     }
     return DENY;
@@ -682,6 +733,18 @@ function databaseLookups(database: DatabaseSync): RouteAccessLookups {
         "SELECT b.workspace_id AS workspace_id FROM workflow_task_runs t " +
           "JOIN nodes n ON n.id = t.coordinator_node_id " +
           "JOIN boards b ON b.id = n.board_id WHERE t.task_id = ?",
+        id,
+        "workspace_id",
+      ),
+    workflowSourceWorkspace: (id) =>
+      text(
+        "SELECT workspace_id FROM router_sources WHERE id = ?",
+        id,
+        "workspace_id",
+      ),
+    workflowCandidateWorkspace: (id) =>
+      text(
+        "SELECT workspace_id FROM router_intake WHERE id = ?",
         id,
         "workspace_id",
       ),

@@ -10,6 +10,7 @@ import { DomainError } from "../workspaces/support";
 import { workflowScheduleBridge } from "./registry";
 import type { RouterReply } from "../collab/router-replies";
 import { type TaskRun, taskRowJson } from "./task-runs";
+import { candidateJson, sourceJson } from "./intake-json";
 import {
   type WorkflowService,
   draftJson,
@@ -210,6 +211,32 @@ export function workflowOperations(service: WorkflowService) {
     readReplies: (boardId: unknown) => ({
       read: service.readReplies(optional(boardId)),
     }),
+    /* ------------------------- 来源与候选（契约 §104.7） ------------------------- */
+    sources: (boardId: unknown) => ({
+      sources: service.sources(optional(boardId)).map(sourceJson),
+    }),
+    saveSource: (body: Record<string, unknown>) => ({
+      source: sourceJson(service.saveSource(body)),
+    }),
+    deleteSource: (id: unknown) => ({
+      deleted: service.deleteSource(optional(id)),
+    }),
+    intake: (
+      boardId: unknown,
+      page: { limit?: unknown; offset?: unknown; decided?: unknown },
+    ) => {
+      const answer = service.intake(optional(boardId), page);
+      return {
+        candidates: answer.candidates.map(candidateJson),
+        total: answer.total,
+        next: answer.next,
+      };
+    },
+    reviewIntake: (candidateId: unknown, review: unknown) => ({
+      candidate: candidateJson(
+        service.reviewIntake(optional(candidateId), review),
+      ),
+    }),
     retryTask: (taskId: string) => ({
       task: (() => {
         const run = service.retryTask(taskId);
@@ -346,6 +373,25 @@ export function installWorkflowRoutes(
     tasks: ({ boardId }: { boardId?: string }) => ops.tasks(boardId),
     readReplies: ({ boardId }: { boardId: string }) => ops.readReplies(boardId),
     retry: ({ taskId }: { taskId: string }) => ops.retryTask(taskId),
+    sources: ({ boardId }: { boardId: string }) => ops.sources(boardId),
+    saveSource: (input: Record<string, unknown>) => ops.saveSource(input),
+    deleteSource: ({ id }: { id: string }) => ops.deleteSource(id),
+    intake: ({
+      boardId,
+      ...page
+    }: {
+      boardId: string;
+      limit?: number;
+      offset?: number;
+      decided?: boolean | string;
+    }) => ops.intake(boardId, page),
+    reviewIntake: ({
+      candidateId,
+      review,
+    }: {
+      candidateId: string;
+      review: string | null;
+    }) => ops.reviewIntake(candidateId, review),
   } as unknown as DomainHandlers<"coordinator">);
 
   const BASE = "/api/workflows";
@@ -431,5 +477,32 @@ export function installWorkflowRoutes(
   );
   route("POST", `${BASE}/tasks/{taskId}/retry`, (match) =>
     ok(ops.retryTask(param(match, "taskId"))),
+  );
+
+  route("GET", `${BASE}/sources`, (_match, request) =>
+    ok(ops.sources(query(request, "boardId"))),
+  );
+  route("POST", `${BASE}/sources`, (_match, request) =>
+    ok(ops.saveSource(jsonBody(request))),
+  );
+  route("DELETE", `${BASE}/sources/{id}`, (match) =>
+    ok(ops.deleteSource(param(match, "id"))),
+  );
+  route("GET", `${BASE}/intake`, (_match, request) =>
+    ok(
+      ops.intake(query(request, "boardId"), {
+        limit: query(request, "limit"),
+        offset: query(request, "offset"),
+        decided: query(request, "decided"),
+      }),
+    ),
+  );
+  route("POST", `${BASE}/intake/{candidateId}/review`, (match, request) =>
+    ok(
+      ops.reviewIntake(
+        param(match, "candidateId"),
+        jsonBody(request).review ?? null,
+      ),
+    ),
   );
 }

@@ -50,6 +50,64 @@ const taskRowWire = z.object({
   reply: workItemReplySchema.nullable(),
 });
 
+/** 来源的种类与模式（契约 §104.1）。 */
+export const INTAKE_THREAD_KINDS = ["issue", "pull"] as const;
+export const INTAKE_SOURCE_MODES = ["observe", "auto"] as const;
+export const INTAKE_VERDICTS = ["accept", "skip"] as const;
+export const INTAKE_REVIEWS = ["agree", "disagree"] as const;
+
+/** 一个来源最近 N 条判定里的数目（契约 §104.1、§104.2）；只给人看。 */
+const sourceStatsWire = z.object({
+  decided: z.number().int().nonnegative(),
+  accepted: z.number().int().nonnegative(),
+  agreed: z.number().int().nonnegative(),
+  disagreed: z.number().int().nonnegative(),
+  window: z.number().int().positive(),
+});
+
+/**
+ * 一个来源（契约 §104.7）。`rulesHash` 是人确认过的哈希（没确认过是空串），
+ * `rulesCurrentHash` 是此刻规则文件的哈希（缺失与远端工作区是空串）。
+ */
+const sourceWire = z.object({
+  id: z.string(),
+  coordinatorNodeId: z.string(),
+  repo: z.string(),
+  kinds: z.array(z.enum(INTAKE_THREAD_KINDS)),
+  mode: z.enum(INTAKE_SOURCE_MODES),
+  allow: z.array(z.string()),
+  enabled: z.boolean(),
+  rulesHash: z.string(),
+  rulesCurrentHash: z.string(),
+  rulesPresent: z.boolean(),
+  stats: sourceStatsWire,
+});
+
+/** 一条候选（契约 §104.7）：不带正文，时刻是 RFC 3339。 */
+const candidateWire = z.object({
+  id: z.string(),
+  sourceId: z.string(),
+  kind: z.enum(INTAKE_THREAD_KINDS),
+  repo: z.string(),
+  number: z.number().int().positive(),
+  title: z.string(),
+  author: z.string().nullable(),
+  url: z.string(),
+  authorized: z.boolean(),
+  seenAt: z.string(),
+  verdict: z.enum(INTAKE_VERDICTS).nullable(),
+  /** 判定理由（`verdict_reason`）。 */
+  reason: z.string().nullable(),
+  verdictAt: z.string().nullable(),
+  modeAtVerdict: z.enum(INTAKE_SOURCE_MODES).nullable(),
+  review: z.enum(INTAKE_REVIEWS).nullable(),
+  itemId: z.string().nullable(),
+  /** 空 / `dispatched` / `refused:<原因码>`。 */
+  outcome: z.string().nullable(),
+});
+
+const intakeBase = { since: "1.55", contract: "§43.3" } as const;
+
 export const coordinator = {
   /** 一块画板上的任务；服务器壳上必须带 `boardId`，按它查出画布。 */
   tasks: oc
@@ -86,6 +144,101 @@ export const coordinator = {
         ...base,
         scope: "agent:launch",
         legacy: { method: "POST", path: "/api/workflows/tasks/{taskId}/retry" },
+      }),
+    ),
+  /** 一块画板上协调者的来源（契约 §104.7）。 */
+  sources: oc
+    .input(z.object({ boardId: z.string().min(1) }))
+    .output(z.object({ sources: z.array(sourceWire) }))
+    .errors(errors.pick("forbidden", "not_found"))
+    .meta(
+      meta({
+        ...intakeBase,
+        scope: "canvas:read",
+        legacy: { method: "GET", path: "/api/workflows/sources" },
+      }),
+    ),
+  /** 建或改一个来源；只有人能配，与重试同一档（`agent:launch`）。 */
+  saveSource: oc
+    .input(
+      z.object({
+        id: z.string().min(1).optional(),
+        coordinatorNodeId: z.string().min(1),
+        /** 网页地址或 `<主机>/<owner>/<名字>`，core 用托管平台域认并规范化。 */
+        repo: z.string().min(1),
+        kinds: z.array(z.enum(INTAKE_THREAD_KINDS)).min(1),
+        mode: z.enum(INTAKE_SOURCE_MODES),
+        allow: z.array(z.string()),
+        enabled: z.boolean(),
+        /** 把此刻规则文件的哈希记成人确认过的。 */
+        confirmRules: z.boolean().optional(),
+      }),
+    )
+    .output(z.object({ source: sourceWire }))
+    .errors(errors.pick("bad_request", "forbidden", "not_found", "conflict"))
+    .meta(
+      meta({
+        ...intakeBase,
+        scope: "agent:launch",
+        legacy: { method: "POST", path: "/api/workflows/sources" },
+      }),
+    ),
+  /** 删一个来源；它名下的候选跟着删。 */
+  deleteSource: oc
+    .input(z.object({ id: z.string().min(1) }))
+    .output(z.object({ deleted: z.boolean() }))
+    .errors(errors.pick("forbidden"))
+    .meta(
+      meta({
+        ...intakeBase,
+        scope: "agent:launch",
+        legacy: { method: "DELETE", path: "/api/workflows/sources/{id}" },
+      }),
+    ),
+  /** 一块画板上协调者的候选；`next` 是下一页的偏移，没有更多是 null。 */
+  intake: oc
+    .input(
+      z.object({
+        boardId: z.string().min(1),
+        limit: z.coerce.number().int().min(1).max(200).optional(),
+        offset: z.coerce.number().int().nonnegative().optional(),
+        /** `true` 只要判定过的，`false` 只要没判定的；旧路径上是 `"true"` / `"false"`。 */
+        decided: z.union([z.boolean(), z.enum(["true", "false"])]).optional(),
+      }),
+    )
+    .output(
+      z.object({
+        candidates: z.array(candidateWire),
+        total: z.number().int().nonnegative(),
+        next: z.number().int().nonnegative().nullable(),
+      }),
+    )
+    .errors(errors.pick("bad_request", "forbidden", "not_found"))
+    .meta(
+      meta({
+        ...intakeBase,
+        scope: "canvas:read",
+        legacy: { method: "GET", path: "/api/workflows/intake" },
+      }),
+    ),
+  /** 人对一条判定表态（同意 / 不同意），`null` 撤回；只影响这一行与统计。 */
+  reviewIntake: oc
+    .input(
+      z.object({
+        candidateId: z.string().min(1),
+        review: z.enum(INTAKE_REVIEWS).nullable(),
+      }),
+    )
+    .output(z.object({ candidate: candidateWire }))
+    .errors(errors.pick("bad_request", "forbidden", "not_found", "conflict"))
+    .meta(
+      meta({
+        ...intakeBase,
+        scope: "agent:launch",
+        legacy: {
+          method: "POST",
+          path: "/api/workflows/intake/{candidateId}/review",
+        },
       }),
     ),
 };

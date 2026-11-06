@@ -14,6 +14,10 @@ import { scope } from "../identity/scopes";
 import { GATE_SCOPE } from "./routes";
 import { workflowDispatcher } from "./test-dispatch";
 import { WorkflowService } from "./service";
+import type { ForgeService } from "../forge/service";
+import { getSource, insertCandidate, recordVerdict } from "./intake";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { finishTask, recordTaskStart } from "./task-runs";
 import { recordReport } from "./work-items";
 
@@ -566,6 +570,329 @@ describe("协调者任务（契约 §15.7）", () => {
       permission: "canvas:read",
     });
     expect(routeScope("POST", "/api/workflows/tasks/t/retry")).toMatchObject({
+      permission: "agent:launch",
+    });
+  });
+});
+
+describe("协调者的来源与候选（契约 §104.7）", () => {
+  const RULES_TEXT = "接 bug，不接重构";
+  let resolved: "ok" | "unknown" | "invalid";
+
+  /** 假托管平台：`resolve` 把远端地址拆成主机 / owner / 名字。 */
+  const forge = {
+    resolve: (remote: string) => {
+      if (resolved === "invalid") throw new Error("REMOTE_INVALID");
+      if (resolved === "unknown") return { forge: null };
+      const url = new URL(remote);
+      const [owner, name] = url.pathname.split("/").filter(Boolean);
+      return {
+        forge: "github",
+        repository: { host: url.host, owner, name },
+        webUrl: `${url.protocol}//${url.host}/${owner}/${name}`,
+      };
+    },
+  } as unknown as ForgeService;
+
+  function rebuild(withForge: boolean) {
+    service = new WorkflowService({
+      database: fixture.database,
+      engine,
+      collab: () => fixture.collab,
+      forge: () => (withForge ? forge : undefined),
+    });
+    setWorkflowDomain({ engine, service, stop: () => engine.stop() });
+    dispatch = workflowDispatcher(service);
+  }
+
+  beforeEach(() => {
+    resolved = "ok";
+    rebuild(true);
+  });
+
+  const SOURCE = {
+    coordinatorNodeId: "",
+    repo: "github.com/acme/app",
+    kinds: ["issue"],
+    mode: "observe",
+    allow: [],
+    enabled: true,
+  };
+  const save = (extra: Record<string, unknown> = {}) =>
+    call("POST", "/api/workflows/sources", {
+      ...SOURCE,
+      coordinatorNodeId: coordinator,
+      ...extra,
+    });
+  const sources = () =>
+    call("GET", `/api/workflows/sources?boardId=${fixture.boardId}`);
+
+  function writeRules(text = RULES_TEXT) {
+    const directory = join(fixture.directory, ".armadra", "router");
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(join(directory, "rules.md"), text);
+  }
+
+  it("saves a source with the repo normalised, lists it with rules state and stats", async () => {
+    const created = await save({
+      repo: "https://github.com/acme/app/issues/12",
+      allow: [" Alice "],
+    });
+    expect(created.status).toBe(200);
+    expect(created.body.source).toMatchObject({
+      coordinatorNodeId: coordinator,
+      repo: "github.com/acme/app",
+      kinds: ["issue"],
+      mode: "observe",
+      allow: ["alice"],
+      enabled: true,
+      rulesHash: "",
+      rulesCurrentHash: "",
+      rulesPresent: false,
+      stats: { decided: 0, accepted: 0, agreed: 0, disagreed: 0, window: 20 },
+    });
+    writeRules();
+    const listed = await sources();
+    expect(listed.body.sources).toEqual([
+      expect.objectContaining({
+        repo: "github.com/acme/app",
+        rulesPresent: true,
+        rulesCurrentHash: expect.stringMatching(/^[0-9a-f]{16}$/),
+      }),
+    ]);
+  });
+
+  it("confirms rules and switches to auto; refuses auto without them with the core message", async () => {
+    const created = await save();
+    const id = (created.body.source as { id: string }).id;
+    const refused = await save({ id, mode: "auto", allow: ["alice"] });
+    expect(refused).toMatchObject({
+      status: 400,
+      body: { code: "bad_request", message: "切到 auto 需要先确认规则文件" },
+    });
+    writeRules();
+    const nameless = await save({ id, mode: "auto", allow: [] });
+    expect(nameless.body).toMatchObject({ message: "切到 auto 需要允许名单" });
+    const auto = await save({
+      id,
+      mode: "auto",
+      allow: ["alice"],
+      confirmRules: true,
+    });
+    expect(auto.status).toBe(200);
+    const row = auto.body.source as Record<string, string>;
+    expect(row).toMatchObject({ mode: "auto" });
+    expect(row.rulesHash).toBe(row.rulesCurrentHash);
+    writeRules("改过了");
+    const changed = await sources();
+    const [one] = changed.body.sources as Record<string, string>[];
+    expect(one?.rulesHash).not.toBe(one?.rulesCurrentHash);
+  });
+
+  it("refuses an unresolvable repo, an unwired forge, a missing node, a duplicate and a bad shape", async () => {
+    resolved = "unknown";
+    expect(await save()).toMatchObject({
+      status: 400,
+      body: { code: "bad_request" },
+    });
+    resolved = "invalid";
+    expect((await save()).status).toBe(400);
+    resolved = "ok";
+    expect((await save({ repo: "not a repo" })).status).toBe(400);
+    expect((await save({ repo: "ssh://git@github.com/a/b" })).status).toBe(400);
+    expect(await save({ coordinatorNodeId: "nope" })).toMatchObject({
+      status: 404,
+    });
+    expect((await save({ mode: "wild" })).status).toBe(400);
+    expect((await save({ kinds: [] })).status).toBe(400);
+    expect((await save({ enabled: "yes" })).status).toBe(400);
+    expect((await save()).status).toBe(200);
+    expect(await save()).toMatchObject({
+      status: 409,
+      body: { code: "conflict" },
+    });
+    expect(
+      await save({ id: "nope", repo: "github.com/acme/other" }),
+    ).toMatchObject({ status: 404, body: { code: "source_not_found" } });
+    rebuild(false);
+    expect(await save({ repo: "github.com/acme/other" })).toMatchObject({
+      status: 409,
+      body: { code: "forge_not_wired" },
+    });
+  });
+
+  it("keeps editing a source with the same repo when the forge is not wired", async () => {
+    const created = await save();
+    const id = (created.body.source as { id: string }).id;
+    rebuild(false);
+    const edited = await save({ id, enabled: false });
+    expect(edited.status).toBe(200);
+    expect(edited.body.source).toMatchObject({ id, enabled: false });
+  });
+
+  it("deletes a source with its candidates and answers false for an unknown one", async () => {
+    const created = await save();
+    const id = (created.body.source as { id: string }).id;
+    expect(await call("DELETE", `/api/workflows/sources/${id}`)).toMatchObject({
+      status: 200,
+      body: { deleted: true },
+    });
+    expect(await call("DELETE", `/api/workflows/sources/${id}`)).toMatchObject({
+      body: { deleted: false },
+    });
+    expect((await sources()).body.sources).toEqual([]);
+  });
+
+  it("lists candidates by board in pages, filtered by decided, and reviews a verdict", async () => {
+    const created = await save();
+    const sourceId = (created.body.source as { id: string }).id;
+    const source = getSource(fixture.database, sourceId)!;
+    const ids = [1, 2, 3].map(
+      (number) =>
+        insertCandidate(
+          fixture.database,
+          {
+            source,
+            kind: "issue",
+            number,
+            version: String(number),
+            title: `标题 ${number}`,
+            author: "Alice",
+            url: `https://github.com/acme/app/issues/${number}`,
+            request: { by: "Alice", via: "thread", at: 1_000 + number },
+            sourceAt: 1_000 + number,
+          },
+          2_000 + number,
+        ).id,
+    );
+    recordVerdict(
+      fixture.database,
+      ids[0] as string,
+      { verdict: "accept", reason: "是 bug", rulesHash: "", mode: "observe" },
+      3_000,
+    );
+    const page = await call(
+      "GET",
+      `/api/workflows/intake?boardId=${fixture.boardId}&limit=2`,
+    );
+    expect(page.status).toBe(200);
+    expect(page.body).toMatchObject({ total: 3, next: 2 });
+    const rows = page.body.candidates as Record<string, unknown>[];
+    expect(rows.map((row) => row.number)).toEqual([3, 2]);
+    expect(rows[0]).toMatchObject({
+      sourceId,
+      kind: "issue",
+      repo: "github.com/acme/app",
+      title: "标题 3",
+      author: "Alice",
+      authorized: false,
+      verdict: null,
+      reason: null,
+      verdictAt: null,
+      review: null,
+      itemId: null,
+      outcome: null,
+      seenAt: new Date(2_003).toISOString(),
+    });
+    expect(rows[0]).not.toHaveProperty("request");
+    const rest = await call(
+      "GET",
+      `/api/workflows/intake?boardId=${fixture.boardId}&limit=2&offset=2`,
+    );
+    expect(rest.body).toMatchObject({ total: 3, next: null });
+    const decided = await call(
+      "GET",
+      `/api/workflows/intake?boardId=${fixture.boardId}&decided=true`,
+    );
+    expect(decided.body.candidates).toEqual([
+      expect.objectContaining({
+        number: 1,
+        verdict: "accept",
+        reason: "是 bug",
+        modeAtVerdict: "observe",
+        verdictAt: new Date(3_000).toISOString(),
+      }),
+    ]);
+    const open = await call(
+      "GET",
+      `/api/workflows/intake?boardId=${fixture.boardId}&decided=false`,
+    );
+    expect(
+      (open.body.candidates as { number: number }[]).map((r) => r.number),
+    ).toEqual([2, 3]);
+    const bad = await call(
+      "GET",
+      `/api/workflows/intake?boardId=${fixture.boardId}&decided=maybe`,
+    );
+    expect(bad.status).toBe(400);
+
+    const path = (id: string) =>
+      `/api/workflows/intake/${encodeURIComponent(id)}/review`;
+    const agreed = await call("POST", path(ids[0] as string), {
+      review: "agree",
+    });
+    expect(agreed.body.candidate).toMatchObject({ review: "agree" });
+    expect(
+      fixture.events
+        .map((entry) => entry.event)
+        .filter((event) => event.type === "workflow.intake"),
+    ).toEqual([
+      expect.objectContaining({
+        type: "workflow.intake",
+        boardId: fixture.boardId,
+        candidateId: ids[0],
+      }),
+    ]);
+    expect((await sources()).body.sources as Record<string, unknown>[]).toEqual(
+      [
+        expect.objectContaining({
+          stats: {
+            decided: 1,
+            accepted: 1,
+            agreed: 1,
+            disagreed: 0,
+            window: 20,
+          },
+        }),
+      ],
+    );
+    const cleared = await call("POST", path(ids[0] as string), {
+      review: null,
+    });
+    expect(cleared.body.candidate).toMatchObject({ review: null });
+    expect(
+      await call("POST", path(ids[1] as string), { review: "agree" }),
+    ).toMatchObject({ status: 409, body: { code: "conflict" } });
+    expect(
+      await call("POST", path("intake:nope"), { review: "agree" }),
+    ).toMatchObject({ status: 404, body: { code: "candidate_not_found" } });
+    expect(
+      (await call("POST", path(ids[0] as string), { review: "maybe" })).status,
+    ).toBe(400);
+  });
+
+  it("answers 404 for an unknown board and 400 without a board", async () => {
+    expect(
+      (await call("GET", "/api/workflows/sources?boardId=nope")).status,
+    ).toBe(404);
+    expect((await call("GET", "/api/workflows/intake")).status).toBe(400);
+    expect((await call("GET", "/api/workflows/sources")).status).toBe(400);
+  });
+
+  it("reads with canvas:read and writes with agent:launch", () => {
+    expect(routeScope("GET", "/api/workflows/sources")).toMatchObject({
+      permission: "canvas:read",
+    });
+    expect(routeScope("GET", "/api/workflows/intake")).toMatchObject({
+      permission: "canvas:read",
+    });
+    expect(routeScope("POST", "/api/workflows/sources")).toMatchObject({
+      permission: "agent:launch",
+    });
+    expect(routeScope("DELETE", "/api/workflows/sources/s")).toMatchObject({
+      permission: "agent:launch",
+    });
+    expect(routeScope("POST", "/api/workflows/intake/c/review")).toMatchObject({
       permission: "agent:launch",
     });
   });
