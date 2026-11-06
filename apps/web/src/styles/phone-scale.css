@@ -1,0 +1,44 @@
+/*
+ * 手机统一缩放（#822）：浮层、面板与表格在小视口里按同一个系数缩小，版式与
+ * 桌面一致，只是等比例变小，不再出现 256px 宽的弹层占满 390px 的屏幕。
+ *
+ * 容器按角色与 Radix 的定位外壳选，不按 `data-slot`：调用方可以把 `data-slot`
+ * 覆盖成自己的名字（例如用量弹层的 `acp-usage-popover`）。浮层 = 对话框 / 确认框 /
+ * 弹层 / 抽屉（都是 `role=dialog`）、菜单、列表框与 Popper 外壳；整页焦点页
+ * （`MobileFocusPage`）本身是 `role=dialog`，所以也在里面。
+ *
+ * 机制只有一个：Tailwind 的间距刻度 `--spacing`（`w-64`、`p-3`、`h-8`、`gap-2`
+ * 都是它的倍数）乘上 `--phone-scale`（`tokens.css`）。变量在下面这些容器上改，
+ * 子孙自动继承，宽、高、内边距、间隙同比缩放；字号不动——正文不低于 12px，
+ * 输入框保持 16px（`--text-input-touch`，防 iOS 聚焦缩放）。画布、侧栏、Dock
+ * 与底部导航不在名单里，仍是桌面尺寸。设置工作台有自己的全屏版式，用
+ * `:has(.settings-layout)`（对话框本身）与 `.settings-layout *`（里面的表格等）排除。
+ *
+ * 判据抄的是 `platform/layout.ts` 的 `COMPACT_QUERY` 与 `PHONE_LANDSCAPE_QUERY`
+ * （手机竖屏 + 手机横屏），`platform/layout.test.ts` 逐字核对。
+ */
+@media (max-width: 767px),
+  (pointer: coarse) and (min-width: 768px) and (max-width: 1023px) and (max-height: 500px) {
+  :is(
+    [role="dialog"],
+    [role="alertdialog"],
+    [role="menu"],
+    [role="listbox"],
+    [data-radix-popper-content-wrapper],
+    [data-slot="data-list"],
+    [data-slot="table-container"]
+  ):not(:has(.settings-layout), .settings-layout *) {
+    --spacing: calc(0.25rem * var(--phone-scale));
+
+    /*
+     * 命中区下限：缩小之后控件不低于桌面 `sm` 档的 28px，手指仍点得到。
+     * 只抬最小宽高，不动内边距与字号。
+     */
+    & :is(button, [role="menuitem"], [role="option"], [role="tab"]) {
+      min-height: 28px;
+    }
+    & button {
+      min-width: 28px;
+    }
+  }
+}

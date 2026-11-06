@@ -181,6 +181,7 @@
 | `--settings-nav-w` **新**                                | `clamp(200px, 18%, 256px)`                                    | 工作台左导航                                                                    |
 | `--settings-topbar-h` **新**                             | 48px                                                          | 工作台顶栏（面包屑 + 搜索）                                                     |
 | `--mobile-nav-h`                                         | 56px                                                          | 手机底部导航（不含安全区）                                                      |
+| `--phone-scale`                                          | 0.8                                                           | 手机视口里浮层、面板、表格内 `--spacing` 的乘数，字号不变（#822）               |
 | `--safe-*`、`--window-controls-*`、`--overlay-inset-top` | 不变                                                          |                                                                                 |
 | 节点头部                                                 | 30px                                                          | 头部图标钮 24，折叠高 32                                                        |
 | 对话框                                                   | 520（表单）、420（确认）；边距 24；手机上改底部 Sheet         |                                                                                 |

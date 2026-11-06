@@ -33,6 +33,10 @@ Version aligned with armadra-cloud and armadra-agent (all three ship 0.15.0), wi
 - 契约：新增 §100（Pi 的桥）、§101（协调者回复闸门与重启恢复）、§102（私有通道与 hook 密钥）、§103（工作项绑定 PR）；§26.3 已由 §100 取代。
 - 配套镜像 `ghcr.io/ama-link/armadra-cloud:0.15.0`、`ghcr.io/ama-link/armadra-relay:0.15.0` 与协议包 0.15.0 同号（cloud 新增只用第三方登录账号的提权、改邮箱与绑定，没有新迁移；控制台页面取自本版服务器壳镜像）；推送中继镜像 `ghcr.io/ama-link/armadra-push-relay:0.15.0` 与服务器壳镜像同号。发版顺序沿用 0.14.0：先打 Armadra `v0.15.0`，再打 armadra-cloud `v0.15.0`。
 
+手机端浮层、面板与表格不再比桌面端大得多（Closes #822）：手机竖屏与手机横屏里，Popover、菜单、Select、对话框与 Sheet、工作面板、整页焦点页和表格容器内的间距刻度统一乘 `--phone-scale`（0.8），宽、高、内边距、间隙同比缩小，版式与桌面一致；字号不变、输入框仍 16px，控件命中区不低于 28px，设置页不受影响。
+
+Phone overlays, panels and tables are no longer oversized next to desktop (Closes #822): in phone portrait and phone landscape, the spacing scale inside popovers, menus, selects, dialogs and sheets, work panels, the full-page focus view and table containers is multiplied by `--phone-scale` (0.8), so widths, heights, paddings and gaps shrink together and the layout matches desktop; font sizes and 16px inputs are unchanged, controls keep at least a 28px hit area, and the settings dialog is untouched.
+
 ## 0.14.0（2026-11-05）
 
 版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.14.0。随包 `@armadra/agent` 0.14.0（新增 Pi 的 ACP 桥 `ama --mode acp --bridge pi`）与平台协议包 0.14.0（协议仍是 1.4，没有形状变化）；配套镜像 `armadra-cloud` / `armadra-relay` 0.14.0。本版主题：连接手机只剩一张二维码（局域网与互联网装在同一张码里），ACP 提示框接管与交还的顺序修复，macOS 首次打开说明。
