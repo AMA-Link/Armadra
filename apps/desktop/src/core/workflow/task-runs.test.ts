@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AgentFixture, agentFixture } from "../agent/fixture";
-import { bindPull } from "./threads";
+import { bindThread } from "./threads";
 import {
   finishTask,
   rebindTask,
@@ -11,6 +11,7 @@ import {
   taskRun,
   taskRunJson,
   taskRunsFor,
+  threadsOf,
 } from "./task-runs";
 
 /** `workflow_task_runs` 的存取：`task_id` 幂等，结束只结束一次。 */
@@ -127,10 +128,11 @@ describe("task row", () => {
     expect(
       taskRowJson(taskRun(fixture.database, "t9")!, "working").pulls,
     ).toEqual([]);
-    bindPull(
+    bindThread(
       fixture.database,
       "t9",
       {
+        kind: "pull",
         repo: "github.com/acme/app",
         number: 12,
         own: true,
@@ -148,5 +150,99 @@ describe("task row", () => {
         url: "https://github.com/acme/app/pull/12",
       },
     ]);
+    // 绑定的 issue 不进 `pulls`。
+    bindThread(
+      fixture.database,
+      "t9",
+      {
+        kind: "issue",
+        repo: "github.com/acme/app",
+        number: 3,
+        own: false,
+        url: "https://github.com/acme/app/issues/3",
+      },
+      6_000,
+    );
+    expect(
+      taskRowJson(taskRun(fixture.database, "t9")!, "working").pulls,
+    ).toHaveLength(1);
+  });
+});
+
+describe("threadsOf", () => {
+  it("keeps pull and issue threads and drops unknown kinds", () => {
+    expect(
+      threadsOf(
+        JSON.stringify([
+          {
+            kind: "pull",
+            repo: "h/o/r",
+            number: 1,
+            own: true,
+            url: "",
+            boundAt: 1,
+          },
+          {
+            kind: "issue",
+            repo: "h/o/r",
+            number: 2,
+            own: true,
+            url: "u",
+            boundAt: 2,
+          },
+          { kind: "discussion", repo: "h/o/r", number: 3 },
+          { kind: "issue", repo: "", number: 4 },
+        ]),
+      ),
+    ).toEqual([
+      {
+        kind: "pull",
+        repo: "h/o/r",
+        number: 1,
+        own: true,
+        url: "",
+        boundAt: 1,
+      },
+      {
+        kind: "issue",
+        repo: "h/o/r",
+        number: 2,
+        own: false,
+        url: "u",
+        boundAt: 2,
+      },
+    ]);
+  });
+});
+
+describe("mandate", () => {
+  it("defaults to asked / dispatch and takes a rule mandate when given", () => {
+    const asked = recordTaskStart(fixture.database, {
+      taskId: "m1",
+      coordinatorNodeId: "lead",
+      runnerId: "codex",
+      nodeId: "n1",
+      now: 1_000,
+    }).run;
+    expect(asked.mandate).toEqual({
+      by: "lead",
+      basis: "asked",
+      scope: "dispatch",
+      at: new Date(1_000).toISOString(),
+    });
+    const rule = recordTaskStart(fixture.database, {
+      taskId: "m2",
+      coordinatorNodeId: "lead",
+      runnerId: "codex",
+      nodeId: "n2",
+      now: 2_000,
+      mandate: { by: "lead", basis: "rule", scope: "intake:s1:abc:alice" },
+    }).run;
+    expect(rule.mandate).toEqual({
+      by: "lead",
+      basis: "rule",
+      scope: "intake:s1:abc:alice",
+      at: new Date(2_000).toISOString(),
+    });
   });
 });

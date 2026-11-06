@@ -4,16 +4,12 @@ import type { ForgeService } from "../forge/service";
 import type { Forge, ForgeRepo } from "../forge/types";
 import { ForgeError } from "../forge/types";
 import { loadNode } from "../collab/nodes";
-import {
-  finishTask,
-  taskRun,
-  type PullThread,
-  type TaskRun,
-} from "./task-runs";
+import { finishTask, taskRun, type TaskRun, type Thread } from "./task-runs";
 import {
   MAX_BOT_ROUNDS,
   type PullBatch,
   botRounds,
+  eventPrefix,
   pollableItems,
   recordThreadEvent,
   threadCursor,
@@ -40,6 +36,8 @@ import {
  *     后不再轮询。
  *   * 收尾：工作项自己开的（`own`）PR 全部合并或关闭，这一项结束（`done`），结果
  *     `merged`（有一个合并了）或 `closed`（全部是关闭）。
+ *   * issue 线程（主动接单绑上的，#830）：读 issue 的评论与关闭，事件 id 前缀
+ *     `issue-`；不读检查，也不参与收尾（issue 没有 `own`）。
  */
 
 /** 每个线程最短轮询间隔（毫秒）。 */
@@ -60,11 +58,7 @@ export interface PrWatchOptions {
   readonly clock?: () => number;
   readonly minIntervalMs?: number;
   /** 新读到的东西：投给成员、写协调者的 `external` 事件。 */
-  readonly deliver: (
-    run: TaskRun,
-    thread: PullThread,
-    batch: PullBatch,
-  ) => void;
+  readonly deliver: (run: TaskRun, thread: Thread, batch: PullBatch) => void;
   /** 工作项因为自己开的 PR 都合并 / 关闭而结束了。 */
   readonly onSettled: (run: TaskRun, result: PullResult) => void;
   readonly log?: (message: string, fields?: Record<string, unknown>) => void;
@@ -180,7 +174,7 @@ export class PrWatch {
   private async poll(
     forge: ForgeService,
     taskId: string,
-    thread: PullThread,
+    thread: Thread,
   ): Promise<{ delivered: boolean; intervalMs: number }> {
     const database = this.options.database;
     const run = taskRun(database, taskId);
@@ -201,13 +195,30 @@ export class PrWatch {
     const errors: unknown[] = [];
     let intervalMs = this.minInterval;
 
-    // 合并 / 关闭：读不到 PR 本身就整个线程算失败。
-    const pull = await remote.getPull(repo, thread.number);
+    const prefix = eventPrefix(thread.kind);
+    const issue = thread.kind === "issue";
+    // 合并 / 关闭：读不到 PR（issue）本身就整个线程算失败。
+    const current: {
+      readonly state: "open" | "merged" | "closed";
+      readonly atMs: number;
+    } = issue
+      ? await remote.getIssue(repo, thread.number).then((value) => ({
+          state: value.state,
+          atMs: value.closedAtMs ?? value.updatedAtMs,
+        }))
+      : await remote.getPull(repo, thread.number).then((value) => ({
+          state: value.state,
+          atMs: value.mergedAtMs ?? value.updatedAtMs,
+        }));
 
     // 评论与评审。
     const items = [];
     try {
-      const conversation = await remote.conversation(repo, thread.number);
+      const conversation = await remote.conversation(
+        repo,
+        thread.number,
+        thread.kind,
+      );
       if (conversation.pollIntervalMs !== null) {
         intervalMs = Math.max(intervalMs, conversation.pollIntervalMs);
       }
@@ -215,7 +226,7 @@ export class PrWatch {
       for (const item of conversation.items) {
         if (item.createdAtMs < cursor) continue;
         const review = item.kind === "review";
-        const eventId = `${review ? "pr-review" : "pr-comment"}:${key}:${item.id}`;
+        const eventId = `${prefix}-${review ? "review" : "comment"}:${key}:${item.id}`;
         const bot = isBot(item.author);
         const deliver =
           !bot ||
@@ -245,7 +256,7 @@ export class PrWatch {
 
     // head 提交上检查的结论：只在 head 或结论变了时算一次，进行中不算。
     let checks: PullBatch["checks"] = null;
-    if (pull.state === "open") {
+    if (!issue && current.state === "open") {
       try {
         const summary = await remote.checks(repo, thread.number);
         if (
@@ -284,8 +295,8 @@ export class PrWatch {
 
     // 合并 / 关闭。
     let state: PullBatch["state"] = null;
-    if (pull.state === "merged" || pull.state === "closed") {
-      const eventId = `pr-state:${key}:${pull.state}`;
+    if (current.state === "merged" || current.state === "closed") {
+      const eventId = `${prefix}-state:${key}:${current.state}`;
       const fresh = recordThreadEvent(
         database,
         {
@@ -294,12 +305,12 @@ export class PrWatch {
           thread,
           kind: "state",
           delivered: true,
-          sourceAt: pull.mergedAtMs ?? pull.updatedAtMs,
+          sourceAt: current.atMs,
         },
         nowMs,
       );
       if (fresh) {
-        state = pull.state;
+        state = current.state;
         eventIds.push(eventId);
       }
     }

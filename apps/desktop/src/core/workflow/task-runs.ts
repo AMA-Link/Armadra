@@ -58,7 +58,7 @@ export interface WorkItemHandback {
 }
 
 /**
- * 工作项绑定的外部线程（契约 §103.1）。目前只有 `pull`：`repo` 是
+ * 工作项绑定的外部线程（契约 §103.1）。`pull` 是 PR：`repo` 是
  * `<主机>/<owner>/<名字>`（owner 可以是 GitLab 的多级子组），`own` 表示这个工作
  * 项自己开的 PR，`url` 是网页地址（只收 http(s)），`boundAt` 是绑定的毫秒时刻
  * （轮询游标的起点）。
@@ -71,6 +71,22 @@ export interface PullThread {
   readonly url: string;
   readonly boundAt: number;
 }
+
+/**
+ * 绑定的 issue（契约 §103.1，#830）：主动接单时绑上，只看不收尾，所以 `own`
+ * 恒为 `false`。
+ */
+export interface IssueThread {
+  readonly kind: "issue";
+  readonly repo: string;
+  readonly number: number;
+  readonly own: false;
+  readonly url: string;
+  readonly boundAt: number;
+}
+
+export type Thread = PullThread | IssueThread;
+export type ThreadKind = Thread["kind"];
 
 /** 报告历史最多留多少条（含最近一次）。 */
 export const MAX_REPORT_HISTORY = 20;
@@ -97,7 +113,7 @@ export interface TaskRun {
   /** 阶段函数结果的缓存；以 `itemStage()` 为准。 */
   readonly stage: string | null;
   /** 绑定的外部线程（迁移 0063）；没绑是空数组。 */
-  readonly threads: readonly PullThread[];
+  readonly threads: readonly Thread[];
 }
 
 interface TaskRunRecord {
@@ -173,7 +189,7 @@ function taskRunOf(row: TaskRunRecord): TaskRun {
 }
 
 /** 库里的 `threads` 列 → 合格的线程（坏的元素丢掉，不让一行坏数据拖垮读取）。 */
-export function threadsOf(text: string | null): PullThread[] {
+export function threadsOf(text: string | null): Thread[] {
   if (text === null) return [];
   let list: unknown;
   try {
@@ -182,26 +198,40 @@ export function threadsOf(text: string | null): PullThread[] {
     return [];
   }
   if (!Array.isArray(list)) return [];
-  const out: PullThread[] = [];
+  const out: Thread[] = [];
   for (const value of list as Record<string, unknown>[]) {
     if (
       value !== null &&
       typeof value === "object" &&
-      value.kind === "pull" &&
+      (value.kind === "pull" || value.kind === "issue") &&
       typeof value.repo === "string" &&
       value.repo !== "" &&
       typeof value.number === "number" &&
       Number.isSafeInteger(value.number) &&
       value.number > 0
     ) {
-      out.push({
-        kind: "pull",
-        repo: value.repo,
-        number: value.number,
-        own: value.own === true,
-        url: typeof value.url === "string" ? value.url : "",
-        boundAt: typeof value.boundAt === "number" ? value.boundAt : 0,
-      });
+      const url = typeof value.url === "string" ? value.url : "";
+      const boundAt = typeof value.boundAt === "number" ? value.boundAt : 0;
+      // 不认识的种类在上面就丢了；issue 不收尾，`own` 恒为 false。
+      out.push(
+        value.kind === "issue"
+          ? {
+              kind: "issue",
+              repo: value.repo,
+              number: value.number,
+              own: false,
+              url,
+              boundAt,
+            }
+          : {
+              kind: "pull",
+              repo: value.repo,
+              number: value.number,
+              own: value.own === true,
+              url,
+              boundAt,
+            },
+      );
     }
   }
   return out;
@@ -228,6 +258,11 @@ export function recordTaskStart(
     readonly title?: string | undefined;
     /** 来源；缺省是人在协调者终端里说的那一回合，原文是任务正文。 */
     readonly origin?: WorkItemOrigin | undefined;
+    /**
+     * 授权；缺省是 `asked / dispatch`（人让协调者派的）。主动接单写
+     * `basis: "rule"`（契约 §104.5）。
+     */
+    readonly mandate?: Omit<WorkItemMandate, "at"> | undefined;
   },
 ): { readonly inserted: boolean; readonly run: TaskRun } {
   const title = oneLine(task.title);
@@ -238,9 +273,9 @@ export function recordTaskStart(
   };
   // 授权派发时写入，之后没有任何一条语句改它。
   const mandate: WorkItemMandate = {
-    by: task.coordinatorNodeId,
-    basis: "asked",
-    scope: "dispatch",
+    by: task.mandate?.by ?? task.coordinatorNodeId,
+    basis: task.mandate?.basis ?? "asked",
+    scope: task.mandate?.scope ?? "dispatch",
     at: new Date(task.now).toISOString(),
   };
   const changes = database
@@ -432,12 +467,14 @@ export function taskRowJson(
     stage,
     report: run.report,
     attention: run.attention,
-    pulls: run.threads.map((thread) => ({
-      repo: thread.repo,
-      number: thread.number,
-      own: thread.own,
-      url: thread.url,
-    })),
+    pulls: run.threads
+      .filter((thread) => thread.kind === "pull")
+      .map((thread) => ({
+        repo: thread.repo,
+        number: thread.number,
+        own: thread.own,
+        url: thread.url,
+      })),
     reply:
       reply === null
         ? null

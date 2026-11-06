@@ -10,11 +10,12 @@ import {
   type Forge,
   type ForgeChecks,
   type ForgeConversationItem,
+  type ForgeIssue,
   type ForgePull,
 } from "../forge/types";
 import { MAX_BACKOFF_MS, MIN_POLL_MS, PrWatch, REWIND_MS } from "./pr-watch";
 import { stageOf } from "./work-items";
-import { POLL_RETENTION_MS, bindPull } from "./threads";
+import { POLL_RETENTION_MS, bindThread } from "./threads";
 import { recordTaskStart, taskRun } from "./task-runs";
 
 /**
@@ -33,6 +34,9 @@ class ScriptedForge {
   pollIntervalMs: number | null = null;
   failure: ForgeError | undefined;
   reads = 0;
+  issue: ForgeIssue = issueOf("open");
+  checkReads = 0;
+  conversationKinds: (string | undefined)[] = [];
 
   readonly remote = {
     getPull: async () => {
@@ -40,11 +44,19 @@ class ScriptedForge {
       if (this.failure !== undefined) throw this.failure;
       return this.pull;
     },
-    conversation: async () => ({
-      items: this.items,
-      pollIntervalMs: this.pollIntervalMs,
-    }),
-    checks: async () => this.rollup,
+    getIssue: async () => {
+      this.reads += 1;
+      if (this.failure !== undefined) throw this.failure;
+      return this.issue;
+    },
+    conversation: async (_repo: unknown, _number: number, kind?: string) => {
+      this.conversationKinds.push(kind);
+      return { items: this.items, pollIntervalMs: this.pollIntervalMs };
+    },
+    checks: async () => {
+      this.checkReads += 1;
+      return this.rollup;
+    },
   } as unknown as Forge;
 
   readonly service = {
@@ -70,6 +82,22 @@ function pullOf(state: ForgePull["state"], at = T0): ForgePull {
     mergedAtMs: state === "merged" ? at : null,
     autoMerge: false,
     fromFork: false,
+  };
+}
+
+function issueOf(state: ForgeIssue["state"], at = T0): ForgeIssue {
+  return {
+    number: 7,
+    title: "t",
+    body: "",
+    state,
+    author: "carol",
+    labels: [],
+    commentCount: 0,
+    url: "https://github.com/acme/app/issues/7",
+    createdAtMs: T0 - 1_000_000,
+    updatedAtMs: at,
+    closedAtMs: state === "closed" ? at : null,
   };
 }
 
@@ -113,10 +141,11 @@ function setUp(taskId = "t1", own = true) {
     nodeId: member,
     now: T0 - 10_000,
   });
-  bindPull(
+  bindThread(
     fixture.database,
     taskId,
     {
+      kind: "pull",
       repo: REPO,
       number: 7,
       own,
@@ -345,10 +374,10 @@ describe("scope", () => {
 describe("ending", () => {
   it("ends the item as merged once every own pull is done, and keeps a stage of done", async () => {
     setUp("t1", true);
-    bindPull(
+    bindThread(
       fixture.database,
       "t1",
-      { repo: REPO, number: 8, own: true, url: "" },
+      { kind: "pull", repo: REPO, number: 8, own: true, url: "" },
       T0,
     );
     remote.pull = pullOf("merged", T0 + 1_000);
@@ -368,10 +397,10 @@ describe("ending", () => {
 
   it("waits for the other own pull, ends as closed when none merged, and never ends on a watched one", async () => {
     setUp("t1", true);
-    bindPull(
+    bindThread(
       fixture.database,
       "t1",
-      { repo: REPO, number: 9, own: false, url: "" },
+      { kind: "pull", repo: REPO, number: 9, own: false, url: "" },
       T0,
     );
     remote.pull = pullOf("closed", T0 + 1_000);
@@ -489,5 +518,76 @@ describe("fan-out", () => {
       (event) => event.kind === "task-done",
     );
     expect(done?.summary).toContain("已合并");
+  });
+});
+
+describe("issue threads", () => {
+  function bindIssue() {
+    recordTaskStart(fixture.database, {
+      taskId: "i1",
+      coordinatorNodeId: lead,
+      runnerId: "codex",
+      nodeId: member,
+      now: T0 - 10_000,
+    });
+    bindThread(
+      fixture.database,
+      "i1",
+      {
+        kind: "issue",
+        repo: REPO,
+        number: 7,
+        own: false,
+        url: "https://github.com/acme/app/issues/7",
+      },
+      T0,
+    );
+  }
+
+  it("reads issue comments and the close, never checks, and does not settle", async () => {
+    bindIssue();
+    remote.items = [note("c1", "alice", T0 + 1_000)];
+    remote.rollup = {
+      headSha: "a".repeat(40),
+      rollup: "failure",
+      checks: [],
+    };
+    expect(await watch.tick()).toBe(1);
+    expect(remote.conversationKinds).toEqual(["issue"]);
+    expect(remote.checkReads).toBe(0);
+    expect(delivered).toEqual([{ items: ["c1"], checks: null, state: null }]);
+    const ids = fixture.database
+      .prepare("SELECT event_id FROM thread_events ORDER BY event_id")
+      .all()
+      .map((row) => (row as { event_id: string }).event_id);
+    expect(ids).toEqual(["issue-comment:github.com/acme/app#7:c1"]);
+    remote.issue = issueOf("closed", T0 + 2_000);
+    clock += MIN_POLL_MS;
+    expect(await watch.tick()).toBe(1);
+    expect(delivered.at(-1)).toMatchObject({ state: "closed" });
+    expect(settled).toEqual([]);
+    expect(taskRun(fixture.database, "i1")!.status).toBe("running");
+    // 关闭之后不再读。
+    const reads = remote.reads;
+    clock += MIN_POLL_MS * 5;
+    await watch.tick();
+    expect(remote.reads).toBe(reads);
+  });
+
+  it("tells the member it is an issue and points at gh issue view", async () => {
+    bindIssue();
+    remote.items = [note("c1", "alice", T0 + 1_000)];
+    await watch.tick();
+    const [queued] = pendingFor(
+      fixture.database,
+      member,
+      nowSeconds(fixture.collab),
+    );
+    expect(queued?.body).toContain("issue github.com/acme/app#7");
+    expect(queued?.body).toContain(
+      "gh issue view 7 --repo acme/app --comments",
+    );
+    const events = openEvents(fixture.database, lead, 10);
+    expect(events[0]?.summary).toBe("issue #7 有 1 条新评论");
   });
 });

@@ -6,7 +6,7 @@ import {
   type WorkItemStage,
 } from "@armadra/shared";
 import { type TaskRun, publishTask, taskRun } from "../../workflow/task-runs";
-import { bindPull, threadKey } from "../../workflow/threads";
+import { bindThread, threadKey } from "../../workflow/threads";
 import {
   itemsOfNode,
   recordHandback,
@@ -177,10 +177,10 @@ export function report(
   // （契约 §103）。先绑后记：绑不上（线程满了）整条报告拒绝，不留下半件事。
   let bound = false;
   if (pull !== undefined) {
-    const binding = bindPull(
+    const binding = bindThread(
       context.database,
       item.taskId,
-      { ...pull, own: true },
+      { kind: "pull", ...pull, own: true },
       nowDate(context).getTime(),
     );
     if (binding.kind === "full") {
@@ -317,12 +317,14 @@ function rowJson(row: Row): Record<string, unknown> {
     status: run.status,
     report: run.report,
     attention: run.attention,
-    pulls: run.threads.map((thread) => ({
-      repo: thread.repo,
-      number: thread.number,
-      own: thread.own,
-      url: thread.url,
-    })),
+    pulls: run.threads
+      .filter((thread) => thread.kind === "pull")
+      .map((thread) => ({
+        repo: thread.repo,
+        number: thread.number,
+        own: thread.own,
+        url: thread.url,
+      })),
   };
 }
 
@@ -365,10 +367,10 @@ function bindOthersPull(
       `你派发的工作项里没有 \`${id}\`；--bind-pr 只有派发它的协调者能用（成员用 report --pr）。`,
     );
   }
-  const binding = bindPull(
+  const binding = bindThread(
     context.database,
     run.taskId,
-    { ...pull, own: false },
+    { kind: "pull", ...pull, own: false },
     nowDate(context).getTime(),
   );
   if (binding.kind === "full") {
@@ -496,7 +498,7 @@ function detail(row: Row, args: Args): Outcome {
   }
   for (const thread of run.threads) {
     lines.push(
-      `PR：${thread.repo}#${thread.number}（${thread.own ? "自己开的" : "只看"}）${thread.url === "" ? "" : ` ${thread.url}`}`,
+      `${thread.kind === "issue" ? "Issue" : "PR"}：${thread.repo}#${thread.number}（${thread.own ? "自己开的" : "只看"}）${thread.url === "" ? "" : ` ${thread.url}`}`,
     );
   }
   if (run.attention !== null) {
