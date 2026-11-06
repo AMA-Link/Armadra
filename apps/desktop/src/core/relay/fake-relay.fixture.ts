@@ -72,6 +72,8 @@ export class FakeTunnel {
   pings = 0;
   /** `true`：收到的 PING 不答（让 core 的心跳超时）。 */
   silent = false;
+  /** 每收到一帧 PING 调一次（参数是累计个数），测试在这里同步卡住事件循环。 */
+  onPing: ((count: number) => void) | undefined;
   /**
    * `true`：像 `docker pause` 那样冻住——收到的帧一律丢、什么也不发，连接本身
    * 不断（core 那头看不到 TCP 错误）。
@@ -174,6 +176,7 @@ export class FakeTunnel {
         return;
       case "ping":
         this.pings += 1;
+        this.onPing?.(this.pings);
         if (!this.silent) this.send({ type: "pong", ts: frame.ts });
         return;
       case "pong":

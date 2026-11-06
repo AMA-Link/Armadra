@@ -240,6 +240,35 @@ describe("心跳、GOAWAY 与退避", () => {
     });
   });
 
+  it("探测窗口到期与第三拍心跳落在同一轮 timers：先判定的静默原因不被覆盖", async () => {
+    // terminate 之后要等 close 回调才进 closed：探测到期（2.5 拍）先记「静默」并
+    // terminate，同一轮里第三拍（3 拍）见 missed ≥ 2 也会记一次原因。卡在中继收到
+    // 第三帧 PING（两拍心跳 + 探测）之后，让两个计时器一起到期。
+    const heartbeatMs = 100;
+    world = await relayCore({
+      relay: { heartbeatMs },
+      backoff: () => 60_000,
+    });
+    await world.register();
+    const first = await world.relay.nextTunnel(0);
+    const current = world;
+    const issuer = current.cloud.registrations()[0]!.issuer;
+    await until(() => current.tunnels.status(issuer).state === "ready");
+    first.silent = true;
+    first.onPing = (count) => {
+      if (count !== 3) return;
+      const stalledUntil = performance.now() + 2 * heartbeatMs;
+      while (performance.now() < stalledUntil) {
+        // 同步卡住：探测到期与第三拍都过了才放开。
+      }
+    };
+    await until(() => current.tunnels.status(issuer).state === "backoff");
+    expect(world.tunnels.status(issuer).lastError).toEqual({
+      code: "heartbeat_timeout",
+      message: "中继超过两个心跳周期没有任何帧",
+    });
+  });
+
   it("中继发的 PING 立即回 PONG", async () => {
     world = await relayCore();
     await world.register();

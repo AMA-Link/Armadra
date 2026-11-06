@@ -820,7 +820,9 @@ class TunnelConnection {
   private tick(): void {
     if (this.phase === "closed") return;
     if (this.missed >= LIMITS.heartbeatMisses) {
-      this.error = {
+      // 先判定的原因留着：terminate 之后要等 close 回调才进 closed，同一轮 timers
+      // 里静默看门狗可能已经记过原因。
+      this.error ??= {
         code: "heartbeat_timeout",
         message: "中继连续两次没有回 PONG",
       };
@@ -856,7 +858,7 @@ class TunnelConnection {
       this.watch(this.silenceProbeMs);
       return;
     }
-    this.error = {
+    this.error ??= {
       code: "heartbeat_timeout",
       message: "中继超过两个心跳周期没有任何帧",
     };
