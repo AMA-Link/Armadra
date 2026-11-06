@@ -9,7 +9,7 @@ Armadra is distributed under the MIT License (see `LICENSE`). It includes the th
 - **Electron and Chromium.** The notices Electron and Chromium require to accompany their binaries are shipped as `LICENSE.electron.txt` and `LICENSES.chromium.html` next to the executable (on macOS in `Armadra.app/Contents/Resources/`).
 - **ama (`@armadra/agent` 0.15.0).** Its own license and third-party notices are shipped in `resources/agent/` as `LICENSE` and `THIRD_PARTY_NOTICES.md`.
 
-## npm packages (523)
+## npm packages (522)
 
 ### @antfu/install-pkg@2.1.0
 
@@ -170,7 +170,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @chevrotain/cst-dts-gen@11.1.2
+### @chevrotain/cst-dts-gen@13.2.0
 
 License: Apache-2.0
 Homepage: https://github.com/Chevrotain/chevrotain#readme
@@ -381,7 +381,7 @@ Apache License
    limitations under the License.
 ```
 
-### @chevrotain/gast@11.1.2
+### @chevrotain/gast@13.2.0
 
 License: Apache-2.0
 Homepage: https://github.com/Chevrotain/chevrotain#readme
@@ -592,7 +592,7 @@ Apache License
    limitations under the License.
 ```
 
-### @chevrotain/regexp-to-ast@11.1.2
+### @chevrotain/regexp-to-ast@13.2.0
 
 License: Apache-2.0
 Homepage: https://github.com/Chevrotain/chevrotain#readme
@@ -803,7 +803,7 @@ Apache License
    limitations under the License.
 ```
 
-### @chevrotain/types@11.1.2
+### @chevrotain/types@13.2.0
 
 License: Apache-2.0
 Author: Shahar Soel
@@ -1015,7 +1015,7 @@ Apache License
    limitations under the License.
 ```
 
-### @chevrotain/utils@11.1.2
+### @chevrotain/utils@13.2.0
 
 License: Apache-2.0
 Author: Shahar Soel
@@ -2692,7 +2692,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### @mermaid-js/parser@2.0.0
+### @mermaid-js/parser@2.0.1
 
 License: MIT
 Author: Yokozuna59
@@ -10481,7 +10481,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### chevrotain@11.1.2
+### chevrotain@13.2.0
 
 License: Apache-2.0
 Author: Shahar Soel
@@ -11111,7 +11111,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### commander@7.2.0
+### commander@15.0.0
 
 License: MIT
 Author: TJ Holowaychuk
@@ -11144,7 +11144,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### commander@8.3.0
+### commander@7.2.0
 
 License: MIT
 Author: TJ Holowaychuk
@@ -13374,9 +13374,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### elkjs@0.9.3
+### elkjs@0.12.1
 
-License: EPL-2.0
+License: EPL-2.0 OR GPL-3.0-or-later
 Author: Ulf Rüegg
 Homepage: https://github.com/kieler/elkjs#readme
 
@@ -13635,8 +13635,7 @@ No third-party beneficiary rights are created under this Agreement.
 
 “This Source Code may also be made available under the following
 Secondary Licenses when the conditions for such availability set forth
-in the Eclipse Public License, v. 2.0 are satisfied: {name license(s),
-version(s), and exceptions or additional permissions here}.”
+in the Eclipse Public License, v. 2.0 are satisfied: GNU General Public License v3.0 or later”
 
 > Simply including a copy of this Agreement, including this Exhibit A is
 > not sufficient to license the Source Code under Secondary Licenses.
@@ -15400,7 +15399,7 @@ OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHE
  ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### katex@0.16.47
+### katex@0.18.10
 
 License: MIT
 Homepage: https://katex.org
@@ -16528,7 +16527,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### mermaid@12.0.0
+### mermaid@12.3.0
 
 License: MIT
 Author: Knut Sveidqvist
@@ -20292,25 +20291,6 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-```
-
-### uuid@11.1.1
-
-License: MIT
-Homepage: https://github.com/uuidjs/uuid#readme
-
-LICENSE.md:
-
-```text
-The MIT License (MIT)
-
-Copyright (c) 2010-2020 Robert Kieffer and other contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
 ### vfile@6.0.3
