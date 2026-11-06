@@ -9,6 +9,7 @@ import { close } from "./close";
 import { color, link, rename } from "./edits";
 import { interrupt } from "./interrupt";
 import { ackEventVerb, events } from "./events";
+import { intake } from "./intake";
 import { handback, items, report } from "./items";
 import { resolvePullFlag } from "./pr-bind";
 import { list, openAgent, openTerminal, sticky, team } from "./nodes";
@@ -83,6 +84,8 @@ export const VERBS = [
   "events",
   // 协调者对人说话的闸门（契约 §101，#704）：只有协调者能用，带前置条件与去重。
   "notify",
+  // 主动接单（契约 §104.5，#830）：协调者读候选、按人写的规则判定。
+  "intake",
 ] as const;
 
 export type ControlVerb = (typeof VERBS)[number];
@@ -268,6 +271,8 @@ export async function run(
       return events(context, caller, args);
     case "notify":
       return notify(context, caller, args);
+    case "intake":
+      return intake(context, caller, args);
     default:
       throw Refusal.badRequest(`未知的画布动词 \`${verb}\`。`);
   }
