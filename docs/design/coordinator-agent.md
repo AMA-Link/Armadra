@@ -163,6 +163,19 @@ MVP 闭环（场景 11 也按此验收）：
 - 提示：`agent-host/ama/instructions.ts` 的工具说明里有一段话，对两种角色都成立（"没有 bash / edit / write 就是协调者……"），所以适配器不需要知道当前用的是哪个预设。
 - 界面：节点的 Agent 设置里有"协调者"开关，只对能当协调者的 CLI 显示。预设在启动时就定下了，所以节点运行中这个开关置灰。
 
+### §4.2 主动接单：来源、候选与 observe → auto（2026-11，#830）
+
+协调者除了接人的话，也能盯着一个仓库里没人认领的 issue / PR 并按人写的规则接单。线上形状、表、拒绝码与限流见契约 §104；这里只记设计要点。
+
+- **流程**：人配来源（`observe`）→ core 轮询出候选，协调者卡片多一行 `intake` → 协调者 `canvas intake --candidate` 读规则与正文，`--verdict accept|skip` 判定 → observe 下只记账，人在分派抽屉逐条复核；看够了人把来源切 `auto` 并确认规则 → 协调者 `open-agent --candidate`（或 `team --candidate`）起成员，授权写进 `mandate`（`basis: "rule"`），线程同时绑到这一项。不自动提升模式。
+- **谁评估**：core 没有也不该有模型调用，评估的是协调者自己的模型；core 只做机器能做的事：去重、限流、认领判定、名单核对、哈希核对。
+- **安全点**：
+  - 允许名单与模式只存在 core 的表里，只有人经界面或 `/api/workflows/sources` 能改；canvas 动词与规则文件里写的名单都不算数。
+  - `auto` 接单只认人**确认过的规则哈希**：规则文件在仓库工作树里，成员或外来 PR 都改得到，改一个字节就拒（`rules_changed`），要人重新确认；远端工作区读不到规则文件，只能 `observe`。
+  - 判定不带授权：`accept` 只是意见，能否起工作项由 core 的八条检查决定（来源模式、判定、未接单、请求人在名单、规则哈希、线程未认领、限流）。
+  - 外部材料一律是资料：候选正文与 `origin.text` 第一行带外部资料标注，候选表与事件表不存正文，评论只投给成员、协调者只拿一行 `external` 概要。
+- **端到端验证**：`tools/probes/agent-e2e/scenario-15-intake.mjs`（`--only 15`，见 `tools/probes/README.md`）。
+
 ## §5 `core/workflow/` 与协调者的分工
 
 ### §5.1 分工

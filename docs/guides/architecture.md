@@ -349,6 +349,13 @@ Agent 之间的协作走 core 的两个动词表面：
 needsInput`），成员按 `task:<id>:result` 键 `post` 回报，任务行记在 `workflow_task_runs`
 （契约 §15.5）。
 
+协调者还能主动接单（契约 §104，#830）：人经 `/api/workflows/sources` 给协调者配**来源**（一个仓库、看 issue 还是 PR、`observe` / `auto` 模式、允许名单），画布动词配不了。`workflow/intake-watch.ts` 搭
+`TaskWatch` 的 60 秒定时器，每个来源至少 120 秒拉一次，把没人认领的新线程落成**候选**（`router_intake`），
+`collab/intake-fanout.ts` 给协调者的事件队列写一行 `intake`；协调者用 `canvas intake` 读人写的规则
+（`<工作区根>/.armadra/router/rules.md`）与候选正文并判定，判定本身不带授权。`auto` 来源上，协调者再用
+`open-agent --candidate <id>`（或 `team --candidate`）起成员，core 核对来源模式、允许名单与规则哈希，
+工作项记 `mandate.basis = "rule"`，线程绑到这一项，之后的评论走 PR 线程同一条分发路径。
+
 所有 Agent 终端都能调用 `armadra-hook canvas help` 读取短帮助。画布启动的 CLI 带着
 画布说明（一段「画布规则」）与按需技能：协作只走 `armadra-hook canvas`，要别的 Agent
 用 `open-agent` / `team`，要浏览器用画布浏览器节点。详见
@@ -524,6 +531,7 @@ SQLite 的迁移只有一个目录——`apps/desktop/src/core/db/migrations/`�
 | `0059_router_events.sql`        | `router_events`（协调者的统一事件队列：报告、交回、看门狗、任务结束、人的追问、留言先落这一张表，再合并成卡片投递，契约 §93）                                                                                                                              |
 | `0061_router_replies.sql`       | `router_replies`（协调者经 `canvas notify` 对人说的话：回复 id 由用途和目标确定，用来去重、消耗 `followup`，并供分派抽屉读）                                                                                                                               |
 | `0062_recovery_pending.sql`     | `workflow_task_runs` 加 `recovery_pending`（启动扫描发现中断时置 1，成员续接后投过一次恢复提示即清零）                                                                                                                                                     |
+| `0064_router_intake.sql`        | `router_sources`（协调者的来源：仓库、模式、允许名单、确认过的规则哈希）与 `router_intake`（候选与判定、复核、接单结果；不存正文，契约 §104）                                                                                                              |
 
 `core/db/open.ts` 在同一 `BEGIN IMMEDIATE` 事务内先检查迁移账本，再执行已知迁移与启动恢复。未知版本、校验和不符、脏记录、损坏账本、无账本的非空 schema 或迁移历史缺口均拒绝启动；失败回滚并关闭连接，不改名、删除或重建原库。账本表与校验和算法沿用最初那套（SHA-384），所以装过旧版本的库照常打得开。既有 SQL 迁移文件保持原字节。
 
