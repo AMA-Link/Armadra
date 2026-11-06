@@ -5340,7 +5340,7 @@ ACP 会话经 `session/new.mcpServers` 拿到 `armadra-hook mcp`（§14、`core/
 
 ### 103.1 绑定
 
-`workflow_task_runs.threads`（TEXT，可空）是 JSON 数组，元素 `{ kind: "pull", repo, number, own, url, boundAt }`：
+`workflow_task_runs.threads`（TEXT，可空）是 JSON 数组，元素 `{ kind: "pull", repo, number, own, url, boundAt }`；R4 第二阶段（§104）加一种 `{ kind: "issue", repo, number, own: false, url, boundAt }`——主动接单时绑上，**issue 不收尾**（`own` 恒为 `false`）。读取时不认识的 `kind` 丢弃；`items` 的 `pulls` 只列 `kind: "pull"`，详情行对 issue 写 `Issue：<repo>#<n>（只看）`：
 
 | 字段      | 含义                                                                                       |
 | --------- | ------------------------------------------------------------------------------------------ |
@@ -5352,13 +5352,13 @@ ACP 会话经 `session/new.mcpServers` 拿到 `armadra-hook mcp`（§14、`core/
 
 - **成员 `report --pr <编号或网页地址>`**：绑定成 `own: true`。绑定先于报告落库，绑不上（见下）整条报告被拒绝，不留下半件事。答 `result` 多一个 `pull: { repo, number, bound }`，`bound` 为 `false` 表示早已绑过。
 - **协调者 `items --item <id> --bind-pr <编号或网页地址>`**：绑定成 `own: false`。只有派发这个工作项的协调者能用；别人的与不存在的同答 `404 item_not_found`（不泄露它在不在）；不带 `--item` 是 `400 bad_request`。答 `result: { item, pull: { repo, number, url }, bound }`。
-- **幂等**：同一个 PR（`repo` + `number`）再绑只会把 `own` 升成 `true`（自己开的不会被降成只看），其余不动，所以成员每次 `report` 都带着 `--pr` 也不会重复。一个工作项最多绑 5 个 PR，再绑 `409 threads_full`。
+- **幂等**：同一个线程（`kind` + `repo` + `number`）再绑只会把 `own` 升成 `true`（自己开的不会被降成只看），其余不动，所以成员每次 `report` 都带着 `--pr` 也不会重复。一个工作项最多绑 5 个 PR，再绑 `409 threads_full`。
 - **引用的写法**：编号（`12`、`#12`），或 PR 的网页地址（GitHub `…/pull/12`、Gitea `…/pulls/12`、GitLab `…/-/merge_requests/12`，只收 http(s)、不带凭据）。其余 `400 bad_request`。**编号**按工作区的 Git 远端（`origin`）认仓库；工作区在远端执行主机上、不是 Git 仓库或没有 `origin` 时 `400`，请改给网页地址。仓库一律交给托管平台域的 `resolve`（§29.1）认；认不出平台（不在已配置的 GitHub / Gitea / GitLab 上）`400`，托管平台域没装配 `409 forge_unavailable`。
 - `items --item` 的详情多一行 `PR：<repo>#<n>（自己开的|只看） <url>`，`items` 的每项 `result` 多 `pulls: [{ repo, number, own, url }]`。
 
 ### 103.2 forge 的 `conversation`
 
-`Forge` 接口（§29）多一个读取方法 `conversation(repo, number) → { items, pollIntervalMs }`，GitHub、Gitea / Forgejo、GitLab 同一个形状：
+`Forge` 接口（§29）多一个读取方法 `conversation(repo, number, kind = "pull") → { items, pollIntervalMs }`，GitHub、Gitea / Forgejo、GitLab 同一个形状。`kind: "issue"`（§104）只读 issue 的评论：GitHub 与 Gitea 读 `issues/<n>/comments`（不读行内评论与评审），GitLab 读 `issues/<iid>/notes`，链接用 `<issue 地址>#note_<id>`：
 
 - `items` 是这个 PR 的评论与评审，按远端时间从早到晚：`{ id, kind: "comment" | "review", author, body, state, url, createdAtMs }`。`id` 是远端给的稳定编号，带前缀区分编号空间：`c<n>` 普通评论、`r<n>` 行内评论（GitHub）、`v<n>` 评审。评审的 `state` 统一写成 `approved` / `changes_requested` / `commented`；评论为 `null`。草稿评审（`PENDING`）与 GitLab 的系统备注（“added 1 commit”）不算。`url` 只收 http(s)；GitLab 的备注没有自己的地址，用 `<MR 地址>#note_<id>`。
 - 最多读 5 页（每页 100 条）；`body` 截到 65536 字符——这是**别人写的材料**，原样交给读者，从不当成指令。
@@ -5370,12 +5370,14 @@ core 的工作流域搭任务行兜底扫描（每 60 秒，§15.7）的便车�
 
 - **范围**：绑了线程、且工作项活着（`status = running`）或结束不到 14 天的；一个线程出现终态（`pr-state` 事件）后不再读。结束超过 14 天的项不再轮询。
 - **间隔**：每个线程至少 60 秒轮一次；forge 给了 `x-poll-interval`（§103.2）就取更大的那个。读失败（限流、不可用、没配凭据）按 1、2、4 倍……退避，封顶 10 分钟；退避状态在内存里，重启后从头来。每轮最多读 20 个线程，没读到的留给下一轮。
-- **读什么**：`getPull`（合并 / 关闭）、`conversation`（评论与评审，§103.2）、`checks`（head 提交上的检查）。凭据只在 forge 域里现取（§29），轮询与分发都碰不到；失败日志只记固定的种类与原因码，不记远端原话。
+- **读什么**：`getPull`（合并 / 关闭）、`conversation`（评论与评审，§103.2）、`checks`（head 提交上的检查）。`issue` 线程（§104）读 `getIssue`（关闭）与 `conversation(…, "issue")`，不读检查，不参与收尾（§103.5）。凭据只在 forge 域里现取（§29），轮询与分发都碰不到；失败日志只记固定的种类与原因码，不记远端原话。
 - **游标**：线程里评论与评审读到过的最晚的远端时刻（没有就是 `boundAt`），读的时候**回退 5 秒**；比它更早的讨论不算新事件（绑定之前的不回灌）。回退窗口里已经入账的不会重复。
 - **事件与去重**：每个事件先过 `thread_events` 账表，`(item_id, event_id)` 唯一，已经入账的不再算，所以重放同一段响应、重启后从头再读都不会产生第二条。事件 id 确定：
   - `pr-comment:<repo>#<n>:<评论 id>`、`pr-review:<repo>#<n>:<评审 id>`（评论 id 即 §103.2 的带前缀编号）；
   - `pr-checks:<repo>#<n>:<head sha>:<success|failure>`：只有成功与失败算，进行中不算；head 提交或结论变了才算一次；
-  - `pr-state:<repo>#<n>:<merged|closed>`。
+  - `pr-state:<repo>#<n>:<merged|closed>`；
+  - `issue` 线程：`issue-comment:<repo>#<n>:<评论 id>`、`issue-state:<repo>#<n>:closed`。游标、机器人轮数与终态按前缀分开算，同一仓库里同号的 issue 与 PR 互不影响。
+- **分发对 issue 的写法**（§103.4）：正文写「绑定的 issue」，读取指针 GitHub 给 `gh issue view <n> --repo <owner>/<名字> --comments`；协调者的概要写「issue #n 有 1 条新评论 / 已关闭」。
 - **机器人**：登录名以 `[bot]` 结尾的作者，评论照样投，但每个 PR、每个机器人最多投 3 轮（账里 `delivered = 1` 的条数）；之后只记账（`delivered = 0`），不再投给成员也不进协调者的卡片。
 
 ### 103.4 分发
@@ -5395,3 +5397,65 @@ core 的工作流域搭任务行兜底扫描（每 60 秒，§15.7）的便车�
 - `coordinator.tasks` / `coordinator.retry` 的任务行（§15.7、§43.3）多一个字段 `pulls: [{ repo, number, own, url }]`：这一项绑定的 PR（§103.1），不带 `boundAt`；没绑是空数组。旧 core 没有这个字段，页面当作空数组。
 - 分派抽屉的成员行在状态下面显示绑定的 PR 编号（`#12`）；`url` 是 http(s) 地址时编号是外链（新窗口打开，`rel="noreferrer noopener"`），否则只显示编号。阶段 `done`（§103.5）的行显示「已完成」。
 - 绑定、轮询到的事件和结束都会让页面重读：绑定与结束推 §15.4 的 `workflow.task` 帧。
+
+## 104. 协调者的来源与主动接单（`#830`，R4 第二阶段）
+
+> 状态：实施契约（AMA-Link/Armadra#830）。迁移 0064 新增 `router_sources` 与 `router_intake`，不改 `workflow_task_runs`；工作项的线程多一种 `issue`（§103.1），forge 的 `conversation` 多可选 `kind`（§103.2）。协议版本不变，只加字段。本节按批次追加：§104.1–§104.3 是账与规则文件。
+
+### 104.1 来源
+
+`router_sources`：一个协调者节点盯着的一个仓库。
+
+| 列                          | 含义                                                                                                         |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `id`                        | uuid v7                                                                                                      |
+| `coordinator_node_id`       | 协调者节点，节点删了跟着删                                                                                   |
+| `workspace_id`              | 工作区，删了跟着删                                                                                           |
+| `repo`                      | `<主机>/<owner>/<名字>`，与 §103.1 同写法；由托管平台域的 `resolve`（§29.1）认过并规范化                     |
+| `kinds`                     | JSON 数组：`["issue"]`、`["pull"]` 或两者                                                                    |
+| `mode`                      | `observe`（缺省，只记判定）/ `auto`（判定为接且授权时可以起工作项）                                          |
+| `allow_json`                | 允许名单：远端登录名，至多 50 个，大小写不敏感，存小写                                                       |
+| `rules_hash`                | 人确认过的规则文件哈希（§104.3）；空串是没确认过                                                             |
+| `enabled`                   | 1 / 0                                                                                                        |
+| `cursor_at`                 | 列表游标（毫秒）：看过的线程里最晚的 `updatedAtMs`；建来源时记现在，**不回灌**之前的线程；换仓库时重置为现在 |
+| `created_at` / `updated_at` | 毫秒                                                                                                         |
+
+- `UNIQUE(coordinator_node_id, repo)`，重复答 `409 conflict`；一个协调者最多 10 个来源，再加 `409 sources_full`。`kinds` 与 `mode` 取别的值、允许名单项带空白或超过 100 字、超过 50 个，`400 bad_request`。
+- **只有人能配**：经分派抽屉（§104.7）。没有任何 `canvas` 动词能建、改、删来源或改允许名单与模式。
+- **切到 `auto` 的前置**（core 检查，不满足 `400 bad_request`，`message` 写明缺什么）：允许名单非空；工作区不在远端执行主机上；`rules_hash` 非空且等于此刻文件的哈希。`confirmRules: true` 先把此刻文件的哈希写进 `rules_hash`（文件缺失或工作区在远端 `400`），再做上面的检查。切回 `observe` 随时可以。
+
+### 104.2 候选
+
+`router_intake`：来源仓库里一个**未认领**线程的一次「要不要接」。
+
+| 列                                          | 含义                                                                                                            |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `id`                                        | `intake:<repo>#<编号>:<issue\|pull>:<版本>`：新线程的版本是 `createdAtMs` 的 36 进制，重新提起的是 `c<评论 id>` |
+| `source_id`                                 | 来源，删了跟着删                                                                                                |
+| `coordinator_node_id` / `workspace_id`      | 冗余自来源，查询用                                                                                              |
+| `kind` / `repo` / `number`                  | 线程                                                                                                            |
+| `title`                                     | 一行、至多 80 字，去控制字符                                                                                    |
+| `author`                                    | 线程作者登录名，可空                                                                                            |
+| `url`                                       | 网页地址，只收 http(s)，否则空串                                                                                |
+| `request_json`                              | `{ by, via: "thread" \| "comment", commentId?, at }`：请求人（新线程是作者，重新提起是那条评论的作者）          |
+| `authorized`                                | `request.by` 写入时在允许名单里                                                                                 |
+| `source_at` / `seen_at`                     | 远端时刻 / 读到的时刻（毫秒）                                                                                   |
+| `verdict` / `verdict_reason` / `verdict_at` | `accept` / `skip`、理由（1–100 字）、时刻；判定一次定死                                                         |
+| `rules_hash` / `mode_at_verdict`            | 判定时规则文件的哈希（缺失为空串）与来源的模式                                                                  |
+| `review` / `reviewed_at`                    | 人的复核 `agree` / `disagree`，可改可撤回                                                                       |
+| `item_id` / `dispatched_at`                 | 接单后的工作项与时刻；不设外键，工作项删了账还在                                                                |
+| `outcome`                                   | 空 / `dispatched` / `refused:<原因码>`（接单被拒的最近一次原因）                                                |
+
+- id 确定，`INSERT OR IGNORE`：重放与重启都不出第二条。索引 `(coordinator_node_id, verdict)`、`(source_id, repo, number, kind)`。
+- **不存正文**：标题、作者、链接之外的东西在协调者要看时现读，候选表与事件表都不带正文。
+- **保留**：有 `item_id` 的永久；其余 `seen_at` 超过 90 天后清理。
+- **认领判定**：有工作项的 `threads` 含这个线程（`kind` + `repo` + `number` 相等），且那一项 `status = running` 或结束不到 14 天（与 §103.3 同口径），就算已认领。候选产生时与接单时各判一次。
+- **统计**：每个来源最近 20 条判定里的 `decided / accepted / agreed / disagreed`，只给人看，不自动提升模式。
+
+### 104.3 规则文件
+
+- 位置：`<工作区根>/.armadra/router/rules.md`，UTF-8 Markdown，纯自然语言，没有机器字段。允许名单与模式只在 `router_sources`，文件里写了也不算数。
+- 只从工作区根读（成员在 worktree 里改的不算），每次现读，不缓存。
+- 上限 16 KB：超过的截断到 16 KB（不切开多字节字符），末尾加一行 `[规则文件超过 16 KB，已截断]`；去控制字符（保留换行与制表符），不做别的加工。
+- 哈希：全文字节的 sha256 前 16 位十六进制——截断后模型看到的和人确认的是同一份文件。空文件与不存在都算缺失，哈希为空串。
+- 工作区在远端执行主机上时本机读不到：当缺失处理，来源只能 `observe`，不能确认规则；本期不同步远端文件。
