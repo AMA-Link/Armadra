@@ -260,23 +260,35 @@ export async function startChrome(h) {
 /**
  * 数 `ERR_NETWORK_CHANGED`（diag 有上限，按个数数不准）。重载说明（kind 为
  * `retry`）里也带这个词，不能算作新的网络变化，否则一次变化会把重载次数跑满，
- * 页面成功后还会再刷新，耗掉一次性的配对票 / 邀请链接。
+ * 页面成功后还会再刷新，耗掉一次性的配对票 / 邀请链接。`recent` 是上一次
+ * `fresh()` 为真时那一批变化的原文，记现场用。
  */
 export function networkChangeGate() {
-  let count = 0;
-  let seen = 0;
+  let pending = [];
   return {
+    recent: [],
     note(entry) {
       if (entry.kind !== "retry" && /ERR_NETWORK_CHANGED/.test(entry.text))
-        count += 1;
+        pending.push(entry.text);
     },
     /** 自上次问起，有没有新的网络变化。 */
     fresh() {
-      const hit = count > seen;
-      seen = count;
+      const hit = pending.length > 0;
+      if (hit) this.recent = pending;
+      pending = [];
       return hit;
     },
   };
+}
+
+/**
+ * 网络变化之后页面算不算「没起来」：根节点是空的（或连根节点都没有，比如浏览器
+ * 自己的错误页），并且这次加载以来一条接口应答都没有。只有这样才值得重载——
+ * 票还在片段里，入口脚本没跑。根节点有内容或接口答过，说明入口脚本在跑，
+ * 页面可能已取走一次性的配对票并抹掉片段，重载只会把成功的页面刷掉（R-89）。
+ */
+export function stuckAfterNetworkChange({ rootChildren, trafficSince }) {
+  return (rootChildren ?? 0) === 0 && trafficSince === 0;
 }
 
 /** 页面被 `ERR_NETWORK_CHANGED` 掐掉后最多重载几次。 */
@@ -288,6 +300,8 @@ async function page(h, call, listeners, sessionId, { width, height, name }) {
   const events = [];
   /** 最近的接口应答（状态 + 路径），排查「按了没反应」时看它发没发。 */
   const traffic = [];
+  /** 接口应答的累计条数（`traffic` 有上限，按长度数不准）。 */
+  let trafficTotal = 0;
   /** 资源加载失败、浏览器日志里的错误、导航错误：只在失败现场里看，不当控制台错误断言。 */
   const diag = [];
   const changes = networkChangeGate();
@@ -383,6 +397,7 @@ async function page(h, call, listeners, sessionId, { width, height, name }) {
             ? `${status} ${new URL(url).pathname}`
             : `${status} ${meta.method} ${new URL(url).pathname} csrf=${meta.csrf} +${meta.at - startedAt}ms`,
         );
+        trafficTotal += 1;
         if (traffic.length > 400) traffic.shift();
       }
       if (status >= 400 && /\/api\/|\/health/.test(url)) {
@@ -461,27 +476,48 @@ async function page(h, call, listeners, sessionId, { width, height, name }) {
   const PAGE_LOADED = { timeout: 60_000, what: "页面加载完成（readyState）" };
   const navigate = async (url) => {
     changes.fresh();
+    let trafficMark = trafficTotal;
     const answer = await call("Page.navigate", { url });
+    const shown = url.replace(/#pair=\S+/g, "#pair=…");
     // 导航本身失败（连不上、证书、被拒）时只回 errorText，不抛错。
     if (answer?.errorText)
-      note({
-        kind: "navigate",
-        text: `${answer.errorText} ${url.replace(/#pair=\S+/g, "#pair=…")}`,
-      });
+      note({ kind: "navigate", text: `${answer.errorText} ${shown}` });
     await waitFor(`return document.readyState === "complete";`, PAGE_LOADED);
     // 容器刚起时网桥一出现，Chrome 的网络变化通知会把在途请求以
     // `ERR_NETWORK_CHANGED` 掐掉；入口脚本的懒加载块（模块脚本）被掐了不会重试，
-    // 页面就停在空白根节点上，既没有控制台错误也没有接口请求（R-89，#356：夜间
-    // 五次现场逐字相同）。这是浏览器与运行器的网络事件，不是页面的问题：发现
-    // 就在网络稳住之后重载，同一张票还在片段里（页面没走到取票那一步）。
+    // 页面就停在空白根节点上，既没有控制台错误也没有接口请求（R-89，#356）。
+    // 这是浏览器与运行器的网络事件，不是页面的问题：页面确实没起来才在网络
+    // 稳住之后重载（票还在片段里）。页面已经起来的（掐掉的只是之后的懒加载块）
+    // 不重载，否则会把已取走票、已配对的页面刷成无片段的 `/`。
     for (let reload = 0; reload < NETWORK_CHANGED_RELOADS; reload += 1) {
       await sleep(1_000);
       if (!changes.fresh()) break;
+      const rootChildren = await evaluate(
+        `return document.getElementById("root")?.childElementCount ?? null;`,
+      ).catch(() => null);
+      const trafficSince = trafficTotal - trafficMark;
+      if (!stuckAfterNetworkChange({ rootChildren, trafficSince })) {
+        // 说明里不带 ERR_NETWORK_CHANGED 这个词：它不是新的网络变化。
+        const cut = changes.recent.map((text) =>
+          text
+            .replace(/\S*ERR_NETWORK_CHANGED\S*\s*/g, "")
+            .replace(/#pair=\S+/g, "#pair=…"),
+        );
+        note({
+          kind: "network",
+          text: `网络变化掐掉 ${cut.length} 个请求，页面已起来（根节点 ${rootChildren}、接口应答 ${trafficSince}），不重载：${cut.join(" ")}`.slice(
+            0,
+            600,
+          ),
+        });
+        break;
+      }
       note({
         kind: "retry",
-        text: `ERR_NETWORK_CHANGED，第 ${reload + 1} 次重载 ${url.replace(/#pair=\S+/g, "#pair=…")}`,
+        text: `ERR_NETWORK_CHANGED，第 ${reload + 1} 次重载 ${shown}`,
       });
       await sleep(1_000);
+      trafficMark = trafficTotal;
       await call("Page.reload", {});
       await waitFor(`return document.readyState === "complete";`, PAGE_LOADED);
     }
