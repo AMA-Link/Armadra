@@ -649,15 +649,16 @@ async function packageLeg({ options, target, report }) {
         walked.downloaded.phase !== "ready"
       )
         return fail(`download answered ${JSON.stringify(walked.downloaded)}`);
-      const staged = filesWithDigest(
-        join(sandbox, "home"),
-        published.sha256,
-        published.size,
+      // electron-updater caches under HOME; the release-key path (a package
+      // whose signatureState is not `signed`) stages under
+      // `<data>/updates/download` (main/updates/updater.ts `downloadDir`).
+      const staged = ["home", "data"].flatMap((dir) =>
+        filesWithDigest(join(sandbox, dir), published.sha256, published.size),
       );
       leg.steps.push({ step: "staged", files: staged });
       if (staged.length === 0)
         return fail(
-          "nothing under the temporary HOME has the served bytes: the update was not staged",
+          "nothing under the temporary HOME or data directory has the served bytes: the update was not staged",
         );
       const fetched = served.requests.filter((url) =>
         url.includes("/download/"),
@@ -698,10 +699,13 @@ async function packageLeg({ options, target, report }) {
           "the install leg runs with --install --next <release dir of a higher version>";
         return leg;
       }
+      // The data directory's single-instance lock is still held by this
+      // instance; the copy installLeg launches would hand off to it and exit.
+      await stop(running);
+      running = null;
       return await installLeg({
         options,
         leg,
-        running,
         sandbox,
         target,
         key,
