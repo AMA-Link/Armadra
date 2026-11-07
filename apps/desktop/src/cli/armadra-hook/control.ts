@@ -144,7 +144,11 @@ export async function runCanvas(args: string[]): Promise<number> {
       );
     }
   }
-  return request(`/control/${percentEncodeSegment(verb)}`, map);
+  return request(
+    `/control/${percentEncodeSegment(verb)}`,
+    map,
+    callTimeoutMs("canvas", verb, map),
+  );
 }
 
 /**
@@ -187,6 +191,47 @@ export const VERB_TIMEOUT_MS = 15_000;
 
 export function verbTimeoutMs(): number {
   return Math.max(VERB_TIMEOUT_MS, totalTimeoutMs());
+}
+
+/**
+ * `canvas wait` long-polls in the core for its `--timeout` (seconds; the
+ * core's `DEFAULT_WAIT_SECONDS` / `MAX_WAIT_SECONDS` in
+ * `core/collab/control/wait.ts`, which a test holds these to). Under the plain
+ * verb budget a default wait ran out on the client first: the model saw a
+ * failure, and `send` handed the same wait to the next endpoint candidate.
+ */
+export const WAIT_DEFAULT_SECONDS = 30;
+export const WAIT_MAX_SECONDS = 60;
+/** What the answer may take on top of the wait itself. */
+export const WAIT_SLACK_MS = 10_000;
+
+/**
+ * The budget for one call of `group`/`verb` with these arguments, shared by
+ * the CLI, the MCP server and the ama host so the three cannot disagree
+ * (contract §105.1).
+ */
+export function callTimeoutMs(
+  group: "canvas" | "context" | "browser",
+  verb: string,
+  args: Args,
+): number {
+  if (group === "browser") return browserTimeoutMs();
+  if (group === "canvas" && verb === "wait") return waitTimeoutMs(args);
+  return verbTimeoutMs();
+}
+
+function waitTimeoutMs(args: Args): number {
+  // A value the core will refuse comes back at once; only a valid one waits.
+  const raw = args["timeout"];
+  let seconds = WAIT_DEFAULT_SECONDS;
+  if (typeof raw === "number" && Number.isInteger(raw)) {
+    seconds = raw;
+  } else if (typeof raw === "string") {
+    const match = /^(\d{1,4})s?$/.exec(raw);
+    if (match !== null) seconds = Number(match[1]);
+  }
+  seconds = Math.min(Math.max(seconds, 0), WAIT_MAX_SECONDS);
+  return Math.max(verbTimeoutMs(), seconds * 1000 + WAIT_SLACK_MS);
 }
 
 export async function runBrowser(args: string[]): Promise<number> {
@@ -372,7 +417,14 @@ function jsonToString(value: JsonValue | undefined): string {
   return canonicalJsonBytes(value).toString("utf8");
 }
 
-/** Renders a failure response into a single stderr line. */
+/**
+ * Renders a failure response for the model: the sentence and the status on
+ * the first line, and — when the body is a coded refusal — a second line with
+ * the machine fields the core flattened beside `{code, message}`
+ * (`retryable`, `retryAfterMs`, …; agent-delivery.md §3.7, contract §105.3).
+ * Without it the model had to guess from a sentence whether to retry and
+ * how long to wait.
+ */
 export function renderError(response: HookResponse): string {
   const fallback = (): string => {
     const body = response.body.trim();
@@ -393,9 +445,28 @@ export function renderError(response: HookResponse): string {
   const object = value as Record<string, JsonValue>;
   for (const key of ["error", "message"]) {
     const field = object[key];
-    if (typeof field === "string") return `${field} (${response.status})`;
+    if (typeof field !== "string") continue;
+    const line = `${field} (${response.status})`;
+    const machine = machineLine(object);
+    return machine === undefined ? line : `${line}\n${machine}`;
   }
   return fallback();
+}
+
+/** `code=… key=value …`: `code` first, the rest in key order, sentences out. */
+function machineLine(object: Record<string, JsonValue>): string | undefined {
+  const code = object["code"];
+  if (typeof code !== "string" || code === "") return undefined;
+  const fields = [`code=${code}`];
+  for (const key of Object.keys(object).sort()) {
+    if (key === "code" || key === "message" || key === "error") continue;
+    const field = object[key];
+    if (field === undefined) continue;
+    fields.push(
+      `${key}=${typeof field === "string" ? JSON.stringify(field) : jsonToString(field)}`,
+    );
+  }
+  return fields.join(" ");
 }
 
 function isJson(response: HookResponse): boolean {

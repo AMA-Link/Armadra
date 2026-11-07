@@ -11,7 +11,7 @@
 
 import { loadBinding } from "../../cli/armadra-hook/binding.js";
 import {
-  browserTimeoutMs,
+  callTimeoutMs,
   controlBody,
   render,
   renderError,
@@ -103,7 +103,7 @@ export async function callVerb(
     loaded.ok,
     (current, candidate) =>
       postJsonRequest(tool.path, headersFor(current, candidate), body),
-    tool.long === true ? browserTimeoutMs() : verbTimeoutMs(),
+    callTimeoutMs(tool.group, tool.verb, args),
   );
   if ("error" in outcome) return { error: outcome.error };
   if (!isSuccess(outcome.ok)) return { error: renderError(outcome.ok) };

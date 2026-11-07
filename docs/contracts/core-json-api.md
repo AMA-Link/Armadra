@@ -5542,3 +5542,24 @@ core 的工作流域搭任务行兜底扫描（每 60 秒，§15.7）的便车�
 - **`coordinator.intake { boardId, limit?, offset?, decided? }`** → `{ candidates, total, next }`：这块画板上协调者名下的候选；`limit` 缺省 50、至多 200，`offset` 缺省 0，`decided: true` 只要判定过的、`false` 只要没判定的（旧路径的查询串里是 `"true"` / `"false"`）。没判定的按最早在前，其余按最近在前。`next` 是下一页的偏移，没有更多是 `null`。一行：`{ id, sourceId, kind, repo, number, title, author, url, authorized, seenAt, verdict, reason, verdictAt, modeAtVerdict, review, itemId, outcome }`；`reason` 是判定理由，`seenAt` / `verdictAt` 是 RFC 3339 字符串（与任务行一致），其余同 §104.2 的列；**不带正文、请求人与规则哈希**。
 - **`coordinator.reviewIntake { candidateId, review }`** → `{ candidate }`：`review` 是 `"agree"` / `"disagree"`，`null` 撤回；只影响这一行与统计，不触发任何派发。候选不存在 `404 candidate_not_found`，还没判定的候选 `409 conflict`。
 - **旧 core**：没有这五条 procedure 的 core 对它们答 `404`，页面把两个 Tab 当空态，不当解析失败；`rulesCurrentHash` 等字段是这一版起才有的，更新的 core 多出的字段页面忽略。
+
+## 105. 协作调用的三处客户端行为：`wait` 预算、终端 Claude 放行、拒绝的机器行（`#848`、`#849`、`#850`）
+
+> 状态：实施契约。只改客户端（`armadra-hook` 的 CLI、MCP 服务器与 ama 宿主适配器）与 Claude 的注入产物；core 的路由、拒绝体与协议版本不变。
+
+### 105.1 `canvas wait` 的客户端预算（`#848`）
+
+- `canvas wait` 在 core 里挂起 `--timeout` 秒（缺省 30、上限 60，`core/collab/control/wait.ts`）。三个客户端对它的每个端点候选给 **`timeout + 10` 秒**（`timeout` 读不出时按 30、越界按 0–60 收住），其余 canvas / context 动词仍是 15 秒，浏览器动词仍是长预算。
+- 一个函数决定：`cli/armadra-hook/control.ts::callTimeoutMs(group, verb, args)`，CLI、MCP（`mcp.ts`）与 ama（`agent-host/ama/client.ts`）都调它；常量与 core 的 `DEFAULT_WAIT_SECONDS` / `MAX_WAIT_SECONDS` 由测试绑定。此前缺省的 `wait` 先在客户端超时，并被 `send` 再发给下一个候选。
+
+### 105.2 画布内 Claude 的放行规则（`#849`）
+
+- `<数据目录>/integration/claude/settings.json` 与 `settings-permission.json`（§57）多一个 `permissions.allow`，与 `hooks` 并列：`Bash(armadra-hook <子命令>:*)` 与 `Bash(<客户端绝对路径> <子命令>:*)`（路径含空格时加双引号，与 Hook 命令同一写法），子命令只有 `canvas`、`context`、`browser`。
+- 只经启动器的 `--settings` 交给画布节点，不写用户的 Claude 配置；不设 `defaultMode`，用户自己的权限模式与规则照旧生效（Claude 合并多份设置的 `allow`）。
+- 已在 Claude 2.1.318 实测：上述写法免审批；`armadra-hook hook …` 等其他子命令、`… && …` 串接的命令与 `"$ARMADRA_HOOK_BIN" …` 写法仍按用户的权限模式询问。与 §98（ACP 下自己的 MCP 工具免审批）和终端 Codex 的 `default_tools_approval_mode` 同一个口径：这些动词与人点「允许」拿到的权限相同，授权仍由 core 按连线判定。
+
+### 105.3 拒绝的机器行（`#850`）
+
+- 客户端的失败文本（CLI 写 stderr、MCP 的 `isError` 文本、ama 的工具错误）第一行不变：`<message> (<HTTP 状态>)`。
+- 拒绝体是 JSON 且带非空字符串 `code` 时加第二行：`code=<code>`，其后是拒绝体里 `code` / `message` / `error` 以外的字段，按键名排序，`键=值` 以空格分隔，字符串值与非标量值写成 JSON（例：`code=RATE_LIMITED retryAfterMs=3000 retryable=true`）。没有 `code` 的保持一行。
+- 字段就是 core 摊平在 `{code, message}` 旁边的那些（设计 agent-delivery.md §3.7），客户端不增不减。
