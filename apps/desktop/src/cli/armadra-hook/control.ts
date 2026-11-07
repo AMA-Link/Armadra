@@ -416,7 +416,13 @@ function jsonToString(value: JsonValue | undefined): string {
   return canonicalJsonBytes(value).toString("utf8");
 }
 
-/** Renders a failure response into a single stderr line. */
+/**
+ * Renders a failure response for the model: the sentence and the status on
+ * the first line, and — when the body is a coded refusal — a second line with
+ * the machine fields the core flattened beside `{code, message}`
+ * (`retryable`, `retryAfterMs`, …; agent-delivery.md §3.7). Without it the
+ * model had to guess from a sentence whether to retry and how long to wait.
+ */
 export function renderError(response: HookResponse): string {
   const fallback = (): string => {
     const body = response.body.trim();
@@ -437,9 +443,28 @@ export function renderError(response: HookResponse): string {
   const object = value as Record<string, JsonValue>;
   for (const key of ["error", "message"]) {
     const field = object[key];
-    if (typeof field === "string") return `${field} (${response.status})`;
+    if (typeof field !== "string") continue;
+    const line = `${field} (${response.status})`;
+    const machine = machineLine(object);
+    return machine === undefined ? line : `${line}\n${machine}`;
   }
   return fallback();
+}
+
+/** `code=… key=value …`: `code` first, the rest in key order, sentences out. */
+function machineLine(object: Record<string, JsonValue>): string | undefined {
+  const code = object["code"];
+  if (typeof code !== "string" || code === "") return undefined;
+  const fields = [`code=${code}`];
+  for (const key of Object.keys(object).sort()) {
+    if (key === "code" || key === "message" || key === "error") continue;
+    const field = object[key];
+    if (field === undefined) continue;
+    fields.push(
+      `${key}=${typeof field === "string" ? JSON.stringify(field) : jsonToString(field)}`,
+    );
+  }
+  return fields.join(" ");
 }
 
 function isJson(response: HookResponse): boolean {

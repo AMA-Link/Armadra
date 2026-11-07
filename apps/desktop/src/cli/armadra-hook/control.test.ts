@@ -120,6 +120,33 @@ describe("rendering", () => {
       "hook endpoint answered 502",
     );
   });
+
+  it("adds the machine fields of a coded refusal on a second line", () => {
+    expect(
+      renderError(
+        response(
+          429,
+          "application/json",
+          '{"code":"RATE_LIMITED","message":"too fast","retryable":true,"retryAfterMs":3000}',
+        ),
+      ),
+    ).toBe(
+      "too fast (429)\ncode=RATE_LIMITED retryAfterMs=3000 retryable=true",
+    );
+    expect(
+      renderError(
+        response(
+          409,
+          "application/json",
+          '{"code":"LOOP","message":"closed a loop","chain":["a","b"],"node":"n2"}',
+        ),
+      ),
+    ).toBe('closed a loop (409)\ncode=LOOP chain=["a","b"] node="n2"');
+    // A bare refusal keeps its one line.
+    expect(
+      renderError(response(404, "application/json", '{"message":"gone"}')),
+    ).toBe("gone (404)");
+  });
 });
 
 describe("a browser verb's budget", () => {
