@@ -21,6 +21,7 @@ import {
   CLAUDE_MODS_MIN,
   INJECTED_AGENTS,
   artifactLayout,
+  claudeAllowRules,
   canvasInjection,
   claudeLoadsMods,
   claudeModsGate,
@@ -162,6 +163,10 @@ describe("canvas injection", () => {
     expect(settings.hooks.Stop?.[0]?.hooks[0]?.command).toBe(
       `${hookBin} claude`,
     );
+    expect(
+      (settings as unknown as { permissions: { allow: string[] } }).permissions
+        .allow,
+    ).toEqual(claudeAllowRules(hookBin));
     const manifest = JSON.parse(
       readFileSync(layout.manifest as string, "utf8"),
     ) as { name: string };
@@ -805,6 +810,10 @@ describe("Claude's mod (contract §57)", () => {
       readFileSync(layout.settingsPermission as string, "utf8"),
     ) as { hooks: Record<string, { hooks: { command: string }[] }[]> };
     expect(Object.keys(permission.hooks)).toEqual(["PermissionRequest"]);
+    expect(
+      (permission as unknown as { permissions: { allow: string[] } })
+        .permissions.allow,
+    ).toEqual(claudeAllowRules(hookBin));
     expect(permission.hooks.PermissionRequest?.[0]?.hooks[0]?.command).toBe(
       `${hookBin} claude`,
     );
@@ -954,5 +963,36 @@ describe("Claude's mod (contract §57)", () => {
     expect(
       Object.values(layout).some((path) => String(path).includes("types")),
     ).toBe(false);
+  });
+});
+
+describe("the Bash rules a canvas Claude runs armadra-hook under", () => {
+  it("allows the three verb families by name and by path, nothing else", () => {
+    expect(claudeAllowRules("/opt/armadra/bin/armadra-hook")).toEqual([
+      "Bash(armadra-hook canvas:*)",
+      "Bash(/opt/armadra/bin/armadra-hook canvas:*)",
+      "Bash(armadra-hook context:*)",
+      "Bash(/opt/armadra/bin/armadra-hook context:*)",
+      "Bash(armadra-hook browser:*)",
+      "Bash(/opt/armadra/bin/armadra-hook browser:*)",
+    ]);
+    for (const rule of claudeAllowRules("/x/armadra-hook")) {
+      expect(rule).not.toMatch(/ (hook|mcp|launch)\b/);
+    }
+  });
+
+  it("quotes a path with a space the way the shell line has it", () => {
+    const rules = claudeAllowRules("/Users/a/Application Support/armadra-hook");
+    expect(rules).toContain(
+      'Bash("/Users/a/Application Support/armadra-hook" canvas:*)',
+    );
+  });
+
+  it("does not repeat the bare name when the client is found on PATH", () => {
+    expect(claudeAllowRules("armadra-hook")).toEqual([
+      "Bash(armadra-hook canvas:*)",
+      "Bash(armadra-hook context:*)",
+      "Bash(armadra-hook browser:*)",
+    ]);
   });
 });
