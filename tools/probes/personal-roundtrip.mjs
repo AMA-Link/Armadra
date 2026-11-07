@@ -29,12 +29,10 @@
 //
 // 产物默认在 target/personal-roundtrip/：result.json、每一步的截图与失败时的现场。
 //
-// 指向别的中继（平台计划 V4，Workers 中继探针）：
-//   --workerd         用 armadra-cloud 检出里的 apps/relay-workers 起本地 workerd（wrangler dev
-//                     --local，不连 Cloudflare 账号），页面产物取 apps/web/dist
-//   --issuer <地址>   对已经在跑的中继（http:// 或 https:// 系统信任）跑；账号与口令取环境变量
+// 指向已经在跑的中继（例如托管的 relay.armadra.com，Go 个人中转）：
+//   --issuer <地址>   对它跑（http:// 或 https:// 系统信任）；账号与口令取环境变量
 //                     ARMADRA_PROBE_RELAY_ACCOUNT / ARMADRA_PROBE_RELAY_PASSWORD
-// 这两种模式没有 init/serve 与自签 CA，也不开 Electron 和手机；多出「只读分享链接」与
+// 这个模式没有 init/serve 与自签 CA，也不开 Electron 和手机；多出「只读分享链接」与
 // 「媒体票 Range」两步。
 import { randomBytes } from "node:crypto";
 import {
@@ -48,7 +46,6 @@ import {
 import { extname, join, resolve } from "node:path";
 
 import {
-  NO_CLOUD_HINT,
   NO_RELAY_HINT,
   findCloudSource,
   relayAvailable,
@@ -74,7 +71,6 @@ import {
   untilApproved,
 } from "./platform-lib.mjs";
 import { probeSession } from "./probe-session.mjs";
-import { startWorkerd } from "./workerd-relay.mjs";
 import {
   freePort,
   makeNode,
@@ -91,10 +87,9 @@ const flagValue = (name) => {
   const at = argv.indexOf(name);
   return at >= 0 ? argv[at + 1] : undefined;
 };
-const useWorkerd = argv.includes("--workerd");
 const externalIssuer = flagValue("--issuer")?.replace(/\/+$/, "");
-/** 对别家中继（本地 workerd 或已经在跑的）跑：没有 init/serve、自签 CA、Electron 与手机。 */
-const external = useWorkerd || externalIssuer !== undefined;
+/** 对已经在跑的中继跑：没有 init/serve、自签 CA、Electron 与手机。 */
+const external = externalIssuer !== undefined;
 const positional = argv.filter(
   (arg, at) => !arg.startsWith("--") && argv[at - 1] !== "--issuer",
 );
@@ -105,8 +100,8 @@ rmSync(output, { recursive: true, force: true });
 mkdirSync(output, { recursive: true });
 
 const cloudHome = findCloudSource();
-if (useWorkerd ? !cloudHome : !external && !relayAvailable(cloudHome)) {
-  console.error(useWorkerd ? NO_CLOUD_HINT : NO_RELAY_HINT);
+if (!external && !relayAvailable(cloudHome)) {
+  console.error(NO_RELAY_HINT);
   process.exit(2);
 }
 const webRoot = join(root, "apps/web/dist");
@@ -126,7 +121,6 @@ const report = { status: "failed", output, scenarios: [], timings: {} };
 const started = Date.now();
 let stack;
 let relay;
-let workerd;
 let electron;
 const opened = [];
 
@@ -186,7 +180,7 @@ try {
     log: "info",
     env: {
       ARMADRA_SECRET_BACKEND: "file",
-      // 本地 workerd 是明文 ws://；核心只在探针里放行（线上中继一律 wss://）。
+      // 回环上的明文中继是 ws://；核心只在探针里放行（线上中继一律 wss://）。
       ...(external && !externalIssuer?.startsWith("https:")
         ? { ARMADRA_RELAY_ALLOW_INSECURE: "1" }
         : {}),
@@ -199,7 +193,7 @@ try {
   const run = scenario(report, "个人中转全流程（V1 / M1）", output);
   const shotAt = (page, name) => run.shot(page, name);
 
-  /** 本次探针里的中继：Node 个人中转（缺省）、本地 workerd 或已经在跑的 issuer。 */
+  /** 本次探针里的中继：本地起的 Go 个人中转（缺省）或已经在跑的 issuer。 */
   let issuer;
   let relayPort;
   let password;
@@ -209,25 +203,17 @@ try {
   let call;
   let must;
   if (external) {
-    if (useWorkerd) {
-      workerd = await timed("1-workerd", () =>
-        startWorkerd({ cloudHome, webRoot, onSecret: secret }),
+    issuer = externalIssuer;
+    account = process.env.ARMADRA_PROBE_RELAY_ACCOUNT ?? "";
+    password = secret(
+      "中继口令",
+      process.env.ARMADRA_PROBE_RELAY_PASSWORD ?? "",
+    );
+    if (!account || !password)
+      throw new Error(
+        "--issuer 需要环境变量 ARMADRA_PROBE_RELAY_ACCOUNT 与 ARMADRA_PROBE_RELAY_PASSWORD",
       );
-      ({ issuer, account, password } = workerd);
-      relay = { child: { exitCode: null, kill() {} }, log: workerd.log };
-    } else {
-      issuer = externalIssuer;
-      account = process.env.ARMADRA_PROBE_RELAY_ACCOUNT ?? "";
-      password = secret(
-        "中继口令",
-        process.env.ARMADRA_PROBE_RELAY_PASSWORD ?? "",
-      );
-      if (!account || !password)
-        throw new Error(
-          "--issuer 需要环境变量 ARMADRA_PROBE_RELAY_ACCOUNT 与 ARMADRA_PROBE_RELAY_PASSWORD",
-        );
-      relay = { child: { exitCode: null, kill() {} }, log: () => "" };
-    }
+    relay = { child: { exitCode: null, kill() {} }, log: () => "" };
     ({ call, must } = relayClient(issuer, null));
     const info = await call("GET", "/.well-known/armadra-platform");
     run.check(
@@ -980,7 +966,7 @@ try {
     });
   }
 
-  /* ------------- 4b. 只读分享与媒体票（Workers 中继，V4） ------------- */
+  /* ------------- 4b. 只读分享与媒体票（--issuer，V4） ------------- */
   if (external) {
     // 经 core 的 `sources.shareLinkCreate` 签只读链接：访客会话压成 viewer，能看、不能建终端。
     const guestRoutes = [];
@@ -1129,7 +1115,7 @@ try {
         acpSession.sessionId,
       );
       for (const route of guestRoutes) route.close();
-      run.ok("只读范围的分享链接经 Workers 中继兑换，访客只能看");
+      run.ok("只读范围的分享链接经中继兑换，访客只能看");
     });
 
     await timed("4c-media", async () => {
@@ -1159,7 +1145,7 @@ try {
             `bytes 0-1023/${coreTicket.json.size}` &&
           head.headers["content-type"] === "video/mp4" &&
           head.headers["accept-ranges"] === "bytes",
-        "媒体票经 Workers 中继的端到端通道按 Range 取：206、Content-Range 与真实类型",
+        "媒体票经中继的端到端通道按 Range 取：206、Content-Range 与真实类型",
         { status: head.status, range: head.headers["content-range"] },
       );
       const mid = await route.raw("GET", coreTicket.json.url, {
@@ -1339,7 +1325,6 @@ try {
   } catch {
     /* 已经退出。 */
   }
-  await workerd?.stop().catch(() => {});
   if (electron && !electron.stopped) await electron.stop().catch(() => {});
   await stack?.stop();
   writeResult(output, report);

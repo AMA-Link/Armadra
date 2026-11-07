@@ -39,7 +39,7 @@ export { approveWith };
 
 /* ------------------------------ 对中继的调用 ------------------------------ */
 
-/** 钉着中继 CA 的 HTTPS 调用（issuer 是 `http:` 时走明文，本地 workerd 用）；答 `{ status, headers, body }`，不因状态码抛错。 */
+/** 钉着中继 CA 的 HTTPS 调用（issuer 是 `http:` 时走明文，回环明文中继用）；答 `{ status, headers, body }`，不因状态码抛错。 */
 export function relayRaw(
   issuer,
   ca,
