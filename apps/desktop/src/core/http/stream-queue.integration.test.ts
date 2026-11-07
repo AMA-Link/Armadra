@@ -141,11 +141,9 @@ describe("a slow client over a real socket", () => {
     const FRAME = 256 * 1024;
     let encoded = 0;
     let stop = false;
-    let serverSide: WebSocket | undefined;
     const connect = await listen(
       "/api/workspaces/{workspaceId}/browser/{nodeId}/stream",
       (connection) => {
-        serverSide = connection;
         const queue = new SendQueue(wsTarget(connection), {
           policy: "coalesce",
           maxFrames: 4,
@@ -173,18 +171,28 @@ describe("a slow client over a real socket", () => {
     });
     await sleep(100);
     tcp(client).pause();
-    // The stall is an event, not a duration: the kernel's socket buffers take
-    // a load-dependent number of frames to fill, and the stall has begun once
-    // the server's own socket holds bytes the kernel would not take. From then
-    // on the pending write never calls back, so the encoder has no ack to wait out.
-    for (
-      let tries = 0;
-      tries < 400 && (serverSide?.bufferedAmount ?? 0) === 0;
-      tries += 1
-    ) {
+    // The stall is a state, not a duration: the kernel's socket buffers (the
+    // receive side autotunes up to several MiB) take a load-dependent number of
+    // frames to fill, and the user-space `bufferedAmount` goes non-zero long
+    // before that. The encoder is stalled once its count stops moving. If it did
+    // not wait for the ack, coalesce would keep it encoding and this never settles.
+    const STABLE_MS = 300;
+    const LIMIT_MS = 10_000;
+    const began = Date.now();
+    let last = encoded;
+    let lastMoved = Date.now();
+    while (Date.now() - lastMoved < STABLE_MS) {
+      if (Date.now() - began > LIMIT_MS) {
+        throw new Error(
+          `the encoder never stalled with the client: ${encoded} frames encoded after ${LIMIT_MS}ms`,
+        );
+      }
       await sleep(25);
+      if (encoded !== last) {
+        last = encoded;
+        lastMoved = Date.now();
+      }
     }
-    expect(serverSide?.bufferedAmount ?? 0).toBeGreaterThan(0);
     const stuckAt = encoded;
     await sleep(400);
     // Nobody is reading, so nothing more is encoded once the socket stalls.
