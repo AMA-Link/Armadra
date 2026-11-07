@@ -447,7 +447,10 @@ SSH 节点的适配器起在执行主机上（`ssh.ts`）：`host.ts` 的 transp
   core 自己的写者经 `saveBoard` 前的拦截写进文档，实时板上带 `clientId` 的直写答 409
   `realtime_active`。页面（`apps/web/src/realtime/`）把 `Y.Doc` 与 `canvas-store` 双向绑定，
   `Y.UndoManager` 接管撤销，在线条与光标来自 awareness（core 按连接改写身份、校验形状），
-  断线时本地照常编辑、重连补齐；视口不进文档，按板记在本机 `localStorage`，awareness 报视口中心
+  断线时本地照常编辑、重连补齐；同步层放行写入（首次同步完成）之前页面是只读的，经高延迟
+  中继可达数秒：这期间 `history: "ignore"` 的系统写回（终端 `sessionId`、退出码等）由
+  `store/canvas/writeback.ts` 按节点合并排队（上限 256 个节点），放行后补写，节点没了、换板或
+  停实时就丢；用户编辑不排队，访客与只读链接的同步层不放行，队列永远不落；视口不进文档，按板记在本机 `localStorage`，awareness 报视口中心
   供跟随（对方没报时跟光标）。评论存 `board_comments`，`@` 提及发
   `board.comment` 事件，Agent 经连线读节点或白板引用时附上未解决的评论线程；正文在页面按
   Markdown 渲染（不渲染裸 HTML），钉按屏幕距离聚合。契约 §16。
