@@ -127,6 +127,10 @@ let electron;
 const opened = [];
 /** `--issuer` 模式：跑完（不论成败）撤掉本次新出现的源与设备，账号回到开跑前的样子。 */
 let issuerCleanup;
+/** ACP 这一步失败时取现场（页面请求、core 侧会话与时间线、页面状态）；#865。 */
+let diagnoseAcp;
+/** 页面的网络记录（只记路径，不带查询串），失败时随诊断一起写进 result.json。 */
+const networkLogs = new Map();
 
 /** 账号上现有的源与设备的 id；登录本身多出的设备也算在里面，清理时一并撤掉。 */
 async function accountIds(call, account, password, secret) {
@@ -527,6 +531,82 @@ try {
     },
   );
   await stack.seedBoard(workspace.id, board.id, [sticky, terminal, acpNode]);
+  diagnoseAcp = async (page) => {
+    const out = {};
+    const safe = async (name, job) => {
+      try {
+        out[name] = await job();
+      } catch (error) {
+        out[name] = `读不到：${String(error).slice(0, 200)}`;
+      }
+    };
+    const node = nodeAt(acpNode.id);
+    await safe("page", () =>
+      page.evaluate(`
+        const node = document.querySelector(${JSON.stringify(node)});
+        const field = node?.querySelector('[data-slot="acp-session-view"] textarea');
+        return {
+          fieldValue: field?.value ?? null,
+          fieldDisabled: field?.disabled ?? null,
+          loading: !!node?.querySelector('[data-slot="acp-loading"]'),
+          starting: node?.querySelector('[data-slot="acp-starting"]')?.innerText ?? null,
+          trace: (window.__armadraAcpTrace ?? []).map((entry) => ({
+            ...entry,
+            at: new Date(entry.at).toISOString().slice(11, 23),
+          })),
+          store: Object.fromEntries(
+            Object.entries(window.__armadraAcpStore?.getState().sessions ?? {}).map(
+              ([key, view]) => [
+                key.slice(-12),
+                { ...view, pending: view.pending ? { clientTurnId: view.pending.clientTurnId } : null },
+              ],
+            ),
+          ),
+          sameField: field === window.__probeAcpField,
+          mounts: window.__probeAcpMounts ?? null,
+          text: (node?.innerText ?? "").slice(0, 800),
+        };`),
+    );
+    await safe("pageRequests", async () =>
+      (networkLogs.get(page) ?? [])
+        .filter((entry) => /acp|rpc|sessions|timeline|canvas/.test(entry.path))
+        .slice(-80)
+        .map((entry) => ({
+          ...entry,
+          t: new Date(entry.t).toISOString().slice(11, 23),
+          doneAt:
+            entry.doneAt === undefined
+              ? undefined
+              : new Date(entry.doneAt).toISOString().slice(11, 23),
+        })),
+    );
+    let row;
+    await safe("coreSession", async () => {
+      row = (await owner(`/api/workspaces/${workspace.id}/sessions`)).find(
+        (one) => one.nodeId === acpNode.id,
+      );
+      return row ?? null;
+    });
+    await safe("coreTimeline", async () => {
+      if (!row) return null;
+      const opened = await owner("/api/rpc/timeline/open", {
+        method: "POST",
+        body: JSON.stringify({
+          json: { timelineId: row.sessionId, tailTurns: 50 },
+        }),
+      });
+      return (opened.json?.items ?? []).map((item) => ({
+        kind: item.kind,
+        turn: item.turn,
+        text:
+          typeof item.text === "string" ? item.text.slice(0, 80) : undefined,
+        clientTurnId: item.clientTurnId,
+        endedAt: item.endedAt,
+        stopReason: item.stopReason,
+      }));
+    });
+    return out;
+  };
   const query = `?workspace=${workspace.id}&board=${board.id}`;
 
   await stack.browser.call("Security.setIgnoreCertificateErrors", {
@@ -535,6 +615,97 @@ try {
   const newPage = async (width = 1440, height = 900, mobile = false) => {
     const page = await stack.browser.page(await stack.browser.context());
     opened.push([`page-${opened.length}`, page]);
+    // 记下页面发出的请求与结局，ACP 一步失败时判断请求到底发没发、答了什么。
+    const log = [];
+    networkLogs.set(page, log);
+    const pending = new Map();
+    await page.call("Network.enable", {});
+    // ARMADRA_PROBE_WEB_ROOT=apps/web/dist：中继托管的 /app/ 是它部署的那一版，想对
+    // 线上中继验证本地的网页改动，就在浏览器里把 /app/ 与 /assets/ 换成本地构建（#865）。
+    const webRoot = process.env.ARMADRA_PROBE_WEB_ROOT;
+    if (webRoot && issuer) {
+      const types = {
+        ".js": "text/javascript",
+        ".css": "text/css",
+        ".html": "text/html; charset=utf-8",
+        ".svg": "image/svg+xml",
+        ".json": "application/json",
+        ".woff2": "font/woff2",
+        ".wasm": "application/wasm",
+      };
+      await page.call("Fetch.enable", {
+        patterns: [{ urlPattern: `${issuer}/*`, requestStage: "Request" }],
+      });
+      stack.browser.on((message) => {
+        if (
+          message.sessionId !== page.sessionId ||
+          message.method !== "Fetch.requestPaused"
+        )
+          return;
+        const { requestId, request } = message.params;
+        const path = new URL(request.url).pathname;
+        const file = /^\/app\/?$/.test(path)
+          ? join(resolve(webRoot), "index.html")
+          : path.startsWith("/assets/") && !path.includes("..")
+            ? join(resolve(webRoot), path)
+            : null;
+        if (file && existsSync(file)) {
+          void page
+            .call("Fetch.fulfillRequest", {
+              requestId,
+              responseCode: 200,
+              responseHeaders: [
+                {
+                  name: "content-type",
+                  value: types[extname(file)] ?? "application/octet-stream",
+                },
+                { name: "cache-control", value: "no-store" },
+              ],
+              body: readFileSync(file).toString("base64"),
+            })
+            .catch(() => undefined);
+        } else {
+          void page
+            .call("Fetch.continueRequest", { requestId })
+            .catch(() => undefined);
+        }
+      });
+    }
+    // 打开会话视图的取证轨迹（apps/web/src/acp/diag.ts）：每个新文档先写好开关。
+    await page.call("Page.addScriptToEvaluateOnNewDocument", {
+      source: `try { localStorage.setItem("armadra.diag", "1"); } catch {}`,
+    });
+    stack.browser.on((message) => {
+      if (message.sessionId !== page.sessionId) return;
+      const { method, params } = message;
+      if (method === "Network.requestWillBeSent") {
+        const url = new URL(params.request.url);
+        if (!/^\/(v1|s|api)\//.test(url.pathname)) return;
+        const entry = {
+          t: Date.now(),
+          method: params.request.method,
+          path: url.pathname,
+          ...(/acp|rpc/.test(url.pathname) && params.request.postData
+            ? { body: params.request.postData.slice(0, 300) }
+            : {}),
+        };
+        pending.set(params.requestId, entry);
+        log.push(entry);
+        if (log.length > 400) log.shift();
+      } else if (method === "Network.responseReceived") {
+        const entry = pending.get(params.requestId);
+        if (entry) {
+          entry.status = params.response.status;
+          entry.doneAt = Date.now();
+        }
+      } else if (method === "Network.loadingFailed") {
+        const entry = pending.get(params.requestId);
+        if (entry) {
+          entry.failed = params.errorText;
+          entry.doneAt = Date.now();
+        }
+      }
+    });
     if (width !== 1440) await page.viewport(width, height, mobile);
     // 高延迟中继的复现（#865）：ARMADRA_PROBE_LATENCY_MS=500 给页面的每个请求加这么久。
     const latency = Number(process.env.ARMADRA_PROBE_LATENCY_MS ?? 0);
@@ -616,6 +787,26 @@ try {
       "经中继起 ACP 会话、输入框可用",
       { timeout: 45_000 },
     );
+    report.webBundle = await page.evaluate(
+      `return document.querySelector('script[type="module"][src*="/assets/index-"]')?.getAttribute("src") ?? null`,
+    );
+    console.log(`  网页包  ${report.webBundle}`);
+    // 会话视图被重挂时输入框会换成新的元素、字和排队的第一句一起丢（#865）：记下换了几次。
+    await page.evaluate(`
+      window.__probeAcpField = ${acpField};
+      window.__probeAcpMounts = [];
+      new MutationObserver((records) => {
+        for (const record of records) {
+          for (const kind of ["addedNodes", "removedNodes"]) {
+            for (const node of record[kind]) {
+              if (node.nodeType !== 1) continue;
+              const hit = node.matches?.('[data-slot="acp-session-view"]') || node.querySelector?.('[data-slot="acp-session-view"]');
+              if (hit) window.__probeAcpMounts.push({ kind, at: new Date().toISOString().slice(11, 23) });
+            }
+          }
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    `);
     for (let attempt = 1; ; attempt += 1) {
       await page.clickOn(`return ${acpField}`, "ACP 输入框");
       if (
@@ -1405,6 +1596,8 @@ try {
       report[`${name}Text`] = await opened_.evaluate(
         "return document.body.innerText.slice(0, 1500)",
       );
+      if (diagnoseAcp && name === "page-0")
+        report.acpDiagnostics = await diagnoseAcp(opened_);
     } catch {
       /* 页面已经关了：没有可补的。 */
     }
