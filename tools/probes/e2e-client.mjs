@@ -11,6 +11,7 @@
 // 需要先 `pnpm libs:build`（`packages/shared/dist`）。
 import { randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
+import { isIP } from "node:net";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -54,7 +55,10 @@ function pinnedSocket(Ws, ca) {
     constructor(url, protocols) {
       super(url, protocols, {
         perMessageDeflate: false,
-        servername: "",
+        // 主机是 IP 时 SNI 不能带地址，清空；按名字的中继（前面有按 SNI 选证书的反向代理）必须带。
+        ...(isIP(new URL(url).hostname.replace(/^\[|\]$/g, ""))
+          ? { servername: "" }
+          : {}),
         maxPayload: 64 * 1024 * 1024,
         ...(ca ? { ca } : {}),
       });
