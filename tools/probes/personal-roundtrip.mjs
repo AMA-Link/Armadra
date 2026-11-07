@@ -32,6 +32,8 @@
 // 指向已经在跑的中继（例如托管的 relay.armadra.com，Go 个人中转）：
 //   --issuer <地址>   对它跑（http:// 或 https:// 系统信任）；账号与口令取环境变量
 //                     ARMADRA_PROBE_RELAY_ACCOUNT / ARMADRA_PROBE_RELAY_PASSWORD
+// 复现高延迟中继下的时序问题：ARMADRA_PROBE_LATENCY_MS=400 给页面的每个请求加这么久
+// （CDP `Network.emulateNetworkConditions`；再大页面本身加载就超时）。
 // 这个模式没有 init/serve 与自签 CA，也不开 Electron 和手机；多出「只读分享链接」与
 // 「媒体票 Range」两步。
 import { randomBytes } from "node:crypto";
@@ -71,6 +73,14 @@ import {
   untilApproved,
 } from "./platform-lib.mjs";
 import { probeSession } from "./probe-session.mjs";
+import {
+  accountIds,
+  addLatency,
+  recordNetwork,
+  diagnoseAcpStep,
+  restoreAccount,
+  serveLocalWeb,
+} from "./roundtrip-issuer.mjs";
 import {
   freePort,
   makeNode,
@@ -123,62 +133,12 @@ let stack;
 let relay;
 let electron;
 const opened = [];
-/** `--issuer` 模式：跑完（不论成败）撤掉本次新出现的源与设备，账号回到开跑前的样子。 */
+/** `--issuer` 模式：跑完（不论成败）撤掉本次新出现的链接、源与设备，账号回到开跑前的样子。 */
 let issuerCleanup;
-
-/** 账号上现有的源与设备的 id；登录本身多出的设备也算在里面，清理时一并撤掉。 */
-async function accountIds(call, account, password, secret) {
-  const login = await call("POST", "/v1/auth/login", {
-    body: {
-      account,
-      password,
-      device: { platform: "server", name: "personal-roundtrip-cleanup" },
-    },
-  });
-  if (login.status !== 200) throw new Error(`清理用的登录答 ${login.status}`);
-  const session = login.body.session;
-  const token = secret("清理会话令牌", session.accessToken);
-  secret("清理会话刷新令牌", session.refreshToken);
-  const listed = (body, key) =>
-    Array.isArray(body) ? body : (body?.[key] ?? body?.items ?? []);
-  const sources = await call("GET", "/v1/sources", { token });
-  const devices = await call("GET", "/v1/me/devices", { token });
-  return {
-    token,
-    refreshToken: session.refreshToken,
-    sources: listed(sources.body, "sources").map(
-      (one) => one.sourceId ?? one.id,
-    ),
-    devices: listed(devices.body, "devices").map(
-      (one) => one.deviceId ?? one.id,
-    ),
-  };
-}
-
-/** 撤掉 before 之后新出现的源与设备，再登出清理会话；答撤掉的个数。 */
-async function restoreAccount(call, account, password, secret, before) {
-  const now = await accountIds(call, account, password, secret);
-  let sources = 0;
-  let devices = 0;
-  for (const id of now.sources.filter((one) => !before.sources.includes(one))) {
-    const answer = await call("DELETE", `/v1/sources/${id}`, {
-      token: now.token,
-    });
-    if (answer.status < 300) sources += 1;
-  }
-  for (const id of now.devices.filter((one) => !before.devices.includes(one))) {
-    const answer = await call("DELETE", `/v1/me/devices/${id}`, {
-      token: now.token,
-    });
-    if (answer.status < 300) devices += 1;
-  }
-  for (const session of [before, now])
-    await call("POST", "/v1/auth/logout", {
-      token: session.token,
-      body: { refreshToken: session.refreshToken },
-    }).catch(() => undefined);
-  return { sources, devices };
-}
+/** ACP 这一步失败时取现场（页面请求、core 侧会话与时间线、页面状态）；#865。 */
+let diagnoseAcp;
+/** 页面的网络记录（只记路径，不带查询串），失败时随诊断一起写进 result.json。 */
+const networkLogs = new Map();
 
 /** 探针自己打印的行与登记过的秘密：最后和各进程日志一起扫。 */
 const ledger = secretLedger();
@@ -525,6 +485,15 @@ try {
     },
   );
   await stack.seedBoard(workspace.id, board.id, [sticky, terminal, acpNode]);
+  diagnoseAcp = (page) =>
+    diagnoseAcpStep({
+      page,
+      node: nodeAt(acpNode.id),
+      nodeId: acpNode.id,
+      log: networkLogs.get(page) ?? [],
+      owner,
+      workspaceId: workspace.id,
+    });
   const query = `?workspace=${workspace.id}&board=${board.id}`;
 
   await stack.browser.call("Security.setIgnoreCertificateErrors", {
@@ -533,7 +502,21 @@ try {
   const newPage = async (width = 1440, height = 900, mobile = false) => {
     const page = await stack.browser.page(await stack.browser.context());
     opened.push([`page-${opened.length}`, page]);
+    // 页面请求的记录（ACP 一步失败时取证）与按需换成本地网页构建（#865）。
+    networkLogs.set(page, await recordNetwork(stack.browser, page));
+    if (process.env.ARMADRA_PROBE_WEB_ROOT && issuer)
+      await serveLocalWeb(
+        stack.browser,
+        page,
+        issuer,
+        process.env.ARMADRA_PROBE_WEB_ROOT,
+      );
+    // 打开会话视图的取证轨迹（apps/web/src/acp/diag.ts）：每个新文档先写好开关。
+    await page.call("Page.addScriptToEvaluateOnNewDocument", {
+      source: `try { localStorage.setItem("armadra.diag", "1"); } catch {}`,
+    });
     if (width !== 1440) await page.viewport(width, height, mobile);
+    await addLatency(page, Number(process.env.ARMADRA_PROBE_LATENCY_MS ?? 0));
     // 中继给页面的 CSP 只许同源：页面里不该有任何跨源连接被拦。
     page.allowed.push(/WebSocket connection to .* failed/);
     return page;
@@ -603,6 +586,26 @@ try {
       "经中继起 ACP 会话、输入框可用",
       { timeout: 45_000 },
     );
+    report.webBundle = await page.evaluate(
+      `return document.querySelector('script[type="module"][src*="/assets/index-"]')?.getAttribute("src") ?? null`,
+    );
+    console.log(`  网页包  ${report.webBundle}`);
+    // 会话视图被重挂时输入框会换成新的元素、字和排队的第一句一起丢（#865）：记下换了几次。
+    await page.evaluate(`
+      window.__probeAcpField = ${acpField};
+      window.__probeAcpMounts = [];
+      new MutationObserver((records) => {
+        for (const record of records) {
+          for (const kind of ["addedNodes", "removedNodes"]) {
+            for (const node of record[kind]) {
+              if (node.nodeType !== 1) continue;
+              const hit = node.matches?.('[data-slot="acp-session-view"]') || node.querySelector?.('[data-slot="acp-session-view"]');
+              if (hit) window.__probeAcpMounts.push({ kind, at: new Date().toISOString().slice(11, 23) });
+            }
+          }
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    `);
     for (let attempt = 1; ; attempt += 1) {
       await page.clickOn(`return ${acpField}`, "ACP 输入框");
       if (
@@ -1392,6 +1395,8 @@ try {
       report[`${name}Text`] = await opened_.evaluate(
         "return document.body.innerText.slice(0, 1500)",
       );
+      if (diagnoseAcp && name === "page-0")
+        report.acpDiagnostics = await diagnoseAcp(opened_);
     } catch {
       /* 页面已经关了：没有可补的。 */
     }
@@ -1408,7 +1413,7 @@ try {
     try {
       report.issuerCleanup = await issuerCleanup();
       console.log(
-        `  清理  撤掉本次新增的 ${report.issuerCleanup.sources} 个源、${report.issuerCleanup.devices} 台设备`,
+        `  清理  撤掉本次新增的 ${report.issuerCleanup.links} 条链接、${report.issuerCleanup.sources} 个源、${report.issuerCleanup.devices} 台设备`,
       );
     } catch (error) {
       report.issuerCleanupError = String(error);

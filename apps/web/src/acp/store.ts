@@ -13,6 +13,7 @@ import { create } from "zustand";
 import type { TimelineAttachment } from "@armadra/shared";
 
 import { scoped } from "../sources/scope";
+import { diagEnabled } from "./diag";
 
 export interface PendingPrompt {
   readonly clientTurnId: string;
@@ -141,3 +142,9 @@ export const useAcpStore = create<AcpDeliveryState>((set) => ({
     ),
   reset: () => set({ sessions: {} }),
 }));
+
+// 取证用（#865）：`armadra.diag` 开着时把投递状态交给探针读，默认不暴露。
+if (diagEnabled()) {
+  (globalThis as { __armadraAcpStore?: typeof useAcpStore }).__armadraAcpStore =
+    useAcpStore;
+}
