@@ -328,6 +328,8 @@ describe.runIf(POSIX)("canvas launch lines", () => {
       "opus",
       "--settings",
       layout.settings,
+      "--mcp-config",
+      layout.mcpConfig,
       "--plugin-dir",
       layout.pluginDir,
       "--append-system-prompt-file",

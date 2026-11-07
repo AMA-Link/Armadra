@@ -26,10 +26,12 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  rmSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { note, scenario } from "./lib.mjs";
 
 function run(program, args, options) {
@@ -352,6 +354,64 @@ export default async function run5(ctx) {
       claudeInvoke.code === 0 && /LIST=ok/i.test(claudeInvoke.stdout),
       (claudeInvoke.stdout || claudeInvoke.stderr).slice(-400),
     );
+
+    // 用户自己开了 Claude 的沙箱（契约 §107）：设置写在临时项目的
+    // `.claude/settings.local.json`，不碰真实配置目录。shell 里的 armadra-hook
+    // 连不上 core 的 socket（对照），注入的 armadra MCP 服务器由 Claude 在沙箱外
+    // 起，`mcp__armadra` 放行，不要审批也读得到画布。
+    const sandboxFile = join(project, ".claude", "settings.local.json");
+    mkdirSync(dirname(sandboxFile), { recursive: true });
+    writeFileSync(sandboxFile, JSON.stringify({ sandbox: { enabled: true } }));
+    try {
+      const sandboxRun = (text, extra = []) =>
+        run(
+          claudeLauncher,
+          [
+            claudeProgram,
+            "-p",
+            "--output-format",
+            "json",
+            "--permission-mode",
+            "default",
+            ...extra,
+            "--max-turns",
+            "4",
+            text,
+          ],
+          { cwd: project, env: claudeEnv(inside) },
+        );
+      const answer = (out) => {
+        try {
+          return JSON.parse(out.stdout);
+        } catch {
+          return { result: out.stdout, permission_denials: undefined };
+        }
+      };
+      const viaShell = answer(
+        await sandboxRun(invoke, ["--allowedTools", "Bash(armadra-hook:*)"]),
+      );
+      s.check(
+        "沙箱开着：shell 里的 armadra-hook 读不到画布（对照，证明沙箱生效）",
+        !/LIST=ok/i.test(String(viaShell.result)),
+        String(viaShell.result).slice(-300),
+      );
+      const viaMcp = answer(
+        await sandboxRun(
+          "Call the canvas_list tool of the `armadra` MCP server exactly once, run no shell command, then answer in one line exactly: LIST=<ok if it returned a list of canvas nodes, failed otherwise>; FIRST=<the first line it returned>",
+        ),
+      );
+      s.check(
+        "沙箱开着：注入的 armadra MCP 工具读到画布，不要审批",
+        /LIST=ok/i.test(String(viaMcp.result)) &&
+          (viaMcp.permission_denials ?? []).length === 0,
+        {
+          result: String(viaMcp.result).slice(-300),
+          denials: viaMcp.permission_denials,
+        },
+      );
+    } finally {
+      rmSync(sandboxFile, { force: true });
+    }
 
     const claudeOutside = async (label, program, args, env) => {
       before = lastEvent();

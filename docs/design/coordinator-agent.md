@@ -125,14 +125,16 @@ agent-host/ama/
 | 工具                                                        | 后端                                   | 权限类       | 说明                                                      |
 | ----------------------------------------------------------- | -------------------------------------- | ------------ | --------------------------------------------------------- |
 | `canvas_list`                                               | `/control/list`                        | read         | 相连节点与状态                                            |
-| `canvas_open_agent`、`canvas_team`                          | `/control/open-agent`、`/control/team` | write        | 建节点并自动连线；`--worktree` 透传                       |
-| `canvas_send`、`canvas_post`                                | `/control/send`、`/control/post`       | write        | 投递 / 留言；正文走 JSON 体，无 shell 转义问题            |
-| `canvas_inbox`、`canvas_ack`                                | `/control/inbox`、`/control/ack`       | read / write | 拉取信箱                                                  |
-| `canvas_sticky`、`canvas_link`、`canvas_rename`             | 对应动词                               | write        | 汇总落便签                                                |
+| `canvas_open_agent`、`canvas_team`                          | `/control/open-agent`、`/control/team` | read（免批） | 建节点并自动连线；`--worktree` 透传                       |
+| `canvas_send`、`canvas_post`                                | `/control/send`、`/control/post`       | read（免批） | 投递 / 留言；正文走 JSON 体，无 shell 转义问题            |
+| `canvas_inbox`、`canvas_ack`                                | `/control/inbox`、`/control/ack`       | read（免批） | 拉取信箱                                                  |
+| `canvas_sticky`、`canvas_link`、`canvas_rename`             | 对应动词                               | read（免批） | 汇总落便签                                                |
 | `canvas_interrupt`、`canvas_close`                          | 对应动词                               | execute      | 走 §6 审批                                                |
 | `context_summary`、`context_transcript`、`context_terminal` | `/context-link/{verb}`                 | read         | 读相连节点上下文，预算由 core 判                          |
 | `browser_*`                                                 | `/control/browser-*`                   | 按动词       | 复用 `browser/args.ts` 的 `BROWSER_VERB_SPECS` 生成参数表 |
-| `workflow_propose`                                          | `/control/workflow-propose`（新）      | write        | §5                                                        |
+| `workflow_propose`                                          | `/control/workflow-propose`（新）      | read（免批） | §5                                                        |
+
+画布与 context 组的动词除 `canvas_interrupt`、`canvas_close` 外都按 `read` 归类（契约 §107）：改画布、投递只到连线授权的节点、带本节点令牌，与 Claude、Codex、OpenCode、Copilot 节点上同样免批；工具的 `readOnly` 标注仍按真实语义。浏览器组按动词：只读的 `read`，上传、下载、关闭 `execute`，其余 `write`。
 
 动词表与参数不手抄：`tools.ts` 从 `collab/control/index.ts` 的 `VERBS` 与 `browser/args.ts` 生成，一条测试断言两边一致（与 `collab/skill.ts::browserVerbs()` 同一手法）。适配器 `api.tools.disable("task")`，让画布规则 2 成立。
 

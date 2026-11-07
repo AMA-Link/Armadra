@@ -14,14 +14,15 @@ import { variablesFor } from "../../agent/credentials/inject";
 import { storedProbe } from "../../agent/probe";
 import { eventKey } from "./codex";
 import { codexMcpArgs } from "./codex-mcp";
+import { claudePermissions } from "./claude-allow";
 import {
+  claudeMcpConfig,
   copilotMcpArgs,
   copilotMcpConfig,
   opencodeMcpConfig,
 } from "./terminal-mcp";
 import {
   CLAUDE_HOOK_EVENTS,
-  CLIENT_NAME,
   CODEX_HOOK_EVENTS,
   COPILOT_HOOK_EVENTS,
   INTEGRATION_REVISION,
@@ -161,7 +162,10 @@ export interface ArtifactLayout {
   readonly skillDir?: string;
   /** Copilot's `COPILOT_CUSTOM_INSTRUCTIONS_DIRS`. */
   readonly instructionsDir?: string;
-  /** Copilot's `--additional-mcp-config @<file>` (`terminal-mcp.ts`). */
+  /**
+   * Claude's `--mcp-config <file>` and Copilot's
+   * `--additional-mcp-config @<file>` (`terminal-mcp.ts`).
+   */
   readonly mcpConfig?: string;
   /** ama's `--profile` (docs/design/coordinator-agent.md §2.4). */
   readonly profile?: string;
@@ -195,6 +199,7 @@ export function artifactLayout(
         instructions,
         settings: join(dir, "settings.json"),
         settingsPermission: join(dir, "settings-permission.json"),
+        mcpConfig: join(dir, "armadra-mcp.json"),
         pluginDir,
         manifest: join(pluginDir, ".claude-plugin", "plugin.json"),
         skill: skillUnder(pluginDir, join),
@@ -313,31 +318,6 @@ function json(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
-/**
- * The `armadra-hook` sub-commands a canvas Claude may run without asking a
- * person — the canvas, context and browser verbs, the same ones the MCP
- * server exposes (and §98 already lets through in ACP sessions, and Codex's
- * `default_tools_approval_mode` on the terminal). Without these every verb was
- * a Bash approval.
- *
- * Measured on Claude 2.1.318 with `--settings`: the rules merge with the
- * user's own, match the bare name and the absolute path (quoted when it has a
- * space), and leave everything else to the user's permission mode — another
- * sub-command (`hook`, `mcp`), a chained `… && …` and the `"$ARMADRA_HOOK_BIN"`
- * spelling all still ask (contract §105.2).
- */
-export const CLAUDE_ALLOWED_SUBCOMMANDS = ["canvas", "context", "browser"];
-
-export function claudeAllowRules(clientBin: string): string[] {
-  const absolute = clientBin.includes(" ") ? `"${clientBin}"` : clientBin;
-  const rules: string[] = [];
-  for (const sub of CLAUDE_ALLOWED_SUBCOMMANDS) {
-    rules.push(`Bash(${CLIENT_NAME} ${sub}:*)`);
-    if (absolute !== CLIENT_NAME) rules.push(`Bash(${absolute} ${sub}:*)`);
-  }
-  return rules;
-}
-
 /** Which machine the artifacts are written for; this one when absent. */
 export interface ArtifactTarget {
   readonly join?: PathJoin;
@@ -443,7 +423,7 @@ export function artifactFiles(
       };
       const events: JsonObject = {};
       appendManagedGroup(events, CLAUDE_HOOK_EVENTS, entry);
-      const permissions = { allow: claudeAllowRules(clientBin) };
+      const permissions = claudePermissions(clientBin);
       files.set(
         layout.settings as string,
         json({ permissions, hooks: events }),
@@ -456,6 +436,7 @@ export function artifactFiles(
         layout.settingsPermission as string,
         json({ permissions, hooks: permission }),
       );
+      files.set(layout.mcpConfig as string, json(claudeMcpConfig(clientBin)));
       files.set(layout.manifest as string, json(manifest));
       files.set(layout.modManifest as string, json(claudeModManifest()));
       files.set(layout.modHooks as string, json(claudeModHooks()));
@@ -1269,8 +1250,8 @@ export interface InjectionRequest {
    */
   readonly claudeVersion?: string | null;
   /**
-   * Whether OpenCode and Copilot get the canvas MCP server on their launch
-   * line (contract §106). Off for an ACP session, which gets the server from
+   * Whether Claude, OpenCode and Copilot get the canvas MCP server on their
+   * launch line (contract §106, §107). Off for an ACP session, which gets the server from
    * `session/new` with its session binding; on when absent.
    */
   readonly mcp?: boolean;
@@ -1370,7 +1351,7 @@ export function injectionFromLayout(
     readonly claudeMods?: boolean;
     /** Whether the CLI runs on Windows; this machine's platform when absent. */
     readonly windows?: boolean;
-    /** OpenCode's and Copilot's canvas MCP server (contract §106); on when absent. */
+    /** Claude's, OpenCode's and Copilot's canvas MCP server (§106, §107); on when absent. */
     readonly mcp?: boolean;
   } = {},
 ): Injection | undefined {
@@ -1388,8 +1369,15 @@ export function injectionFromLayout(
         instructions === undefined
           ? []
           : ["--append-system-prompt-file", instructions];
+      // `--mcp-config` takes several values: a flag always follows it here,
+      // and the launcher appends after the caller's own arguments.
+      const mcp =
+        options.mcp !== false && isFile(layout.mcpConfig)
+          ? ["--mcp-config", layout.mcpConfig as string]
+          : [];
       const plain = [
         ...(isFile(layout.settings) ? ["--settings", layout.settings] : []),
+        ...mcp,
         ...plugin,
         ...append,
       ];
@@ -1405,6 +1393,7 @@ export function injectionFromLayout(
         args: [
           "--settings",
           layout.settingsPermission as string,
+          ...mcp,
           ...plugin,
           "--plugin-dir",
           layout.modDir as string,
