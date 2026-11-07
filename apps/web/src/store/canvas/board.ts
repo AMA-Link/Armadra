@@ -8,6 +8,7 @@ import { panelHidden } from "../../lib/features";
 import { resetHistory } from "./history";
 import { clearLocalEdits, localEdits } from "./pending";
 import { emptyBoardState, initialPanels } from "./internal";
+import { clearWriteBacks } from "./writeback";
 import {
   type CanvasGet,
   type CanvasSet,
@@ -108,6 +109,7 @@ export function createBoardSlice(
         if (same && nextSource === state.sourceId) return { workspace };
         resetHistory();
         clearLocalEdits();
+        clearWriteBacks();
         return {
           workspace,
           sourceId: nextSource,
@@ -139,6 +141,7 @@ export function createBoardSlice(
         if (state.boardId === boardId) return { boardId };
         resetHistory();
         clearLocalEdits();
+        clearWriteBacks();
         return { boardId, ...emptyBoardState };
       }),
 

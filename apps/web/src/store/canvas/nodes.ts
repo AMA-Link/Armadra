@@ -14,6 +14,7 @@ import {
 import { normaliseLabels } from "../../meta/model";
 import { absolutePosition, commit, now } from "./internal";
 import { type CanvasGet, type CanvasSet, type CanvasStore } from "./types";
+import { deferWriteBack, shouldDeferWriteBack } from "./writeback";
 
 export function createNodesSlice(
   set: CanvasSet,
@@ -104,6 +105,19 @@ export function createNodesSlice(
     },
 
     updateNodeData: (id, patch, options) => {
+      // 实时板放行写入之前，系统写回不丢：排着，放行后补写（`writeback.ts`）。
+      // 用户编辑不走这条，仍然是只读时不落。
+      const current = get();
+      if (
+        options?.history === "ignore" &&
+        current.document &&
+        shouldDeferWriteBack(current)
+      ) {
+        if (current.document.nodes.some((node) => node.id === id)) {
+          deferWriteBack(current.boardId ?? "", id, patch);
+        }
+        return;
+      }
       set((state) => {
         const next = commit(
           state,
