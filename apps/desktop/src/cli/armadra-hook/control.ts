@@ -144,7 +144,11 @@ export async function runCanvas(args: string[]): Promise<number> {
       );
     }
   }
-  return request(`/control/${percentEncodeSegment(verb)}`, map);
+  return request(
+    `/control/${percentEncodeSegment(verb)}`,
+    map,
+    callTimeoutMs("canvas", verb, map),
+  );
 }
 
 /**
@@ -187,6 +191,46 @@ export const VERB_TIMEOUT_MS = 15_000;
 
 export function verbTimeoutMs(): number {
   return Math.max(VERB_TIMEOUT_MS, totalTimeoutMs());
+}
+
+/**
+ * `canvas wait` long-polls in the core for its `--timeout` (seconds; the
+ * core's `DEFAULT_WAIT_SECONDS` / `MAX_WAIT_SECONDS` in
+ * `core/collab/control/wait.ts`, which a test holds these to). Under the plain
+ * verb budget a default wait ran out on the client first: the model saw a
+ * failure, and `send` handed the same wait to the next endpoint candidate.
+ */
+export const WAIT_DEFAULT_SECONDS = 30;
+export const WAIT_MAX_SECONDS = 60;
+/** What the answer may take on top of the wait itself. */
+export const WAIT_SLACK_MS = 10_000;
+
+/**
+ * The budget for one call of `group`/`verb` with these arguments, shared by
+ * the CLI, the MCP server and the ama host so the three cannot disagree.
+ */
+export function callTimeoutMs(
+  group: "canvas" | "context" | "browser",
+  verb: string,
+  args: Args,
+): number {
+  if (group === "browser") return browserTimeoutMs();
+  if (group === "canvas" && verb === "wait") return waitTimeoutMs(args);
+  return verbTimeoutMs();
+}
+
+function waitTimeoutMs(args: Args): number {
+  // A value the core will refuse comes back at once; only a valid one waits.
+  const raw = args["timeout"];
+  let seconds = WAIT_DEFAULT_SECONDS;
+  if (typeof raw === "number" && Number.isInteger(raw)) {
+    seconds = raw;
+  } else if (typeof raw === "string") {
+    const match = /^(\d{1,4})s?$/.exec(raw);
+    if (match !== null) seconds = Number(match[1]);
+  }
+  seconds = Math.min(Math.max(seconds, 0), WAIT_MAX_SECONDS);
+  return Math.max(verbTimeoutMs(), seconds * 1000 + WAIT_SLACK_MS);
 }
 
 export async function runBrowser(args: string[]): Promise<number> {

@@ -5,15 +5,23 @@ import { describe, expect, it } from "vitest";
 import {
   BROWSER_TIMEOUT_MS,
   browserTimeoutMs,
+  callTimeoutMs,
   controlBody,
   parseFlags,
   render,
   renderError,
   VERB_TIMEOUT_MS,
   verbTimeoutMs,
+  WAIT_DEFAULT_SECONDS,
+  WAIT_MAX_SECONDS,
+  WAIT_SLACK_MS,
 } from "./control.js";
 import type { Args } from "./control.js";
 import type { HookResponse } from "../../hook-client/http.js";
+import {
+  DEFAULT_WAIT_SECONDS,
+  MAX_WAIT_SECONDS,
+} from "../../core/collab/control/wait.js";
 
 function flags(input: string[]): Args {
   const parsed = parseFlags(input);
@@ -151,5 +159,49 @@ describe("a canvas or context verb's budget", () => {
       if (saved === undefined) delete process.env.ARMADRA_HOOK_TIMEOUT_MS;
       else process.env.ARMADRA_HOOK_TIMEOUT_MS = saved;
     }
+  });
+});
+
+describe("canvas wait's budget", () => {
+  function withoutEnv(body: () => void): void {
+    const saved = process.env.ARMADRA_HOOK_TIMEOUT_MS;
+    delete process.env.ARMADRA_HOOK_TIMEOUT_MS;
+    try {
+      body();
+    } finally {
+      if (saved === undefined) delete process.env.ARMADRA_HOOK_TIMEOUT_MS;
+      else process.env.ARMADRA_HOOK_TIMEOUT_MS = saved;
+    }
+  }
+
+  it("holds the core's wait limits", () => {
+    expect(WAIT_DEFAULT_SECONDS).toBe(DEFAULT_WAIT_SECONDS);
+    expect(WAIT_MAX_SECONDS).toBe(MAX_WAIT_SECONDS);
+  });
+
+  it("outlasts the wait the core will hold", () => {
+    // Under the 15 s verb budget a default 30 s wait failed on the client
+    // and was re-sent to the next endpoint candidate.
+    withoutEnv(() => {
+      const wait = (args: Args) => callTimeoutMs("canvas", "wait", args);
+      expect(wait({ task: "t" })).toBe(30_000 + WAIT_SLACK_MS);
+      expect(wait({ task: "t", timeout: "45" })).toBe(45_000 + WAIT_SLACK_MS);
+      expect(wait({ task: "t", timeout: "45s" })).toBe(45_000 + WAIT_SLACK_MS);
+      expect(wait({ task: "t", timeout: 20 })).toBe(20_000 + WAIT_SLACK_MS);
+      expect(wait({ task: "t", timeout: 600 })).toBe(60_000 + WAIT_SLACK_MS);
+      expect(wait({ task: "t", timeout: "0" })).toBe(VERB_TIMEOUT_MS);
+      // The core refuses these at once; the default budget is enough.
+      expect(wait({ task: "t", timeout: "soon" })).toBe(30_000 + WAIT_SLACK_MS);
+    });
+  });
+
+  it("leaves every other verb on its own budget", () => {
+    withoutEnv(() => {
+      expect(callTimeoutMs("canvas", "send", { timeout: "60" })).toBe(
+        VERB_TIMEOUT_MS,
+      );
+      expect(callTimeoutMs("context", "summary", {})).toBe(VERB_TIMEOUT_MS);
+      expect(callTimeoutMs("browser", "wait", {})).toBe(BROWSER_TIMEOUT_MS);
+    });
   });
 });
