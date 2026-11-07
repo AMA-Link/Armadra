@@ -106,6 +106,11 @@ export const PI_HOOK_EVENTS = [
  * Both Pi spellings stay registered anyway — `on()` is a map insert, an event
  * the CLI never emits costs nothing, and a fork that re-converges keeps
  * working without a reinstall.
+ *
+ * Unlike Pi, OMP asks before tools (`--approval-mode write` is the canvas's
+ * auto-edit), in its own TUI only. `tool_approval_requested` / `_resolved`
+ * are observed, never answered: without them the node read `working` while
+ * OMP waited for a key, with no notification (contract §106).
  */
 export const OMP_HOOK_EVENTS = [
   "session_start",
@@ -120,6 +125,8 @@ export const OMP_HOOK_EVENTS = [
   "model_select",
   "session_shutdown",
   "auto_compaction_end",
+  "tool_approval_requested",
+  "tool_approval_resolved",
 ] as const;
 
 /**

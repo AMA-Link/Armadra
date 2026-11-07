@@ -52,6 +52,10 @@ describe("the event tables", () => {
     expect(PI_HOOK_EVENTS).not.toContain("session_stop");
     expect(OMP_HOOK_EVENTS).toContain("auto_compaction_end");
     expect(PI_HOOK_EVENTS).not.toContain("auto_compaction_end");
+    // OMP asks in its own TUI; the wait must reach the canvas. Pi never asks.
+    expect(OMP_HOOK_EVENTS).toContain("tool_approval_requested");
+    expect(OMP_HOOK_EVENTS).toContain("tool_approval_resolved");
+    expect(PI_HOOK_EVENTS).not.toContain("tool_approval_requested");
     expect(COPILOT_HOOK_EVENTS).toContain("agentStop");
     expect(COPILOT_HOOK_EVENTS).not.toContain("preToolUse");
   });
