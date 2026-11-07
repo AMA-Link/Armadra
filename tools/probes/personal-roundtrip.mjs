@@ -123,6 +123,62 @@ let stack;
 let relay;
 let electron;
 const opened = [];
+/** `--issuer` 模式：跑完（不论成败）撤掉本次新出现的源与设备，账号回到开跑前的样子。 */
+let issuerCleanup;
+
+/** 账号上现有的源与设备的 id；登录本身多出的设备也算在里面，清理时一并撤掉。 */
+async function accountIds(call, account, password, secret) {
+  const login = await call("POST", "/v1/auth/login", {
+    body: {
+      account,
+      password,
+      device: { platform: "server", name: "personal-roundtrip-cleanup" },
+    },
+  });
+  if (login.status !== 200) throw new Error(`清理用的登录答 ${login.status}`);
+  const session = login.body.session;
+  const token = secret("清理会话令牌", session.accessToken);
+  secret("清理会话刷新令牌", session.refreshToken);
+  const listed = (body, key) =>
+    Array.isArray(body) ? body : (body?.[key] ?? body?.items ?? []);
+  const sources = await call("GET", "/v1/sources", { token });
+  const devices = await call("GET", "/v1/me/devices", { token });
+  return {
+    token,
+    refreshToken: session.refreshToken,
+    sources: listed(sources.body, "sources").map(
+      (one) => one.sourceId ?? one.id,
+    ),
+    devices: listed(devices.body, "devices").map(
+      (one) => one.deviceId ?? one.id,
+    ),
+  };
+}
+
+/** 撤掉 before 之后新出现的源与设备，再登出清理会话；答撤掉的个数。 */
+async function restoreAccount(call, account, password, secret, before) {
+  const now = await accountIds(call, account, password, secret);
+  let sources = 0;
+  let devices = 0;
+  for (const id of now.sources.filter((one) => !before.sources.includes(one))) {
+    const answer = await call("DELETE", `/v1/sources/${id}`, {
+      token: now.token,
+    });
+    if (answer.status < 300) sources += 1;
+  }
+  for (const id of now.devices.filter((one) => !before.devices.includes(one))) {
+    const answer = await call("DELETE", `/v1/me/devices/${id}`, {
+      token: now.token,
+    });
+    if (answer.status < 300) devices += 1;
+  }
+  for (const session of [before, now])
+    await call("POST", "/v1/auth/logout", {
+      token: session.token,
+      body: { refreshToken: session.refreshToken },
+    }).catch(() => undefined);
+  return { sources, devices };
+}
 
 /** 探针自己打印的行与登记过的秘密：最后和各进程日志一起扫。 */
 const ledger = secretLedger();
@@ -215,6 +271,10 @@ try {
       );
     relay = { child: { exitCode: null, kill() {} }, log: () => "" };
     ({ call, must } = relayClient(issuer, null));
+    // 开跑前记下账号上已有的源与设备：跑完只撤本次多出来的，中途失败也不留离线源。
+    const before = await accountIds(call, account, password, secret);
+    issuerCleanup = () =>
+      restoreAccount(call, account, password, secret, before);
     const info = await call("GET", "/.well-known/armadra-platform");
     run.check(
       info.status === 200 && info.body?.mode === "personal",
@@ -535,19 +595,44 @@ try {
     // ACP 回合经中继：页面带着 clientTurnId 发一轮，回复流回；core 侧只有一轮、
     // 回合记录认得页面的 id（契约 §39.9）。
     const acpInput = `${nodeAt(acpNode.id)} [data-slot="acp-session-view"] textarea`;
+    const acpField = `document.querySelector(${JSON.stringify(acpInput)})`;
+    const acpText = `(document.querySelector(${JSON.stringify(nodeAt(acpNode.id))})?.innerText ?? "")`;
+    // 输入框可用再打，按回车前确认字真的进去了；会话就绪前发出的第一句走排队路径（#865），不在这里绕开它。
     await page.until(
-      `return !!document.querySelector(${JSON.stringify(acpInput)})`,
-      "经中继起 ACP 会话、会话视图出现",
+      `const field = ${acpField}; return !!field && !field.disabled`,
+      "经中继起 ACP 会话、输入框可用",
       { timeout: 45_000 },
     );
-    await page.clickOn(
-      `return document.querySelector(${JSON.stringify(acpInput)})`,
-      "ACP 输入框",
-    );
-    await page.type("hello via relay");
-    await page.key("Enter");
+    for (let attempt = 1; ; attempt += 1) {
+      await page.clickOn(`return ${acpField}`, "ACP 输入框");
+      if (
+        !(await page.evaluate(`return ${acpField}?.value ?? ""`)).includes(
+          "hello via relay",
+        )
+      )
+        await page.type("hello via relay");
+      await page.until(
+        `return (${acpField}?.value ?? "").includes("hello via relay")`,
+        "ACP 输入框里有这句",
+        { timeout: 5_000 },
+      );
+      await page.key("Enter");
+      // 发出去了 = 输入框清空。还留着这句才再按一次（回车被忽略），清空了就不再重发，免得多出一轮。
+      const sent = await page
+        .until(
+          `return !(${acpField}?.value ?? "").includes("hello via relay")`,
+          "ACP 这句发出去了",
+          { timeout: 10_000 },
+        )
+        .then(
+          () => true,
+          () => false,
+        );
+      if (sent) break;
+      if (attempt >= 2) throw new Error("ACP 输入框按回车两次都没把这句发出去");
+    }
     await page.until(
-      `return (document.querySelector(${JSON.stringify(nodeAt(acpNode.id))})?.innerText ?? "").includes("echo: hello via relay")`,
+      `return ${acpText}.includes("echo: hello via relay")`,
       "ACP 回复经中继流回会话视图",
       { timeout: 45_000 },
     );
@@ -1319,6 +1404,17 @@ try {
   }
   if (stack) report.coreLog = stack.coreLog().slice(-3000);
 } finally {
+  if (issuerCleanup) {
+    try {
+      report.issuerCleanup = await issuerCleanup();
+      console.log(
+        `  清理  撤掉本次新增的 ${report.issuerCleanup.sources} 个源、${report.issuerCleanup.devices} 台设备`,
+      );
+    } catch (error) {
+      report.issuerCleanupError = String(error);
+      console.error(`  清理失败  ${error}`);
+    }
+  }
   report.timings.totalMs = Date.now() - started;
   try {
     relay?.child.kill("SIGKILL");
