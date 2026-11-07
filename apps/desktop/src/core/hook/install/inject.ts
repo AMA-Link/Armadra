@@ -1436,7 +1436,9 @@ export function injectionFromLayout(
           ["OPENCODE_CONFIG_DIR", layout.configDir as string],
           ...(Object.keys(content).length === 0
             ? []
-            : ([["OPENCODE_CONFIG_CONTENT", JSON.stringify(content)]] as const)),
+            : ([
+                ["OPENCODE_CONFIG_CONTENT", JSON.stringify(content)],
+              ] as const)),
         ],
       };
     }
