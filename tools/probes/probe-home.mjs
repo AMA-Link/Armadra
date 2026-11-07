@@ -56,7 +56,14 @@ export function probeHome(prefix = "armadra-probe-home-") {
   return {
     path,
     env,
-    remove: () => rmSync(path, { recursive: true, force: true }),
+    // 主进程退了，子进程（GPU、崩溃上报）可能还在往里写：ENOTEMPTY 时重试几次。
+    remove: () =>
+      rmSync(path, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 200,
+      }),
   };
 }
 
