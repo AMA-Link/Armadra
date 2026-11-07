@@ -55,13 +55,14 @@ import {
 import { useSessionFeed } from "./use-session-feed";
 
 /**
- * 会话就绪前输入的第一条（契约 §51）。`via`：`create` = 随 `createSession` 的
- * `prompt` 发出（那时请求还没发）；`prompt` = 会话开好后经 `POST …/prompt` 发；
- * `null` = 还在等会话。
+ * 会话就绪前输入的第一条（契约 §51）。只走一条路：会话开好、内容读到了之后经
+ * `POST …/prompt` 发，带这里起好的 `clientTurnId`，core 回显认得它，重发也只投递
+ * 一次（§39.9）。不再随 `createSession` 的 `prompt` 一起发：那条路没有回合 id，
+ * 请求在路上被取消、重试或工作空间晚到时，页面无从知道 core 收没收到，也对不上回显。
  */
 interface QueuedPrompt {
   readonly text: string;
-  via: "create" | "prompt" | null;
+  readonly clientTurnId: string;
 }
 
 /** 「加载配置」超过这么久时追加「首次启动较慢」。 */
@@ -71,14 +72,12 @@ const COLD_AFTER_MS = 3_000;
  * 会话没有就起一个（`POST /api/acp/sessions`），id 写回节点数据——与终端
  * 节点同一个做法：重开应用靠它接回同一行，它不是用户的编辑，不进撤销栈。
  *
- * 起的过程中跟着 `acp.starting` 记阶段（契约 §51），页面据此画一行提示；
- * `queued` 里那一条若此刻还没发请求，就随 `prompt` 一起发。
+ * 起的过程中跟着 `acp.starting` 记阶段（契约 §51），页面据此画一行提示。
  */
 function useAcpSession(
   nodeId: string,
   data: TerminalNodeData,
   workspaceId: string | null,
-  queued: React.RefObject<QueuedPrompt | null>,
   enabled: boolean,
 ) {
   const t = useT();
@@ -124,9 +123,6 @@ function useAcpSession(
     setFailureNote(null);
     setAuthMethods([]);
     setPhase(null);
-    const first = queued.current;
-    const prompt = first !== null && first.via === null ? first.text : null;
-    if (first !== null && prompt !== null) first.via = "create";
     acpApi
       .createSession({
         workspaceId: workspace.id,
@@ -138,7 +134,6 @@ function useAcpSession(
           : {}),
         ...(agent.model ? { model: agent.model } : {}),
         ...(agent.sessionId ? { resume: agent.sessionId } : {}),
-        ...(prompt !== null ? { prompt } : {}),
       })
       .then((session) => {
         if (cancelled) return;
@@ -156,8 +151,6 @@ function useAcpSession(
       })
       .catch((error: unknown) => {
         if (cancelled) return;
-        // 随请求发出的那一条没有送达：交回去，重试时再随下一次请求发。
-        if (first !== null && first.via === "create") first.via = null;
         setFailure(
           error instanceof RuntimeRequestError ? (error.code ?? null) : null,
         );
@@ -353,13 +346,7 @@ export function SessionView({
   const workspaceId = useCanvasStore((state) => state.workspace?.id ?? null);
   const queuedRef = React.useRef<QueuedPrompt | null>(null);
   const [queued, setQueued] = React.useState<string | null>(null);
-  const session = useAcpSession(
-    nodeId,
-    data,
-    workspaceId,
-    queuedRef,
-    !readOnly,
-  );
+  const session = useAcpSession(nodeId, data, workspaceId, !readOnly);
   const sessionId = readOnly ? (fixedSessionId ?? null) : session.sessionId;
   const answerable = useCanAnswer(workspaceId ?? "", sessionId);
   const canAnswer = answerable && !readOnly;
@@ -544,10 +531,10 @@ export function SessionView({
       shown: readonly TimelineAttachment[] = [],
     ) => {
       if (!sessionId) {
-        // 会话就绪前的第一条（契约 §51）：先画出来，等会话开好再发；请求
-        // 还没发出去时随 `createSession` 的 `prompt` 一起发。再多的等它就绪。
+        // 会话就绪前的第一条（契约 §51）：先画出来，等会话开好再发。再多的
+        // 等它就绪。回合 id 此刻就定下，之后不论哪条路发都是它。
         if (queuedRef.current !== null || session.failed) return false;
-        queuedRef.current = { text, via: null };
+        queuedRef.current = { text, clientTurnId: newClientTurnId() };
         setQueued(text);
         return true;
       }
@@ -633,25 +620,14 @@ export function SessionView({
     [send, sessionId, workspaceId, t],
   );
 
-  // 会话开好、内容读到了：把排着的那一条交出去。随 `createSession` 发出的那条
-  // core 已经投递，这里只画上并进入「正在输出」。
+  // 会话开好、内容读到了（读不到也一样：投递不靠它）：把排着的那一条交出去。
+  // 先清掉再发：这个 effect 可能紧接着再跑一次（`send` 的引用变了），不能发两遍。
   React.useEffect(() => {
     const first = queuedRef.current;
-    if (!sessionId || feed.phase !== "ready" || first === null) return;
-    if (first.via === "prompt") return;
-    if (first.via === "create") {
-      const prompt = {
-        clientTurnId: newClientTurnId(),
-        text: first.text,
-        attachments: [],
-      };
-      useAcpStore.getState().begin(sessionId, prompt);
-    } else {
-      void send(first.text);
-    }
-    first.via = "prompt";
+    if (!sessionId || feed.phase === "loading" || first === null) return;
     queuedRef.current = null;
     setQueued(null);
+    void send(first.text, first.clientTurnId);
   }, [sessionId, feed.phase, send]);
 
   /**
@@ -736,7 +712,9 @@ export function SessionView({
     [feed.loadBlob, nodeId, sessionId],
   );
 
+  // 排着的第一条在时一直画排队气泡：请求还没发出去（工作空间晚到）时也是。
   const loading =
+    queued !== null ||
     (!readOnly && session.starting) ||
     (sessionId !== null && feed.phase === "loading" && items.length === 0);
   const empty =
