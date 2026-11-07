@@ -1268,25 +1268,17 @@ describe("first prompt sent before the session is ready (#865)", () => {
     expect(document.querySelector('[data-slot="acp-submitting"]')).toBeNull();
   });
 
-  it("works with the session id kept locally while the node write-back is dropped on a read-only board", async () => {
-    // 实时板在同步层放行写入之前是只读的（高延迟中继上数秒）：`updateNodeData`
-    // 静默什么都不做，节点数据里永远没有会话 id。页面不能因此看不见会话，
-    // 第一句要送达；板子可写之后 id 补写进节点数据。
+  it("works with the session id kept locally while the node write-back is still queued on a read-only board", async () => {
+    // 实时板在同步层放行写入之前是只读的（高延迟中继上数秒）：节点数据里暂时
+    // 没有会话 id（store 层把写回排着，见 `store/canvas/writeback.ts`）。页面不能
+    // 因此看不见会话，第一句要送达；写回只发一次，补写不是页面的事。
     api.createSession.mockResolvedValue({ id: SESSION });
-    let writable = false;
     store.document = { nodes: [{ id: "n1", data: { ...fresh } }] };
-    store.updateNodeData.mockImplementation(
-      (_id: string, patch: Record<string, unknown>) => {
-        if (!writable) return;
-        const node = store.document?.nodes[0] as { data: object };
-        node.data = { ...node.data, ...patch };
-      },
-    );
+    store.updateNodeData.mockImplementation(() => undefined);
     render(<SessionView nodeId="n1" data={fresh} />);
     const input = await screen.findByLabelText("消息");
     fireEvent.change(input, { target: { value: "read only" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    // 节点数据没变（data 还是没有 id），第一句仍然经 acp.prompt 送达一次。
     await waitFor(() =>
       expect(api.prompt).toHaveBeenCalledWith(
         SESSION,
@@ -1296,15 +1288,13 @@ describe("first prompt sent before the session is ready (#865)", () => {
     );
     expect(api.prompt).toHaveBeenCalledTimes(1);
     expect(api.createSession).toHaveBeenCalledTimes(1);
-    // 放开写入：守着的补写把 id 写进节点数据。
-    writable = true;
-    await waitFor(
-      () =>
-        expect(
-          (store.document?.nodes[0] as { data: { sessionId?: string } }).data
-            .sessionId,
-        ).toBe(SESSION),
-      { timeout: 3000 },
+    await act(async () => new Promise((r) => setTimeout(r, 700)));
+    // 只写回一次，没有定时补写。
+    expect(store.updateNodeData).toHaveBeenCalledTimes(1);
+    expect(store.updateNodeData).toHaveBeenCalledWith(
+      "n1",
+      { sessionId: SESSION, lastExitCode: null },
+      { history: "ignore" },
     );
     expect(api.createSession).toHaveBeenCalledTimes(1);
   });

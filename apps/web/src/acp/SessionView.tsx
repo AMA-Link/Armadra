@@ -70,43 +70,6 @@ interface QueuedPrompt {
 /** 「加载配置」超过这么久时追加「首次启动较慢」。 */
 const COLD_AFTER_MS = 3_000;
 
-/** 节点数据里此刻记的会话 id。 */
-function storedSessionId(nodeId: string): string | null {
-  const node = useCanvasStore
-    .getState()
-    .document?.nodes.find((candidate) => candidate.id === nodeId);
-  return (node?.data as { sessionId?: string } | undefined)?.sessionId ?? null;
-}
-
-/** 把会话 id 写回节点数据；只读时写不进去，答是否落下。 */
-function persistSessionId(nodeId: string, id: string): boolean {
-  const state = useCanvasStore.getState();
-  state.updateNodeData(
-    nodeId,
-    { sessionId: id, lastExitCode: null },
-    { history: "ignore" },
-  );
-  const landed = storedSessionId(nodeId) === id;
-  trace("write-back", {
-    landed,
-    readOnly: isReadOnly(useCanvasStore.getState()),
-  });
-  return landed;
-}
-
-/** 补写的间隔：只读通常几秒内放开，放开就写，不必每帧查。 */
-const PERSIST_RETRY_MS = 500;
-
-/** 反复尝试写回，落下就停；返回停止函数。 */
-function watchSessionId(nodeId: string, id: string): () => void {
-  const timer = setInterval(() => {
-    if (storedSessionId(nodeId) === id || persistSessionId(nodeId, id)) {
-      clearInterval(timer);
-    }
-  }, PERSIST_RETRY_MS);
-  return () => clearInterval(timer);
-}
-
 /**
  * 会话没有就起一个（`POST /api/acp/sessions`），id 写回节点数据——与终端
  * 节点同一个做法：重开应用靠它接回同一行，它不是用户的编辑，不进撤销栈。
@@ -132,7 +95,9 @@ function useAcpSession(
   const [phase, setPhase] = React.useState<AcpStartPhase | null>(null);
   const [cold, setCold] = React.useState(false);
   const [attempt, setAttempt] = React.useState(0);
-  // 起会话请求答回来的 id。节点数据里有了就以节点数据为准（见 `persistSessionId`）。
+  // 起会话请求答回来的 id。写回节点数据在实时板放行写入前只是排队（store 层
+  // `writeback.ts`，几秒后才落下），页面不等它：先用这份往下走，节点数据有了
+  // 就以节点数据为准。
   const [createdId, setCreatedId] = React.useState<string | null>(null);
   const sessionId = data.sessionId ?? createdId;
   const agent = data.agent;
@@ -143,11 +108,6 @@ function useAcpSession(
   React.useEffect(() => {
     if (data.sessionId) setCreatedId(null);
   }, [data.sessionId]);
-  // 写回没落下（只读）时守着补写，直到落下、节点没了或视图卸载。
-  React.useEffect(() => {
-    if (createdId === null || data.sessionId) return;
-    return watchSessionId(nodeId, createdId);
-  }, [createdId, data.sessionId, nodeId]);
 
   // 没有会话时就听着：请求发出之前订阅好，第一帧不会漏。
   React.useEffect(() => {
@@ -196,11 +156,17 @@ function useAcpSession(
         // 变了），清理之后的 `finally` 不再动状态，骨架屏就永远不走。
         setStarting(false);
         setPhase(null);
-        // 写回节点数据不一定落得下：实时板在同步层放行写入之前是只读的（高延迟
-        // 中继上这一段可达数秒），`updateNodeData` 此时静默什么都不做。所以会话 id
-        // 先记在本地，页面照样往下走；节点数据另有一个 effect 守着补写。
+        // 写回是系统写回（`history: "ignore"`）：实时板还没放行写入时 store 会
+        // 排队、放行后补写，这里直接写就行。
         setCreatedId(session.id);
-        persistSessionId(nodeId, session.id);
+        trace("write-back", {
+          readOnly: isReadOnly(useCanvasStore.getState()),
+        });
+        store.updateNodeData(
+          nodeId,
+          { sessionId: session.id, lastExitCode: null },
+          { history: "ignore" },
+        );
       })
       .catch((error: unknown) => {
         trace("create:error", {
