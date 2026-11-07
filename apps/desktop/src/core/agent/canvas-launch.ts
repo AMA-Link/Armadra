@@ -305,7 +305,9 @@ export function acpInjection(
       error: error instanceof Error ? error.message : String(error),
     });
   }
-  const injection = canvasInjection({ dataDir, agentId: base });
+  // The canvas MCP server comes with `session/new` (and its session binding),
+  // not from the terminal launch line: two servers of one name otherwise.
+  const injection = canvasInjection({ dataDir, agentId: base, mcp: false });
   if (rule.profileFlag !== undefined) {
     const at = injection.args.indexOf(rule.profileFlag);
     const profilePath = at >= 0 ? injection.args[at + 1] : undefined;

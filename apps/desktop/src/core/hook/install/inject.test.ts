@@ -42,6 +42,7 @@ import { posixQuote } from "../../terminal/shell";
 import { CANVAS_MCP_NAME } from "../../acp/mcp";
 import { agentEnvironment } from "../../terminal/environment";
 import { MCP_SERVER_NAME } from "../../../cli/armadra-hook/mcp";
+import { copilotMcpConfig, opencodeMcpConfig } from "./terminal-mcp";
 
 /**
  * The canvas injection: what each CLI is handed, and what is written for it.
@@ -349,11 +350,37 @@ describe("canvas injection", () => {
       ["OPENCODE_CONFIG_DIR", layout.configDir],
       [
         "OPENCODE_CONFIG_CONTENT",
-        JSON.stringify({ instructions: [layout.instructions] }),
+        JSON.stringify({
+          ...opencodeMcpConfig(hookBin),
+          instructions: [layout.instructions],
+        }),
       ],
     ]);
     expect(existsSync(join(layout.configDir as string, "plugins"))).toBe(true);
     expect(existsSync(layout.skill)).toBe(true);
+  });
+
+  it("gives terminal OpenCode the canvas MCP server and allows only its tools", () => {
+    prepare("opencode");
+    const content = inject("opencode").env.find(
+      ([name]) => name === "OPENCODE_CONFIG_CONTENT",
+    )?.[1];
+    expect(JSON.parse(content as string)).toMatchObject({
+      mcp: { armadra: { type: "local", command: [hookBin, "mcp"] } },
+      permission: { "armadra_*": "allow" },
+    });
+    // No `bash` rule: it would replace the user's whole bash policy.
+    expect(JSON.parse(content as string).permission).toEqual({
+      "armadra_*": "allow",
+    });
+    // An ACP session gets the server from `session/new` instead.
+    const acp = canvasInjection({ dataDir, agentId: "opencode", mcp: false });
+    const acpContent = acp.env.find(
+      ([name]) => name === "OPENCODE_CONFIG_CONTENT",
+    )?.[1];
+    expect(JSON.parse(acpContent as string)).toEqual({
+      instructions: [artifactLayout(dataDir, "opencode").instructions],
+    });
   });
 
   it("gives Pi its extension, its skill and the instructions", () => {
@@ -392,9 +419,23 @@ describe("canvas injection", () => {
     prepare("copilot");
     const layout = artifactLayout(dataDir, "copilot");
     expect(inject("copilot")).toMatchObject({
-      args: ["--plugin-dir", layout.pluginDir],
+      args: [
+        "--plugin-dir",
+        layout.pluginDir,
+        "--additional-mcp-config",
+        `@${layout.mcpConfig}`,
+        "--allow-tool",
+        "armadra",
+      ],
       env: [["COPILOT_CUSTOM_INSTRUCTIONS_DIRS", layout.instructionsDir]],
     });
+    expect(
+      JSON.parse(readFileSync(layout.mcpConfig as string, "utf8")),
+    ).toEqual(copilotMcpConfig(hookBin));
+    // An ACP session gets the server from `session/new` instead.
+    expect(
+      canvasInjection({ dataDir, agentId: "copilot", mcp: false }).args,
+    ).toEqual(["--plugin-dir", layout.pluginDir]);
     const manifest = JSON.parse(
       readFileSync(layout.manifest as string, "utf8"),
     ) as Record<string, string>;
