@@ -17,11 +17,11 @@ import {
   COPILOT_HOOK_EVENTS,
   INTEGRATION_REVISION,
 } from "./events";
+import { claudeAllowRules } from "./claude-allow";
 import {
   CLAUDE_MODS_MIN,
   INJECTED_AGENTS,
   artifactLayout,
-  claudeAllowRules,
   canvasInjection,
   claudeLoadsMods,
   claudeModsGate,
