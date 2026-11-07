@@ -52,6 +52,8 @@ import {
   startFailureKey,
   startFailureNote,
 } from "./start-failure";
+import { isReadOnly } from "@/store/canvas/presence";
+import { trace } from "./diag";
 import { useSessionFeed } from "./use-session-feed";
 
 /**
@@ -67,6 +69,43 @@ interface QueuedPrompt {
 
 /** 「加载配置」超过这么久时追加「首次启动较慢」。 */
 const COLD_AFTER_MS = 3_000;
+
+/** 节点数据里此刻记的会话 id。 */
+function storedSessionId(nodeId: string): string | null {
+  const node = useCanvasStore
+    .getState()
+    .document?.nodes.find((candidate) => candidate.id === nodeId);
+  return (node?.data as { sessionId?: string } | undefined)?.sessionId ?? null;
+}
+
+/** 把会话 id 写回节点数据；只读时写不进去，答是否落下。 */
+function persistSessionId(nodeId: string, id: string): boolean {
+  const state = useCanvasStore.getState();
+  state.updateNodeData(
+    nodeId,
+    { sessionId: id, lastExitCode: null },
+    { history: "ignore" },
+  );
+  const landed = storedSessionId(nodeId) === id;
+  trace("write-back", {
+    landed,
+    readOnly: isReadOnly(useCanvasStore.getState()),
+  });
+  return landed;
+}
+
+/** 补写的间隔：只读通常几秒内放开，放开就写，不必每帧查。 */
+const PERSIST_RETRY_MS = 500;
+
+/** 反复尝试写回，落下就停；返回停止函数。 */
+function watchSessionId(nodeId: string, id: string): () => void {
+  const timer = setInterval(() => {
+    if (storedSessionId(nodeId) === id || persistSessionId(nodeId, id)) {
+      clearInterval(timer);
+    }
+  }, PERSIST_RETRY_MS);
+  return () => clearInterval(timer);
+}
 
 /**
  * 会话没有就起一个（`POST /api/acp/sessions`），id 写回节点数据——与终端
@@ -93,8 +132,22 @@ function useAcpSession(
   const [phase, setPhase] = React.useState<AcpStartPhase | null>(null);
   const [cold, setCold] = React.useState(false);
   const [attempt, setAttempt] = React.useState(0);
-  const sessionId = data.sessionId ?? null;
+  // 起会话请求答回来的 id。节点数据里有了就以节点数据为准（见 `persistSessionId`）。
+  const [createdId, setCreatedId] = React.useState<string | null>(null);
+  const sessionId = data.sessionId ?? createdId;
   const agent = data.agent;
+  React.useEffect(() => {
+    trace("data.sessionId", { sessionId, stored: data.sessionId ?? null });
+  }, [sessionId, data.sessionId]);
+  // 节点数据补上之后本地记的这一份就没用了；以后节点数据又清空时不能把旧 id 翻出来。
+  React.useEffect(() => {
+    if (data.sessionId) setCreatedId(null);
+  }, [data.sessionId]);
+  // 写回没落下（只读）时守着补写，直到落下、节点没了或视图卸载。
+  React.useEffect(() => {
+    if (createdId === null || data.sessionId) return;
+    return watchSessionId(nodeId, createdId);
+  }, [createdId, data.sessionId, nodeId]);
 
   // 没有会话时就听着：请求发出之前订阅好，第一帧不会漏。
   React.useEffect(() => {
@@ -123,6 +176,7 @@ function useAcpSession(
     setFailureNote(null);
     setAuthMethods([]);
     setPhase(null);
+    trace("create:start", { attempt });
     acpApi
       .createSession({
         workspaceId: workspace.id,
@@ -136,20 +190,23 @@ function useAcpSession(
         ...(agent.sessionId ? { resume: agent.sessionId } : {}),
       })
       .then((session) => {
+        trace("create:ok", { cancelled, id: session.id });
         if (cancelled) return;
         // 先收起「正在起」：写回会话 id 会让这个 effect 自己被清理（依赖
         // 变了），清理之后的 `finally` 不再动状态，骨架屏就永远不走。
         setStarting(false);
         setPhase(null);
-        useCanvasStore
-          .getState()
-          .updateNodeData(
-            nodeId,
-            { sessionId: session.id, lastExitCode: null },
-            { history: "ignore" },
-          );
+        // 写回节点数据不一定落得下：实时板在同步层放行写入之前是只读的（高延迟
+        // 中继上这一段可达数秒），`updateNodeData` 此时静默什么都不做。所以会话 id
+        // 先记在本地，页面照样往下走；节点数据另有一个 effect 守着补写。
+        setCreatedId(session.id);
+        persistSessionId(nodeId, session.id);
       })
       .catch((error: unknown) => {
+        trace("create:error", {
+          cancelled,
+          error: String(error).slice(0, 120),
+        });
         if (cancelled) return;
         setFailure(
           error instanceof RuntimeRequestError ? (error.code ?? null) : null,
@@ -530,6 +587,11 @@ export function SessionView({
       uploadIds: readonly string[] = [],
       shown: readonly TimelineAttachment[] = [],
     ) => {
+      trace("send", {
+        sessionId: sessionId ?? null,
+        queued: queuedRef.current !== null,
+        failed: session.failed,
+      });
       if (!sessionId) {
         // 会话就绪前的第一条（契约 §51）：先画出来，等会话开好再发。再多的
         // 等它就绪。回合 id 此刻就定下，之后不论哪条路发都是它。
@@ -542,11 +604,18 @@ export function SessionView({
       const clientTurnId = retryTurnId ?? newClientTurnId();
       const prompt = { clientTurnId, text, attachments: shown };
       store.begin(sessionId, prompt);
+      trace("prompt:begin", { sessionId, clientTurnId });
       try {
         await (uploadIds.length > 0
           ? acpApi.prompt(sessionId, text, clientTurnId, uploadIds)
           : acpApi.prompt(sessionId, text, clientTurnId));
+        trace("prompt:ok", { sessionId, clientTurnId });
       } catch (error) {
+        trace("prompt:error", {
+          sessionId,
+          clientTurnId,
+          error: String(error).slice(0, 120),
+        });
         if (refusedByCore(error)) {
           store.fail(sessionId);
           toast.error(
@@ -627,6 +696,7 @@ export function SessionView({
     if (!sessionId || feed.phase === "loading" || first === null) return;
     queuedRef.current = null;
     setQueued(null);
+    trace("flush", { sessionId, phase: feed.phase });
     void send(first.text, first.clientTurnId);
   }, [sessionId, feed.phase, send]);
 

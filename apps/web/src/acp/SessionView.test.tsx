@@ -1268,6 +1268,47 @@ describe("first prompt sent before the session is ready (#865)", () => {
     expect(document.querySelector('[data-slot="acp-submitting"]')).toBeNull();
   });
 
+  it("works with the session id kept locally while the node write-back is dropped on a read-only board", async () => {
+    // 实时板在同步层放行写入之前是只读的（高延迟中继上数秒）：`updateNodeData`
+    // 静默什么都不做，节点数据里永远没有会话 id。页面不能因此看不见会话，
+    // 第一句要送达；板子可写之后 id 补写进节点数据。
+    api.createSession.mockResolvedValue({ id: SESSION });
+    let writable = false;
+    store.document = { nodes: [{ id: "n1", data: { ...fresh } }] };
+    store.updateNodeData.mockImplementation(
+      (_id: string, patch: Record<string, unknown>) => {
+        if (!writable) return;
+        const node = store.document?.nodes[0] as { data: object };
+        node.data = { ...node.data, ...patch };
+      },
+    );
+    render(<SessionView nodeId="n1" data={fresh} />);
+    const input = await screen.findByLabelText("消息");
+    fireEvent.change(input, { target: { value: "read only" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    // 节点数据没变（data 还是没有 id），第一句仍然经 acp.prompt 送达一次。
+    await waitFor(() =>
+      expect(api.prompt).toHaveBeenCalledWith(
+        SESSION,
+        "read only",
+        expect.any(String),
+      ),
+    );
+    expect(api.prompt).toHaveBeenCalledTimes(1);
+    expect(api.createSession).toHaveBeenCalledTimes(1);
+    // 放开写入：守着的补写把 id 写进节点数据。
+    writable = true;
+    await waitFor(
+      () =>
+        expect(
+          (store.document?.nodes[0] as { data: { sessionId?: string } }).data
+            .sessionId,
+        ).toBe(SESSION),
+      { timeout: 3000 },
+    );
+    expect(api.createSession).toHaveBeenCalledTimes(1);
+  });
+
   it("delivers a queued prompt even when the session was recreated by a workspace flicker", async () => {
     // 工作空间 id 在起会话的途中闪了一下（重连）：第一次请求的 effect 被清理，
     // 它随后在路上失败（中继超时）；第二次请求接着起。第一句仍然只送达一次。
