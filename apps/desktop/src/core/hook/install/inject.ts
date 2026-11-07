@@ -316,7 +316,7 @@ function json(value: unknown): string {
  * user's own, match the bare name and the absolute path (quoted when it has a
  * space), and leave everything else to the user's permission mode — another
  * sub-command (`hook`, `mcp`), a chained `… && …` and the `"$ARMADRA_HOOK_BIN"`
- * spelling all still ask.
+ * spelling all still ask (contract §105.2).
  */
 export const CLAUDE_ALLOWED_SUBCOMMANDS = ["canvas", "context", "browser"];
 

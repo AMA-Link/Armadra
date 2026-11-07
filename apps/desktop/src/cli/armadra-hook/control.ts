@@ -207,7 +207,8 @@ export const WAIT_SLACK_MS = 10_000;
 
 /**
  * The budget for one call of `group`/`verb` with these arguments, shared by
- * the CLI, the MCP server and the ama host so the three cannot disagree.
+ * the CLI, the MCP server and the ama host so the three cannot disagree
+ * (contract §105.1).
  */
 export function callTimeoutMs(
   group: "canvas" | "context" | "browser",
@@ -420,8 +421,9 @@ function jsonToString(value: JsonValue | undefined): string {
  * Renders a failure response for the model: the sentence and the status on
  * the first line, and — when the body is a coded refusal — a second line with
  * the machine fields the core flattened beside `{code, message}`
- * (`retryable`, `retryAfterMs`, …; agent-delivery.md §3.7). Without it the
- * model had to guess from a sentence whether to retry and how long to wait.
+ * (`retryable`, `retryAfterMs`, …; agent-delivery.md §3.7, contract §105.3).
+ * Without it the model had to guess from a sentence whether to retry and
+ * how long to wait.
  */
 export function renderError(response: HookResponse): string {
   const fallback = (): string => {
