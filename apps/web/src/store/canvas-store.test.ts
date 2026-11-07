@@ -44,6 +44,9 @@ const { absolutePosition, resetHistory, useCanvasStore } = await import(
   "./canvas-store"
 );
 const { emptyWhiteboard } = await import("../canvas/whiteboard/model");
+const { MAX_QUEUED_NODES, queuedWriteBackCount } = await import(
+  "./canvas/writeback"
+);
 
 const timestamp = "2026-08-13T00:00:00.000Z";
 
@@ -977,5 +980,128 @@ describe("arrangeNodes", () => {
     const before = state().document;
     state().arrangeNodes();
     expect(state().document).toBe(before);
+  });
+});
+
+describe("实时板放行写入前的系统写回", () => {
+  const ignore = { history: "ignore" } as const;
+  const live = (writable: boolean) =>
+    state().setRealtime({ boardId: board.id, writable });
+  const terminal = () =>
+    makeNode("terminal", { data: { kind: "terminal" } as never });
+
+  beforeEach(() => {
+    state().setRealtime(null);
+    state().setPresence(null as never);
+  });
+
+  it("只读期间排队，放行后落下，且不进撤销栈", () => {
+    const a = terminal();
+    load([a]);
+    live(false);
+    state().updateNodeData(a.id, { sessionId: "s-1" } as never, ignore);
+    expect(byId(a.id)?.data).toEqual({ kind: "terminal" });
+    expect(state().saveState).not.toBe("dirty");
+    live(true);
+    expect(byId(a.id)?.data).toMatchObject({ sessionId: "s-1" });
+    expect(state().saveState).toBe("dirty");
+    state().undo();
+    expect(byId(a.id)?.data).toMatchObject({ sessionId: "s-1" });
+  });
+
+  it("同一节点的多次写回合并成一次", () => {
+    const a = terminal();
+    const b = terminal();
+    load([a, b]);
+    live(false);
+    state().updateNodeData(a.id, { sessionId: "s-1" } as never, ignore);
+    state().updateNodeData(a.id, { lastExitCode: 0 } as never, ignore);
+    state().updateNodeData(a.id, { sessionId: "s-2" } as never, ignore);
+    state().updateNodeData(b.id, { sessionId: "s-b" } as never, ignore);
+    expect(queuedWriteBackCount()).toBe(2);
+    live(true);
+    expect(byId(a.id)?.data).toMatchObject({
+      sessionId: "s-2",
+      lastExitCode: 0,
+    });
+    expect(byId(b.id)?.data).toMatchObject({ sessionId: "s-b" });
+    expect(queuedWriteBackCount()).toBe(0);
+  });
+
+  it("用户编辑（非 ignore）在只读期间仍然不落、也不排队", () => {
+    const a = makeNode("sticky", { data: { kind: "sticky", content: "" } });
+    load([a]);
+    live(false);
+    state().updateNodeData(a.id, { content: "改" } as never);
+    expect(queuedWriteBackCount()).toBe(0);
+    live(true);
+    expect(byId(a.id)?.data).toEqual({ kind: "sticky", content: "" });
+  });
+
+  it("节点在放行前被删掉，对应写回丢弃", () => {
+    const a = terminal();
+    const b = terminal();
+    load([a, b]);
+    live(false);
+    state().updateNodeData(a.id, { sessionId: "s-a" } as never, ignore);
+    state().updateNodeData(b.id, { sessionId: "s-b" } as never, ignore);
+    useCanvasStore.setState({
+      document: { board, nodes: [b], edges: [] },
+    });
+    live(true);
+    expect(byId(a.id)).toBeUndefined();
+    expect(byId(b.id)?.data).toMatchObject({ sessionId: "s-b" });
+  });
+
+  it("真正的只读永远不落下，也不因此获得写权限", () => {
+    const a = terminal();
+    load([a]);
+    live(false);
+    state().updateNodeData(a.id, { sessionId: "s-1" } as never, ignore);
+    // 访客：同步层始终不放行，再来几次状态变化也一样。
+    live(false);
+    live(false);
+    expect(byId(a.id)?.data).toEqual({ kind: "terminal" });
+    // 服务器明确说没有写权限：连队列都不进。
+    state().setPresence({
+      boardId: board.id,
+      clients: [],
+      lease: null,
+      writable: false,
+    } as never);
+    state().updateNodeData(a.id, { sessionId: "s-2" } as never, ignore);
+    expect(byId(a.id)?.data).toEqual({ kind: "terminal" });
+    // 即便之后 setRealtime(writable: true) 被误用，presence 的只读仍然拦住补写。
+    live(true);
+    expect(byId(a.id)?.data).toEqual({ kind: "terminal" });
+  });
+
+  it("换画布或停掉实时，排着的写回清空", () => {
+    const a = terminal();
+    load([a]);
+    live(false);
+    state().updateNodeData(a.id, { sessionId: "s-1" } as never, ignore);
+    state().setRealtime(null);
+    expect(queuedWriteBackCount()).toBe(0);
+
+    live(false);
+    state().updateNodeData(a.id, { sessionId: "s-2" } as never, ignore);
+    state().selectBoard(uuid());
+    expect(queuedWriteBackCount()).toBe(0);
+  });
+
+  it("队列有上限，满了丢最早的", () => {
+    const many = Array.from({ length: MAX_QUEUED_NODES + 5 }, terminal);
+    load(many);
+    live(false);
+    for (const node of many) {
+      state().updateNodeData(node.id, { sessionId: "x" } as never, ignore);
+    }
+    expect(queuedWriteBackCount()).toBe(MAX_QUEUED_NODES);
+    live(true);
+    expect(byId(many[0]!.id)?.data).toEqual({ kind: "terminal" });
+    expect(byId(many[many.length - 1]!.id)?.data).toMatchObject({
+      sessionId: "x",
+    });
   });
 });

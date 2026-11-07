@@ -256,3 +256,31 @@ export async function diagnoseAcpStep({
   });
   return out;
 }
+
+/**
+ * 终端节点经中继起好后，节点数据里要有 `sessionId`（#868）：实时板放行写入之前
+ * 的系统写回由 store 层排队补写，不能丢。读 core 里这块板的文档，与会话行对照。
+ */
+export async function terminalSessionWrittenBack({
+  owner,
+  until,
+  workspaceId,
+  boardId,
+  nodeId,
+}) {
+  const sessionId = await until(
+    async () => {
+      const document = await owner(
+        `/api/workspaces/${workspaceId}/boards/${boardId}/document`,
+      );
+      const node = (document.nodes ?? document.document?.nodes ?? []).find(
+        (one) => one.id === nodeId,
+      );
+      return node?.data?.sessionId || undefined;
+    },
+    "终端节点数据里写回了 sessionId",
+    { timeout: 30_000 },
+  );
+  const rows = await owner(`/api/workspaces/${workspaceId}/sessions`);
+  return { sessionId, row: rows.find((one) => one.nodeId === nodeId) };
+}
