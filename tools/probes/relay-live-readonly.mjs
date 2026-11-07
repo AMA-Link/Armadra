@@ -1,11 +1,11 @@
-// 线上中继的只读探针（Workers 中继，平台计划 V4）：部署后对 https://relay.armadra.com 用。
+// 线上中继的只读探针（平台计划 V4）：部署后对 https://relay.armadra.com（Go 个人中转）用。
 //
 // 只发 GET，只碰两处公开端点：`/health` 与 `/.well-known/*`（平台信息、公钥集）。不登录、
 // 不登记、不开隧道、不带任何凭据；默认不在 CI 里跑（没有 e2e.d 条目），部署后手动：
 //
 //   node tools/probes/relay-live-readonly.mjs [--issuer https://relay.armadra.com] [--json]
 //
-// 退出码 0 = 全部通过，1 = 有检查失败，2 = 参数错。也可以对本地 workerd 跑（http:// 地址），
+// 退出码 0 = 全部通过，1 = 有检查失败，2 = 参数错。也可以对本地中继跑（http:// 地址），
 // 自检用。证书走系统信任（线上是公共证书），不放宽 TLS 校验。
 const args = process.argv.slice(2);
 const flag = (name) => {
