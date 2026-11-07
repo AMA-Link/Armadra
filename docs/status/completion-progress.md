@@ -4169,6 +4169,8 @@ nightly 在 `b8353492`（运行 37338174906）之后连续失败。逐个作业�
 
 ## Workers 中继探针（V4，Refs #256，2026-10-10）
 
+> 2026-11（AMA-Link/armadra-cloud#214）：Workers 中继已删除，`--workerd`、`tools/probes/workerd-relay.mjs` 与清单 `personal-roundtrip-workers` 随之删除，`relay-challenge-desktop.mjs` 只起 Go 中继；`--issuer` 保留，对 Go 个人中转（含托管的 `relay.armadra.com`）跑。下文只作追溯。
+
 做了什么：
 
 - `tools/probes/personal-roundtrip.mjs` 加 `--workerd`（用 armadra-cloud 检出里的 `apps/relay-workers` 起本地 `wrangler dev --local`）与 `--issuer <地址>`（对已经在跑的中继，账号口令取环境变量）。这两种模式跳过 init/serve、keep-alive、Electron 与手机，其余照旧：登记 → 隧道 ready → 浏览器经中继登录进画布 → 终端收发、ACP 回合、实时板 → 分享链接访客 → 撤销链接与撤销登记；新增两步：只读分享（只读工作空间链接、会话链接，访客会话是 viewer）与媒体票 Range。
