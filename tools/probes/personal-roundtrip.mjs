@@ -32,6 +32,8 @@
 // 指向已经在跑的中继（例如托管的 relay.armadra.com，Go 个人中转）：
 //   --issuer <地址>   对它跑（http:// 或 https:// 系统信任）；账号与口令取环境变量
 //                     ARMADRA_PROBE_RELAY_ACCOUNT / ARMADRA_PROBE_RELAY_PASSWORD
+// 复现高延迟中继下的时序问题：ARMADRA_PROBE_LATENCY_MS=400 给页面的每个请求加这么久
+// （CDP `Network.emulateNetworkConditions`；再大页面本身加载就超时）。
 // 这个模式没有 init/serve 与自签 CA，也不开 Electron 和手机；多出「只读分享链接」与
 // 「媒体票 Range」两步。
 import { randomBytes } from "node:crypto";
@@ -474,6 +476,17 @@ try {
     const page = await stack.browser.page(await stack.browser.context());
     opened.push([`page-${opened.length}`, page]);
     if (width !== 1440) await page.viewport(width, height, mobile);
+    // 高延迟中继的复现（#865）：ARMADRA_PROBE_LATENCY_MS=500 给页面的每个请求加这么久。
+    const latency = Number(process.env.ARMADRA_PROBE_LATENCY_MS ?? 0);
+    if (latency > 0) {
+      await page.call("Network.enable", {});
+      await page.call("Network.emulateNetworkConditions", {
+        offline: false,
+        latency,
+        downloadThroughput: -1,
+        uploadThroughput: -1,
+      });
+    }
     // 中继给页面的 CSP 只许同源：页面里不该有任何跨源连接被拦。
     page.allowed.push(/WebSocket connection to .* failed/);
     return page;
