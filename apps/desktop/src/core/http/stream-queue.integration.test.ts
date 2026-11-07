@@ -141,9 +141,11 @@ describe("a slow client over a real socket", () => {
     const FRAME = 256 * 1024;
     let encoded = 0;
     let stop = false;
+    let serverSide: WebSocket | undefined;
     const connect = await listen(
       "/api/workspaces/{workspaceId}/browser/{nodeId}/stream",
       (connection) => {
+        serverSide = connection;
         const queue = new SendQueue(wsTarget(connection), {
           policy: "coalesce",
           maxFrames: 4,
@@ -171,7 +173,18 @@ describe("a slow client over a real socket", () => {
     });
     await sleep(100);
     tcp(client).pause();
-    await sleep(100);
+    // The stall is an event, not a duration: the kernel's socket buffers take
+    // a load-dependent number of frames to fill, and the stall has begun once
+    // the server's own socket holds bytes the kernel would not take. From then
+    // on the pending write never calls back, so the encoder has no ack to wait out.
+    for (
+      let tries = 0;
+      tries < 400 && (serverSide?.bufferedAmount ?? 0) === 0;
+      tries += 1
+    ) {
+      await sleep(25);
+    }
+    expect(serverSide?.bufferedAmount ?? 0).toBeGreaterThan(0);
     const stuckAt = encoded;
     await sleep(400);
     // Nobody is reading, so nothing more is encoded once the socket stalls.
