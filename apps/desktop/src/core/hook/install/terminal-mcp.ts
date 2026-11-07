@@ -12,7 +12,7 @@
  * same requests as Codex's (`codex-mcp.ts`), with the same node token, so the
  * core grants nothing extra.
  *
- * Measured (contract §106): OpenCode 1.19.5 with a user `*: ask` runs
+ * Measured (contract §106.1): OpenCode 1.19.5 with a user `*: ask` runs
  * `armadra_canvas_list` without asking and still asks for `bash`; Copilot
  * 1.0.105 refuses the tool without `--allow-tool armadra` and runs it with it.
  * Both start the server with their own environment, so it finds the node the

@@ -5563,3 +5563,20 @@ core 的工作流域搭任务行兜底扫描（每 60 秒，§15.7）的便车�
 - 客户端的失败文本（CLI 写 stderr、MCP 的 `isError` 文本、ama 的工具错误）第一行不变：`<message> (<HTTP 状态>)`。
 - 拒绝体是 JSON 且带非空字符串 `code` 时加第二行：`code=<code>`，其后是拒绝体里 `code` / `message` / `error` 以外的字段，按键名排序，`键=值` 以空格分隔，字符串值与非标量值写成 JSON（例：`code=RATE_LIMITED retryAfterMs=3000 retryable=true`）。没有 `code` 的保持一行。
 - 字段就是 core 摊平在 `{code, message}` 旁边的那些（设计 agent-delivery.md §3.7），客户端不增不减。
+
+## 106. 终端 OpenCode / Copilot 的画布 MCP 与 omp 的审批事件（`#852`、`#853`、`#854`）
+
+> 状态：实施契约。只改注入产物与启动行；core 的路由、事件形状与协议版本不变。
+
+### 106.1 终端 OpenCode 与 Copilot 走注入的 MCP
+
+- 与终端 Codex（`codex-mcp.ts`）同一个服务器：`armadra-hook mcp`，名字 `armadra`，子进程继承节点终端的环境（节点 id、端点文件），与 shell 里的 `armadra-hook` 发同样的请求、用同一个节点令牌。实现在 `core/hook/install/terminal-mcp.ts`。
+- **OpenCode**：`OPENCODE_CONFIG_CONTENT` 多 `mcp.armadra = { type: "local", command: [<客户端>, "mcp"] }` 与 `permission: { "armadra_*": "allow" }`（与 `instructions` 同一个对象）。不写 `bash` 规则：实测内容里的 `permission.bash` 会整体替换用户的 `bash` 策略。实测（opencode 1.19.5）：用户 `*: ask` 或 `bash: ask` 时 `armadra_canvas_list` 免审批，`bash` 仍询问。
+- **Copilot**：产物多 `<数据目录>/integration/copilot/armadra-mcp.json`（`{ mcpServers: { armadra: { type: "local", command, args: ["mcp"], tools: ["*"] } } }`），启动行多 `--additional-mcp-config @<该文件> --allow-tool armadra`：只放行这个服务器的工具，shell 命令仍按用户策略。实测（Copilot 1.0.105，`-p`）：不带 `--allow-tool` 时被拒，带了执行。
+- **ACP 不带**：`acpInjection` 以 `canvasInjection({ …, mcp: false })` 取注入，服务器仍由 `session/new.mcpServers` 带会话绑定（§98），不出现两份同名服务器。
+- 画布规则（技能修订 25）多一句：有 `armadra` MCP 工具时优先用它们。
+
+### 106.2 omp 的审批事件
+
+- omp 的扩展（`OMP_HOOK_EVENTS`）多订阅 `tool_approval_requested` / `tool_approval_resolved`，按 Pi 的归一（`core/hook/normalize/pi.ts`）记为 `blocked`（`askKind` 为工具名，时间线 `PermissionRequest`）与 `working`。只观察、不作答：审批仍在 omp 自己的 TUI 里答；画布上节点显示等待、发通知，不再一直是 `working`。实测（omp 18.16.0）：`--approval-mode write` 下执行 bash 时扩展依次收到 `tool_call`、`tool_approval_requested`、`tool_approval_resolved`。
+- 事件不带 `pendingId`，所以不生成审批卡；write 档下协作动词免审批需要扩展在进程内注册工具（omp 没有按命令前缀放行的配置，也没有逐次的 MCP 配置），另行跟进。
