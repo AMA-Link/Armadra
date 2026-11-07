@@ -78,6 +78,7 @@ import {
   addLatency,
   recordNetwork,
   diagnoseAcpStep,
+  terminalSessionWrittenBack,
   restoreAccount,
   serveLocalWeb,
 } from "./roundtrip-issuer.mjs";
@@ -574,6 +575,18 @@ try {
     );
     await terminalRoundTrip(page, terminal.id, "relay");
     run.ok("经中继开终端并收发（42relay）");
+    const written = await terminalSessionWrittenBack({
+      owner,
+      until,
+      workspaceId: workspace.id,
+      boardId: board.id,
+      nodeId: terminal.id,
+    });
+    run.check(
+      Boolean(written.row) && written.row.sessionId === written.sessionId,
+      "终端节点数据里的 sessionId 与 core 的会话行一致（#868）",
+      { stored: written.sessionId, row: written.row?.sessionId },
+    );
 
     // ACP 回合经中继：页面带着 clientTurnId 发一轮，回复流回；core 侧只有一轮、
     // 回合记录认得页面的 id（契约 §39.9）。
