@@ -88,8 +88,9 @@ export function normalize(
       event = stateEvent(nodeId, agentId, DONE);
       event.idle = true;
       break;
-    // Not subscribed (§3.5 keeps the adapter observational), but mapped so a
-    // hand-added handler reads as a wait rather than as nothing.
+    // Raised by ama and OMP, observed only (§3.5 keeps the adapter
+    // observational): the wait shows on the canvas, the answer stays the
+    // CLI's own prompt.
     case "tool_approval_requested":
       event = stateEvent(nodeId, agentId, BLOCKED);
       event.askKind = text(payload, "tool_name", "toolName");

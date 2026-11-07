@@ -15,6 +15,11 @@ import { storedProbe } from "../../agent/probe";
 import { eventKey } from "./codex";
 import { codexMcpArgs } from "./codex-mcp";
 import {
+  copilotMcpArgs,
+  copilotMcpConfig,
+  opencodeMcpConfig,
+} from "./terminal-mcp";
+import {
   CLAUDE_HOOK_EVENTS,
   CLIENT_NAME,
   CODEX_HOOK_EVENTS,
@@ -156,6 +161,8 @@ export interface ArtifactLayout {
   readonly skillDir?: string;
   /** Copilot's `COPILOT_CUSTOM_INSTRUCTIONS_DIRS`. */
   readonly instructionsDir?: string;
+  /** Copilot's `--additional-mcp-config @<file>` (`terminal-mcp.ts`). */
+  readonly mcpConfig?: string;
   /** ama's `--profile` (docs/design/coordinator-agent.md §2.4). */
   readonly profile?: string;
   /** ama's `profile.config`. */
@@ -243,6 +250,7 @@ export function artifactLayout(
         manifest: join(pluginDir, "plugin.json"),
         pluginHooks: join(pluginDir, "hooks.json"),
         skill: skillUnder(pluginDir, join),
+        mcpConfig: join(dir, "armadra-mcp.json"),
         instructionsDir,
         instructions: join(
           instructionsDir,
@@ -504,6 +512,7 @@ export function artifactFiles(
         layout.manifest as string,
         json({ ...manifest, hooks: "hooks.json", skills: "skills/" }),
       );
+      files.set(layout.mcpConfig as string, json(copilotMcpConfig(clientBin)));
       break;
     }
     case "ama":
@@ -1259,6 +1268,12 @@ export interface InjectionRequest {
    * when absent; `null` = unknown, which keeps the mod off.
    */
   readonly claudeVersion?: string | null;
+  /**
+   * Whether OpenCode and Copilot get the canvas MCP server on their launch
+   * line (contract §106). Off for an ACP session, which gets the server from
+   * `session/new` with its session binding; on when absent.
+   */
+  readonly mcp?: boolean;
 }
 
 export interface Injection {
@@ -1327,6 +1342,7 @@ function launchInjection(request: InjectionRequest): Injection {
         claudeMods:
           request.agentId === "claude" &&
           claudeModsGate(claudeVersionOf(request)).enabled,
+        mcp: request.mcp ?? true,
       },
     ) ?? NOTHING
   );
@@ -1354,6 +1370,8 @@ export function injectionFromLayout(
     readonly claudeMods?: boolean;
     /** Whether the CLI runs on Windows; this machine's platform when absent. */
     readonly windows?: boolean;
+    /** OpenCode's and Copilot's canvas MCP server (contract §106); on when absent. */
+    readonly mcp?: boolean;
   } = {},
 ): Injection | undefined {
   const isFile = exists;
@@ -1407,21 +1425,23 @@ export function injectionFromLayout(
         ),
         env: [],
       };
-    case "opencode":
+    case "opencode": {
+      const content = {
+        ...(options.mcp === false ? {} : opencodeMcpConfig(clientBin)),
+        ...(instructions === undefined ? {} : { instructions: [instructions] }),
+      };
       return {
         args: [],
         env: [
           ["OPENCODE_CONFIG_DIR", layout.configDir as string],
-          ...(instructions === undefined
+          ...(Object.keys(content).length === 0
             ? []
             : ([
-                [
-                  "OPENCODE_CONFIG_CONTENT",
-                  JSON.stringify({ instructions: [instructions] }),
-                ],
+                ["OPENCODE_CONFIG_CONTENT", JSON.stringify(content)],
               ] as const)),
         ],
       };
+    }
     case "pi":
       return {
         args: [
@@ -1455,9 +1475,14 @@ export function injectionFromLayout(
       };
     case "copilot":
       return {
-        args: isFile(layout.manifest)
-          ? ["--plugin-dir", layout.pluginDir as string]
-          : [],
+        args: [
+          ...(isFile(layout.manifest)
+            ? ["--plugin-dir", layout.pluginDir as string]
+            : []),
+          ...(options.mcp !== false && isFile(layout.mcpConfig)
+            ? copilotMcpArgs(layout.mcpConfig)
+            : []),
+        ],
         env:
           instructions === undefined
             ? []

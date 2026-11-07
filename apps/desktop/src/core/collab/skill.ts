@@ -64,6 +64,8 @@ export function canvasRules(): string {
 
 1. **这个终端是 Armadra 画布上的一个节点。** 和别的节点协作只走 \`armadra-hook canvas …\`（含 \`canvas post\` 留言、\`canvas send\` 投递）。
    This terminal is a node on an Armadra board. Collaborate only through \`armadra-hook canvas\`, \`canvas post\` and \`canvas send\`.
+   有 MCP 服务器 \`armadra\` 的工具（\`canvas_*\`、\`context_*\`、\`browser_*\`）时优先用它们：同样的动作，不需要逐条审批。
+   When the \`armadra\` MCP server's tools (\`canvas_*\`, \`context_*\`, \`browser_*\`) are available, prefer them: same actions, no per-call approval.
 2. **用户要求创建其他 Agent、分工或并行时，一律在画布上建：** \`armadra-hook canvas open-agent\` 或 \`armadra-hook canvas team\`，它们自动从你这里连线。**不要**用本 CLI 自带的子代理、后台任务或并行工具代替——用户在画布上看不到它们。
    When asked for other agents, a split or parallel work, create them on the board with \`canvas open-agent\` / \`canvas team\`. Never use this CLI's own sub-agents or background tasks instead: the user cannot see them.
 3. **需要浏览器时，用画布里的浏览器节点：** \`armadra-hook browser <动词>\`。没有连着的浏览器节点，先 \`armadra-hook canvas open-browser --url <网址>\`，建好后自动从你这里连线。**不要**用本 CLI 自带的浏览器、computer-use 或无头浏览器工具。
