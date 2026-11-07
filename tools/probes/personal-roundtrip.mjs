@@ -74,6 +74,14 @@ import {
 } from "./platform-lib.mjs";
 import { probeSession } from "./probe-session.mjs";
 import {
+  accountIds,
+  addLatency,
+  recordNetwork,
+  diagnoseAcpStep,
+  restoreAccount,
+  serveLocalWeb,
+} from "./roundtrip-issuer.mjs";
+import {
   freePort,
   makeNode,
   root,
@@ -125,66 +133,12 @@ let stack;
 let relay;
 let electron;
 const opened = [];
-/** `--issuer` 模式：跑完（不论成败）撤掉本次新出现的源与设备，账号回到开跑前的样子。 */
+/** `--issuer` 模式：跑完（不论成败）撤掉本次新出现的链接、源与设备，账号回到开跑前的样子。 */
 let issuerCleanup;
 /** ACP 这一步失败时取现场（页面请求、core 侧会话与时间线、页面状态）；#865。 */
 let diagnoseAcp;
 /** 页面的网络记录（只记路径，不带查询串），失败时随诊断一起写进 result.json。 */
 const networkLogs = new Map();
-
-/** 账号上现有的源与设备的 id；登录本身多出的设备也算在里面，清理时一并撤掉。 */
-async function accountIds(call, account, password, secret) {
-  const login = await call("POST", "/v1/auth/login", {
-    body: {
-      account,
-      password,
-      device: { platform: "server", name: "personal-roundtrip-cleanup" },
-    },
-  });
-  if (login.status !== 200) throw new Error(`清理用的登录答 ${login.status}`);
-  const session = login.body.session;
-  const token = secret("清理会话令牌", session.accessToken);
-  secret("清理会话刷新令牌", session.refreshToken);
-  const listed = (body, key) =>
-    Array.isArray(body) ? body : (body?.[key] ?? body?.items ?? []);
-  const sources = await call("GET", "/v1/sources", { token });
-  const devices = await call("GET", "/v1/me/devices", { token });
-  return {
-    token,
-    refreshToken: session.refreshToken,
-    sources: listed(sources.body, "sources").map(
-      (one) => one.sourceId ?? one.id,
-    ),
-    devices: listed(devices.body, "devices").map(
-      (one) => one.deviceId ?? one.id,
-    ),
-  };
-}
-
-/** 撤掉 before 之后新出现的源与设备，再登出清理会话；答撤掉的个数。 */
-async function restoreAccount(call, account, password, secret, before) {
-  const now = await accountIds(call, account, password, secret);
-  let sources = 0;
-  let devices = 0;
-  for (const id of now.sources.filter((one) => !before.sources.includes(one))) {
-    const answer = await call("DELETE", `/v1/sources/${id}`, {
-      token: now.token,
-    });
-    if (answer.status < 300) sources += 1;
-  }
-  for (const id of now.devices.filter((one) => !before.devices.includes(one))) {
-    const answer = await call("DELETE", `/v1/me/devices/${id}`, {
-      token: now.token,
-    });
-    if (answer.status < 300) devices += 1;
-  }
-  for (const session of [before, now])
-    await call("POST", "/v1/auth/logout", {
-      token: session.token,
-      body: { refreshToken: session.refreshToken },
-    }).catch(() => undefined);
-  return { sources, devices };
-}
 
 /** 探针自己打印的行与登记过的秘密：最后和各进程日志一起扫。 */
 const ledger = secretLedger();
@@ -531,82 +485,15 @@ try {
     },
   );
   await stack.seedBoard(workspace.id, board.id, [sticky, terminal, acpNode]);
-  diagnoseAcp = async (page) => {
-    const out = {};
-    const safe = async (name, job) => {
-      try {
-        out[name] = await job();
-      } catch (error) {
-        out[name] = `读不到：${String(error).slice(0, 200)}`;
-      }
-    };
-    const node = nodeAt(acpNode.id);
-    await safe("page", () =>
-      page.evaluate(`
-        const node = document.querySelector(${JSON.stringify(node)});
-        const field = node?.querySelector('[data-slot="acp-session-view"] textarea');
-        return {
-          fieldValue: field?.value ?? null,
-          fieldDisabled: field?.disabled ?? null,
-          loading: !!node?.querySelector('[data-slot="acp-loading"]'),
-          starting: node?.querySelector('[data-slot="acp-starting"]')?.innerText ?? null,
-          trace: (window.__armadraAcpTrace ?? []).map((entry) => ({
-            ...entry,
-            at: new Date(entry.at).toISOString().slice(11, 23),
-          })),
-          store: Object.fromEntries(
-            Object.entries(window.__armadraAcpStore?.getState().sessions ?? {}).map(
-              ([key, view]) => [
-                key.slice(-12),
-                { ...view, pending: view.pending ? { clientTurnId: view.pending.clientTurnId } : null },
-              ],
-            ),
-          ),
-          sameField: field === window.__probeAcpField,
-          mounts: window.__probeAcpMounts ?? null,
-          text: (node?.innerText ?? "").slice(0, 800),
-        };`),
-    );
-    await safe("pageRequests", async () =>
-      (networkLogs.get(page) ?? [])
-        .filter((entry) => /acp|rpc|sessions|timeline|canvas/.test(entry.path))
-        .slice(-80)
-        .map((entry) => ({
-          ...entry,
-          t: new Date(entry.t).toISOString().slice(11, 23),
-          doneAt:
-            entry.doneAt === undefined
-              ? undefined
-              : new Date(entry.doneAt).toISOString().slice(11, 23),
-        })),
-    );
-    let row;
-    await safe("coreSession", async () => {
-      row = (await owner(`/api/workspaces/${workspace.id}/sessions`)).find(
-        (one) => one.nodeId === acpNode.id,
-      );
-      return row ?? null;
+  diagnoseAcp = (page) =>
+    diagnoseAcpStep({
+      page,
+      node: nodeAt(acpNode.id),
+      nodeId: acpNode.id,
+      log: networkLogs.get(page) ?? [],
+      owner,
+      workspaceId: workspace.id,
     });
-    await safe("coreTimeline", async () => {
-      if (!row) return null;
-      const opened = await owner("/api/rpc/timeline/open", {
-        method: "POST",
-        body: JSON.stringify({
-          json: { timelineId: row.sessionId, tailTurns: 50 },
-        }),
-      });
-      return (opened.json?.items ?? []).map((item) => ({
-        kind: item.kind,
-        turn: item.turn,
-        text:
-          typeof item.text === "string" ? item.text.slice(0, 80) : undefined,
-        clientTurnId: item.clientTurnId,
-        endedAt: item.endedAt,
-        stopReason: item.stopReason,
-      }));
-    });
-    return out;
-  };
   const query = `?workspace=${workspace.id}&board=${board.id}`;
 
   await stack.browser.call("Security.setIgnoreCertificateErrors", {
@@ -615,109 +502,21 @@ try {
   const newPage = async (width = 1440, height = 900, mobile = false) => {
     const page = await stack.browser.page(await stack.browser.context());
     opened.push([`page-${opened.length}`, page]);
-    // 记下页面发出的请求与结局，ACP 一步失败时判断请求到底发没发、答了什么。
-    const log = [];
-    networkLogs.set(page, log);
-    const pending = new Map();
-    await page.call("Network.enable", {});
-    // ARMADRA_PROBE_WEB_ROOT=apps/web/dist：中继托管的 /app/ 是它部署的那一版，想对
-    // 线上中继验证本地的网页改动，就在浏览器里把 /app/ 与 /assets/ 换成本地构建（#865）。
-    const webRoot = process.env.ARMADRA_PROBE_WEB_ROOT;
-    if (webRoot && issuer) {
-      const types = {
-        ".js": "text/javascript",
-        ".css": "text/css",
-        ".html": "text/html; charset=utf-8",
-        ".svg": "image/svg+xml",
-        ".json": "application/json",
-        ".woff2": "font/woff2",
-        ".wasm": "application/wasm",
-      };
-      await page.call("Fetch.enable", {
-        patterns: [{ urlPattern: `${issuer}/*`, requestStage: "Request" }],
-      });
-      stack.browser.on((message) => {
-        if (
-          message.sessionId !== page.sessionId ||
-          message.method !== "Fetch.requestPaused"
-        )
-          return;
-        const { requestId, request } = message.params;
-        const path = new URL(request.url).pathname;
-        const file = /^\/app\/?$/.test(path)
-          ? join(resolve(webRoot), "index.html")
-          : path.startsWith("/assets/") && !path.includes("..")
-            ? join(resolve(webRoot), path)
-            : null;
-        if (file && existsSync(file)) {
-          void page
-            .call("Fetch.fulfillRequest", {
-              requestId,
-              responseCode: 200,
-              responseHeaders: [
-                {
-                  name: "content-type",
-                  value: types[extname(file)] ?? "application/octet-stream",
-                },
-                { name: "cache-control", value: "no-store" },
-              ],
-              body: readFileSync(file).toString("base64"),
-            })
-            .catch(() => undefined);
-        } else {
-          void page
-            .call("Fetch.continueRequest", { requestId })
-            .catch(() => undefined);
-        }
-      });
-    }
+    // 页面请求的记录（ACP 一步失败时取证）与按需换成本地网页构建（#865）。
+    networkLogs.set(page, await recordNetwork(stack.browser, page));
+    if (process.env.ARMADRA_PROBE_WEB_ROOT && issuer)
+      await serveLocalWeb(
+        stack.browser,
+        page,
+        issuer,
+        process.env.ARMADRA_PROBE_WEB_ROOT,
+      );
     // 打开会话视图的取证轨迹（apps/web/src/acp/diag.ts）：每个新文档先写好开关。
     await page.call("Page.addScriptToEvaluateOnNewDocument", {
       source: `try { localStorage.setItem("armadra.diag", "1"); } catch {}`,
     });
-    stack.browser.on((message) => {
-      if (message.sessionId !== page.sessionId) return;
-      const { method, params } = message;
-      if (method === "Network.requestWillBeSent") {
-        const url = new URL(params.request.url);
-        if (!/^\/(v1|s|api)\//.test(url.pathname)) return;
-        const entry = {
-          t: Date.now(),
-          method: params.request.method,
-          path: url.pathname,
-          ...(/acp|rpc/.test(url.pathname) && params.request.postData
-            ? { body: params.request.postData.slice(0, 300) }
-            : {}),
-        };
-        pending.set(params.requestId, entry);
-        log.push(entry);
-        if (log.length > 400) log.shift();
-      } else if (method === "Network.responseReceived") {
-        const entry = pending.get(params.requestId);
-        if (entry) {
-          entry.status = params.response.status;
-          entry.doneAt = Date.now();
-        }
-      } else if (method === "Network.loadingFailed") {
-        const entry = pending.get(params.requestId);
-        if (entry) {
-          entry.failed = params.errorText;
-          entry.doneAt = Date.now();
-        }
-      }
-    });
     if (width !== 1440) await page.viewport(width, height, mobile);
-    // 高延迟中继的复现（#865）：ARMADRA_PROBE_LATENCY_MS=500 给页面的每个请求加这么久。
-    const latency = Number(process.env.ARMADRA_PROBE_LATENCY_MS ?? 0);
-    if (latency > 0) {
-      await page.call("Network.enable", {});
-      await page.call("Network.emulateNetworkConditions", {
-        offline: false,
-        latency,
-        downloadThroughput: -1,
-        uploadThroughput: -1,
-      });
-    }
+    await addLatency(page, Number(process.env.ARMADRA_PROBE_LATENCY_MS ?? 0));
     // 中继给页面的 CSP 只许同源：页面里不该有任何跨源连接被拦。
     page.allowed.push(/WebSocket connection to .* failed/);
     return page;
@@ -1614,7 +1413,7 @@ try {
     try {
       report.issuerCleanup = await issuerCleanup();
       console.log(
-        `  清理  撤掉本次新增的 ${report.issuerCleanup.sources} 个源、${report.issuerCleanup.devices} 台设备`,
+        `  清理  撤掉本次新增的 ${report.issuerCleanup.links} 条链接、${report.issuerCleanup.sources} 个源、${report.issuerCleanup.devices} 台设备`,
       );
     } catch (error) {
       report.issuerCleanupError = String(error);
