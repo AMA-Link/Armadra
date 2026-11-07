@@ -53,6 +53,27 @@ const PROMPT =
 const INVOKE =
   "Run the shell command `armadra-hook canvas list` exactly once and no other command, then answer in one line exactly: LIST=<ok if the command printed a list of canvas nodes, failed otherwise>; FIRST=<the first line it printed>";
 
+/**
+ * 画布内第三轮（只 OpenCode / Copilot，契约 §106）：点名注入的 `armadra` MCP 服务器，
+ * 不许跑 shell。Copilot 这一轮不带 shell 放行，读到画布只能走 MCP、且由启动器的
+ * `--allow-tool armadra` 放行。
+ */
+const MCP_INVOKE =
+  "Call the canvas_list tool of the `armadra` MCP server exactly once, run no shell command, then answer in one line exactly: LIST=<ok if it returned a list of canvas nodes, failed otherwise>; FIRST=<the first line it returned>";
+
+/** 第三轮的参数：与 LINES 相同，只是 Copilot 不给 shell 放行。 */
+const MCP_LINES = {
+  opencode: (cli, prompt) => ["run", "--model", cli.model, prompt],
+  copilot: (cli, prompt) => [
+    "-p",
+    prompt,
+    "-s",
+    "--no-auto-update",
+    "--model",
+    cli.model,
+  ],
+};
+
 /** 每个 CLI 非交互跑一轮的参数；注入由启动器接在后面。 */
 const LINES = {
   opencode(cli, prompt) {
@@ -360,6 +381,39 @@ export default async function run6(ctx) {
         invoked.code === "0" && /LIST=ok/i.test(invoked.out),
         invoked.out || invoked.err,
       );
+      if (MCP_LINES[id] !== undefined) {
+        const mcpPrefix = join(scratch, `${id}-mcp`);
+        await api("/api/terminals", {
+          method: "POST",
+          body: JSON.stringify({
+            workspaceId: workspace.id,
+            cwd: project,
+            nodeId: node.id,
+            agent: { id },
+            command: wrapper,
+            args: [
+              mcpPrefix,
+              launcher ?? "",
+              ...MCP_LINES[id](cli, MCP_INVOKE),
+            ],
+          }),
+        });
+        await waitSoft(() => existsSync(`${mcpPrefix}.code`), {
+          timeout: 240_000,
+          interval: 1000,
+        });
+        const viaMcp = {
+          code: read(`${mcpPrefix}.code`).trim(),
+          out: read(`${mcpPrefix}.out`).trim().slice(-600),
+          err: read(`${mcpPrefix}.err`).trim().slice(-300),
+        };
+        entry.mcp = viaMcp;
+        s.check(
+          `${id} 画布内：注入的 armadra MCP 工具能调用，不用审批`,
+          viaMcp.code === "0" && /LIST=ok/i.test(viaMcp.out),
+          viaMcp.out || viaMcp.err,
+        );
+      }
       // 上报是异步的（扩展里 fire-and-forget，CLI 退出前可能还在路上）。
       const reported = await waitSoft(
         () => {
