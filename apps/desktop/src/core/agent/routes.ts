@@ -539,9 +539,12 @@ function agentOperations(collab: CollabContext) {
       // The node's terminal keeps its logical key across recycles, so the
       // lookup is by node id rather than by the session id the status row
       // happens to remember.
+      // Read the terminal bridge through the running context: it is installed
+      // after this domain, so the captured `collab` has none.
       const session = loadSession(database, nodeId);
-      if (session !== undefined && collab.terminals !== undefined) {
-        const capture = await collab.terminals
+      const terminals = assembledCollab()?.terminals ?? collab.terminals;
+      if (session !== undefined && terminals !== undefined) {
+        const capture = await terminals
           .capture(session.sessionId, 40, false)
           .catch(() => undefined);
         const title =
