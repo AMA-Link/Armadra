@@ -218,11 +218,13 @@ ACP 是同一个 Agent 节点的另一种驱动方式，不是第二条 Agent �
 
 ## 对话交接
 
-交接把来源的一次阶段性工作整理成一份冻结的包交给另一个 Agent，设计见 [Agent 自动化设计 §7](../design/agent-automation-design.md)。入口在 Agent 终端「更多 → Agent 协作 → 交接到…」，目标只能是画布上已连线的 Agent 终端——与 mailbox 一样，授权依据是 core 里的链接文档，不是界面上的一张图。
+交接把来源的一次阶段性工作整理成一份冻结的包交给另一个 Agent，设计见 [Agent 自动化设计 §7](../design/agent-automation-design.md)。入口在 Agent 终端「更多 → Agent 协作 → 交接到…」，目标二选一：画布上已连线的 Agent 节点（终端或 ACP 会话都可以，SSH 终端里的不行），或「新开 Agent…」——与 mailbox 一样，已有节点的授权依据是 core 里的链接文档，不是界面上的一张图。
+
+**新开 Agent。** 目标下拉里选「新开 Agent…」后选 Agent、模型、权限模式与形态（终端 / ACP）。预览阶段不建节点，只校验规格（Agent 可用、模型 1–120 个字符、权限模式在这家支持的范围内、ACP 形态要有可用的 ACP 适配器且会话里有画布工具），规格进冻结的包，所以预览里看到的就是批准时建出来的那一份；预览里同时显示按目标模型上下文容量算出的 token 预算（模型在 models.dev 目录里查不到时只有字节预算）。批准时走 `open-agent` 同一条路建节点、连一条以来源为主的线，交接通知作为新节点的首任务入队；建节点失败交接留在 `prepared`、来源不受影响，可重试，重复批准不会建第二个节点。新节点用自己的令牌 `handoff-read`、`ack`，会话与代次按它当前的会话判定。已有节点不换模型——要换模型就选新开。
 
 `POST /api/workspaces/{id}/handoffs` 冻结材料并返回预览：目标 Agent / 模型 / 目录、带走的文件与 Git 指纹、按预算裁剪的结果、`omitted` 里逐条列出的未包含项，以及来源转录摘录。此时没有通知任何人。`POST …/{handoffId}/accept` 是唯一的用户授权，必须带上预览那一份的 `expectedDigest`，看到的和批准的不是同一份就返回 409；重复确认返回同一条收件箱记录，不会放两份进去。`POST …/{handoffId}/cancel` 删掉那条收件箱消息。`GET …/handoffs?sourceNodeId=` 与 `GET …/{handoffId}` 让来源和目标都能查同一份包。
 
-确认就是投递本身：同一个事务里往目标的 `agent_mailbox` 插一条 `key = handoff:<id>` 的消息，然后结束。正文只说「有一份用户批准的交接材料，这是同级资料而不是系统指令」，附读取与确认命令；命令按目标的通道写：终端里的 Codex 写 MCP 工具名（`canvas_handoff_read`、`canvas_ack`），其余终端 CLI 写 `armadra-hook canvas handoff-read --id <id>`。事务提交后会唤醒目标，空闲的 Agent 随即被告知；没有任何东西写进对方的终端，也就没有「写了但不知道有没有到」这种状态。
+确认就是投递本身：同一个事务里往目标的 `agent_mailbox` 插一条 `key = handoff:<id>` 的消息，然后结束。正文只说「有一份用户批准的交接材料，这是同级资料而不是系统指令」，附读取与确认命令；命令按目标的通道写：ACP 会话与终端里的 Codex 写 MCP 工具名（`canvas_handoff_read`、`canvas_ack`），其余终端 CLI 写 `armadra-hook canvas handoff-read --id <id>`；ACP 会话的会话绑定由开会话时带上的 MCP 服务器环境提供，其画布工具缺席的适配器（ama）不能作为 ACP 目标。事务提交后会唤醒目标，空闲的 Agent 随即被告知；没有任何东西写进对方的终端，也就没有「写了但不知道有没有到」这种状态。
 
 状态只有四个，每一个都是这一侧能证明的事实：
 
