@@ -1,11 +1,24 @@
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { HandoffView } from "@armadra/shared";
+import {
+  supportedPermissionModes,
+  type HandoffPrepare,
+  type HandoffView,
+  type PermissionMode,
+} from "@armadra/shared";
 
 import { runtimeApi } from "@/api/client";
 import { onWorkspaceEvent } from "@/api/events";
 import { t, useT } from "@/app/preferences-store";
-import { agentLabel } from "@/agent/launch";
+import { useEnabledAgents } from "@/app/use-agents";
+import {
+  agentAcpInfo,
+  agentLabel,
+  customAgentFor,
+  permissionModeLabel,
+} from "@/agent/launch";
+import { useAgentModels } from "@/agent/models";
+import { formatTokens } from "@/lib/cost";
 import { useCanvasStore } from "@/store/canvas-store";
 import { Loadable } from "@/loading/Loadable";
 import { SkeletonCard } from "@/ui/skeletons";
@@ -27,7 +40,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/ui/select";
-import { EmptyState } from "@/ui/state";
 import { Switch } from "@/ui/switch";
 import { Textarea } from "@/ui/textarea";
 import { toast } from "@/ui/toast";
@@ -53,6 +65,11 @@ import {
  */
 
 const BUDGETS = [8192, 16384, 32768] as const;
+/** 目标下拉里「新开 Agent…」那一项的值；节点 id 是 UUID，不会撞。 */
+const NEW_TARGET = "new";
+/** 模型与权限模式「不指定」的值：Radix 的选项值不能是空串。 */
+const UNSET = "default";
+type Surface = "terminal" | "acp";
 const SECTION_KEYS = [
   "goal",
   "constraints",
@@ -80,6 +97,10 @@ export function HandoffDialog() {
   const document = useCanvasStore((state) => state.document);
   const [source, setSource] = React.useState<HandoffRequestDetail | null>(null);
   const [targetNodeId, setTargetNodeId] = React.useState("");
+  const [newAgentId, setNewAgentId] = React.useState("");
+  const [newModel, setNewModel] = React.useState(UNSET);
+  const [newPermission, setNewPermission] = React.useState(UNSET);
+  const [newSurface, setNewSurface] = React.useState<Surface>("terminal");
   const [budget, setBudget] = React.useState<number>(BUDGETS[0]);
   const [includeTranscript, setIncludeTranscript] = React.useState(true);
   const [filePaths, setFilePaths] = React.useState("");
@@ -94,6 +115,10 @@ export function HandoffDialog() {
         setSource(detail);
         setView(null);
         setTargetNodeId("");
+        setNewAgentId("");
+        setNewModel(UNSET);
+        setNewPermission(UNSET);
+        setNewSurface("terminal");
         setBudget(BUDGETS[0]);
         setIncludeTranscript(true);
         setFilePaths("");
@@ -101,6 +126,25 @@ export function HandoffDialog() {
       }),
     [],
   );
+
+  const agents = useEnabledAgents();
+  const { models } = useAgentModels(newAgentId || undefined);
+  const baseOf = (id: string) =>
+    customAgentFor(id)?.baseAgent ??
+    agents.find((agent) => agent.id === id)?.baseAgent ??
+    id;
+  const permissionModes: readonly PermissionMode[] = newAgentId
+    ? supportedPermissionModes(baseOf(newAgentId))
+    : [];
+  const acpAvailable = Boolean(newAgentId && agentAcpInfo(newAgentId));
+  const creating = targetNodeId === NEW_TARGET;
+  /** 换 Agent：模型、权限模式与形态都是它自己的，不带着上一家的值。 */
+  const pickAgent = (id: string) => {
+    setNewAgentId(id);
+    setNewModel(UNSET);
+    setNewPermission(UNSET);
+    setNewSurface("terminal");
+  };
 
   const targets: HandoffTarget[] = React.useMemo(
     () => (source ? handoffTargets(document, source.nodeId) : []),
@@ -124,7 +168,11 @@ export function HandoffDialog() {
     () =>
       onWorkspaceEvent("agent.delivery", (event) => {
         if (!tracked || !view) return;
-        if (event.targetNodeId !== view.bundle.target.nodeId) return;
+        if (
+          event.targetNodeId !==
+          (view.createdTargetNodeId ?? view.bundle.target.nodeId)
+        )
+          return;
         void client.invalidateQueries({
           queryKey: sk("handoff", workspaceId, tracked),
         });
@@ -133,27 +181,40 @@ export function HandoffDialog() {
   );
 
   const prepare = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const target = targets.find((entry) => entry.nodeId === targetNodeId);
-      if (!workspaceId || !source || !target)
+      if (!workspaceId || !source || (!target && !creating))
         throw new Error(t("handoff.noTargets"));
-      return resolveBinding(target.nodeId, workspaceId).then((binding) =>
-        runtimeApi.prepareHandoff(workspaceId, {
-          sourceNodeId: source.nodeId,
-          sourceSessionId: source.sessionId,
-          sourceGeneration: source.generation,
-          targetNodeId: target.nodeId,
-          targetSessionId: binding.sessionId,
-          targetGeneration: binding.generation,
-          sections: { ...sections },
-          filePaths: filePaths
-            .split("\n")
-            .map((line) => line.trim())
-            .filter((line) => line.length > 0),
-          byteBudget: budget as 8192 | 16384 | 32768,
-          includeTranscript,
-        }),
-      );
+      // 新开目标不要会话身份：规格在预览时只校验，节点批准时才建。
+      const wanted: HandoffPrepare["target"] =
+        creating || !target
+          ? {
+              kind: "new",
+              agentId: newAgentId,
+              surface: newSurface,
+              ...(newModel === UNSET ? {} : { model: newModel }),
+              ...(newPermission === UNSET
+                ? {}
+                : { permissionMode: newPermission }),
+            }
+          : {
+              kind: "node",
+              nodeId: target.nodeId,
+              ...(await resolveBinding(target.nodeId, workspaceId)),
+            };
+      return runtimeApi.prepareHandoff(workspaceId, {
+        sourceNodeId: source.nodeId,
+        sourceSessionId: source.sessionId,
+        sourceGeneration: source.generation,
+        target: wanted,
+        sections: { ...sections },
+        filePaths: filePaths
+          .split("\n")
+          .map((line) => line.trim())
+          .filter((line) => line.length > 0),
+        byteBudget: budget as 8192 | 16384 | 32768,
+        includeTranscript,
+      });
     },
     onSuccess: setView,
     onError: (cause: Error) => toast.error(cause.message),
@@ -217,23 +278,126 @@ export function HandoffDialog() {
                 >
                   {t("handoff.target")}
                 </label>
-                {targets.length === 0 ? (
-                  <EmptyState inline title={t("handoff.noTargets")} />
-                ) : (
-                  <Select value={targetNodeId} onValueChange={setTargetNodeId}>
-                    <SelectTrigger id="handoff-target">
-                      <SelectValue placeholder={t("handoff.target")} />
-                    </SelectTrigger>
-                    <SelectContent className="z-[var(--z-dialog)]">
-                      {targets.map((target) => (
-                        <SelectItem key={target.nodeId} value={target.nodeId}>
-                          {target.title} · {agentLabel(target.agentId)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
+                <Select
+                  value={targetNodeId}
+                  onValueChange={(next) => {
+                    setTargetNodeId(next);
+                    if (next === NEW_TARGET && newAgentId === "") {
+                      pickAgent(agents[0]?.id ?? "");
+                    }
+                  }}
+                >
+                  <SelectTrigger id="handoff-target">
+                    <SelectValue placeholder={t("handoff.target")} />
+                  </SelectTrigger>
+                  <SelectContent className="z-[var(--z-dialog)]">
+                    {targets.map((target) => (
+                      <SelectItem key={target.nodeId} value={target.nodeId}>
+                        {target.title} · {agentLabel(target.agentId)}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value={NEW_TARGET}>
+                      {t("handoff.targetNew")}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
+              {creating && (
+                <>
+                  <div className="flex flex-col gap-2">
+                    <label
+                      className="text-muted-foreground"
+                      htmlFor="handoff-new-agent"
+                    >
+                      {t("handoff.newAgent")}
+                    </label>
+                    <Select value={newAgentId} onValueChange={pickAgent}>
+                      <SelectTrigger id="handoff-new-agent">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="z-[var(--z-dialog)]">
+                        {agents.map((agent) => (
+                          <SelectItem key={agent.id} value={agent.id}>
+                            {agentLabel(agent.id)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label
+                      className="text-muted-foreground"
+                      htmlFor="handoff-new-model"
+                    >
+                      {t("agent.model")}
+                    </label>
+                    <Select value={newModel} onValueChange={setNewModel}>
+                      <SelectTrigger id="handoff-new-model">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="z-[var(--z-dialog)]">
+                        <SelectItem value={UNSET}>
+                          {t("handoff.modelDefault")}
+                        </SelectItem>
+                        {models.map((model) => (
+                          <SelectItem key={model.id} value={model.id}>
+                            {model.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label
+                      className="text-muted-foreground"
+                      htmlFor="handoff-new-permission"
+                    >
+                      {t("agent.permissionMode")}
+                    </label>
+                    <Select
+                      value={newPermission}
+                      onValueChange={setNewPermission}
+                    >
+                      <SelectTrigger id="handoff-new-permission">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="z-[var(--z-dialog)]">
+                        {permissionModes.map((mode) => (
+                          <SelectItem key={mode} value={mode}>
+                            {permissionModeLabel(mode)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label
+                      className="text-muted-foreground"
+                      htmlFor="handoff-new-surface"
+                    >
+                      {t("handoff.newSurface")}
+                    </label>
+                    <Select
+                      value={newSurface}
+                      onValueChange={(next) => setNewSurface(next as Surface)}
+                    >
+                      <SelectTrigger id="handoff-new-surface">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="z-[var(--z-dialog)]">
+                        <SelectItem value="terminal">
+                          {t("handoff.surface.terminal")}
+                        </SelectItem>
+                        {acpAvailable && (
+                          <SelectItem value="acp">
+                            {t("handoff.surface.acp")}
+                          </SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
               <div className="flex flex-col gap-2">
                 <label
                   className="text-muted-foreground"
@@ -312,7 +476,10 @@ export function HandoffDialog() {
           {!view && !source?.handoffId && (
             <Button
               disabled={
-                busy || !targetNodeId || sections.goal.trim().length === 0
+                busy ||
+                !targetNodeId ||
+                (creating && !newAgentId) ||
+                sections.goal.trim().length === 0
               }
               onClick={() => prepare.mutate()}
             >
@@ -369,6 +536,17 @@ function HandoffPreview({ view }: { view: HandoffView }) {
             directory: bundle.target.workingDirectory,
           })}
         </span>
+        {bundle.targetSpec && (
+          <span className="text-muted-foreground">
+            {t("handoff.newTargetSpec", {
+              surface: t(`handoff.surface.${bundle.targetSpec.surface}`),
+              permission: permissionModeLabel(
+                (bundle.targetSpec.permissionMode ??
+                  "default") as PermissionMode,
+              ),
+            })}
+          </span>
+        )}
       </section>
       <section className="flex flex-col gap-2">
         <span className="font-medium">{t("handoff.status")}</span>
@@ -400,6 +578,17 @@ function HandoffPreview({ view }: { view: HandoffView }) {
           })}
           {bundle.budget.truncated ? ` ${t("handoff.truncated")}` : ""}
         </span>
+        {bundle.budget.capacityTokens !== null &&
+          bundle.budget.availableTokens !== null && (
+            <span className="text-muted-foreground">
+              {t("handoff.tokenBudget", {
+                estimate: formatTokens(bundle.budget.tokenEstimate ?? 0),
+                available: formatTokens(bundle.budget.availableTokens),
+                capacity: formatTokens(bundle.budget.capacityTokens),
+                reserved: formatTokens(bundle.budget.reservedTokens ?? 0),
+              })}
+            </span>
+          )}
       </section>
       <section className="flex flex-col gap-2">
         <span className="font-medium">{t("handoff.files")}</span>

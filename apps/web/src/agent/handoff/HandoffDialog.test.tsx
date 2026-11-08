@@ -12,6 +12,7 @@ import { installDomPolyfills, TestProviders } from "@/app/test-harness";
 import { usePreferencesStore } from "@/app/preferences-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import { HandoffDialog, canWithdraw, isSettled } from "./HandoffDialog";
+import { setAgentRegistry } from "@/agent/launch";
 import { handoffTargets, openHandoff } from "./handoff-targets";
 
 const api = vi.hoisted(() => ({
@@ -23,6 +24,18 @@ const api = vi.hoisted(() => ({
   getTerminal: vi.fn(),
 }));
 vi.mock("@/api/client", () => ({ runtimeApi: api }));
+vi.mock("@/app/use-agents", () => ({
+  useEnabledAgents: () => [
+    { id: "codex", label: "Codex", baseAgent: "codex", installed: true },
+    { id: "pi", label: "Pi", baseAgent: "pi", installed: true },
+  ],
+}));
+vi.mock("@/agent/models", () => ({
+  useAgentModels: () => ({
+    models: [{ id: "gpt-5", label: "gpt-5", source: "cli" }],
+    loading: false,
+  }),
+}));
 vi.mock("@/api/events", () => ({ onWorkspaceEvent: () => () => undefined }));
 vi.mock("@/ui/toast", () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -147,6 +160,43 @@ describe("handoff targets", () => {
       { nodeId: SOURCE, title: "Source", agentId: "claude" },
     ]);
   });
+
+  it("offers a linked ACP node, and never an agent in an SSH terminal", () => {
+    const acp = "66666666-6666-4666-8666-666666666666";
+    const remote = "77777777-7777-4777-8777-777777777777";
+    const node = (
+      id: string,
+      title: string,
+      extra: Record<string, unknown>,
+    ) => {
+      const base = terminalNode(id, title, "codex");
+      return {
+        ...base,
+        data: { ...base.data, ...extra },
+      } as unknown as BoardDocument["nodes"][number];
+    };
+    const doc = {
+      board: { id: "b" },
+      nodes: [
+        terminalNode(SOURCE, "Source", "claude"),
+        node(acp, "Session", { agent: { id: "codex", driver: "acp" } }),
+        node(remote, "Remote", { ssh: { hostId: "h" } }),
+      ],
+      edges: [
+        { id: "e1", boardId: "b", source: SOURCE, target: acp, kind: "link" },
+        {
+          id: "e2",
+          boardId: "b",
+          source: remote,
+          target: SOURCE,
+          kind: "link",
+        },
+      ],
+    } as unknown as BoardDocument;
+    expect(handoffTargets(doc, SOURCE)).toEqual([
+      { nodeId: acp, title: "Session", agentId: "codex" },
+    ]);
+  });
 });
 
 describe("handoff dialog", () => {
@@ -173,10 +223,13 @@ describe("handoff dialog", () => {
     await waitFor(() => expect(api.prepareHandoff).toHaveBeenCalledTimes(1));
     const request = api.prepareHandoff.mock.calls[0]![1];
     expect(request.sections.acceptance).toBe("Tests pass");
-    expect(request.targetNodeId).toBe(TARGET);
-    expect(request.targetSessionId).toBe(TARGET_SESSION);
-    // The target generation comes from the runtime, not from a stale guess.
-    expect(request.targetGeneration).toBe(4);
+    expect(request.target).toEqual({
+      kind: "node",
+      nodeId: TARGET,
+      sessionId: TARGET_SESSION,
+      // The target generation comes from the runtime, not from a stale guess.
+      generation: 4,
+    });
     expect(request.sourceGeneration).toBe(2);
     // Preparing must not have notified anyone.
     expect(api.acceptHandoff).not.toHaveBeenCalled();
@@ -241,6 +294,114 @@ describe("handoff dialog", () => {
     // Acknowledged is the target's word, and it ends the source's options:
     // there is nothing left to withdraw.
     expect(screen.queryByRole("button", { name: "Withdraw" })).toBeNull();
+  });
+});
+
+describe("handoff dialog: a new agent as the target", () => {
+  async function open() {
+    render(
+      <TestProviders>
+        <HandoffDialog />
+      </TestProviders>,
+    );
+    openHandoff({ nodeId: SOURCE, sessionId: "s", generation: 2 });
+    fireEvent.change(await screen.findByLabelText("Goal"), {
+      target: { value: "Continue" },
+    });
+  }
+  async function pick(label: string, option: string) {
+    fireEvent.keyDown(screen.getByRole("combobox", { name: label }), {
+      key: "ArrowDown",
+    });
+    fireEvent.click(await screen.findByRole("option", { name: option }));
+  }
+
+  beforeEach(() => {
+    setAgentRegistry([
+      { id: "codex", label: "Codex", acp: { program: "codex-acp" } },
+      { id: "pi", label: "Pi" },
+    ] as never);
+  });
+
+  it("offers the new-agent entry, and the four fields only once it is chosen", async () => {
+    await open();
+    expect(screen.queryByRole("combobox", { name: "Model" })).toBeNull();
+    await pick("Target agent", "New agent…");
+    expect(screen.getByRole("combobox", { name: "Agent" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Model" })).toBeTruthy();
+    expect(
+      screen.getByRole("combobox", { name: "Permission mode" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Surface" })).toBeTruthy();
+  });
+
+  it("sends the spec without asking the runtime for a session, and shows it in the preview", async () => {
+    api.prepareHandoff.mockResolvedValue(
+      view("prepared", {
+        bundle: {
+          ...view("prepared").bundle,
+          target: {
+            nodeId: "",
+            agentId: "codex",
+            modelId: "gpt-5",
+            workingDirectory: "/tmp/project",
+          },
+          targetSpec: {
+            kind: "new",
+            agentId: "codex",
+            model: "gpt-5",
+            surface: "acp",
+          },
+          budget: {
+            byteLimit: 8192,
+            usedBytes: 1845,
+            truncated: false,
+            omitted: [],
+            capacityTokens: 400_000,
+            availableTokens: 272_000,
+            reservedTokens: 128_000,
+            tokenEstimate: 615,
+          },
+        },
+      }),
+    );
+    await open();
+    await pick("Target agent", "New agent…");
+    await pick("Model", "gpt-5");
+    await pick("Surface", "ACP");
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    await waitFor(() => expect(api.prepareHandoff).toHaveBeenCalledTimes(1));
+    expect(api.prepareHandoff.mock.calls[0]![1].target).toEqual({
+      kind: "new",
+      agentId: "codex",
+      surface: "acp",
+      model: "gpt-5",
+    });
+    expect(api.sessions).not.toHaveBeenCalled();
+    // The preview names what will be opened and the model-sized budget.
+    expect(
+      await screen.findByText(/Opened on confirmation · ACP/),
+    ).toBeTruthy();
+    expect(screen.getByText(/272K tokens available/)).toBeTruthy();
+    expect(screen.getByText(/capacity 400K/)).toBeTruthy();
+  });
+
+  it("offers ACP only for an agent that has an ACP entry, and resets the choices on a change", async () => {
+    await open();
+    await pick("Target agent", "New agent…");
+    await pick("Surface", "ACP");
+    await pick("Agent", "Pi");
+    // Pi has no ACP entry: the surface is back to the terminal and has no ACP option.
+    expect(screen.getByRole("combobox", { name: "Surface" }).textContent).toBe(
+      "Terminal",
+    );
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Surface" }), {
+      key: "ArrowDown",
+    });
+    expect(
+      await screen.findByRole("option", { name: "Terminal" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("option", { name: "ACP" })).toBeNull();
   });
 });
 
