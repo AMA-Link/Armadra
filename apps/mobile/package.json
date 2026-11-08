@@ -13,7 +13,7 @@
     "web:prepare": "node scripts/prepare-web.mjs",
     "version:write": "node scripts/app-version.mjs write",
     "sync": "node scripts/app-version.mjs write && node scripts/prepare-web.mjs && cap sync",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit --incremental --tsBuildInfoFile node_modules/.cache/tsc/typecheck.tsbuildinfo",
     "test": "vitest run"
   },
   "dependencies": {

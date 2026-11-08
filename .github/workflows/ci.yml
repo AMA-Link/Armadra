@@ -154,7 +154,6 @@ jobs:
             apps/server/coverage/lcov.info
           if-no-files-found: warn
           retention-days: 14
-      - run: pnpm -r --if-present typecheck
       - run: pnpm --filter @armadra/web build
       - run: pnpm plugin:test
       - run: pnpm controller:real:test

@@ -2,6 +2,7 @@ import type { BoardPresence } from "@armadra/shared";
 
 import { useCanvasStore } from "../canvas-store";
 import type { CanvasGet, CanvasSet, CanvasState, CanvasStore } from "./types";
+import { clearWriteBacks, takeWriteBacks } from "./writeback";
 
 /**
  * 在线设备与编辑租约（core JSON §9）在页面这一侧的那一半。
@@ -222,13 +223,25 @@ export function applyPresence(presence: BoardPresence): {
 
 export function createPresenceSlice(
   set: CanvasSet,
-  _get: CanvasGet,
+  get: CanvasGet,
 ): Pick<CanvasStore, "presence" | "realtime" | "setPresence" | "setRealtime"> {
   return {
     presence: null,
     realtime: null,
     setPresence: (presence) => set({ presence }),
-    setRealtime: (realtime) => set({ realtime }),
+    setRealtime: (realtime) => {
+      set({ realtime });
+      if (!realtime) {
+        clearWriteBacks();
+        return;
+      }
+      // 同步层放行：把只读期间排着的系统写回补上。补写走 `updateNodeData`，
+      // 那里仍会判只读，所以这一步不会让任何人多出写权限。
+      if (!realtime.writable) return;
+      for (const [id, patch] of takeWriteBacks(realtime.boardId)) {
+        get().updateNodeData(id, patch, { history: "ignore" });
+      }
+    },
   };
 }
 

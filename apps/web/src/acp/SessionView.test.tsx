@@ -869,7 +869,7 @@ describe("SessionView", () => {
     expect(messages().getByText("hi there")).toBeTruthy();
   });
 
-  it("carries the first message in createSession when the request had not gone out yet (§51)", async () => {
+  it("keeps the first message queued while the request has not gone out yet and sends it once the session is open (§51)", async () => {
     api.createSession.mockResolvedValue({ id: SESSION });
     store.workspace = null;
     const fresh: TerminalNodeData = {
@@ -888,17 +888,20 @@ describe("SessionView", () => {
     fireEvent.change(input, { target: { value: "early" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(api.createSession).not.toHaveBeenCalled();
+    // 请求还没发：排队气泡也得在，不能是空的会话。
+    expect(screen.getByText("early")).toBeTruthy();
 
-    // 工作空间读到了：起会话，第一条随 `prompt` 一起发。
     store.workspace = { id: "w1", rootPath: "/repo" };
     view.rerender(<SessionView nodeId="n1" data={fresh} />);
     await waitFor(() =>
-      expect(api.createSession).toHaveBeenCalledWith(
-        expect.objectContaining({ prompt: "early" }),
+      expect(api.prompt).toHaveBeenCalledWith(
+        SESSION,
+        "early",
+        expect.any(String),
       ),
     );
+    expect(api.createSession.mock.calls[0]?.[0]).not.toHaveProperty("prompt");
     await waitFor(() => expect(messages().getByText("early")).toBeTruthy());
-    expect(api.prompt).not.toHaveBeenCalled();
   });
 
   it("adds that the first start is slower when loading the config takes long", async () => {
@@ -1155,5 +1158,178 @@ describe("SessionView", () => {
     await waitFor(() => expect(api.setModel).toHaveBeenCalled());
     await waitFor(async () => expect(await checkedModel()).toBe("Small"));
     expect(store.updateNodeData).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * 会话就绪前的第一句（#865）：高延迟中继下，`createSession` 的应答、会话 id 写回
+ * 节点、时间线 `open` 的应答先后不定，第一句在任何次序下都只送达一次，页面先画
+ * 排队气泡、后画回合。
+ */
+describe("first prompt sent before the session is ready (#865)", () => {
+  const fresh: TerminalNodeData = {
+    kind: "terminal",
+    agent: { id: "claude", driver: "acp" },
+  };
+
+  /** 送达 core 的次数：`createSession` 带的 prompt 与 `prompt` 两条路合计。 */
+  function deliveries(text: string): number {
+    const viaCreate = api.createSession.mock.calls.filter(
+      ([input]) => (input as { prompt?: string }).prompt === text,
+    ).length;
+    const viaPrompt = api.prompt.mock.calls.filter(
+      ([, sent]) => sent === text,
+    ).length;
+    return viaCreate + viaPrompt;
+  }
+
+  const orders = [
+    "typed before the request, create resolves before the feed opens",
+    "typed after the request, create resolves before the feed opens",
+    "typed after the request, the feed opens before the id is written back",
+  ] as const;
+
+  for (const order of orders) {
+    it(`delivers it exactly once: ${order}`, async () => {
+      let open: (value: { id: string }) => void = () => undefined;
+      api.createSession.mockReturnValue(
+        new Promise((resolve) => {
+          open = resolve;
+        }),
+      );
+      const releaseOpen = gate("open");
+      // 写回不同步重渲染：真画布里写回与下一次渲染之间隔着一帧。
+      let written: TerminalNodeData | null = null;
+      store.updateNodeData.mockImplementation(
+        (_id: string, patch: Partial<TerminalNodeData>) => {
+          written = { ...fresh, ...patch } as TerminalNodeData;
+        },
+      );
+      if (order.startsWith("typed before")) store.workspace = null;
+      const view = render(<SessionView nodeId="n1" data={fresh} />);
+      const input = await screen.findByLabelText("消息");
+      fireEvent.change(input, { target: { value: "first words" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(await screen.findByText("first words")).toBeTruthy();
+      if (order.startsWith("typed before")) {
+        store.workspace = { id: "w1", rootPath: "/repo" };
+        view.rerender(<SessionView nodeId="n1" data={fresh} />);
+        await waitFor(() => expect(api.createSession).toHaveBeenCalled());
+      }
+      await act(async () => open({ id: SESSION }));
+      await waitFor(() => expect(written).not.toBeNull());
+      if (order.endsWith("before the id is written back")) releaseOpen();
+      await act(async () => undefined);
+      view.rerender(<SessionView nodeId="n1" data={written!} />);
+      if (!order.endsWith("before the id is written back")) {
+        // 内容晚到：排队气泡必须还在。
+        expect(screen.getByText("first words")).toBeTruthy();
+        releaseOpen();
+      }
+      await waitFor(() => expect(deliveries("first words")).toBe(1));
+      await act(async () => new Promise((r) => setTimeout(r, 30)));
+      expect(deliveries("first words")).toBe(1);
+      expect(screen.getByText("first words")).toBeTruthy();
+    });
+  }
+
+  it("shows the queued first prompt as one real turn once core echoes it with the same clientTurnId", async () => {
+    api.createSession.mockResolvedValue({ id: SESSION });
+    api.prompt.mockImplementation(
+      async (_session: string, text: string, clientTurnId: string) => {
+        const delta = core.emit({
+          op: "put",
+          item: echo(1, text, clientTurnId),
+        } as never);
+        setTimeout(() => core.deliver(delta), 0);
+        return { turnId: "turn-1" };
+      },
+    );
+    store.workspace = null;
+    let written: TerminalNodeData | null = null;
+    store.updateNodeData.mockImplementation(
+      (_id: string, patch: Partial<TerminalNodeData>) => {
+        written = { ...fresh, ...patch } as TerminalNodeData;
+      },
+    );
+    const view = render(<SessionView nodeId="n1" data={fresh} />);
+    const input = await screen.findByLabelText("消息");
+    fireEvent.change(input, { target: { value: "carried" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    store.workspace = { id: "w1", rootPath: "/repo" };
+    view.rerender(<SessionView nodeId="n1" data={fresh} />);
+    await waitFor(() => expect(written).not.toBeNull());
+    view.rerender(<SessionView nodeId="n1" data={written!} />);
+    await waitFor(() => expect(messages().getByText("carried")).toBeTruthy());
+    await act(async () => new Promise((r) => setTimeout(r, 30)));
+    // 回显到了就只剩一条，页面先画的那条被认领，不重复。
+    expect(messages().getAllByText("carried")).toHaveLength(1);
+    expect(deliveries("carried")).toBe(1);
+    expect(document.querySelector('[data-slot="acp-submitting"]')).toBeNull();
+  });
+
+  it("works with the session id kept locally while the node write-back is still queued on a read-only board", async () => {
+    // 实时板在同步层放行写入之前是只读的（高延迟中继上数秒）：节点数据里暂时
+    // 没有会话 id（store 层把写回排着，见 `store/canvas/writeback.ts`）。页面不能
+    // 因此看不见会话，第一句要送达；写回只发一次，补写不是页面的事。
+    api.createSession.mockResolvedValue({ id: SESSION });
+    store.document = { nodes: [{ id: "n1", data: { ...fresh } }] };
+    store.updateNodeData.mockImplementation(() => undefined);
+    render(<SessionView nodeId="n1" data={fresh} />);
+    const input = await screen.findByLabelText("消息");
+    fireEvent.change(input, { target: { value: "read only" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() =>
+      expect(api.prompt).toHaveBeenCalledWith(
+        SESSION,
+        "read only",
+        expect.any(String),
+      ),
+    );
+    expect(api.prompt).toHaveBeenCalledTimes(1);
+    expect(api.createSession).toHaveBeenCalledTimes(1);
+    await act(async () => new Promise((r) => setTimeout(r, 700)));
+    // 只写回一次，没有定时补写。
+    expect(store.updateNodeData).toHaveBeenCalledTimes(1);
+    expect(store.updateNodeData).toHaveBeenCalledWith(
+      "n1",
+      { sessionId: SESSION, lastExitCode: null },
+      { history: "ignore" },
+    );
+    expect(api.createSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("delivers a queued prompt even when the session was recreated by a workspace flicker", async () => {
+    // 工作空间 id 在起会话的途中闪了一下（重连）：第一次请求的 effect 被清理，
+    // 它随后在路上失败（中继超时）；第二次请求接着起。第一句仍然只送达一次。
+    let first: (error: Error) => void = () => undefined;
+    api.createSession
+      .mockReturnValueOnce(
+        new Promise((_resolve, reject) => {
+          first = reject;
+        }),
+      )
+      .mockResolvedValue({ id: SESSION });
+    let written: TerminalNodeData | null = null;
+    store.updateNodeData.mockImplementation(
+      (_id: string, patch: Partial<TerminalNodeData>) => {
+        written = { ...fresh, ...patch } as TerminalNodeData;
+      },
+    );
+    const view = render(<SessionView nodeId="n1" data={fresh} />);
+    const input = await screen.findByLabelText("消息");
+    fireEvent.change(input, { target: { value: "flicker" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    store.workspace = { id: "w2", rootPath: "/repo" };
+    view.rerender(<SessionView nodeId="n1" data={fresh} />);
+    await waitFor(() => expect(api.createSession).toHaveBeenCalledTimes(2));
+    await act(async () => first(new Error("relay timeout")));
+    await waitFor(() => expect(written).not.toBeNull());
+    view.rerender(<SessionView nodeId="n1" data={written!} />);
+    // 第一次请求失败了，它带的 prompt 没送达：只有 `acp.prompt` 这一条路算数。
+    await waitFor(() => expect(api.prompt).toHaveBeenCalledTimes(1));
+    await act(async () => new Promise((r) => setTimeout(r, 30)));
+    expect(api.prompt).toHaveBeenCalledTimes(1);
+    expect(api.prompt.mock.calls[0]?.[1]).toBe("flicker");
   });
 });

@@ -1,5 +1,5 @@
 /**
- * The canvas tools as an MCP server for terminal OpenCode and Copilot.
+ * The canvas tools as an MCP server for terminal Claude, OpenCode and Copilot.
  *
  * In the shell, `armadra-hook canvas …` runs under the user's own command
  * policy: a user who set OpenCode's `bash` to `ask`, and every Copilot, had a
@@ -19,6 +19,12 @@
  * shell would. Only on the launch line of a canvas node: nothing is written to
  * either CLI's configuration. ACP sessions do not get it — `session/new` gives
  * them the server with the session binding (`core/acp/mcp.ts`).
+ *
+ * Claude (contract §107): the server is started by Claude itself, outside the
+ * Bash sandbox a user may turn on, where `armadra-hook` in the shell cannot
+ * reach the core's socket. `--mcp-config` adds it to the user's servers (no
+ * `--strict-mcp-config`), and the injected settings allow `mcp__armadra`, that
+ * server's tools only.
  */
 
 import { CODEX_MCP_NAME } from "./codex-mcp";
@@ -39,6 +45,18 @@ export function opencodeMcpConfig(clientBin: string): Record<string, unknown> {
     permission: { [`${TERMINAL_MCP_NAME}_*`]: "allow" },
   };
 }
+
+/** The file Claude's `--mcp-config <file>` reads. */
+export function claudeMcpConfig(clientBin: string): Record<string, unknown> {
+  return {
+    mcpServers: {
+      [TERMINAL_MCP_NAME]: { type: "stdio", command: clientBin, args: ["mcp"] },
+    },
+  };
+}
+
+/** Claude's permission rule for every tool of the server, and nothing else. */
+export const CLAUDE_MCP_ALLOW = `mcp__${TERMINAL_MCP_NAME}`;
 
 /** The file Copilot's `--additional-mcp-config @<file>` reads. */
 export function copilotMcpConfig(clientBin: string): Record<string, unknown> {

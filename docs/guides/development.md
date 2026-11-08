@@ -135,6 +135,7 @@ TOKEN / SECRET / PASSWORD / CREDENTIAL 字样一律拒绝。
 | 范围               | 命令                                                                                                                  |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------- |
 | 仓库规则           | `pnpm repo:check`（秒级）、`pnpm repo:test`                                                                           |
+| 本机等价 CI        | `pnpm verify`＝libs 构建 → 静态检查并行 → web/desktop 构建 → 受影响的测试；`--full` 全量，`--base <ref>` 换基点       |
 | 一次过静态检查     | `pnpm check`＝libs 构建 + format:check + lint + typecheck + repo:check + ci:workflows + release:check + notices:check |
 | lint               | `pnpm lint`（ESLint，只有 error 失败）；`pnpm exec eslint <路径>` 只看一处                                            |
 | 未用代码与依赖     | `pnpm knip`（只出报告，退出码恒为 0；不在 check 里）                                                                  |
@@ -158,6 +159,12 @@ TOKEN / SECRET / PASSWORD / CREDENTIAL 字样一律拒绝。
 R7d 删掉了一批只对分进程时代有意义的脚本：写入所有权的 e2e 与 harness、Host 的几支烟囱测试、
 Rust↔Go 的归档互通，以及需要受管二进制路径的 `agent:smoke` / `handoff:read-smoke`。它们验证
 的事实现在由 core 各域的用例覆盖；真 CLI 的端到端版本要重写成对着 core 的形式，还没有。
+
+`pnpm verify`（`tools/ci/verify.mjs`）是提交前的本机快路径：静态检查一起跑，prettier 与 ESLint 带缓存、
+各包 typecheck 是增量的（tsbuildinfo 在各包 `node_modules/.cache/tsc/`），第二次起只看改过的文件；
+测试缺省只跑相对 `origin/main` 合并基点受影响的部分（各包 `vitest run --changed`，未提交与未跟踪的
+文件也算），根配置、锁文件或 `packages/shared/` 一变就全量。每步输出在 `node_modules/.cache/verify/`，
+结尾列出各步耗时。CI 仍然全量跑，合并以 CI 为准。
 
 `armadra.sh check` 就是 `pnpm check`；`test` 是 shared 构建加 `pnpm -r test`。
 `all` 执行 doctor → install → check → build → run。

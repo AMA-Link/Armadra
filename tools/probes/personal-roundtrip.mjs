@@ -32,6 +32,8 @@
 // 指向已经在跑的中继（例如托管的 relay.armadra.com，Go 个人中转）：
 //   --issuer <地址>   对它跑（http:// 或 https:// 系统信任）；账号与口令取环境变量
 //                     ARMADRA_PROBE_RELAY_ACCOUNT / ARMADRA_PROBE_RELAY_PASSWORD
+// 复现高延迟中继下的时序问题：ARMADRA_PROBE_LATENCY_MS=400 给页面的每个请求加这么久
+// （CDP `Network.emulateNetworkConditions`；再大页面本身加载就超时）。
 // 这个模式没有 init/serve 与自签 CA，也不开 Electron 和手机；多出「只读分享链接」与
 // 「媒体票 Range」两步。
 import { randomBytes } from "node:crypto";
@@ -71,6 +73,15 @@ import {
   untilApproved,
 } from "./platform-lib.mjs";
 import { probeSession } from "./probe-session.mjs";
+import {
+  accountIds,
+  addLatency,
+  recordNetwork,
+  diagnoseAcpStep,
+  terminalSessionWrittenBack,
+  restoreAccount,
+  serveLocalWeb,
+} from "./roundtrip-issuer.mjs";
 import {
   freePort,
   makeNode,
@@ -123,6 +134,12 @@ let stack;
 let relay;
 let electron;
 const opened = [];
+/** `--issuer` 模式：跑完（不论成败）撤掉本次新出现的链接、源与设备，账号回到开跑前的样子。 */
+let issuerCleanup;
+/** ACP 这一步失败时取现场（页面请求、core 侧会话与时间线、页面状态）；#865。 */
+let diagnoseAcp;
+/** 页面的网络记录（只记路径，不带查询串），失败时随诊断一起写进 result.json。 */
+const networkLogs = new Map();
 
 /** 探针自己打印的行与登记过的秘密：最后和各进程日志一起扫。 */
 const ledger = secretLedger();
@@ -215,6 +232,10 @@ try {
       );
     relay = { child: { exitCode: null, kill() {} }, log: () => "" };
     ({ call, must } = relayClient(issuer, null));
+    // 开跑前记下账号上已有的源与设备：跑完只撤本次多出来的，中途失败也不留离线源。
+    const before = await accountIds(call, account, password, secret);
+    issuerCleanup = () =>
+      restoreAccount(call, account, password, secret, before);
     const info = await call("GET", "/.well-known/armadra-platform");
     run.check(
       info.status === 200 && info.body?.mode === "personal",
@@ -465,6 +486,15 @@ try {
     },
   );
   await stack.seedBoard(workspace.id, board.id, [sticky, terminal, acpNode]);
+  diagnoseAcp = (page) =>
+    diagnoseAcpStep({
+      page,
+      node: nodeAt(acpNode.id),
+      nodeId: acpNode.id,
+      log: networkLogs.get(page) ?? [],
+      owner,
+      workspaceId: workspace.id,
+    });
   const query = `?workspace=${workspace.id}&board=${board.id}`;
 
   await stack.browser.call("Security.setIgnoreCertificateErrors", {
@@ -473,7 +503,21 @@ try {
   const newPage = async (width = 1440, height = 900, mobile = false) => {
     const page = await stack.browser.page(await stack.browser.context());
     opened.push([`page-${opened.length}`, page]);
+    // 页面请求的记录（ACP 一步失败时取证）与按需换成本地网页构建（#865）。
+    networkLogs.set(page, await recordNetwork(stack.browser, page));
+    if (process.env.ARMADRA_PROBE_WEB_ROOT && issuer)
+      await serveLocalWeb(
+        stack.browser,
+        page,
+        issuer,
+        process.env.ARMADRA_PROBE_WEB_ROOT,
+      );
+    // 打开会话视图的取证轨迹（apps/web/src/acp/diag.ts）：每个新文档先写好开关。
+    await page.call("Page.addScriptToEvaluateOnNewDocument", {
+      source: `try { localStorage.setItem("armadra.diag", "1"); } catch {}`,
+    });
     if (width !== 1440) await page.viewport(width, height, mobile);
+    await addLatency(page, Number(process.env.ARMADRA_PROBE_LATENCY_MS ?? 0));
     // 中继给页面的 CSP 只许同源：页面里不该有任何跨源连接被拦。
     page.allowed.push(/WebSocket connection to .* failed/);
     return page;
@@ -531,23 +575,80 @@ try {
     );
     await terminalRoundTrip(page, terminal.id, "relay");
     run.ok("经中继开终端并收发（42relay）");
+    const written = await terminalSessionWrittenBack({
+      owner,
+      until,
+      workspaceId: workspace.id,
+      boardId: board.id,
+      nodeId: terminal.id,
+    });
+    run.check(
+      Boolean(written.row) && written.row.sessionId === written.sessionId,
+      "终端节点数据里的 sessionId 与 core 的会话行一致（#868）",
+      { stored: written.sessionId, row: written.row?.sessionId },
+    );
 
     // ACP 回合经中继：页面带着 clientTurnId 发一轮，回复流回；core 侧只有一轮、
     // 回合记录认得页面的 id（契约 §39.9）。
     const acpInput = `${nodeAt(acpNode.id)} [data-slot="acp-session-view"] textarea`;
+    const acpField = `document.querySelector(${JSON.stringify(acpInput)})`;
+    const acpText = `(document.querySelector(${JSON.stringify(nodeAt(acpNode.id))})?.innerText ?? "")`;
+    // 输入框可用再打，按回车前确认字真的进去了；会话就绪前发出的第一句走排队路径（#865），不在这里绕开它。
     await page.until(
-      `return !!document.querySelector(${JSON.stringify(acpInput)})`,
-      "经中继起 ACP 会话、会话视图出现",
+      `const field = ${acpField}; return !!field && !field.disabled`,
+      "经中继起 ACP 会话、输入框可用",
       { timeout: 45_000 },
     );
-    await page.clickOn(
-      `return document.querySelector(${JSON.stringify(acpInput)})`,
-      "ACP 输入框",
+    report.webBundle = await page.evaluate(
+      `return document.querySelector('script[type="module"][src*="/assets/index-"]')?.getAttribute("src") ?? null`,
     );
-    await page.type("hello via relay");
-    await page.key("Enter");
+    console.log(`  网页包  ${report.webBundle}`);
+    // 会话视图被重挂时输入框会换成新的元素、字和排队的第一句一起丢（#865）：记下换了几次。
+    await page.evaluate(`
+      window.__probeAcpField = ${acpField};
+      window.__probeAcpMounts = [];
+      new MutationObserver((records) => {
+        for (const record of records) {
+          for (const kind of ["addedNodes", "removedNodes"]) {
+            for (const node of record[kind]) {
+              if (node.nodeType !== 1) continue;
+              const hit = node.matches?.('[data-slot="acp-session-view"]') || node.querySelector?.('[data-slot="acp-session-view"]');
+              if (hit) window.__probeAcpMounts.push({ kind, at: new Date().toISOString().slice(11, 23) });
+            }
+          }
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    `);
+    for (let attempt = 1; ; attempt += 1) {
+      await page.clickOn(`return ${acpField}`, "ACP 输入框");
+      if (
+        !(await page.evaluate(`return ${acpField}?.value ?? ""`)).includes(
+          "hello via relay",
+        )
+      )
+        await page.type("hello via relay");
+      await page.until(
+        `return (${acpField}?.value ?? "").includes("hello via relay")`,
+        "ACP 输入框里有这句",
+        { timeout: 5_000 },
+      );
+      await page.key("Enter");
+      // 发出去了 = 输入框清空。还留着这句才再按一次（回车被忽略），清空了就不再重发，免得多出一轮。
+      const sent = await page
+        .until(
+          `return !(${acpField}?.value ?? "").includes("hello via relay")`,
+          "ACP 这句发出去了",
+          { timeout: 10_000 },
+        )
+        .then(
+          () => true,
+          () => false,
+        );
+      if (sent) break;
+      if (attempt >= 2) throw new Error("ACP 输入框按回车两次都没把这句发出去");
+    }
     await page.until(
-      `return (document.querySelector(${JSON.stringify(nodeAt(acpNode.id))})?.innerText ?? "").includes("echo: hello via relay")`,
+      `return ${acpText}.includes("echo: hello via relay")`,
       "ACP 回复经中继流回会话视图",
       { timeout: 45_000 },
     );
@@ -1307,6 +1408,8 @@ try {
       report[`${name}Text`] = await opened_.evaluate(
         "return document.body.innerText.slice(0, 1500)",
       );
+      if (diagnoseAcp && name === "page-0")
+        report.acpDiagnostics = await diagnoseAcp(opened_);
     } catch {
       /* 页面已经关了：没有可补的。 */
     }
@@ -1319,6 +1422,17 @@ try {
   }
   if (stack) report.coreLog = stack.coreLog().slice(-3000);
 } finally {
+  if (issuerCleanup) {
+    try {
+      report.issuerCleanup = await issuerCleanup();
+      console.log(
+        `  清理  撤掉本次新增的 ${report.issuerCleanup.links} 条链接、${report.issuerCleanup.sources} 个源、${report.issuerCleanup.devices} 台设备`,
+      );
+    } catch (error) {
+      report.issuerCleanupError = String(error);
+      console.error(`  清理失败  ${error}`);
+    }
+  }
   report.timings.totalMs = Date.now() - started;
   try {
     relay?.child.kill("SIGKILL");
