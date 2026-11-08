@@ -212,7 +212,10 @@ const CANVAS: Record<ControlVerb, Row> = {
       "Read the handoff a peer approved for this session: a task brief by default, the frozen bundle as JSON with format=json.",
     properties: {
       id: str("the handoff id"),
-      format: oneOf(["md", "json"], "md (default): the brief; json: the bundle"),
+      format: oneOf(
+        ["md", "json"],
+        "md (default): the brief; json: the bundle",
+      ),
     },
     required: ["id"],
     binding: "session",
