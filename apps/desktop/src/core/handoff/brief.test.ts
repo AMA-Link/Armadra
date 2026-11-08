@@ -26,9 +26,12 @@ async function frozen(
     sourceNodeId: source,
     sourceSessionId: sourceSession,
     sourceGeneration: 1,
-    targetNodeId: target,
-    targetSessionId: targetSession,
-    targetGeneration: 1,
+    target: {
+      kind: "node",
+      nodeId: target,
+      sessionId: targetSession,
+      generation: 1,
+    },
     sections: {
       ...EMPTY_SECTIONS,
       goal: "Port the parser\nsecond line",

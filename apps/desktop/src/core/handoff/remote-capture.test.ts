@@ -72,9 +72,12 @@ describe("a handoff from an SSH Agent on another execution host", () => {
       sourceNodeId: source,
       sourceSessionId: sourceSession,
       sourceGeneration: 1,
-      targetNodeId: target,
-      targetSessionId: targetSession,
-      targetGeneration: 1,
+      target: {
+        kind: "node",
+        nodeId: target,
+        sessionId: targetSession,
+        generation: 1,
+      },
       sections: { ...EMPTY_SECTIONS, goal: "finish the port" },
       filePaths: [],
       byteBudget: 8192,
@@ -221,17 +224,17 @@ describe("a handoff from an SSH Agent on another execution host", () => {
     expect(operations).toEqual([]);
   });
 
-  it("needs no host when no transcript is read, and takes a target anywhere", async () => {
+  it("needs no host when no transcript is read, and refuses a target in an SSH terminal", async () => {
     hosts.clear();
     setHost(target, "elsewhere");
-    const view = await prepare(
-      fixture.collab,
-      fixture.workspaceId,
-      request({ includeTranscript: false }),
-    );
+    await expect(
+      prepare(
+        fixture.collab,
+        fixture.workspaceId,
+        request({ includeTranscript: false }),
+      ),
+    ).rejects.toMatchObject({ status: 400, code: "handoff_target_ssh" });
     expect(operations).toEqual([]);
-    expect(view.bundle.capturedOn).toBeUndefined();
-    expect(view.bundle.target.executionHost).toBe("execution-host:elsewhere");
   });
 
   it("a local source still reads its transcript here, without capturedOn", async () => {

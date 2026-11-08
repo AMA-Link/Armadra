@@ -158,9 +158,12 @@ describe("handoff bundle contract", () => {
       sourceNodeId: view().bundle.source.nodeId,
       sourceSessionId: view().bundle.source.sessionId,
       sourceGeneration: 1,
-      targetNodeId: view().bundle.target.nodeId,
-      targetSessionId: view().bundle.target.sessionId,
-      targetGeneration: 1,
+      target: {
+        kind: "node" as const,
+        nodeId: view().bundle.target.nodeId,
+        sessionId: view().bundle.target.sessionId,
+        generation: 1,
+      },
       sections: { goal: "Continue" },
       byteBudget: 16384,
     };
@@ -175,6 +178,23 @@ describe("handoff bundle contract", () => {
     ).toThrow();
     expect(() =>
       handoffPrepareSchema.parse({ ...request, sections: { goal: "" } }),
+    ).toThrow();
+    // 新开目标：规格里 Agent 与形态必填，模型至多 120 个字符。
+    const fresh = { kind: "new" as const, agentId: "codex", surface: "acp" };
+    expect(
+      handoffPrepareSchema.parse({ ...request, target: fresh }).target,
+    ).toEqual(fresh);
+    expect(() =>
+      handoffPrepareSchema.parse({
+        ...request,
+        target: { ...fresh, surface: "gui" },
+      }),
+    ).toThrow();
+    expect(() =>
+      handoffPrepareSchema.parse({
+        ...request,
+        target: { ...fresh, model: "m".repeat(121) },
+      }),
     ).toThrow();
     expect(() =>
       handoffPrepareSchema.parse({

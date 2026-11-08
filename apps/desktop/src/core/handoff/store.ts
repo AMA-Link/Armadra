@@ -6,7 +6,9 @@ import {
   MAX_PENDING as MAILBOX_MAX_PENDING,
   pendingCount,
 } from "../collab/mailbox";
+import { openAgent } from "../collab/control/nodes";
 import { type Caller, historyHint, loadNode } from "../collab/nodes";
+import { Args } from "../collab/refusals";
 import { render } from "../collab/transcript";
 import {
   type CollabContext,
@@ -16,6 +18,7 @@ import {
 } from "../collab/service";
 import { UNAVAILABLE } from "../git/fingerprint";
 import { executeOn } from "../remote/execute";
+import { CoreFailure } from "../http/errors";
 import {
   badRequest,
   conflict,
@@ -32,6 +35,7 @@ import {
   EMPTY_SECTIONS,
   type HandoffBundle,
   type Identity,
+  type NewTargetSpec,
   type Sections,
   TRUST,
   digest,
@@ -53,6 +57,7 @@ import {
   readTranscriptTail,
 } from "./capture";
 import { captureTranscript, requireCaptureHost } from "./remote-capture";
+import { asFailure, validateNewTarget } from "./target";
 import { readSourceTranscript } from "./source-transcript";
 import type { SourceCursor } from "./source-range";
 
@@ -99,13 +104,24 @@ const MAX_PENDING = 32;
 const TTL_SECONDS = 86_400;
 const MAX_STORED_BYTES = 32_768;
 
+/**
+ * 交接给谁（契约 §39.8）：画布上已连线的 Agent 节点（带它当前的会话身份），或者
+ * 批准时才新开的 Agent（规格在预览时只校验、不建节点）。
+ */
+export type PrepareTarget =
+  | {
+      readonly kind: "node";
+      readonly nodeId: string;
+      readonly sessionId: string;
+      readonly generation: number;
+    }
+  | { readonly kind: "new"; readonly spec: Record<string, unknown> };
+
 export interface PrepareRequest {
   readonly sourceNodeId: string;
   readonly sourceSessionId: string;
   readonly sourceGeneration: number;
-  readonly targetNodeId: string;
-  readonly targetSessionId: string;
-  readonly targetGeneration: number;
+  readonly target: PrepareTarget;
   readonly sections: Sections;
   readonly filePaths: readonly string[];
   readonly byteBudget: number;
@@ -122,6 +138,11 @@ export interface HandoffView {
   readonly acceptedAt: string | null;
   readonly updatedAt: string;
   readonly sourceHasNewActivity: boolean;
+  /**
+   * 新开目标在 accept 时建出来的节点；已有节点的交接与还没 accept 的新开交接
+   * 都是 `null`。读取与确认以它为准（契约 §39.8）。
+   */
+  readonly createdTargetNodeId: string | null;
   /**
    * How many times delivery has been attempted for this handoff.
    *
@@ -153,6 +174,7 @@ interface HandoffRow {
   readonly mailbox_id: string | null;
   readonly trace_id: string | null;
   readonly error_code: string | null;
+  readonly created_target_node_id: string | null;
   readonly created_at: string;
   readonly accepted_at: string | null;
   readonly updated_at: string;
@@ -268,10 +290,59 @@ function identity(
     agentId: agent,
     provider: baseAgent(context.settings, agent),
     providerSessionId: status?.sessionId ?? null,
-    modelId: null,
+    modelId: agentModelOf(node.data),
     accountId: null,
     executionHost: hostLabel(sshHost ?? ""),
     workingDirectory: row.cwd,
+  };
+}
+
+/** 节点自己记的模型（`data.agent.model`）；没选过就是 CLI 自己的默认，不知道。 */
+function agentModelOf(data: Record<string, unknown>): string | null {
+  const agent = data.agent;
+  if (agent === null || typeof agent !== "object") return null;
+  const model = (agent as { model?: unknown }).model;
+  return typeof model === "string" && model !== "" ? model : null;
+}
+
+/**
+ * SSH 终端里的 Agent 不是交接的目标：它的会话身份在远端主机上，这台 core 的
+ * 终端管理器认不出，收件箱的唤醒与读取的会话绑定都做不到。界面不列，这里是
+ * 同一条口径的拒绝（契约 §39.8）。来源在 SSH 终端里仍然可以（§21.1）。
+ */
+function refuseSshTarget(context: CollabContext, nodeId: string): void {
+  const node = loadNode(context.database, nodeId);
+  const ssh = node?.data.ssh;
+  if (ssh !== undefined && ssh !== null && typeof ssh === "object") {
+    throw new CoreFailure(
+      400,
+      "handoff_target_ssh",
+      "An Agent in an SSH terminal cannot be a handoff target; choose a local Agent or open a new one",
+    );
+  }
+}
+
+/**
+ * 新开目标在包里的占位身份：节点与会话还不存在（空 id、代次 0），其余照规格
+ * 写——Agent、模型、标题，以及它将在工作空间所在的主机与根目录里起来。
+ */
+function pendingIdentity(
+  context: CollabContext,
+  space: { readonly rootPath: string; readonly executionHostId: string },
+  spec: NewTargetSpec,
+): Identity {
+  return {
+    nodeId: "",
+    nodeTitle: spec.title ?? spec.agentId,
+    sessionId: "",
+    generation: 0,
+    agentId: spec.agentId,
+    provider: baseAgent(context.settings, spec.agentId),
+    providerSessionId: null,
+    modelId: spec.model ?? null,
+    accountId: null,
+    executionHost: hostLabel(space.executionHostId),
+    workingDirectory: space.rootPath,
   };
 }
 
@@ -284,14 +355,14 @@ export async function prepare(
   // remote workspace those are read on its execution host through the Worker
   // (`handoff/capture.ts`) — never from this machine's disk at the same path.
   const space = workspace(context, workspaceId, false);
-  if (request.sourceNodeId === request.targetNodeId) {
+  const wanted = request.target;
+  if (wanted.kind === "node" && request.sourceNodeId === wanted.nodeId) {
     throw badRequest("Choose a different target Agent");
   }
   for (const id of [
     request.sourceNodeId,
-    request.targetNodeId,
     request.sourceSessionId,
-    request.targetSessionId,
+    ...(wanted.kind === "node" ? [wanted.nodeId, wanted.sessionId] : []),
   ]) {
     if (!isUuid(id)) throw badRequest("Invalid handoff identity");
   }
@@ -315,18 +386,27 @@ export async function prepare(
     request.sourceSessionId,
     request.sourceGeneration,
   );
-  const target = identity(
-    context,
-    workspaceId,
-    request.targetNodeId,
-    request.targetSessionId,
-    request.targetGeneration,
-  );
-  const links = getContextLinks(context.database, source.nodeId).links;
-  if (!links.some((link) => link.id === target.nodeId)) {
-    throw forbidden(
-      "Create a context link to the target before preparing a handoff",
+  // 新开目标只校验规格，不建节点；已有节点要有连线、不能在 SSH 终端里。
+  let target: Identity;
+  let spec: NewTargetSpec | undefined;
+  if (wanted.kind === "node") {
+    target = identity(
+      context,
+      workspaceId,
+      wanted.nodeId,
+      wanted.sessionId,
+      wanted.generation,
     );
+    refuseSshTarget(context, wanted.nodeId);
+    const links = getContextLinks(context.database, source.nodeId).links;
+    if (!links.some((link) => link.id === target.nodeId)) {
+      throw forbidden(
+        "Create a context link to the target before preparing a handoff",
+      );
+    }
+  } else {
+    spec = validateNewTarget(context, wanted.spec);
+    target = pendingIdentity(context, space, spec);
   }
   let bundle = await build(
     context,
@@ -334,6 +414,7 @@ export async function prepare(
     workspaceId,
     source,
     target,
+    spec,
     request,
   );
   // A recycle during snapshot collection must not silently relabel old data.
@@ -344,13 +425,15 @@ export async function prepare(
     request.sourceSessionId,
     request.sourceGeneration,
   );
-  identity(
-    context,
-    workspaceId,
-    request.targetNodeId,
-    request.targetSessionId,
-    request.targetGeneration,
-  );
+  if (wanted.kind === "node") {
+    identity(
+      context,
+      workspaceId,
+      wanted.nodeId,
+      wanted.sessionId,
+      wanted.generation,
+    );
+  }
   try {
     bundle = fitBudget(bundle);
   } catch (error) {
@@ -451,6 +534,7 @@ async function build(
   workspaceId: string,
   source: Identity,
   target: Identity,
+  targetSpec: NewTargetSpec | undefined,
   request: PrepareRequest,
 ): Promise<HandoffBundle> {
   const status = getAgentStatus(context.database, source.nodeId);
@@ -555,6 +639,7 @@ async function build(
     createdAt: rfc3339(),
     source,
     target,
+    ...(targetSpec === undefined ? {} : { targetSpec }),
     cutoff,
     sections: { ...EMPTY_SECTIONS, ...request.sections },
     transcriptExcerpt: excerpt,
@@ -647,6 +732,7 @@ function decode(context: CollabContext, row: HandoffRow): HandoffView {
   if (
     (bundle.version !== 1 && bundle.version !== 2) ||
     (bundle.version === 1 && bundle.sourceCursor !== undefined) ||
+    (bundle.version === 1 && bundle.targetSpec !== undefined) ||
     !bundle.sourcePreserved ||
     bundle.trust !== TRUST ||
     bundle.budget.usedBytes !== Buffer.byteLength(raw, "utf8") ||
@@ -654,10 +740,8 @@ function decode(context: CollabContext, row: HandoffRow): HandoffView {
     bundle.workspaceId !== row.workspace_id ||
     bundle.source.nodeId !== row.source_node_id ||
     bundle.source.sessionId !== row.source_session_id ||
-    bundle.target.nodeId !== row.target_node_id ||
-    bundle.target.sessionId !== row.target_session_id ||
     bundle.source.generation !== Number(row.source_generation) ||
-    bundle.target.generation !== Number(row.target_generation)
+    !targetMatches(bundle, row)
   ) {
     throw conflict("Stored handoff identities or budget are inconsistent");
   }
@@ -671,8 +755,42 @@ function decode(context: CollabContext, row: HandoffRow): HandoffView {
     acceptedAt: row.accepted_at,
     updatedAt: row.updated_at,
     sourceHasNewActivity: false,
+    createdTargetNodeId: row.created_target_node_id ?? null,
     attempts: attemptsOf(context, row.id),
   };
+}
+
+/**
+ * 包里的目标身份 = 行里的目标身份。新开目标在预览时没有节点：包与行都是占位
+ * （空 id、代次 0），并且行上不能有「建出来的节点」而包里没有规格——真实的节点
+ * 只记在行的 `created_target_node_id` 上，包不改（digest 不变）。
+ */
+function targetMatches(bundle: HandoffBundle, row: HandoffRow): boolean {
+  if (bundle.targetSpec === undefined) {
+    return (
+      row.created_target_node_id === null &&
+      bundle.target.nodeId === row.target_node_id &&
+      bundle.target.sessionId === row.target_session_id &&
+      bundle.target.generation === Number(row.target_generation)
+    );
+  }
+  return (
+    bundle.targetSpec.kind === "new" &&
+    bundle.target.nodeId === "" &&
+    bundle.target.sessionId === "" &&
+    bundle.target.generation === 0 &&
+    row.target_node_id === "" &&
+    row.target_session_id === "" &&
+    Number(row.target_generation) === 0 &&
+    bundle.target.agentId === bundle.targetSpec.agentId
+  );
+}
+
+/** 这份交接现在寻址的节点：新开目标 accept 之前没有，之后是建出来的那个。 */
+function targetNodeOf(view: HandoffView): string | null {
+  return view.bundle.targetSpec === undefined
+    ? view.bundle.target.nodeId
+    : view.createdTargetNodeId;
 }
 
 /**
@@ -730,10 +848,15 @@ export function list(
   workspace(context, workspaceId, false);
   const rows = context.database
     .prepare(
-      "SELECT * FROM agent_handoffs WHERE workspace_id = ? AND (source_node_id = ? OR target_node_id = ?) " +
+      "SELECT * FROM agent_handoffs WHERE workspace_id = ? AND (source_node_id = ? OR target_node_id = ? OR created_target_node_id = ?) " +
         "ORDER BY created_at DESC LIMIT 32",
     )
-    .all(workspaceId, sourceNodeId, sourceNodeId) as unknown as HandoffRow[];
+    .all(
+      workspaceId,
+      sourceNodeId,
+      sourceNodeId,
+      sourceNodeId,
+    ) as unknown as HandoffRow[];
   return rows.map((row) => decode(context, row));
 }
 
@@ -770,6 +893,9 @@ export function accept(
     throw conflict("Handoff preview digest changed");
   }
   if (existing.state !== "prepared") return existing;
+  if (existing.bundle.targetSpec !== undefined) {
+    throw conflict("A new-target handoff is accepted through acceptHandoff");
+  }
   const source = existing.bundle.source;
   const target = existing.bundle.target;
   identity(
@@ -779,6 +905,7 @@ export function accept(
     target.sessionId,
     target.generation,
   );
+  refuseSshTarget(context, target.nodeId);
   const node = loadNode(context.database, source.nodeId);
   if (node === undefined) throw badRequest("Source node was removed");
   if (
@@ -868,6 +995,153 @@ export function accept(
   return get(context, workspaceId, id);
 }
 
+/** 正在 accept 的新开目标交接：同一份的第二次 accept 与撤回都等它结束。 */
+const accepting = new Set<string>();
+
+/**
+ * 用户的批准，两种目标一个入口：已有节点走同步的 {@link accept}，新开目标走
+ * {@link acceptNewTarget}（要建节点，是异步的）。
+ */
+export async function acceptHandoff(
+  context: CollabContext,
+  workspaceId: string,
+  id: string,
+  request: ConfirmRequest,
+): Promise<HandoffView> {
+  workspace(context, workspaceId, true);
+  const view = read(context, workspaceId, id);
+  return view.bundle.targetSpec === undefined
+    ? accept(context, workspaceId, id, request)
+    : await acceptNewTarget(context, workspaceId, id, request);
+}
+
+/**
+ * 批准一份「新开 Agent」目标的交接（契约 §39.8）。
+ *
+ * 顺序是这样的，每一步失败的后果都不一样：
+ *
+ *   1. 校验：digest、状态、来源还在、规格此刻仍然成立（Agent 可能刚被关掉）。
+ *      任何一条不过，交接留在 `prepared`，什么都没建。
+ *   2. 建节点：走 `open-agent` 同一条路（`collab/control/nodes.ts`）——节点、
+ *      与来源的连线（来源是它的主）、`first-task` 入队，交接通知就是首任务。
+ *      失败时交接留在 `prepared`，来源不受影响，可以重试。
+ *   3. 一个事务：收件箱那条（`handoff-read` 之后 `ack` 认它）、`queued` 状态与
+ *      建出来的节点 id 一起落库。
+ *
+ * 第 2 与第 3 步之间进程崩掉，会留下一个没人认领的新节点；重试会再建一个。
+ * 这个窗口只有一个同步事务那么宽，不值得为它造一张两阶段表。
+ */
+async function acceptNewTarget(
+  context: CollabContext,
+  workspaceId: string,
+  id: string,
+  request: ConfirmRequest,
+): Promise<HandoffView> {
+  const existing = get(context, workspaceId, id);
+  if (existing.digest !== request.expectedDigest) {
+    throw conflict("Handoff preview digest changed");
+  }
+  if (existing.state !== "prepared") return existing;
+  const spec = existing.bundle.targetSpec;
+  if (spec === undefined) throw conflict("Handoff has no new-target spec");
+  if (accepting.has(id))
+    throw conflict("This handoff is already being accepted");
+  accepting.add(id);
+  try {
+    const source = existing.bundle.source;
+    const node = loadNode(context.database, source.nodeId);
+    if (node === undefined) throw badRequest("Source node was removed");
+    if (
+      node.agentId !== source.agentId ||
+      !hasCapability(context.settings, source.agentId, "contextLink")
+    ) {
+      throw forbidden("Source context capability changed");
+    }
+    // 规格在预览之后可能不成立了（Agent 被关、适配器被卸）：同一套校验再走一遍。
+    validateNewTarget(context, { ...spec });
+    const at = rfc3339();
+    const seconds = nowSeconds(context);
+    const mailboxId = uuidV7();
+    const traceId = uuidV7();
+    const body = notice(
+      existing.bundle,
+      existing.digest,
+      handoffChannel(context.settings, spec.agentId),
+      mailboxId,
+    );
+    const args = new Args({
+      agent: spec.agentId,
+      task: body,
+      ...(spec.model === undefined ? {} : { model: spec.model }),
+      ...(spec.permissionMode === undefined
+        ? {}
+        : { "permission-mode": spec.permissionMode }),
+      ...(spec.title === undefined ? {} : { title: spec.title }),
+    });
+    let created: string;
+    try {
+      const outcome = await openAgent(
+        context,
+        { node, verdict: "verified" },
+        args,
+        spec.surface,
+      );
+      const result = outcome.result as { id?: unknown } | undefined;
+      if (typeof result?.id !== "string") {
+        throw conflict("The new Agent node was not created");
+      }
+      created = result.id;
+    } catch (error) {
+      throw asFailure(error);
+    }
+
+    context.database.exec("BEGIN IMMEDIATE");
+    try {
+      const current = read(context, workspaceId, id);
+      if (current.state !== "prepared") {
+        throw conflict("The handoff changed while the new Agent was created");
+      }
+      insertHandoffNotice(context, {
+        mailboxId,
+        workspaceId,
+        sourceNodeId: source.nodeId,
+        targetNodeId: created,
+        handoffId: id,
+        body,
+        now: seconds,
+      });
+      context.database
+        .prepare(
+          "UPDATE agent_handoffs SET state = 'queued', mailbox_id = ?, trace_id = ?, created_target_node_id = ?, " +
+            "accepted_at = ?, updated_at = ? WHERE id = ?",
+        )
+        .run(mailboxId, traceId, created, at, at, id);
+      context.database
+        .prepare(
+          "INSERT INTO agent_handoff_outbox (handoff_id, state, claimed_at, instance_id, created_at, attempts) " +
+            "VALUES (?, 'notified', ?, ?, ?, 1) " +
+            "ON CONFLICT(handoff_id) DO UPDATE SET state = 'notified', claimed_at = excluded.claimed_at, " +
+            "attempts = agent_handoff_outbox.attempts + 1",
+        )
+        .run(id, at, "local-core", at);
+      context.database.exec("COMMIT");
+    } catch (error) {
+      context.database.exec("ROLLBACK");
+      throw error;
+    }
+    context.publish(workspaceId, {
+      type: "agent.delivery",
+      traceId,
+      sourceNodeId: source.nodeId,
+      targetNodeId: created,
+      outcome: "queued",
+    });
+    return get(context, workspaceId, id);
+  } finally {
+    accepting.delete(id);
+  }
+}
+
 /**
  * The target acknowledged its inbox entry, so the handoff is acknowledged.
  *
@@ -894,6 +1168,9 @@ export function cancel(
   request: ConfirmRequest,
 ): HandoffView {
   workspace(context, workspaceId, true);
+  if (accepting.has(id)) {
+    throw conflict("This handoff is being accepted; try again in a moment");
+  }
   context.database.exec("BEGIN IMMEDIATE");
   try {
     const view = read(context, workspaceId, id);
@@ -945,10 +1222,16 @@ export async function readForCaller(
   }
   const view = get(context, caller.node.workspaceId, id);
   const target = view.bundle.target;
+  // 新开目标：寻址的是 accept 建出来的那个节点，会话与代次在它第一次读取时
+  // 按它当前的会话判定（下面的 `identity` 与 `isCurrentNodeSession`）；已有
+  // 节点的交接仍然寻址预览时冻结的那个会话与代次。
+  const fresh = view.bundle.targetSpec !== undefined;
+  const targetNodeId = targetNodeOf(view);
   if (
-    caller.node.id !== target.nodeId ||
-    sessionId !== target.sessionId ||
-    generation !== target.generation ||
+    targetNodeId === null ||
+    caller.node.id !== targetNodeId ||
+    (!fresh &&
+      (sessionId !== target.sessionId || generation !== target.generation)) ||
     view.acceptedAt === null ||
     view.state === "cancelled"
   ) {
@@ -970,7 +1253,7 @@ export async function readForCaller(
   identity(
     context,
     caller.node.workspaceId,
-    target.nodeId,
+    targetNodeId,
     sessionId,
     generation,
   );
@@ -983,11 +1266,11 @@ export async function readForCaller(
     throw forbidden("Source context access was removed");
   }
   const links = getContextLinks(context.database, source.id).links;
-  if (!links.some((link) => link.id === target.nodeId)) {
+  if (!links.some((link) => link.id === targetNodeId)) {
     throw forbidden("Handoff context link was removed");
   }
   const current = await context.terminals?.isCurrentNodeSession(
-    target.nodeId,
+    targetNodeId,
     sessionId,
     generation,
   );

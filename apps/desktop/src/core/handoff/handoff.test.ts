@@ -28,9 +28,12 @@ function request(overrides: Record<string, unknown> = {}) {
     sourceNodeId: source,
     sourceSessionId: sourceSession,
     sourceGeneration: 1,
-    targetNodeId: target,
-    targetSessionId: targetSession,
-    targetGeneration: 1,
+    target: {
+      kind: "node",
+      nodeId: target,
+      sessionId: targetSession,
+      generation: 1,
+    },
     sections: { ...EMPTY_SECTIONS, goal: "finish the port" },
     filePaths: [],
     byteBudget: 8192,
@@ -83,8 +86,12 @@ describe("prepare", () => {
     const strangerSession = fixture.session(stranger, "claude");
     await expect(
       prepared({
-        targetNodeId: stranger,
-        targetSessionId: strangerSession,
+        target: {
+          kind: "node",
+          nodeId: stranger,
+          sessionId: strangerSession,
+          generation: 1,
+        },
       }),
     ).rejects.toThrow(/context link/i);
   });
@@ -95,7 +102,14 @@ describe("prepare", () => {
       prepared({ sections: { ...EMPTY_SECTIONS, goal: "   " } }),
     ).rejects.toThrow();
     await expect(
-      prepared({ targetNodeId: source, targetSessionId: sourceSession }),
+      prepared({
+        target: {
+          kind: "node",
+          nodeId: source,
+          sessionId: sourceSession,
+          generation: 1,
+        },
+      }),
     ).rejects.toThrow(/different target/i);
   });
 

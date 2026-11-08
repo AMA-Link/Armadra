@@ -68,6 +68,20 @@ export interface Identity {
   readonly workingDirectory: string;
 }
 
+/**
+ * 「新开 Agent」目标的规格（契约 §39.8）：预览时还没有节点，规格进冻结的包，
+ * digest 覆盖它。`target` 身份此时是占位（空的节点与会话 id、代次 0），accept
+ * 建出节点之后，真实的节点 id 记在行的 `created_target_node_id` 上。
+ */
+export interface NewTargetSpec {
+  readonly kind: "new";
+  readonly agentId: string;
+  readonly model?: string;
+  readonly permissionMode?: string;
+  readonly surface: "terminal" | "acp";
+  readonly title?: string;
+}
+
 export interface Cutoff {
   readonly kind: string;
   readonly reference: string | null;
@@ -112,6 +126,8 @@ export interface HandoffBundle {
   readonly createdAt: string;
   readonly source: Identity;
   readonly target: Identity;
+  /** 目标是新开的 Agent 时的规格；有它就说明 `target` 是占位。 */
+  readonly targetSpec?: NewTargetSpec;
   readonly cutoff: Cutoff;
   readonly sections: Sections;
   readonly transcriptExcerpt: string;
