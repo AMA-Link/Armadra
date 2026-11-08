@@ -5598,3 +5598,24 @@ core 的工作流域搭任务行兜底扫描（每 60 秒，§15.7）的便车�
 - `browser` 组不变：只读动词 `read`，`upload`、`download`、`close` 是 `execute`，其余 `write`。
 - 工具的 `annotations.readOnly` 仍按真实语义（只有只读动词为真），不跟着权限类改。
 - 这些动词只到连线授权的节点、带本节点令牌，core 侧不多给任何权限。
+
+## 109. 终端 OpenCode 的审批答复走插件（`#857`）
+
+> 状态：实施契约。路由、事件形状与协议版本不变；变的是 OpenCode 终端的答复通道，以及答复路由里的一处取值错误。
+
+### 109.1 答复通道
+
+- OpenCode 1.19.5 没有 `permission.ask` 钩子（二进制里没有这个名字，只有 `permission.asked` / `permission.replied` 总线事件），权限只能经它自己的客户端 `permission.reply({ requestID, reply })` 答复。注入的插件因此照 Claude 的文件路由做：收到 `permission.asked` 且环境里有 `ARMADRA_PERM_WAIT_SECS` 时，先写 `<端点文件所在目录>/pending/<permission.id>.json`（0600，内容是该事件），再上报；之后在后台轮询 `<id>.answer`，不阻塞总线。
+- 答案文件内容为 `allow` 时回复 `once`，为 `deny` 时回复 `reject`；其他内容一律不回复。等待到期（`PERM_WAIT_SECONDS`，45 秒）、或收到同一条权限的 `permission.replied`（人在终端里先答了）都停止等待并删掉请求与答案文件，TUI 的提示照旧可答。插件从不在没有画布决定时回复。
+- `ANSWERS_ON_CANVAS` 多 `opencode`：`hooks.replyApprovals` 关掉时不注入 `ARMADRA_PERM_WAIT_SECS`，插件不写请求文件，退回按键。
+- 审批的 `pendingId` 就是 OpenCode 的权限 id（`per_…`）；`POST /api/approvals/{pendingId}/answer` 找到请求文件，写答案文件，`route` 为 `file`，审计同。
+
+### 109.2 按键兜底与 `typeIntoPty` 的修正
+
+- OpenCode 的提示是选择列表（Allow once / Allow always / Reject，光标起在 Allow once）：Enter 取当前项，Escape 是列表自带的拒绝绑定，`y` / `n` 没有绑定。`answerKeys("opencode")` 改为允许 `\r`、拒绝 `\u001b`；其他 CLI 不变。
+- `typeIntoPty` 返回 `false` 的根因：答复路由用装配时捕获的协作上下文，而终端桥在终端域安装后才设置，捕获的那份 `terminals` 恒为空。路由现在每次读运行中的协作上下文的终端桥（与启动路由同一做法）。
+
+### 109.3 已知局限
+
+- OpenCode 在权限询问期间还会报工具进度，状态可能被后到的 `working` 盖掉（`blocked` 只由 `permission.asked` 设置）；审批行与卡片不受影响，答复照常有效。
+- 子代理会话（有 `parentID`）的拒绝在 TUI 里多一步填写原因；插件的 `reject` 回复不经这一步。
