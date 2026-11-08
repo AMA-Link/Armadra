@@ -138,7 +138,6 @@ async function main() {
     ...(only.has("11") && realModel && !selfTest ? ["11 --real-model"] : []),
     ...(only.has("12") && !selfTest ? ["12"] : []),
     ...(only.has("13") && !selfTest ? ["13"] : []),
-    ...(only.has("16") && !selfTest ? ["16"] : []),
     ...(only.has("17") && !selfTest ? ["17"] : []),
   ];
   if (selfTest && shared.length > 0)
