@@ -163,7 +163,7 @@ describe("capture", () => {
       executionHost: "execution-host:far",
       transcript: { provider: "claude", path: transcript },
     });
-    expect(captured.transcript).toEqual({
+    expect(captured.transcript).toMatchObject({
       state: "read",
       text: '{"type":"user","message":"hi"}\n',
     });

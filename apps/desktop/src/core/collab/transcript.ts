@@ -207,7 +207,7 @@ function renderBlock(block: Block, context: RenderContext): string | undefined {
 }
 
 /** A tool's arguments reduced to the one field a reader cares about. */
-function summarizeInput(input: unknown): string {
+export function summarizeInput(input: unknown): string {
   if (input !== null && typeof input === "object" && !Array.isArray(input)) {
     const record = input as Record<string, unknown>;
     for (const key of [

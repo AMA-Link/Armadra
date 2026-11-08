@@ -7,6 +7,11 @@ import {
 import type { TranscriptEntry } from "../history/types";
 import { gitFingerprint } from "../git/fingerprint";
 import {
+  type FrozenCursor,
+  type RangeAnswer,
+  freezeCursor,
+} from "./source-range";
+import {
   type FileReference,
   type GitFingerprint,
   fingerprintFiles,
@@ -52,6 +57,8 @@ export interface Captured {
   readonly git: GitFingerprint;
   /** 要了转录时才有。 */
   readonly transcript?: TranscriptTail;
+  /** `transcriptRange` 请求的答复（Worker 侧，见 `remote/handoff-worker.ts`）。 */
+  readonly range?: RangeAnswer;
 }
 
 /**
@@ -59,7 +66,12 @@ export interface Captured {
  * `unreadable` 是有文件但读的时候失败或变了。
  */
 export type TranscriptTail =
-  | { readonly state: "read"; readonly text: string }
+  | {
+      readonly state: "read";
+      readonly text: string;
+      /** 冻结时转录末尾的游标（文件来源带前缀哈希）；算不出来时没有。 */
+      readonly cursor?: FrozenCursor;
+    }
   | { readonly state: "missing" }
   | { readonly state: "unreadable" };
 
@@ -73,10 +85,13 @@ export function readTranscriptTail(source: TranscriptSource): TranscriptTail {
   });
   if (located === undefined) return { state: "missing" };
   try {
+    const cursor = freezeCursor(source.provider, located);
+    const withCursor = cursor === undefined ? {} : { cursor };
     if (located.path !== undefined && rendersRaw(source.provider)) {
       return {
         state: "read",
         text: readTail(located.path, TRANSCRIPT_TAIL_BYTES),
+        ...withCursor,
       };
     }
     // 没有文件的来源（OpenCode 的库），以及行形状 `render()` 不认的文件（Pi /
@@ -90,7 +105,11 @@ export function readTranscriptTail(source: TranscriptSource): TranscriptTail {
       TRANSCRIPT_TAIL_BYTES,
     );
     if (range.entries.length === 0) return { state: "missing" };
-    return { state: "read", text: entriesAsJsonl(range.entries) };
+    return {
+      state: "read",
+      text: entriesAsJsonl(range.entries),
+      ...withCursor,
+    };
   } catch {
     return { state: "unreadable" };
   }

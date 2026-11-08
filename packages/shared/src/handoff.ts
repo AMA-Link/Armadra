@@ -38,7 +38,8 @@ export const handoffIdentitySchema = z.object({
   workingDirectory: z.string(),
 });
 export const handoffBundleSchema = z.object({
-  version: z.literal(1),
+  // 1：只有冻结摘录；2：另带 `sourceCursor`（契约 §21.1）。
+  version: z.union([z.literal(1), z.literal(2)]),
   handoffId: z.string().uuid(),
   workspaceId: z.string().uuid(),
   createdAt: z.string(),
@@ -79,6 +80,18 @@ export const handoffBundleSchema = z.object({
    * 本机读、或没有读转录时不出现。
    */
   capturedOn: z.string().optional(),
+  /** 版本 2：冻结时来源转录的末尾，`handoff-read --part transcript` 读到这里为止。 */
+  sourceCursor: z
+    .object({
+      agentId: z.string(),
+      locatedKey: z.string(),
+      executionHost: z.string(),
+      endOffset: z.number().int().nonnegative(),
+      prefixSha256: z.string().nullable(),
+      lastEntrySha256: z.string().optional(),
+      unit: z.enum(["bytes", "entries", "opaque"]),
+    })
+    .optional(),
   attachments: z.array(z.never()),
   budget: z.object({
     byteLimit: z.number().int().positive(),

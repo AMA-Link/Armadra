@@ -31,6 +31,8 @@ export interface HandoffCommands {
   readonly read: string;
   /** 读完整的包（结构化 JSON）。 */
   readonly readJson: string;
+  /** 分页读来源原文，到冻结边界为止。 */
+  readonly readTranscript: string;
   /** 把结果回给来源。 */
   readonly post: string;
   /** 确认收件箱那条；不知道消息 id 时写占位符。 */
@@ -49,6 +51,7 @@ export function handoffCommands(
     return {
       read: `${toolName("canvas", "handoff-read")}(id="${handoffId}")`,
       readJson: `${toolName("canvas", "handoff-read")}(id="${handoffId}", format="json")`,
+      readTranscript: `${toolName("canvas", "handoff-read")}(id="${handoffId}", part="transcript")`,
       post: `${toolName("canvas", "post")}(to="${sourceNodeId}", key="${key}", body="结论；文件路径；下一步")`,
       ack: `${toolName("canvas", "ack")}(id="${message}")`,
     };
@@ -56,6 +59,7 @@ export function handoffCommands(
   return {
     read: `armadra-hook canvas handoff-read --id ${handoffId}`,
     readJson: `armadra-hook canvas handoff-read --id ${handoffId} --format json`,
+    readTranscript: `armadra-hook canvas handoff-read --id ${handoffId} --part transcript`,
     post: `armadra-hook canvas post --to ${sourceNodeId} --key ${key} --body '结论；文件路径；下一步'`,
     ack: `armadra-hook canvas ack --id ${message}`,
   };
@@ -70,7 +74,7 @@ function section(title: string, body: string): string[] {
   return body === "" ? [] : [`## ${title}`, body, ""];
 }
 
-/** 原文一段里「转录摘录」之后的读法；H2 会把它换成分页读取。 */
+/** 原文一段的开头。 */
 export const TRANSCRIPT_READ_HINT = "转录摘录";
 
 export interface BriefOptions {
@@ -122,13 +126,19 @@ export function renderBrief(
     ...section("完成标准", text(sections.acceptance)),
     ...section("已完成 / 关键决策", done.join("\n\n")),
     ...section("相关文件与仓库", references.join("\n")),
-    ...(excerpt === ""
-      ? []
-      : [
+    ...(bundle.sourceCursor !== undefined
+      ? [
           "## 原文",
-          `${TRANSCRIPT_READ_HINT}：${[...excerpt].length} 字符，已含在交接包里；读法：${commands.readJson}`,
+          `${TRANSCRIPT_READ_HINT}：${[...excerpt].length} 字符，已含在交接包里；从头分页读到冻结边界：${commands.readTranscript}（答复里的 nextCursor 交给下一次）`,
           "",
-        ]),
+        ]
+      : excerpt === ""
+        ? []
+        : [
+            "## 原文",
+            `${TRANSCRIPT_READ_HINT}：${[...excerpt].length} 字符，已含在交接包里；读法：${commands.readJson}`,
+            "",
+          ]),
     "## 做完之后",
     `1. 把结果回给来源：${commands.post}`,
     `2. 确认收件箱那条：${commands.ack}`,

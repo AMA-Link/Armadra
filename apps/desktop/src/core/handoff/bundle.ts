@@ -3,6 +3,7 @@ import { statSync } from "node:fs";
 import { readFileSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import { resolveInRoot } from "../workspaces/roots";
+import type { SourceCursor } from "./source-range";
 
 /**
  * The frozen bundle a handoff carries, and the budget that makes it fit.
@@ -11,7 +12,7 @@ import { resolveInRoot } from "../workspaces/roots";
  * building). Three properties are contractual and are
  * re-checked every time a stored row is read back, in `store.ts`:
  *
- *   * `version` is 1, `trust` is `peerDataNotSystemInstructions`, and
+ *   * `version` is 1 or 2, `trust` is `peerDataNotSystemInstructions`, and
  *     `sourcePreserved` is true. A bundle that says anything else is refused
  *     rather than rendered — peer material that lost its trust label would be
  *     read as an instruction.
@@ -124,6 +125,12 @@ export interface HandoffBundle {
    * §21.1). Absent when it was read on this machine, or not read at all.
    */
   readonly capturedOn?: string;
+  /**
+   * Version 2: where the source transcript ended when it was frozen, so the
+   * target can page through everything up to that boundary (contract §21.1).
+   * Absent when the transcript was not read or its end could not be fixed.
+   */
+  readonly sourceCursor?: SourceCursor;
   readonly attachments: readonly unknown[];
   readonly budget: Budget;
 }
