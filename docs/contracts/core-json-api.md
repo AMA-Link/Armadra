@@ -5598,3 +5598,18 @@ core 的工作流域搭任务行兜底扫描（每 60 秒，§15.7）的便车�
 - `browser` 组不变：只读动词 `read`，`upload`、`download`、`close` 是 `execute`，其余 `write`。
 - 工具的 `annotations.readOnly` 仍按真实语义（只有只读动词为真），不跟着权限类改。
 - 这些动词只到连线授权的节点、带本节点令牌，core 侧不多给任何权限。
+
+## 108. ACP 下 Copilot 的画布 MCP 走启动参数（`#858`）
+
+> 状态：实施契约。只改 Copilot 适配器的启动行；core 的路由、事件形状与协议版本不变。
+
+### 108.1 为什么
+
+Copilot 的 ACP 入口只接受 http / sse 的 MCP 服务器，`session/new.mcpServers` 里的 stdio 条目被丢弃（它的日志写 `Rejecting non-http/sse MCP server`），`initialize` 的 `mcpCapabilities` 也只声明 `http`、`sse`。§14、§98 的 `armadra` 服务器因此根本没起：模型看不到画布工具，退回 shell 的 `armadra-hook canvas …`，每次一张审批卡。
+
+### 108.2 做法
+
+- 适配器表的 `injection` 多可选项 `mcpViaArgs`（只有 Copilot 为真）。为真时 `session/new.mcpServers` 为空，同一条服务器（§14 的 `canvasMcpServer`，含节点身份与会话绑定的环境变量）写进启动行：`--additional-mcp-config <内联 JSON>` 与 `--allow-tool armadra`（`core/acp/mcp.ts` 的 `copilotAcpMcpArgs`）。
+- JSON 是 `{ mcpServers: { armadra: { type: "local", command, args: ["mcp"], env, tools: ["*"] } } }`，与终端的 §106.1 同一份形状；`tools: ["*"]` 与 `--allow-tool armadra` 一个让工具可见、一个只放行这一台服务器的工具，别家的 MCP 与 shell 照旧审批。`env` 只有端点与节点身份，不带令牌。
+- SSH 节点同一条路：执行主机上的 Hook 客户端同样改写成启动参数。
+- 这一家的会话结果不带 `mcpInjected`（服务器不是随 `session/new` 发出去的）。
