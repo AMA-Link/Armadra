@@ -26,9 +26,12 @@ async function frozen(
     sourceNodeId: source,
     sourceSessionId: sourceSession,
     sourceGeneration: 1,
-    targetNodeId: target,
-    targetSessionId: targetSession,
-    targetGeneration: 1,
+    target: {
+      kind: "node",
+      nodeId: target,
+      sessionId: targetSession,
+      generation: 1,
+    },
     sections: {
       ...EMPTY_SECTIONS,
       goal: "Port the parser\nsecond line",
@@ -58,6 +61,14 @@ describe("handoffChannel", () => {
     expect(handoffChannel(NO_CUSTOM_AGENTS, "codex")).toBe("mcp");
     expect(handoffChannel(NO_CUSTOM_AGENTS, "claude")).toBe("cli");
     expect(handoffChannel(NO_CUSTOM_AGENTS, "pi")).toBe("cli");
+  });
+
+  it("gives every ACP session the MCP tools, whatever the agent", () => {
+    for (const agent of ["claude", "codex", "pi", "opencode"]) {
+      expect(handoffChannel(NO_CUSTOM_AGENTS, agent, "acp")).toBe("mcp");
+    }
+    // 终端驱动照旧。
+    expect(handoffChannel(NO_CUSTOM_AGENTS, "claude", "terminal")).toBe("cli");
   });
 
   it("follows the base agent of a custom one", () => {

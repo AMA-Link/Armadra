@@ -136,9 +136,12 @@ describe("对话交接经 agents.* procedure", () => {
       sourceNodeId: source,
       sourceSessionId: session,
       sourceGeneration: 1,
-      targetNodeId: target,
-      targetSessionId: session,
-      targetGeneration: 1,
+      target: {
+        kind: "node",
+        nodeId: target,
+        sessionId: session,
+        generation: 1,
+      },
       sections: {
         goal: "finish",
         constraints: "",
@@ -154,9 +157,61 @@ describe("对话交接经 agents.* procedure", () => {
     });
     expect(procedure()).toBe("agents/prepareHandoff");
     expect(sent()).toMatchObject({
-      json: { workspaceId, sourceNodeId: source, byteBudget: 8192 },
+      json: {
+        workspaceId,
+        sourceNodeId: source,
+        byteBudget: 8192,
+        target: { kind: "node", nodeId: target },
+      },
     });
     expect(prepared.state).toBe("prepared");
+    expect(prepared.createdTargetNodeId).toBeNull();
+  });
+
+  it("冻结：新开 Agent 的规格原样带过去，答案里目标是占位身份", async () => {
+    ok({
+      ...view,
+      bundle: {
+        ...view.bundle,
+        target: {
+          ...identity(target),
+          nodeId: "",
+          sessionId: "",
+          generation: 0,
+        },
+        targetSpec: { kind: "new", agentId: "codex", surface: "acp" },
+      },
+    });
+    const prepared = await runtimeApi.prepareHandoff(workspaceId, {
+      sourceNodeId: source,
+      sourceSessionId: session,
+      sourceGeneration: 1,
+      target: { kind: "new", agentId: "codex", model: "gpt-5", surface: "acp" },
+      sections: {
+        goal: "finish",
+        constraints: "",
+        acceptance: "",
+        completed: "",
+        pending: "",
+        decisions: "",
+        toolSummary: "",
+      },
+      filePaths: [],
+      byteBudget: 8192,
+      includeTranscript: false,
+    });
+    expect(sent()).toMatchObject({
+      json: {
+        target: {
+          kind: "new",
+          agentId: "codex",
+          model: "gpt-5",
+          surface: "acp",
+        },
+      },
+    });
+    expect(prepared.bundle.targetSpec?.surface).toBe("acp");
+    expect(prepared.bundle.target.nodeId).toBe("");
   });
 
   it("读、批准、撤回、列出各是一条 procedure", async () => {

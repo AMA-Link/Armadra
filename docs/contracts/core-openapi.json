@@ -30646,6 +30646,16 @@
                       "sourceHasNewActivity": {
                         "type": "boolean"
                       },
+                      "createdTargetNodeId": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "attempts": {
                         "type": "number"
                       }
@@ -30660,6 +30670,7 @@
                       "acceptedAt",
                       "updatedAt",
                       "sourceHasNewActivity",
+                      "createdTargetNodeId",
                       "attempts"
                     ],
                     "additionalProperties": {
@@ -30971,6 +30982,16 @@
                     "sourceHasNewActivity": {
                       "type": "boolean"
                     },
+                    "createdTargetNodeId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "attempts": {
                       "type": "number"
                     }
@@ -30985,6 +31006,7 @@
                     "acceptedAt",
                     "updatedAt",
                     "sourceHasNewActivity",
+                    "createdTargetNodeId",
                     "attempts"
                   ],
                   "additionalProperties": {
@@ -31149,14 +31171,90 @@
                   "sourceGeneration": {
                     "type": "number"
                   },
-                  "targetNodeId": {
-                    "type": "string"
-                  },
-                  "targetSessionId": {
-                    "type": "string"
-                  },
-                  "targetGeneration": {
-                    "type": "number"
+                  "target": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "array",
+                                "items": {}
+                              },
+                              {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              },
+                              {
+                                "type": "array",
+                                "items": {}
+                              },
+                              {
+                                "type": "object",
+                                "propertyNames": {
+                                  "type": "string"
+                                },
+                                "additionalProperties": {}
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
                   },
                   "sections": {
                     "type": "object",
@@ -31417,6 +31515,16 @@
                     "sourceHasNewActivity": {
                       "type": "boolean"
                     },
+                    "createdTargetNodeId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "attempts": {
                       "type": "number"
                     }
@@ -31431,6 +31539,7 @@
                     "acceptedAt",
                     "updatedAt",
                     "sourceHasNewActivity",
+                    "createdTargetNodeId",
                     "attempts"
                   ],
                   "additionalProperties": {
@@ -31764,6 +31873,16 @@
                     "sourceHasNewActivity": {
                       "type": "boolean"
                     },
+                    "createdTargetNodeId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "attempts": {
                       "type": "number"
                     }
@@ -31778,6 +31897,7 @@
                     "acceptedAt",
                     "updatedAt",
                     "sourceHasNewActivity",
+                    "createdTargetNodeId",
                     "attempts"
                   ],
                   "additionalProperties": {
@@ -32111,6 +32231,16 @@
                     "sourceHasNewActivity": {
                       "type": "boolean"
                     },
+                    "createdTargetNodeId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "attempts": {
                       "type": "number"
                     }
@@ -32125,6 +32255,7 @@
                     "acceptedAt",
                     "updatedAt",
                     "sourceHasNewActivity",
+                    "createdTargetNodeId",
                     "attempts"
                   ],
                   "additionalProperties": {

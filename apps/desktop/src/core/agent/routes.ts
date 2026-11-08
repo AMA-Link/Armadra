@@ -40,7 +40,7 @@ import { historyHint, loadNode, loadSession } from "../collab/nodes";
 import { listContextReads } from "../collab/context-reads";
 import {
   type ConfirmRequest,
-  accept,
+  acceptHandoff,
   cancel,
   get as getHandoff,
   list as listHandoffs,
@@ -362,9 +362,9 @@ export function installRoutes(deps: AgentRouteDeps): void {
   server.router.handle(
     "POST",
     "/api/workspaces/{workspaceId}/handoffs/{handoffId}/accept",
-    answered((match, request) => ({
+    answeredAsync(async (match, request) => ({
       status: 200,
-      body: handoff.accept(
+      body: await handoff.accept(
         param(match, "workspaceId"),
         param(match, "handoffId"),
         jsonObject(request.body),
@@ -848,7 +848,7 @@ export function handoffOperations(collab: CollabContext) {
       handoffId: string,
       body: Record<string, unknown>,
     ) {
-      return accept(collab, workspaceId, handoffId, parseConfirm(body));
+      return acceptHandoff(collab, workspaceId, handoffId, parseConfirm(body));
     },
     cancel(
       workspaceId: string,
@@ -879,14 +879,33 @@ function parsePrepare(body: Record<string, unknown>): PrepareRequest {
     sourceNodeId: required(body, "sourceNodeId"),
     sourceSessionId: required(body, "sourceSessionId"),
     sourceGeneration: requiredNumber(body, "sourceGeneration"),
-    targetNodeId: required(body, "targetNodeId"),
-    targetSessionId: required(body, "targetSessionId"),
-    targetGeneration: requiredNumber(body, "targetGeneration"),
+    target: targetOf(body.target),
     sections: sectionsOf(sections as Record<string, unknown>),
     filePaths: filePaths as string[],
     byteBudget,
     includeTranscript: body.includeTranscript !== false,
   };
+}
+
+/** `target`：`{ kind: "node", nodeId, sessionId, generation }` 或 `{ kind: "new", … }`。 */
+function targetOf(value: unknown): PrepareRequest["target"] {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw badRequest("target is required");
+  }
+  const target = value as Record<string, unknown>;
+  if (target.kind === "node") {
+    return {
+      kind: "node",
+      nodeId: required(target, "nodeId"),
+      sessionId: required(target, "sessionId"),
+      generation: requiredNumber(target, "generation"),
+    };
+  }
+  if (target.kind === "new") {
+    const { kind: _kind, ...spec } = target;
+    return { kind: "new", spec };
+  }
+  throw badRequest("target.kind must be node or new");
 }
 
 function sectionsOf(

@@ -64,7 +64,8 @@ export function forgetNodes(
     // work nothing can finish, and leaving it would make a restart's
     // reconciliation report a dispatch nobody can resolve.
     `DELETE FROM agent_handoff_outbox WHERE handoff_id IN ` +
-      `(SELECT id FROM agent_handoffs WHERE source_node_id IN (${list}) OR target_node_id IN (${list}))`,
+      `(SELECT id FROM agent_handoffs WHERE source_node_id IN (${list}) OR target_node_id IN (${list}) ` +
+      `OR created_target_node_id IN (${list}))`,
     `DELETE FROM agent_status WHERE node_id IN (${list})`,
     // Only the questions still open. An answered one is a receipt.
     `DELETE FROM agent_approvals WHERE node_id IN (${list}) AND answer IS NULL`,
