@@ -15,7 +15,7 @@
     "build": "electron-vite build && node scripts/launch-exe.mjs --if-windows && node scripts/winsec-exe.mjs --if-windows",
     "predev": "node scripts/ensure-electron.mjs",
     "dist": "node scripts/dist.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit --incremental --tsBuildInfoFile node_modules/.cache/tsc/typecheck.tsbuildinfo",
     "pretest": "node scripts/ensure-node-pty.mjs",
     "test": "vitest run && vitest run --config vitest.live.config.mts && node --test scripts/*.test.mjs"
   },
