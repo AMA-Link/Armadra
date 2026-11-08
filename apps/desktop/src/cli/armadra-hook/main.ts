@@ -30,6 +30,7 @@ import { run as runDoctor } from "./doctor.js";
 import { askpassMode, run as runAskpass } from "./askpass.js";
 import { run as runHook } from "./hook.js";
 import { run as runMcp } from "./mcp.js";
+import { run as runTool } from "./tool.js";
 import { run as runModHello } from "./mod-hello.js";
 import { CLIENT_VERSION, USAGE } from "./usage.js";
 
@@ -72,6 +73,9 @@ export async function main(argv: string[]): Promise<number> {
     case "mcp":
       // The canvas tools as an MCP server on stdio, for ACP sessions (§5.8).
       return runMcp(argv.slice(1));
+    case "tool":
+      // One tool call for the omp extension's in-process tools (§110).
+      return runTool(argv.slice(1));
     case "mod-hello":
       // Internal: the Claude Code mod's hello when its own fetch is refused
       // (contract §57.3). Quiet and always 0, like hook mode.

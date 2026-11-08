@@ -143,6 +143,7 @@ USAGE:
   armadra-hook browser <verb> [--flag value]   drive a linked browser node
   armadra-hook doctor                          diagnose the local hook endpoint
   armadra-hook mcp                             serve the canvas tools over MCP on stdio (ACP sessions)
+  armadra-hook tool <name>                     one canvas tool call: JSON arguments on stdin (omp extension)
 
 CONTEXT VERBS:
   list                      list the nodes linked to this one
