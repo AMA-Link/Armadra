@@ -38,7 +38,13 @@ import {
 } from "../terminal/environment";
 import { type AcpAdapter, type AcpResume, acpLaunchPlan } from "./adapters";
 import { checkCliFloor } from "./cli-floor";
-import { type CanvasMcpInput, acpMcpServers, sessionOpener } from "./mcp";
+import {
+  type CanvasMcpInput,
+  acpMcpServers,
+  copilotAcpMcpArgs,
+  sessionOpener,
+  type AcpStdioMcpServer,
+} from "./mcp";
 import {
   type AcpElicitationSettlement,
   AcpError,
@@ -1131,14 +1137,20 @@ export function adapterStartOptions(
   const mode = options.mode ?? "default";
   const { canvasMcp, mcpServers: given, ...rest } = options;
   // 给了现成的服务器（SSH 节点：执行主机上的 Hook 客户端）就用它们。
-  const mcpServers = given ?? acpMcpServers(adapter, canvasMcp);
+  const wanted = given ?? acpMcpServers(adapter, canvasMcp);
+  // 只收 http / sse 的适配器（Copilot）：stdio 服务器改走启动参数（#858）。
+  const viaArgs = adapter.injection.mcpViaArgs === true;
+  const mcpServers = viaArgs ? [] : wanted;
+  const mcpArgs = viaArgs
+    ? wanted.flatMap((server) => copilotAcpMcpArgs(server as AcpStdioMcpServer))
+    : [];
   return {
     ...rest,
     env,
     ...(mcpServers.length === 0 ? {} : { mcpServers }),
     agentId: adapter.agentId,
     program: target?.program ?? resolved,
-    args: [...(target?.args ?? []), ...plan.args],
+    args: [...(target?.args ?? []), ...plan.args, ...mcpArgs],
     ...(plan.modeId === undefined
       ? {}
       : {
