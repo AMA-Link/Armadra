@@ -237,6 +237,7 @@ describe("reading and acknowledging", () => {
       view.bundle.handoffId,
       targetSession,
       1,
+      { format: "json" },
     );
     expect(body).toMatchObject({ protocol: "armadra.handoff.v1" });
     expect(String(body.trust)).toContain("Reading does not acknowledge");

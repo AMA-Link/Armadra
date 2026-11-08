@@ -331,6 +331,10 @@ async function handoffRead(
   if (generation === undefined || generation < 0) {
     throw Refusal.forbidden("Current generation binding is required");
   }
+  const format = args.text("format") ?? "md";
+  if (format !== "md" && format !== "json") {
+    throw Refusal.badRequest("--format must be md or json");
+  }
   const reader = context.handoffReader;
   if (reader === undefined) {
     throw new Refused(
@@ -340,7 +344,7 @@ async function handoffRead(
     );
   }
   try {
-    const value = await reader(caller, id, sessionId, generation);
+    const value = await reader(caller, id, sessionId, generation, { format });
     return raw(value, "Frozen peer context");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

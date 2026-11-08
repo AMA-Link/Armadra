@@ -383,8 +383,10 @@ async function ack(
       | { message_key: string }
       | undefined
   )?.message_key;
-  const handoffId = key?.startsWith("handoff:")
-    ? key.slice("handoff:".length)
+  // 只有 `handoff:<id>` 是交接的收件箱回执；目标回给来源的
+  // `handoff:<id>:result` 是普通消息，来源确认它不需要交接会话绑定。
+  const handoffId = /^handoff:[^:]+$/.test(key ?? "")
+    ? key?.slice("handoff:".length)
     : undefined;
   if (handoffId !== undefined) {
     const sessionId = args.text("sessionId");

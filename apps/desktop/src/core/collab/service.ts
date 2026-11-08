@@ -152,11 +152,17 @@ export interface HandoffBridge {
  * needs this, and a module that only implements one of them should not have to
  * stub the other.
  */
+export interface HandoffReadOptions {
+  /** `md`（缺省）是任务简报；`json` 是冻结的包原样。 */
+  readonly format?: "md" | "json";
+}
+
 export type HandoffReader = (
   caller: Caller,
   handoffId: string,
   sessionId: string,
   generation: number,
+  options?: HandoffReadOptions,
 ) => Promise<Record<string, unknown>>;
 
 export interface CollabContext {

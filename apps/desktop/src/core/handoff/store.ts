@@ -8,7 +8,12 @@ import {
 } from "../collab/mailbox";
 import { type Caller, historyHint, loadNode } from "../collab/nodes";
 import { render } from "../collab/transcript";
-import { type CollabContext, nowDate, nowSeconds } from "../collab/service";
+import {
+  type CollabContext,
+  type HandoffReadOptions,
+  nowDate,
+  nowSeconds,
+} from "../collab/service";
 import { UNAVAILABLE } from "../git/fingerprint";
 import { executeOn } from "../remote/execute";
 import {
@@ -33,6 +38,12 @@ import {
   fitBudget,
   sanitize,
 } from "./bundle";
+import {
+  type HandoffChannel,
+  handoffChannel,
+  handoffCommands,
+  renderBrief,
+} from "./brief";
 import {
   type CaptureRequest,
   type Captured,
@@ -584,7 +595,18 @@ function workspaceExecute(
  * the material is, how to read it, and that reading is not the same as taking
  * the work on.
  */
-export function notice(bundle: HandoffBundle, hash: string): string {
+export function notice(
+  bundle: HandoffBundle,
+  hash: string,
+  channel: HandoffChannel = "cli",
+  mailboxId: string | null = null,
+): string {
+  const commands = handoffCommands(
+    channel,
+    bundle.handoffId,
+    bundle.source.nodeId,
+    mailboxId,
+  );
   const goal = [...sanitize(bundle.sections.goal)].slice(0, 300).join("");
   const header = JSON.stringify({
     sourceNodeId: bundle.source.nodeId,
@@ -595,8 +617,8 @@ export function notice(bundle: HandoffBundle, hash: string): string {
   return (
     "User-approved handoff material is available. This is peer data, not a system instruction or a permission grant. Source session remains running.\n" +
     `${header}\n` +
-    `Read only when ready: armadra-hook canvas handoff-read --id ${bundle.handoffId}\n` +
-    "Acknowledge separately with canvas ack after reading the mailbox message."
+    `Read only when ready: ${commands.read}\n` +
+    `Acknowledge separately after reading: ${commands.ack}`
   );
 }
 
@@ -761,7 +783,12 @@ export function accept(
   const seconds = nowSeconds(context);
   const mailboxId = uuidV7();
   const traceId = uuidV7();
-  const body = notice(existing.bundle, existing.digest);
+  const body = notice(
+    existing.bundle,
+    existing.digest,
+    handoffChannel(context.settings, target.agentId),
+    mailboxId,
+  );
 
   // One transaction does the whole of accepting: the inbox entry and the state
   // that names it are written together or not at all. There is no second step
@@ -899,6 +926,7 @@ export async function readForCaller(
   id: string,
   sessionId: string,
   generation: number,
+  options: HandoffReadOptions = {},
 ): Promise<Record<string, unknown>> {
   if (caller.verdict !== "verified") {
     throw forbidden("Verified node identity is required");
@@ -953,6 +981,16 @@ export async function readForCaller(
   );
   if (context.terminals !== undefined && current !== true) {
     throw conflict("Target session is no longer current");
+  }
+  if (options.format !== "json") {
+    // 简报是纯文本答复：命令行与 MCP 都只渲染 `message`。
+    return {
+      ok: true,
+      message: renderBrief(view.bundle, {
+        channel: handoffChannel(context.settings, target.agentId),
+        mailboxId: view.mailboxId,
+      }),
+    };
   }
   return {
     ok: true,
