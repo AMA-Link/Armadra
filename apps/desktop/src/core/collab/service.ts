@@ -144,6 +144,17 @@ export interface HandoffBridge {
   noteAcknowledged(mailboxId: string): void;
 }
 
+/** `handoff-read` 的可选参数：读哪一部分、简报格式、转录的游标与页大小、要不要原文。 */
+export interface HandoffReadOptions {
+  /** `brief`（缺省）或 `transcript`：来源转录从头到冻结边界，分页读。 */
+  readonly part?: "brief" | "transcript" | undefined;
+  /** 只对 `brief`：`md`（缺省）是任务简报；`json` 是冻结的包原样。 */
+  readonly format?: "md" | "json" | undefined;
+  readonly cursor?: number | undefined;
+  readonly limit?: number | undefined;
+  readonly raw?: boolean | undefined;
+}
+
 /**
  * `handoff-read`, as the control dispatcher sees it.
  *
@@ -157,6 +168,7 @@ export type HandoffReader = (
   handoffId: string,
   sessionId: string,
   generation: number,
+  options?: HandoffReadOptions,
 ) => Promise<Record<string, unknown>>;
 
 export interface CollabContext {

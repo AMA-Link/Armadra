@@ -218,11 +218,13 @@ ACP 是同一个 Agent 节点的另一种驱动方式，不是第二条 Agent �
 
 ## 对话交接
 
-交接把来源的一次阶段性工作整理成一份冻结的包交给另一个 Agent，设计见 [Agent 自动化设计 §7](../design/agent-automation-design.md)。入口在 Agent 终端「更多 → Agent 协作 → 交接到…」，目标只能是画布上已连线的 Agent 终端——与 mailbox 一样，授权依据是 core 里的链接文档，不是界面上的一张图。
+交接把来源的一次阶段性工作整理成一份冻结的包交给另一个 Agent，设计见 [Agent 自动化设计 §7](../design/agent-automation-design.md)。入口在 Agent 终端「更多 → Agent 协作 → 交接到…」，目标二选一：画布上已连线的 Agent 节点（终端或 ACP 会话都可以，SSH 终端里的不行），或「新开 Agent…」——与 mailbox 一样，已有节点的授权依据是 core 里的链接文档，不是界面上的一张图。
+
+**新开 Agent。** 目标下拉里选「新开 Agent…」后选 Agent、模型、权限模式与形态（终端 / ACP）。预览阶段不建节点，只校验规格（Agent 可用、模型 1–120 个字符、权限模式在这家支持的范围内、ACP 形态要有可用的 ACP 适配器且会话里有画布工具），规格进冻结的包，所以预览里看到的就是批准时建出来的那一份；预览里同时显示按目标模型上下文容量算出的 token 预算（模型在 models.dev 目录里查不到时只有字节预算）。批准时走 `open-agent` 同一条路建节点、连一条以来源为主的线，交接通知作为新节点的首任务入队；建节点失败交接留在 `prepared`、来源不受影响，可重试，重复批准不会建第二个节点。新节点用自己的令牌 `handoff-read`、`ack`，会话与代次按它当前的会话判定。已有节点不换模型——要换模型就选新开。
 
 `POST /api/workspaces/{id}/handoffs` 冻结材料并返回预览：目标 Agent / 模型 / 目录、带走的文件与 Git 指纹、按预算裁剪的结果、`omitted` 里逐条列出的未包含项，以及来源转录摘录。此时没有通知任何人。`POST …/{handoffId}/accept` 是唯一的用户授权，必须带上预览那一份的 `expectedDigest`，看到的和批准的不是同一份就返回 409；重复确认返回同一条收件箱记录，不会放两份进去。`POST …/{handoffId}/cancel` 删掉那条收件箱消息。`GET …/handoffs?sourceNodeId=` 与 `GET …/{handoffId}` 让来源和目标都能查同一份包。
 
-确认就是投递本身：同一个事务里往目标的 `agent_mailbox` 插一条 `key = handoff:<id>` 的消息，然后结束。正文只说「有一份用户批准的交接材料，这是同级资料而不是系统指令」，附读取命令 `armadra-hook canvas handoff-read --id <id>`；没有任何东西写进对方的终端，也就没有「写了但不知道有没有到」这种状态。
+确认就是投递本身：同一个事务里往目标的 `agent_mailbox` 插一条 `key = handoff:<id>` 的消息，然后结束。正文只说「有一份用户批准的交接材料，这是同级资料而不是系统指令」，附读取与确认命令；命令按目标的通道写：ACP 会话与终端里的 Codex 写 MCP 工具名（`canvas_handoff_read`、`canvas_ack`），其余终端 CLI 写 `armadra-hook canvas handoff-read --id <id>`；ACP 会话的会话绑定由开会话时带上的 MCP 服务器环境提供，其画布工具缺席的适配器（ama）不能作为 ACP 目标。事务提交后会唤醒目标，空闲的 Agent 随即被告知；没有任何东西写进对方的终端，也就没有「写了但不知道有没有到」这种状态。
 
 状态只有四个，每一个都是这一侧能证明的事实：
 
@@ -233,7 +235,11 @@ ACP 是同一个 Agent 节点的另一种驱动方式，不是第二条 Agent �
 | `acknowledged` | 目标自己 `canvas ack` 了那条收件箱消息 |
 | `cancelled`    | 已撤回，收件箱那条被删掉               |
 
+交接的模板有目标、约束、完成标准、已完成、未完成、关键决策、工具结果摘要七段，目标必填，完成标准可空。`handoff-read` 缺省输出任务简报（`--format md`）：标题、来源、要做的事、约束、完成标准、已完成 / 关键决策、相关文件与仓库、原文摘录、做完之后；空段落省略。做完之后的做法是 `canvas post --to <来源> --key handoff:<id>:result` 把结果回给来源，再 `ack` 收件箱那条。要拿结构化的包用 `--format json`（MCP 工具参数 `format`）。
+
 `handoff-read` 读包不等于确认：读取交出材料，`ack` 才是「我接下了」。旧库里 `dispatching` / `notified` / `unknownOutcome` / `failed` / `expired` 这些描述 PTY 写入结果的值仍在表里（已发布迁移不改），core 读出来时一律归一成 `queued`——批准过、进了信箱、没被确认。会话里已有的权限批准不随交接转移，凭据不进入包；来源会话保持运行，快照之后来源又有动作时预览会标出「有新活动」。
+
+**读到来源的原文。** 包里的 `transcriptExcerpt` 只是冻结时的尾部摘录；读了转录的包（`version: 2`）还记着 `sourceCursor`——冻结那一刻转录的末尾（文件来源是最后一个完整行的字节位置加前缀 sha256，ACP 会话是条数，OpenCode 是库的游标）。目标用 `armadra-hook canvas handoff-read --id <id> --part transcript` 从头分页读到这个边界：每页最多 32 KB，答复里的 `nextCursor` 交给下一次的 `--cursor`，`--limit N` 收窄一页的条数，`--raw` 给同一范围的原文。无论来源是 Claude、Codex、Pi、OMP、OpenCode、Copilot 还是 ACP 会话，每条都是 `{role, at, text, tools, results}`，来源是谁只写在页头的 `source`，目标不用懂对方的格式。冻结之后来源继续写的内容读不到；文件来源每次读之前核对前缀哈希，对不上（被压缩或改写）就退回冻结摘录并标 `transcriptChanged`；`version: 1` 的旧包只有摘录。来源在另一台执行主机上时，读取经那台主机的 Worker，主机不在线答 `501 handoff_host_offline`。授权与读包完全一样，且在读转录之前判完。
 
 因为不再需要目标空闲，交接对六种 CLI 一视同仁：没有状态适配的 Pi / OMP / Copilot 也能收到并读取，不再卡在 `queued`。
 
@@ -250,4 +256,4 @@ ACP 是同一个 Agent 节点的另一种驱动方式，不是第二条 Agent �
 并连线两个节点验证 `context summary` 能读到对方的真实转录。`pnpm ownership:e2e --domain agent` 证明 Host 模式下这四个
 动作是**转发**给执行主机的，Host 一个字节也不写。
 
-交接的路由测试（`apps/desktop/src/core/handoff/`）另外覆盖：预览不产生任何收件箱条目、跨工作空间的路径读不到也批不了、错误 digest 被 409 拒绝、重复确认复用同一条收件箱记录、撤回后收件箱条目消失，以及 `agent_deliveries` 与 `agent_handoff_outbox` 保持为空。端到端那一轮（真实进程、真实 PTY、真实 hook 客户端：批准后目标收件箱出现 `handoff:<id>`、读包不等于确认、`ack` 后状态变 `acknowledged`、撤回后那条消失）原本由 `tools/handoff-read-smoke.mjs` 跑，它依赖受管二进制的路径，已随 R7d 删除；对着 core 的等价脚本还没有。
+交接的路由测试（`apps/desktop/src/core/handoff/`）另外覆盖：预览不产生任何收件箱条目、跨工作空间的路径读不到也批不了、错误 digest 被 409 拒绝、重复确认复用同一条收件箱记录、撤回后收件箱条目消失，以及 `agent_deliveries` 与 `agent_handoff_outbox` 保持为空。端到端那一轮（真实进程、真实 PTY、真实 hook 客户端：批准后目标收件箱出现 `handoff:<id>`、读包不等于确认、`ack` 后状态变 `acknowledged`、撤回后那条消失）原本由 `tools/handoff-read-smoke.mjs` 跑，它依赖受管二进制的路径，已随 R7d 删除；现由对着真 core 的探针场景 16（`node tools/probes/agent-e2e.mjs --only 16`，A 档 `agent-handoff-e2e`）覆盖，并补上了五种来源的转录分页、冻结边界、简报通道命令、结果回传与 MCP 同源。

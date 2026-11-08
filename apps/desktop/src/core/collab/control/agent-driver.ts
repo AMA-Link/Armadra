@@ -23,6 +23,24 @@ export function setAdapterProbeForTest(next?: Probe): void {
   probe = next ?? ((program) => resolveCommand(program));
 }
 
+/**
+ * 这家 Agent 能不能开 ACP 会话：有 ACP 适配器、适配器程序装了，且不是「自定义
+ * Agent 用自己的启动程序」（ACP 会话起的是基础适配器，会绕过它）。与
+ * {@link newNodeView} 判 `acpInstalled` / `ownLaunch` 同一条。
+ */
+export function acpSurfaceAvailable(
+  settings: AgentSettings,
+  agentId: string,
+): boolean {
+  const adapter = adapterFor(settings, agentId);
+  if (adapter === undefined || probe(adapter.program) === undefined) {
+    return false;
+  }
+  return !(
+    customAgent(settings, agentId) !== undefined && adapter.support !== "native"
+  );
+}
+
 let preferenceOverride: AgentDriver | undefined;
 
 /** 仅测试用：不装设置域也能指定用户的默认视图偏好；不传则恢复。 */
@@ -44,8 +62,13 @@ export function setViewPreferenceForTest(next?: AgentDriver): void {
 export function newNodeView(
   settings: AgentSettings,
   agentId: string,
-  options: { readonly resume?: boolean } = {},
+  options: {
+    readonly resume?: boolean;
+    /** 调用方指定的形态（交接新开目标）：不看用户的默认视图偏好。 */
+    readonly surface?: AgentDriver;
+  } = {},
 ): { driver?: AgentDriver; view?: AgentView } {
+  if (options.surface !== undefined) return { driver: options.surface };
   const document = settingsDomain()?.settings.snapshot();
   const setting =
     preferenceOverride ??

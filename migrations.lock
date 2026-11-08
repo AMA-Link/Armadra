@@ -63,6 +63,7 @@
     "0061_router_replies.sql": "c77cb23fed7376e7fdd7214e7d6818e7d728314ed84a05e925088c2646d82a9b",
     "0062_recovery_pending.sql": "285271ea992f88aca8c706418d6753e30da86dc262e1724b2d3045ac4ff61096",
     "0063_pr_threads.sql": "6a7306dd2178ada9f3030b51378845a74f0ed186b620ebdcfe2742eafbeca657",
-    "0064_router_intake.sql": "8140b4cce5edd66731b16e35c9659380b04254660d5b9c87b251ccacd78ce4f7"
+    "0064_router_intake.sql": "8140b4cce5edd66731b16e35c9659380b04254660d5b9c87b251ccacd78ce4f7",
+    "0065_handoff_created_target.sql": "ea104f19844953e3096492569bb3edfed19780b0302c5822947dc1f8aa7275e4"
   }
 }

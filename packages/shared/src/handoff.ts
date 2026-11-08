@@ -5,27 +5,47 @@ const generation = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 export const handoffSectionsSchema = z.object({
   goal: text.min(1),
   constraints: text.default(""),
+  acceptance: text.default(""),
   completed: text.default(""),
   pending: text.default(""),
   decisions: text.default(""),
   toolSummary: text.default(""),
 });
+/** 新开 Agent 目标的规格（契约 §39.8）：预览不建节点，批准时才建。 */
+export const handoffNewTargetSchema = z.object({
+  kind: z.literal("new"),
+  agentId: z.string().min(1),
+  model: z.string().min(1).max(120).optional(),
+  permissionMode: z.string().min(1).optional(),
+  surface: z.enum(["terminal", "acp"]),
+  title: z.string().min(1).max(160).optional(),
+});
+export const handoffNodeTargetSchema = z.object({
+  kind: z.literal("node"),
+  nodeId: z.string().uuid(),
+  sessionId: z.string().uuid(),
+  generation,
+});
+export const handoffTargetSchema = z.discriminatedUnion("kind", [
+  handoffNodeTargetSchema,
+  handoffNewTargetSchema,
+]);
 export const handoffPrepareSchema = z.object({
   sourceNodeId: z.string().uuid(),
   sourceSessionId: z.string().uuid(),
   sourceGeneration: generation,
-  targetNodeId: z.string().uuid(),
-  targetSessionId: z.string().uuid(),
-  targetGeneration: generation,
+  target: handoffTargetSchema,
   sections: handoffSectionsSchema,
   filePaths: z.array(z.string().min(1).max(4_000)).max(32).default([]),
   byteBudget: z.union([z.literal(8192), z.literal(16384), z.literal(32768)]),
   includeTranscript: z.boolean().default(true),
 });
+/** 空串：新开目标在预览时还没有节点与会话。 */
+const maybeUuid = z.union([z.string().uuid(), z.literal("")]);
 export const handoffIdentitySchema = z.object({
-  nodeId: z.string().uuid(),
+  nodeId: maybeUuid,
   nodeTitle: z.string(),
-  sessionId: z.string().uuid(),
+  sessionId: maybeUuid,
   generation,
   agentId: z.string(),
   provider: z.string(),
@@ -37,12 +57,15 @@ export const handoffIdentitySchema = z.object({
   workingDirectory: z.string(),
 });
 export const handoffBundleSchema = z.object({
-  version: z.literal(1),
+  // 1：只有冻结摘录；2：另带 `sourceCursor`（契约 §21.1）。
+  version: z.union([z.literal(1), z.literal(2)]),
   handoffId: z.string().uuid(),
   workspaceId: z.string().uuid(),
   createdAt: z.string(),
   source: handoffIdentitySchema,
   target: handoffIdentitySchema,
+  /** 目标是新开的 Agent 时的规格；有它则 `target` 是占位身份。 */
+  targetSpec: handoffNewTargetSchema.optional(),
   cutoff: z.object({
     kind: z.enum(["transcriptBytes", "terminalLog", "unavailable"]),
     reference: z.string().nullable(),
@@ -78,14 +101,27 @@ export const handoffBundleSchema = z.object({
    * 本机读、或没有读转录时不出现。
    */
   capturedOn: z.string().optional(),
+  /** 版本 2：冻结时来源转录的末尾，`handoff-read --part transcript` 读到这里为止。 */
+  sourceCursor: z
+    .object({
+      agentId: z.string(),
+      locatedKey: z.string(),
+      executionHost: z.string(),
+      endOffset: z.number().int().nonnegative(),
+      prefixSha256: z.string().nullable(),
+      lastEntrySha256: z.string().optional(),
+      unit: z.enum(["bytes", "entries", "opaque"]),
+    })
+    .optional(),
   attachments: z.array(z.never()),
   budget: z.object({
     byteLimit: z.number().int().positive(),
     usedBytes: z.number().int().nonnegative(),
-    tokenEstimate: z.null(),
+    // 目标模型的容量查得到时才有（契约 §39.8）；查不到时都是 null。
+    tokenEstimate: z.number().int().nonnegative().nullable(),
     capacityTokens: z.number().int().positive().nullable(),
-    availableTokens: z.null(),
-    reservedTokens: z.null(),
+    availableTokens: z.number().int().positive().nullable(),
+    reservedTokens: z.number().int().positive().nullable(),
     truncated: z.boolean(),
     omitted: z.array(z.string()),
   }),
@@ -116,11 +152,15 @@ export const handoffViewSchema = z.object({
   acceptedAt: z.string().nullable(),
   updatedAt: z.string(),
   sourceHasNewActivity: z.boolean(),
+  /** 新开目标在 accept 时建出来的节点；其余情形为 null。 */
+  createdTargetNodeId: z.string().nullable().default(null),
 });
 export const handoffListSchema = z.array(handoffViewSchema);
 /** `handoff/prepare` 的 501：来源 Agent 所在主机采集不了（契约 §21.1）。 */
 export const HANDOFF_HOST_OFFLINE = "handoff_host_offline";
 export type HandoffSections = z.infer<typeof handoffSectionsSchema>;
 export type HandoffPrepare = z.infer<typeof handoffPrepareSchema>;
+export type HandoffNewTarget = z.infer<typeof handoffNewTargetSchema>;
+export type HandoffTarget = z.infer<typeof handoffTargetSchema>;
 export type HandoffBundle = z.infer<typeof handoffBundleSchema>;
 export type HandoffView = z.infer<typeof handoffViewSchema>;

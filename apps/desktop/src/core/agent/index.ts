@@ -154,8 +154,15 @@ export function install(context: CoreContext): CollabContext {
         ),
       noteAcknowledged: (mailboxId) => noteAcknowledged(withHandoff, mailboxId),
     },
-    handoffReader: (caller, handoffId, sessionId, generation) =>
-      readForCaller(withHandoff, caller, handoffId, sessionId, generation),
+    handoffReader: (caller, handoffId, sessionId, generation, options) =>
+      readForCaller(
+        withHandoff,
+        caller,
+        handoffId,
+        sessionId,
+        generation,
+        options,
+      ),
   };
   assembled = withHandoff;
   setControlDispatcher(createControlDispatcher(withHandoff));

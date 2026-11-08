@@ -239,8 +239,8 @@ export function agentFixture(): AgentFixture {
         authorizeMailboxAck(collab, caller, id, sessionId, generation),
       noteAcknowledged: (mailboxId) => noteAcknowledged(collab, mailboxId),
     },
-    handoffReader: (caller, id, sessionId, generation) =>
-      readForCaller(collab, caller, id, sessionId, generation),
+    handoffReader: (caller, id, sessionId, generation, options) =>
+      readForCaller(collab, caller, id, sessionId, generation, options),
   };
   setControlDispatcher(createControlDispatcher(collab));
   installRoutes({ server, collab });

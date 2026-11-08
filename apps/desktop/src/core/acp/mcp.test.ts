@@ -8,13 +8,19 @@ import { afterEach, describe, expect, it } from "vitest";
 import { hookEndpointFile } from "../paths";
 import { hookClient, setHookClient } from "../terminal/environment";
 import { type AcpAdapter, acpAdapter } from "./adapters";
-import { type AcpHostSession, startAcp, startAdapter } from "./host";
+import {
+  type AcpHostSession,
+  adapterStartOptions,
+  startAcp,
+  startAdapter,
+} from "./host";
 import {
   type AcpSessionClient,
   CANVAS_MCP_NAME,
   acpMcpServers,
   canvasMcpServer,
   clientAcceptsMcpServers,
+  copilotAcpMcpArgs,
   sessionOpener,
 } from "./mcp";
 
@@ -86,6 +92,33 @@ describe("acpMcpServers", () => {
     expect(acpMcpServers(acpAdapter("claude")!, undefined)).toEqual([]);
     setHookClient(undefined);
     expect(acpMcpServers(acpAdapter("claude")!, INPUT)).toEqual([]);
+  });
+});
+
+describe("copilotAcpMcpArgs", () => {
+  it("turns the stdio server into an inline config plus a scoped allow", () => {
+    const server = canvasMcpServer({ ...INPUT, hookBin: HOOK })!;
+    const args = copilotAcpMcpArgs(server);
+    expect(args[0]).toBe("--additional-mcp-config");
+    expect(args.slice(2)).toEqual(["--allow-tool", CANVAS_MCP_NAME]);
+    const config = JSON.parse(args[1] as string);
+    const entry = config.mcpServers[CANVAS_MCP_NAME];
+    expect(Object.keys(config.mcpServers)).toEqual([CANVAS_MCP_NAME]);
+    expect(entry).toMatchObject({
+      type: "local",
+      command: HOOK,
+      args: ["mcp"],
+      tools: ["*"],
+    });
+    expect(entry.env.ARMADRA_NODE_ID).toBe("node-7");
+    expect(JSON.stringify(entry.env)).not.toMatch(/token/i);
+  });
+
+  it("is what the Copilot adapter uses instead of session/new (#858)", () => {
+    expect(acpAdapter("copilot")!.injection.mcpViaArgs).toBe(true);
+    for (const id of ["claude", "codex", "opencode", "pi", "omp"]) {
+      expect(acpAdapter(id)!.injection.mcpViaArgs).toBeUndefined();
+    }
   });
 });
 
@@ -212,6 +245,31 @@ describe.skipIf(process.platform === "win32")(
       program,
       profileFlag: undefined,
     } as AcpAdapter;
+
+    it("moves the Copilot server from session/new to argv", () => {
+      setHookClient(HOOK);
+      const viaArgs: AcpAdapter = {
+        ...(acpAdapter("copilot") as AcpAdapter),
+        program,
+      };
+      const plan = adapterStartOptions(viaArgs, {
+        cwd: tmpdir(),
+        env: onPath(program),
+        canvasMcp: INPUT,
+      });
+      if (plan instanceof Error) throw plan;
+      expect(plan).not.toHaveProperty("mcpServers");
+      expect(plan.args).toContain("--additional-mcp-config");
+      expect(plan.args.slice(-2)).toEqual(["--allow-tool", CANVAS_MCP_NAME]);
+      const other = adapterStartOptions(withMcp, {
+        cwd: tmpdir(),
+        env: onPath(program),
+        canvasMcp: INPUT,
+      });
+      if (other instanceof Error) throw other;
+      expect(other.mcpServers).toHaveLength(1);
+      expect(other.args).not.toContain("--additional-mcp-config");
+    });
 
     it("asks for the canvas server only where the table says MCP", async () => {
       setHookClient(HOOK);

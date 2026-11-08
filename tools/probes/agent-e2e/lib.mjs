@@ -50,6 +50,7 @@ export const only =
         "11",
         "12",
         "13",
+        "16",
       ]);
 // `--backend direct`：终端后端改成 direct（非 tmux）再跑。缺省按平台（macOS
 // 装了 tmux 就是 tmux）。

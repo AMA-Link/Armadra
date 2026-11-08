@@ -3,16 +3,24 @@ import type { TimelineItem } from "@armadra/shared";
 import {
   entriesFromTimeline,
   isAcpMirror,
+  parseMirrorLine,
   readMirrorEntries,
   sliceTimelineEntries,
 } from "./acp-mirror";
 import { claudeAdapter } from "./claude";
 import { codexAdapter } from "./codex";
-import { copilotAdapter } from "./copilot";
+import { copilotAdapter, eventEntries } from "./copilot";
+import { entriesFromJson } from "./entries";
 import { readLocatedEntries, reportedFile } from "./files";
 import { opencodeAdapter } from "./opencode";
-import { ompAdapter, piAdapter } from "./pi";
-import type { EntryRange, HistoryAdapter, Located, SessionHint } from "./types";
+import { ompAdapter, piAdapter, piEntries } from "./pi";
+import type {
+  EntryRange,
+  HistoryAdapter,
+  Located,
+  SessionHint,
+  TranscriptEntry,
+} from "./types";
 
 /**
  * 本地历史适配器的注册表（设计 `cli-collaboration.md` §2）。
@@ -119,4 +127,38 @@ export function describeHistoryCursor(
   return located.path === undefined && describe !== undefined
     ? describe(offset)
     : `${offset} 字节`;
+}
+
+/** 一份定位结果的游标按什么计：文件按字节，ACP 时间线按条，其余（OpenCode 的库）不透明。 */
+export type HistoryCursorUnit = "bytes" | "entries" | "opaque";
+
+export function historyCursorUnit(located: Located): HistoryCursorUnit {
+  if (located.path === undefined) return "opaque";
+  return timelineEntriesOf(located.path) !== undefined ? "entries" : "bytes";
+}
+
+/**
+ * 一段文件文本（从某一行的行首开始）→ 归一化记录，认的是这家 CLI 的行形状。
+ * 游标是字节的来源按窗口读文件时用：偏移相对于这段文本的起点。
+ */
+export function parseHistoryText(
+  agentId: string,
+  located: Located,
+  text: string,
+): TranscriptEntry[] {
+  if (isAcpMirror(located.path)) {
+    const entries: TranscriptEntry[] = [];
+    let offset = 0;
+    for (const line of text.split("\n")) {
+      offset += Buffer.byteLength(line, "utf8") + 1;
+      if (line.trim() === "") continue;
+      const entry = parseMirrorLine(line, offset);
+      if (entry !== undefined) entries.push(entry);
+    }
+    return entries;
+  }
+  const adapter = historyAdapter(agentId);
+  if (adapter === piAdapter || adapter === ompAdapter) return piEntries(text);
+  if (adapter === copilotAdapter) return eventEntries(text);
+  return entriesFromJson(text);
 }

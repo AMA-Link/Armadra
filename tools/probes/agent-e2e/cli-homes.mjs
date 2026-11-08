@@ -190,7 +190,7 @@ export function prepareCliHomes(scratch, { dirs = {}, only } = {}) {
       home: h,
       copilotHome,
       secrets: { COPILOT_GITHUB_TOKEN: token },
-      model: "gpt-5-mini",
+      model: "claude-haiku-5.5",
     };
   } else {
     clis.copilot = { skip: "没有 copilot，或 `gh auth token` 取不到令牌" };

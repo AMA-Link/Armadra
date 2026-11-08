@@ -320,6 +320,8 @@ const handoffViewWireSchema = loose({
   acceptedAt: z.string().nullable(),
   updatedAt: z.string(),
   sourceHasNewActivity: z.boolean(),
+  /** 新开目标在 accept 时建出来的节点；其余情形为 null。 */
+  createdTargetNodeId: z.string().nullable(),
   /** 投递试过几次；这个构建写的只有 0 或 1。 */
   attempts: z.number(),
 });
@@ -690,8 +692,10 @@ export const agents = {
       }),
     ),
   /**
-   * 冻结材料并生成预览，不通知任何人。来源与目标的身份、代数、模板、字节预算的
-   * 检查都在域里；来源 Agent 所在的执行主机采集不了转录时答 501
+   * 冻结材料并生成预览，不通知任何人。`target` 二选一：`{ kind: "node", nodeId,
+   * sessionId, generation }`（已连线的 Agent 节点），或 `{ kind: "new", agentId,
+   * model?, permissionMode?, surface, title? }`（批准时才新开，预览不建节点）。
+   * 来源与目标的身份、代数、新开规格、模板、字节预算的检查都在域里；来源 Agent 所在的执行主机采集不了转录时答 501
    * `handoff_host_offline`（域里的码，注册表不登记）。
    */
   prepareHandoff: oc
@@ -700,9 +704,7 @@ export const agents = {
         sourceNodeId: z.string().optional(),
         sourceSessionId: z.string().optional(),
         sourceGeneration: z.number().optional(),
-        targetNodeId: z.string().optional(),
-        targetSessionId: z.string().optional(),
-        targetGeneration: z.number().optional(),
+        target: jsonObjectSchema.optional(),
         sections: jsonObjectSchema.optional(),
         filePaths: z.array(z.string()).optional(),
         byteBudget: z.number().optional(),

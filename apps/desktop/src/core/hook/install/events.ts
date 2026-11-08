@@ -18,7 +18,7 @@
 export const HOOK_CLIENT_REVISION = 6;
 
 /** The revision of the skill half, mirroring `collab::skills::SKILLS_REVISION`. */
-export const SKILLS_REVISION = 25;
+export const SKILLS_REVISION = 26;
 
 /**
  * The revision of the Claude Code mod (`<data>/integration/claude/mod/`,

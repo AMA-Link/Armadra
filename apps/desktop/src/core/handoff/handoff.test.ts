@@ -28,9 +28,12 @@ function request(overrides: Record<string, unknown> = {}) {
     sourceNodeId: source,
     sourceSessionId: sourceSession,
     sourceGeneration: 1,
-    targetNodeId: target,
-    targetSessionId: targetSession,
-    targetGeneration: 1,
+    target: {
+      kind: "node",
+      nodeId: target,
+      sessionId: targetSession,
+      generation: 1,
+    },
     sections: { ...EMPTY_SECTIONS, goal: "finish the port" },
     filePaths: [],
     byteBudget: 8192,
@@ -71,7 +74,7 @@ describe("prepare", () => {
     expect(view.attempts).toBe(0);
     expect(view.bundle.trust).toBe("peerDataNotSystemInstructions");
     expect(view.bundle.sourcePreserved).toBe(true);
-    expect(view.bundle.version).toBe(1);
+    expect(view.bundle.version).toBe(2);
     // Nothing is in anybody's inbox yet.
     expect(
       fixture.database.prepare("SELECT COUNT(*) AS n FROM agent_mailbox").get(),
@@ -83,8 +86,12 @@ describe("prepare", () => {
     const strangerSession = fixture.session(stranger, "claude");
     await expect(
       prepared({
-        targetNodeId: stranger,
-        targetSessionId: strangerSession,
+        target: {
+          kind: "node",
+          nodeId: stranger,
+          sessionId: strangerSession,
+          generation: 1,
+        },
       }),
     ).rejects.toThrow(/context link/i);
   });
@@ -95,7 +102,14 @@ describe("prepare", () => {
       prepared({ sections: { ...EMPTY_SECTIONS, goal: "   " } }),
     ).rejects.toThrow();
     await expect(
-      prepared({ targetNodeId: source, targetSessionId: sourceSession }),
+      prepared({
+        target: {
+          kind: "node",
+          nodeId: source,
+          sessionId: sourceSession,
+          generation: 1,
+        },
+      }),
     ).rejects.toThrow(/different target/i);
   });
 
@@ -160,6 +174,30 @@ describe("accept", () => {
     expect(fixture.terminal.writes).toHaveLength(0);
   });
 
+  it("nudges the target once, after the transaction, and not again on a repeat", async () => {
+    const frozen = await prepared();
+    expect(fixture.nudged).toEqual([]);
+    accept(fixture.collab, fixture.workspaceId, frozen.bundle.handoffId, {
+      expectedDigest: frozen.digest,
+    });
+    expect(fixture.nudged).toEqual([target]);
+    accept(fixture.collab, fixture.workspaceId, frozen.bundle.handoffId, {
+      expectedDigest: frozen.digest,
+    });
+    expect(fixture.nudged).toEqual([target]);
+  });
+
+  it("does not nudge when accepting is refused", async () => {
+    const view = await prepared();
+    fixture.database.prepare("DELETE FROM context_links").run();
+    expect(() =>
+      accept(fixture.collab, fixture.workspaceId, view.bundle.handoffId, {
+        expectedDigest: view.digest,
+      }),
+    ).toThrow();
+    expect(fixture.nudged).toEqual([]);
+  });
+
   it("refuses a digest that no longer matches the preview", async () => {
     const view = await prepared();
     expect(() =>
@@ -213,6 +251,7 @@ describe("reading and acknowledging", () => {
       view.bundle.handoffId,
       targetSession,
       1,
+      { format: "json" },
     );
     expect(body).toMatchObject({ protocol: "armadra.handoff.v1" });
     expect(String(body.trust)).toContain("Reading does not acknowledge");
