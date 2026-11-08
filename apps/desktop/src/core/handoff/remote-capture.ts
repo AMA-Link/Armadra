@@ -21,6 +21,12 @@ import {
   type TranscriptSource,
   type TranscriptTail,
 } from "./capture";
+import {
+  type RangeAnswer,
+  type RangeRequest,
+  type FrozenCursor,
+  rangeAnswerOf,
+} from "./source-range";
 
 /** 来源主机不在、没有 Worker 或连不上（契约 §21.1）。 */
 export const HANDOFF_HOST_OFFLINE = "handoff_host_offline";
@@ -122,6 +128,28 @@ export async function captureTranscript(
   return { capturedOn: hostId, transcript: tailOf(answer) };
 }
 
+function cursorOf(value: unknown): FrozenCursor | undefined {
+  const raw = value as Record<string, unknown> | null;
+  if (raw === null || typeof raw !== "object") return undefined;
+  if (
+    typeof raw.locatedKey !== "string" ||
+    raw.locatedKey === "" ||
+    typeof raw.endOffset !== "number" ||
+    !Number.isSafeInteger(raw.endOffset) ||
+    raw.endOffset < 0 ||
+    (raw.unit !== "bytes" && raw.unit !== "entries" && raw.unit !== "opaque") ||
+    (raw.prefixSha256 !== null && typeof raw.prefixSha256 !== "string")
+  ) {
+    return undefined;
+  }
+  return {
+    locatedKey: raw.locatedKey,
+    endOffset: raw.endOffset,
+    prefixSha256: raw.prefixSha256 as string | null,
+    unit: raw.unit,
+  };
+}
+
 /**
  * Worker 的答复是外来数据：只认三种形状，文本超过尾巴上限（加一点余量给
  * 归一化后的 JSONL）当作读不了，而不是照单全收。
@@ -134,10 +162,49 @@ export function tailOf(answer: unknown): TranscriptTail {
     return { state: "missing" };
   }
   if (tail.state === "read" && typeof tail.text === "string") {
-    return Buffer.byteLength(tail.text, "utf8") > TRANSCRIPT_TAIL_BYTES * 2
-      ? { state: "unreadable" }
-      : { state: "read", text: tail.text };
+    if (Buffer.byteLength(tail.text, "utf8") > TRANSCRIPT_TAIL_BYTES * 2) {
+      return { state: "unreadable" };
+    }
+    const cursor = cursorOf((tail as { cursor?: unknown }).cursor);
+    return {
+      state: "read",
+      text: tail.text,
+      ...(cursor === undefined ? {} : { cursor }),
+    };
   }
   if (tail.state === "unreadable") return { state: "unreadable" };
   return { state: "missing" };
+}
+
+/**
+ * 到 `hostId` 上按游标读一页来源转录（`transcriptRange`，契约 §21.1）。主机不在、
+ * 没有 Worker、连不上、Worker 太旧不认 range 都是 501 `handoff_host_offline`。
+ */
+export async function captureRange(
+  hostId: string,
+  request: RangeRequest,
+): Promise<RangeAnswer> {
+  const host = requireCaptureHost(hostId);
+  let answer: unknown;
+  try {
+    answer = await caller(hostId, "handoff.capture", {
+      paths: [],
+      execute: false,
+      executionHost: `execution-host:${hostId}`,
+      transcriptOnly: true,
+      transcriptRange: { ...request },
+    });
+  } catch (failure) {
+    const reason = failure instanceof Error ? failure.message : String(failure);
+    throw offline(
+      `跨执行主机交接不可用：执行主机 ${host.name} 的 Worker 不在线（${reason}）`,
+    );
+  }
+  const range = rangeAnswerOf((answer as { range?: unknown } | null)?.range);
+  if (range === undefined) {
+    throw offline(
+      `跨执行主机交接不可用：执行主机 ${host.name} 的 Worker 不支持按游标读转录，请升级它`,
+    );
+  }
+  return range;
 }

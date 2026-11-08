@@ -22,12 +22,25 @@ import {
   captureArgs,
   readTranscriptTail,
 } from "../handoff/capture";
+import { readSourceRange, rangeRequestOf } from "../handoff/source-range";
 
 export function handoffCapture(
   root: string,
   args: Record<string, unknown>,
 ): Captured {
   const request = captureArgs(args);
+  // 按游标读一页来源转录：不碰文件也不碰仓库，答复里只有 `range`。
+  if (args.transcriptRange !== undefined) {
+    const range = rangeRequestOf(args.transcriptRange);
+    return {
+      files: [],
+      git: UNAVAILABLE,
+      range:
+        range === undefined
+          ? { state: "badCursor" as const }
+          : readSourceRange(range),
+    };
+  }
   if (args.transcriptOnly !== true) return capture(root, request);
   return {
     files: [],

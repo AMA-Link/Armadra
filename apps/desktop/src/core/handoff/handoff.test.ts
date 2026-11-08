@@ -71,7 +71,7 @@ describe("prepare", () => {
     expect(view.attempts).toBe(0);
     expect(view.bundle.trust).toBe("peerDataNotSystemInstructions");
     expect(view.bundle.sourcePreserved).toBe(true);
-    expect(view.bundle.version).toBe(1);
+    expect(view.bundle.version).toBe(2);
     // Nothing is in anybody's inbox yet.
     expect(
       fixture.database.prepare("SELECT COUNT(*) AS n FROM agent_mailbox").get(),
