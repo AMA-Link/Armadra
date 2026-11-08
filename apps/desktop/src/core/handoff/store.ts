@@ -56,6 +56,7 @@ import {
   capture,
   readTranscriptTail,
 } from "./capture";
+import { BYTES_PER_TOKEN, modelCapacity } from "./capacity";
 import { captureTranscript, requireCaptureHost } from "./remote-capture";
 import { asFailure, validateNewTarget } from "./target";
 import { readSourceTranscript } from "./source-transcript";
@@ -538,9 +539,20 @@ async function build(
   request: PrepareRequest,
 ): Promise<HandoffBundle> {
   const status = getAgentStatus(context.database, source.nodeId);
+  // 目标模型的上下文容量（目录里查得到才有）：字节预算与「可用 token × 每 token
+  // 字节」取更紧的那个裁剪；查不到就保持字节预算并留 `tokenBudgetUnavailable`。
+  const capacity = modelCapacity(target.provider, target.modelId);
+  const byteLimit =
+    capacity === undefined
+      ? request.byteBudget
+      : Math.min(
+          request.byteBudget,
+          capacity.availableTokens * BYTES_PER_TOKEN,
+        );
   const omitted = [
     "referencesAreLiveFilesNotCopiedCode",
-    "tokenBudgetUnavailable",
+    ...(capacity === undefined ? ["tokenBudgetUnavailable"] : []),
+    ...(byteLimit < request.byteBudget ? ["modelCapacityLimitsBudget"] : []),
   ];
   let cutoff = {
     kind: "unavailable",
@@ -652,12 +664,12 @@ async function build(
     ...(sourceCursor === undefined ? {} : { sourceCursor }),
     attachments: [],
     budget: {
-      byteLimit: request.byteBudget,
+      byteLimit,
       usedBytes: 0,
       tokenEstimate: null,
-      capacityTokens: null,
-      availableTokens: null,
-      reservedTokens: null,
+      capacityTokens: capacity?.capacityTokens ?? null,
+      availableTokens: capacity?.availableTokens ?? null,
+      reservedTokens: capacity?.reservedTokens ?? null,
       truncated: false,
       omitted,
     },

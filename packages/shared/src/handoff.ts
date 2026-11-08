@@ -117,10 +117,11 @@ export const handoffBundleSchema = z.object({
   budget: z.object({
     byteLimit: z.number().int().positive(),
     usedBytes: z.number().int().nonnegative(),
-    tokenEstimate: z.null(),
+    // 目标模型的容量查得到时才有（契约 §39.8）；查不到时都是 null。
+    tokenEstimate: z.number().int().nonnegative().nullable(),
     capacityTokens: z.number().int().positive().nullable(),
-    availableTokens: z.null(),
-    reservedTokens: z.null(),
+    availableTokens: z.number().int().positive().nullable(),
+    reservedTokens: z.number().int().positive().nullable(),
     truncated: z.boolean(),
     omitted: z.array(z.string()),
   }),

@@ -152,6 +152,8 @@ export interface HandoffBundle {
 }
 
 export const TRUST = "peerDataNotSystemInstructions";
+/** 估算 token 数时一个 token 按几个字节算（与 `capacity.ts` 同一个数）。 */
+const BYTES_PER_TOKEN = 3;
 export const BYTE_BUDGETS = [8192, 16384, 32768] as const;
 
 /** The largest a single referenced file may be before it is only named. */
@@ -360,6 +362,15 @@ export function fitBudget(bundle: HandoffBundle): HandoffBundle {
   // A placeholder of the final width, so measuring the empty bundle measures
   // the shape the full one will have.
   working.cutoff = { ...working.cutoff, sha256: "0".repeat(64) };
+  // 目标模型的容量已知时包里带 token 估算；先按最宽的位数占位，量空包与裁剪都按
+  // 最终的形状量，最后再收成真值（只会更短）。
+  const priced = working.budget.capacityTokens !== null;
+  if (priced) {
+    working.budget = {
+      ...working.budget,
+      tokenEstimate: Math.ceil(working.budget.byteLimit / BYTES_PER_TOKEN),
+    };
+  }
   const omitted = [...working.budget.omitted];
   if (encodedSize(working) > working.budget.byteLimit) {
     throw new BudgetExceeded(
@@ -413,8 +424,20 @@ export function fitBudget(bundle: HandoffBundle): HandoffBundle {
         ? null
         : digest(working.transcriptExcerpt),
   };
-  encodedSize(working);
+  if (priced) settleTokenEstimate(working);
+  else encodedSize(working);
   return working;
+}
+
+/** `tokenEstimate` 由 `usedBytes` 算出，而它自己又在包里：迭代到不动点。 */
+function settleTokenEstimate(bundle: Mutable<HandoffBundle>): void {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const used = encodedSize(bundle);
+    const estimate = Math.ceil(used / BYTES_PER_TOKEN);
+    if (estimate === bundle.budget.tokenEstimate) return;
+    bundle.budget = { ...bundle.budget, tokenEstimate: estimate };
+  }
+  encodedSize(bundle);
 }
 
 function setSection(
