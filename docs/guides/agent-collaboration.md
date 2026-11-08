@@ -256,4 +256,4 @@ ACP 是同一个 Agent 节点的另一种驱动方式，不是第二条 Agent �
 并连线两个节点验证 `context summary` 能读到对方的真实转录。`pnpm ownership:e2e --domain agent` 证明 Host 模式下这四个
 动作是**转发**给执行主机的，Host 一个字节也不写。
 
-交接的路由测试（`apps/desktop/src/core/handoff/`）另外覆盖：预览不产生任何收件箱条目、跨工作空间的路径读不到也批不了、错误 digest 被 409 拒绝、重复确认复用同一条收件箱记录、撤回后收件箱条目消失，以及 `agent_deliveries` 与 `agent_handoff_outbox` 保持为空。端到端那一轮（真实进程、真实 PTY、真实 hook 客户端：批准后目标收件箱出现 `handoff:<id>`、读包不等于确认、`ack` 后状态变 `acknowledged`、撤回后那条消失）原本由 `tools/handoff-read-smoke.mjs` 跑，它依赖受管二进制的路径，已随 R7d 删除；对着 core 的等价脚本还没有。
+交接的路由测试（`apps/desktop/src/core/handoff/`）另外覆盖：预览不产生任何收件箱条目、跨工作空间的路径读不到也批不了、错误 digest 被 409 拒绝、重复确认复用同一条收件箱记录、撤回后收件箱条目消失，以及 `agent_deliveries` 与 `agent_handoff_outbox` 保持为空。端到端那一轮（真实进程、真实 PTY、真实 hook 客户端：批准后目标收件箱出现 `handoff:<id>`、读包不等于确认、`ack` 后状态变 `acknowledged`、撤回后那条消失）原本由 `tools/handoff-read-smoke.mjs` 跑，它依赖受管二进制的路径，已随 R7d 删除；现由对着真 core 的探针场景 16（`node tools/probes/agent-e2e.mjs --only 16`，A 档 `agent-handoff-e2e`）覆盖，并补上了五种来源的转录分页、冻结边界、简报通道命令、结果回传与 MCP 同源。
