@@ -176,7 +176,10 @@ describe("the answer keys", () => {
   it("covers every CLI in the registry and never answers nothing", () => {
     expect(answerKeys("claude", "allow")).toBe("1\r");
     expect(answerKeys("claude", "deny")).toBe("3\r");
-    for (const agent of ["codex", "opencode", "pi", "omp", "copilot"]) {
+    // OpenCode's prompt is a selection list on "Allow once": Enter / Escape.
+    expect(answerKeys("opencode", "allow")).toBe("\r");
+    expect(answerKeys("opencode", "deny")).toBe("\u001b");
+    for (const agent of ["codex", "pi", "omp", "copilot"]) {
       expect(answerKeys(agent, "allow")).toBe("y\r");
       expect(answerKeys(agent, "deny")).toBe("n\r");
     }

@@ -684,8 +684,8 @@ async function typeIntoPty(
  * The keystrokes each CLI reads as allow / deny.
  *
  * Claude's permission prompt is a numbered menu: `1` is yes and `3` is "no,
- * and tell it what to do instead". Codex, opencode, Pi, Oh My Pi and Copilot
- * all take a y/n answer, which is also the fallback for a `custom:` entry
+ * and tell it what to do instead". OpenCode's is a selection list (see below).
+ * Codex, Pi, Oh My Pi and Copilot all take a y/n answer, which is also the fallback for a `custom:` entry
  * whose base is unknown — a guess that does nothing is better than silence
  * only because the CLI is blocked either way, and `n` is the safe guess.
  */
@@ -694,8 +694,12 @@ export function answerKeys(agentId: string, decision: string): string {
   switch (agentId) {
     case "claude":
       return allow ? "1\r" : "3\r";
-    case "codex":
     case "opencode":
+      // A selection list (Allow once / Allow always / Reject) whose cursor
+      // starts on "Allow once": Enter takes it, and Escape is the list's own
+      // reject binding. `y` / `n` are not bound to anything there.
+      return allow ? "\r" : "\u001b";
+    case "codex":
     case "pi":
     case "omp":
     case "copilot":
