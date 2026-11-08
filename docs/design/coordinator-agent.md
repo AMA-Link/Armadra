@@ -138,6 +138,8 @@ agent-host/ama/
 
 动词表与参数不手抄：`tools.ts` 从 `collab/control/index.ts` 的 `VERBS` 与 `browser/args.ts` 生成，一条测试断言两边一致（与 `collab/skill.ts::browserVerbs()` 同一手法）。适配器 `api.tools.disable("task")`，让画布规则 2 成立。
 
+**`armadra://` 资源（host-api 1.2，#885）**：`resources.ts` 按 `typeof api.resources?.register === "function"` 探测；有就注册一个 scheme `armadra`——`armadra://items`（账本列表）、`armadra://items/<id>`（单项）、`armadra://items/<id>/origin`（来源原文全文）、`armadra://events`（未确认事件）——协调者用 ama 内置的 `read` 分页读；两个 `disable` 都成功隐藏了 `canvas_items` / `canvas_events` 之后，说明文字与压缩提醒才改说 `read armadra://items`（隐藏失败就保留工具与原文）。读取经 `callControl` 走同一次 `POST /control/items` / `/control/events`（令牌与授权与工具一样）：列表把 `read` 的行窗口（1 起首行、行数）换算成动词的 `--offset`（跳过行数）/ `--limit`（≤ 50）并跨页拼接，`total` / `next` 取自服务端答复；单项把「接着读 `canvas items …`」改写成 `read armadra://items/<id>/origin`；来源原文按 2048 字节段的 `next` 逐段取全再按行分页；`events` 没有服务端偏移，取 50 条的一页按行分页，更多时末尾一行说明。钉住的 ama 还没有这一面时什么也不变：工具照旧、说明文字字节不变；`armadra-hook canvas items` 等 CLI 入口不受影响。
+
 ## §4 协调者节点形态与 MVP 闭环
 
 形态：用户在画布上新建 Agent 节点选「Armadra Agent」，core 走 `canvas-launch.ts`：`prepareInjection("ama")` → 写 `auth.json` → 启动行 `ama --profile <path> [--permission-mode …] [--model …] [prompt]` 典入节点终端。REPL 在终端里跑；状态经适配器上报；`send` 给它的正文以括号粘贴 + `\r` 进入 REPL（文档 A §8.2），按信任规则作资料。
