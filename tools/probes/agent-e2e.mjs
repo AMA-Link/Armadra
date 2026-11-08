@@ -106,6 +106,7 @@ import scenario12 from "./agent-e2e/scenario-12-acp.mjs";
 import scenario13 from "./agent-e2e/scenario-13-timeline.mjs";
 import scenario14 from "./agent-e2e/scenario-14-dispatch-bench.mjs";
 import scenario15 from "./agent-e2e/scenario-15-intake.mjs";
+import scenario16 from "./agent-e2e/scenario-16-opencode-approval.mjs";
 import { cliPrerequisites, planScenarios } from "./agent-e2e/preflight.mjs";
 import { homedir } from "node:os";
 
@@ -122,7 +123,7 @@ const SCENARIOS = [
 ];
 
 /** 自己起一套 core 的场景：不走 `setup()`（不要真 CLI 的登录，也不起共用页面）。 */
-const STANDALONE = new Set(["9", "11", "12", "13", "14", "15"]);
+const STANDALONE = new Set(["9", "11", "12", "13", "14", "15", "16"]);
 
 async function main() {
   // C 档门：要起真 CLI / 真模型的，没设开关就在起任何进程之前退出。
@@ -132,6 +133,7 @@ async function main() {
     ...(only.has("11") && realModel && !selfTest ? ["11 --real-model"] : []),
     ...(only.has("12") && !selfTest ? ["12"] : []),
     ...(only.has("13") && !selfTest ? ["13"] : []),
+    ...(only.has("16") && !selfTest ? ["16"] : []),
   ];
   if (selfTest && shared.length > 0)
     throw new Error(
@@ -203,6 +205,11 @@ async function main() {
   if (only.has("15")) {
     report.safety.before ??= fingerprint();
     await scenario15();
+  }
+  // 场景 16：终端 OpenCode 的画布审批（#857），真 OpenCode、免费模型；自己起 core。
+  if (only.has("16")) {
+    report.safety.before ??= fingerprint();
+    await scenario16();
   }
   for (const [id, reason] of Object.entries(plan.skip))
     scenario(id).skip(reason);
