@@ -306,7 +306,7 @@ async function coordinatorScript(body) {
       ],
     };
   }
-  const card = cardReply(messages, textOf, lastToolCall);
+  const card = cardReply(body, textOf);
   if (card !== undefined) return card;
   if (last?.role === "user") {
     if (textOf(last).includes("审查"))

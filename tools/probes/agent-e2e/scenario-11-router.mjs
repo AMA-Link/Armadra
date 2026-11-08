@@ -9,17 +9,55 @@ export const BUSY_MS = 9_000;
 export const CARD_MARK = "协调者事件：未确认";
 
 /**
- * 脚本化模型对事件卡片的回应：读 `canvas_events`，逐条 `canvas_ack --event`
- * 确认不是收件箱的事件（收件箱的消息仍走 inbox → ack --id，它们的事件随之确认）。
- * 最后一条用户消息不是卡片时答 `undefined`，由原来的脚本接着走。
+ * 读事件队列的那一步：工具表里有 `canvas_events` 就调它；ama 有 `armadra://`
+ * 资源（host-api 1.2，#885）时这个工具被藏起来，改用内置 `read` 读
+ * `armadra://events`（#890）。`toolNames` 是请求里的工具名。
  */
-export function cardReply(messages, textOf, lastToolCall) {
+export function readEventsCall(toolNames) {
+  return toolNames.includes("canvas_events")
+    ? { name: "canvas_events", arguments: {} }
+    : { name: "read", arguments: { path: "armadra://events" } };
+}
+
+/** 最后一条助手消息是不是在读事件队列（两种读法都算）。 */
+export function lastReadEvents(messages) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role === "user") return false;
+    if (message.role !== "assistant" || !Array.isArray(message.tool_calls))
+      continue;
+    const call = message.tool_calls[0]?.function;
+    if (call?.name === "canvas_events") return true;
+    if (call?.name !== "read") return false;
+    try {
+      return JSON.parse(call.arguments ?? "{}").path === "armadra://events";
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+/** 事件队列结果的各行，去掉 `read` 加的行号（`     1\t…`）。 */
+export function eventRows(text) {
+  return text.split("\n").map((line) => line.replace(/^\s*\d+\t/, ""));
+}
+
+/**
+ * 脚本化模型对事件卡片的回应：读事件队列（{@link readEventsCall}），逐条
+ * `canvas_ack --event` 确认不是收件箱的事件（收件箱的消息仍走 inbox → ack --id，
+ * 它们的事件随之确认）。`body` 是模型请求（消息与工具表）。最后一条用户消息不是卡片时
+ * 答 `undefined`，由原来的脚本接着走。
+ */
+export function cardReply(body, textOf) {
+  const messages = body.messages ?? [];
+  const toolNames = (body.tools ?? []).map((tool) => tool.function?.name);
   const lastUser = [...messages].reverse().find((m) => m.role === "user");
   if (lastUser === undefined || !textOf(lastUser).includes(CARD_MARK))
     return undefined;
   if (messages[messages.length - 1]?.role === "user")
-    return { toolCalls: [{ name: "canvas_events", arguments: {} }] };
-  if (lastToolCall(messages) === "canvas_events") {
+    return { toolCalls: [readEventsCall(toolNames)] };
+  if (lastReadEvents(messages)) {
     const listed = textOf(
       [...messages].reverse().find((m) => m.role === "tool"),
     );

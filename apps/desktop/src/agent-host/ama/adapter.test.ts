@@ -149,6 +149,14 @@ describe("the armadra resources (host-api 1.2)", () => {
     expect(note).toContain("`armadra://items/<id>/origin`");
     // The member following a pointer is another CLI: it keeps `canvas items`.
     expect(note).toContain("`canvas items --item <id>`");
+    // The card and the verbs' replies name the CLI forms (#890): the note
+    // maps them to `read`.
+    expect(note).toContain(
+      "`canvas items --item <id>`、`canvas events` 在这里就是 `read armadra://items/<id>`、`read armadra://events`",
+    );
+    expect(note).toContain(
+      "says `canvas items --item <id>` or `canvas events`, that is `read armadra://items/<id>` or `read armadra://events` here",
+    );
     expect(note).not.toContain("canvas_items");
     expect(note).not.toContain("canvas_events");
     // The rest of the note is untouched.
