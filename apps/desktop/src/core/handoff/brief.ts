@@ -9,20 +9,26 @@ import { type HandoffBundle, sanitize } from "./bundle";
  * 目标不用自己把 `armadra-hook canvas …` 翻译成工具名。
  */
 
-/** 目标读取画布命令的通道：终端 CLI 的 shell 命令，或 MCP 工具名。 */
+/** 目标读取画布命令的通道：终端 CLI 的 shell 命令，或 MCP 工具名（含 ACP 会话）。 */
 export type HandoffChannel = "cli" | "mcp";
 
 /**
  * 目标节点走哪个通道。
  *
- * 终端里的 Codex 沙箱里的 shell 连不上画布（见 `collab/skill.ts` 的
- * developerInstructions），所以它用 MCP 工具；其它终端 CLI 用 `armadra-hook`。
- * 自定义 Agent 按基础 Agent。后面加 ACP 时在这里多一个分支。
+ * ACP 会话没有 shell 可以敲命令，画布工具只经 core 给它开会话时带上的那条 MCP
+ * 服务器（`acp/mcp.ts`）——工具名是 `canvas_*`，会话绑定（`ARMADRA_SESSION_ID` /
+ * `_GENERATION`）在那条服务器的环境里，不由模型填。终端里的 Codex 沙箱里的
+ * shell 连不上画布（见 `collab/skill.ts` 的 developerInstructions），所以它也用
+ * MCP 工具；其它终端 CLI 用 `armadra-hook`。自定义 Agent 按基础 Agent。
+ *
+ * `driver` 是目标节点（或新开规格）的驱动：`acp` 或 `terminal`。
  */
 export function handoffChannel(
   settings: AgentSettings,
   agentId: string,
+  driver?: string,
 ): HandoffChannel {
+  if (driver === "acp") return "mcp";
   return baseAgent(settings, agentId) === "codex" ? "mcp" : "cli";
 }
 

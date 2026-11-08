@@ -63,6 +63,14 @@ describe("handoffChannel", () => {
     expect(handoffChannel(NO_CUSTOM_AGENTS, "pi")).toBe("cli");
   });
 
+  it("gives every ACP session the MCP tools, whatever the agent", () => {
+    for (const agent of ["claude", "codex", "pi", "opencode"]) {
+      expect(handoffChannel(NO_CUSTOM_AGENTS, agent, "acp")).toBe("mcp");
+    }
+    // 终端驱动照旧。
+    expect(handoffChannel(NO_CUSTOM_AGENTS, "claude", "terminal")).toBe("cli");
+  });
+
   it("follows the base agent of a custom one", () => {
     const settings = {
       customAgents: () => [{ id: "custom:mine", baseAgent: "codex" }],

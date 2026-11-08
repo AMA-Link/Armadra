@@ -58,7 +58,7 @@ import {
 } from "./capture";
 import { BYTES_PER_TOKEN, modelCapacity } from "./capacity";
 import { captureTranscript, requireCaptureHost } from "./remote-capture";
-import { asFailure, validateNewTarget } from "./target";
+import { acpReadsCanvas, asFailure, validateNewTarget } from "./target";
 import { readSourceTranscript } from "./source-transcript";
 import type { SourceCursor } from "./source-range";
 
@@ -324,9 +324,52 @@ function refuseSshTarget(context: CollabContext, nodeId: string): void {
 }
 
 /**
+ * ACP 节点只经 core 开会话时带上的那条 MCP 服务器读交接；适配器表说不带 MCP 的
+ * （ama 走自己的 host 适配器）读不到，不能作为目标——与其批准之后没人读得到，
+ * 不如现在就拒绝。
+ */
+function refuseUnreachableAcpTarget(
+  context: CollabContext,
+  nodeId: string,
+  agentId: string,
+): void {
+  const node = loadNode(context.database, nodeId);
+  if (node === undefined || driverOf(node.data) !== "acp") return;
+  if (!acpReadsCanvas(context, agentId)) {
+    throw new CoreFailure(
+      400,
+      "handoff_target_acp_unreachable",
+      "This ACP Agent has no canvas tools, so it cannot read a handoff; choose another target",
+    );
+  }
+}
+
+/**
  * 新开目标在包里的占位身份：节点与会话还不存在（空 id、代次 0），其余照规格
  * 写——Agent、模型、标题，以及它将在工作空间所在的主机与根目录里起来。
  */
+/** 节点现在的驱动（`data.agent.driver`）：`acp` 或没写（终端）。 */
+function driverOf(data: Record<string, unknown>): string | undefined {
+  const agent = data.agent;
+  if (agent === null || typeof agent !== "object") return undefined;
+  const driver = (agent as { driver?: unknown }).driver;
+  return typeof driver === "string" ? driver : undefined;
+}
+
+/** 目标节点读交接走的通道：按它**现在**的驱动，ACP 与终端在 accept 之后可能换过。 */
+function channelFor(
+  context: CollabContext,
+  nodeId: string,
+  agentId: string,
+): HandoffChannel {
+  const node = loadNode(context.database, nodeId);
+  return handoffChannel(
+    context.settings,
+    agentId,
+    node === undefined ? undefined : driverOf(node.data),
+  );
+}
+
 function pendingIdentity(
   context: CollabContext,
   space: { readonly rootPath: string; readonly executionHostId: string },
@@ -399,6 +442,7 @@ export async function prepare(
       wanted.generation,
     );
     refuseSshTarget(context, wanted.nodeId);
+    refuseUnreachableAcpTarget(context, wanted.nodeId, target.agentId);
     const links = getContextLinks(context.database, source.nodeId).links;
     if (!links.some((link) => link.id === target.nodeId)) {
       throw forbidden(
@@ -918,6 +962,7 @@ export function accept(
     target.generation,
   );
   refuseSshTarget(context, target.nodeId);
+  refuseUnreachableAcpTarget(context, target.nodeId, target.agentId);
   const node = loadNode(context.database, source.nodeId);
   if (node === undefined) throw badRequest("Source node was removed");
   if (
@@ -937,7 +982,7 @@ export function accept(
   const body = notice(
     existing.bundle,
     existing.digest,
-    handoffChannel(context.settings, target.agentId),
+    channelFor(context, target.nodeId, target.agentId),
     mailboxId,
   );
 
@@ -1078,7 +1123,7 @@ async function acceptNewTarget(
     const body = notice(
       existing.bundle,
       existing.digest,
-      handoffChannel(context.settings, spec.agentId),
+      handoffChannel(context.settings, spec.agentId, spec.surface),
       mailboxId,
     );
     const args = new Args({
@@ -1305,7 +1350,7 @@ export async function readForCaller(
     return {
       ok: true,
       message: renderBrief(view.bundle, {
-        channel: handoffChannel(context.settings, target.agentId),
+        channel: channelFor(context, targetNodeId, target.agentId),
         mailboxId: view.mailboxId,
       }),
     };

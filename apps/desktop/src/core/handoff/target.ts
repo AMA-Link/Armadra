@@ -1,3 +1,4 @@
+import { adapterFor } from "../acp/adapters";
 import { hasCapability } from "../agent/registry";
 import { acpSurfaceAvailable } from "../collab/control/agent-driver";
 import {
@@ -19,6 +20,17 @@ import type { NewTargetSpec } from "./bundle";
  * `open-agent` 一致；这里只多两条它没有的：这家 Agent 有没有上下文连线能力
  * （目标要能读交接），以及形态（终端 / ACP）这家支持不支持。
  */
+
+/**
+ * ACP 会话里的 Agent 读得到画布吗：只有适配器表说「带 MCP」的才有 `canvas_*`
+ * 工具（`acp/adapters.ts` 的 `injection.mcp`）。
+ */
+export function acpReadsCanvas(
+  context: CollabContext,
+  agentId: string,
+): boolean {
+  return adapterFor(context.settings, agentId)?.injection.mcp === true;
+}
 
 /** `open-agent` 的拒绝改成 HTTP 域里抛的 {@link CoreFailure}，码不变。 */
 export function asFailure(error: unknown): unknown {
@@ -87,6 +99,13 @@ export function validateNewTarget(
         400,
         "target_surface_unsupported",
         `${agentId} 在这台机器上没有可用的 ACP 适配器，不能以 ACP 形态开。`,
+      );
+    }
+    if (surface === "acp" && !acpReadsCanvas(context, agentId)) {
+      throw new Refused(
+        400,
+        "target_surface_unsupported",
+        `${agentId} 的 ACP 会话没有画布工具，读不到交接；请用终端形态。`,
       );
     }
     const args = new Args({
