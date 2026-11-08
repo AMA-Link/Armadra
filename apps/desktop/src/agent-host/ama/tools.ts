@@ -5,10 +5,12 @@
  *
  * Each tool is one `POST /control/<verb>`, `/context-link/<verb>` or
  * `/browser/<verb>` through {@link callVerb}. What the adapter adds is the
- * permission class ama's pipeline sorts the call by: reading the board is
- * `read`, changing it is `write`, and stopping or closing another agent is
- * `execute` — asked for in ama's default mode, in the node's terminal. The
- * adapter never answers an approval itself.
+ * permission class ama's pipeline sorts the call by. Board and context verbs
+ * are filed `read`, so they run unasked like the same verbs on every other
+ * agent's node (contract §107); stopping or closing another agent and the
+ * browser's file transfers are `execute`, and the remaining browser verbs
+ * `write` — asked for in ama's default mode. The adapter never answers an
+ * approval itself.
  */
 
 import type {
@@ -24,7 +26,7 @@ import {
 } from "../../hook-client/verbs.js";
 import { type CallOutcome, callVerb } from "./client.js";
 
-/** Verbs that only read. Anything not listed in either table is `write`. */
+/** Verbs that only read (the tool's `readOnly` annotation). */
 const READ: Readonly<Record<string, readonly string[]>> = {
   canvas: [
     "help",
@@ -48,13 +50,27 @@ const EXECUTE: Readonly<Record<string, readonly string[]>> = {
 };
 
 /**
- * The class ama's permission pipeline files a verb under. An unknown verb (one
- * added to the runtime later) is `write`: asked for in the default mode, never
- * silently allowed.
+ * Groups whose verbs other than {@link EXECUTE} run unasked. Each one only
+ * reaches nodes the link grants and carries this node's token, so the core
+ * grants nothing extra; Claude, Codex, OpenCode and Copilot run them unasked
+ * too (contract §105, §106).
+ */
+const UNASKED: ReadonlySet<string> = new Set(["canvas", "context"]);
+
+/** Whether a verb only reads. */
+export function readsOnly(tool: VerbTool): boolean {
+  return READ[tool.group]?.includes(tool.verb) === true;
+}
+
+/**
+ * The class ama's permission pipeline files a verb under. `read` is the one
+ * class every mode allows, so board verbs take it even when they change the
+ * board; a browser verb outside both tables is `write`, asked for in the
+ * default mode.
  */
 export function permissionOf(tool: VerbTool): ToolPermission {
   if (EXECUTE[tool.group]?.includes(tool.verb) === true) return "execute";
-  if (READ[tool.group]?.includes(tool.verb) === true) return "read";
+  if (readsOnly(tool) || UNASKED.has(tool.group)) return "read";
   return "write";
 }
 
@@ -122,7 +138,7 @@ export function toolDefinition(
     parameters: amaSchema(tool.inputSchema),
     permission,
     annotations: {
-      readOnly: permission === "read",
+      readOnly: readsOnly(tool),
       destructive: permission === "execute",
       openWorld: tool.group === "browser",
     },

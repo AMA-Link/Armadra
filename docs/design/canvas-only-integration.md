@@ -33,7 +33,7 @@
 
 SSH 节点的启动行不带启动器，也不带本机解析到的程序路径：那些路径都在控制端，注入由执行主机上的垫片交给远端启动器，见[远端画布注入](./remote-canvas-injection.md)。
 
-**终端 MCP**（契约 §106）：终端 OpenCode 与 Copilot 和 Codex 一样另带画布 MCP 服务器 `armadra`，只放行这个服务器的工具（OpenCode `permission: {"armadra_*": "allow"}`，Copilot `--allow-tool armadra`）；ACP 不带，由 `session/new` 给。omp 的扩展订阅审批事件，等审批时节点显示等待。
+**终端 MCP**（契约 §106）：终端 OpenCode 与 Copilot 和 Codex 一样另带画布 MCP 服务器 `armadra`，只放行这个服务器的工具（OpenCode `permission: {"armadra_*": "allow"}`，Copilot `--allow-tool armadra`）；ACP 不带，由 `session/new` 给。omp 的扩展订阅审批事件，等审批时节点显示等待。终端 Claude 同样带 `--mcp-config` 与 `mcp__armadra` 放行（契约 §107），用户开了 Claude 沙箱时协作动词仍可用；ama 的画布与 context 动词除 interrupt、close 外按 `read` 归类，不逐个询问。
 
 **放行规则**（契约 §105.2）：Claude 的两份设置都带 `permissions.allow`，只放行 `armadra-hook` 的 `canvas` / `context` / `browser` 三个子命令（裸名与绝对路径），画布内调用动词不再逐次审批；其他命令照用户自己的权限模式。
 

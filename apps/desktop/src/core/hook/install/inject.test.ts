@@ -17,11 +17,11 @@ import {
   COPILOT_HOOK_EVENTS,
   INTEGRATION_REVISION,
 } from "./events";
+import { claudeAllowRules } from "./claude-allow";
 import {
   CLAUDE_MODS_MIN,
   INJECTED_AGENTS,
   artifactLayout,
-  claudeAllowRules,
   canvasInjection,
   claudeLoadsMods,
   claudeModsGate,
@@ -151,6 +151,8 @@ describe("canvas injection", () => {
     expect(args).toEqual([
       "--settings",
       layout.settings,
+      "--mcp-config",
+      layout.mcpConfig,
       "--plugin-dir",
       layout.pluginDir,
       "--append-system-prompt-file",
@@ -167,7 +169,7 @@ describe("canvas injection", () => {
     expect(
       (settings as unknown as { permissions: { allow: string[] } }).permissions
         .allow,
-    ).toEqual(claudeAllowRules(hookBin));
+    ).toEqual([...claudeAllowRules(hookBin), "mcp__armadra"]);
     const manifest = JSON.parse(
       readFileSync(layout.manifest as string, "utf8"),
     ) as { name: string };
@@ -358,6 +360,26 @@ describe("canvas injection", () => {
     ]);
     expect(existsSync(join(layout.configDir as string, "plugins"))).toBe(true);
     expect(existsSync(layout.skill)).toBe(true);
+  });
+
+  it("gives terminal Claude the canvas MCP server beside the user's, not in ACP", () => {
+    prepare("claude");
+    const layout = artifactLayout(dataDir, "claude");
+    expect(
+      JSON.parse(readFileSync(layout.mcpConfig as string, "utf8")),
+    ).toEqual({
+      mcpServers: {
+        armadra: { type: "stdio", command: hookBin, args: ["mcp"] },
+      },
+    });
+    const { args } = inject("claude");
+    // Added to the user's servers, never in place of them.
+    expect(args).not.toContain("--strict-mcp-config");
+    // `--mcp-config` takes several values: a flag follows it.
+    const at = args.indexOf("--mcp-config");
+    expect(args[at + 2]?.startsWith("--")).toBe(true);
+    const acp = canvasInjection({ dataDir, agentId: "claude", mcp: false });
+    expect(acp.args).not.toContain("--mcp-config");
   });
 
   it("gives terminal OpenCode the canvas MCP server and allows only its tools", () => {
@@ -825,6 +847,8 @@ describe("Claude's mod (contract §57)", () => {
     return [
       "--settings",
       layout.settingsPermission,
+      "--mcp-config",
+      layout.mcpConfig,
       "--plugin-dir",
       layout.pluginDir,
       "--plugin-dir",
@@ -854,7 +878,7 @@ describe("Claude's mod (contract §57)", () => {
     expect(
       (permission as unknown as { permissions: { allow: string[] } })
         .permissions.allow,
-    ).toEqual(claudeAllowRules(hookBin));
+    ).toEqual([...claudeAllowRules(hookBin), "mcp__armadra"]);
     expect(permission.hooks.PermissionRequest?.[0]?.hooks[0]?.command).toBe(
       `${hookBin} claude`,
     );
@@ -906,6 +930,8 @@ describe("Claude's mod (contract §57)", () => {
     const plain = [
       "--settings",
       layout.settings,
+      "--mcp-config",
+      layout.mcpConfig,
       "--plugin-dir",
       layout.pluginDir,
       "--append-system-prompt-file",

@@ -129,26 +129,43 @@ describe("the tool table", () => {
     expect(limit?.description).toMatch(/≥ 1/);
   });
 
-  it("files reading as read and stopping another agent as execute", () => {
+  it("runs board verbs unasked and asks before stopping another agent", () => {
     const byName = new Map(VERB_TOOLS.map((tool) => [tool.name, tool]));
-    const permission = (name: string) =>
-      permissionOf(byName.get(name) as (typeof VERB_TOOLS)[number]);
-    expect(permission("canvas_list")).toBe("read");
-    expect(permission("canvas_items")).toBe("read");
-    expect(permission("canvas_events")).toBe("read");
-    expect(permission("canvas_report")).toBe("write");
-    expect(permission("canvas_handback")).toBe("write");
-    expect(permission("canvas_inbox")).toBe("read");
-    expect(permission("context_summary")).toBe("read");
-    expect(permission("context_transcript")).toBe("read");
-    expect(permission("canvas_open_agent")).toBe("write");
-    expect(permission("canvas_team")).toBe("write");
-    expect(permission("canvas_send")).toBe("write");
-    expect(permission("canvas_ack")).toBe("write");
-    expect(permission("canvas_sticky")).toBe("write");
+    const tool = (name: string) =>
+      byName.get(name) as (typeof VERB_TOOLS)[number];
+    const permission = (name: string) => permissionOf(tool(name));
+    for (const name of [
+      "canvas_list",
+      "canvas_items",
+      "canvas_inbox",
+      "context_summary",
+      "context_transcript",
+      // Board writes run unasked, as on the other agents' nodes (§107).
+      "canvas_report",
+      "canvas_handback",
+      "canvas_open_agent",
+      "canvas_team",
+      "canvas_send",
+      "canvas_ack",
+      "canvas_sticky",
+    ]) {
+      expect(permission(name), name).toBe("read");
+    }
     expect(permission("canvas_interrupt")).toBe("execute");
     expect(permission("canvas_close")).toBe("execute");
+    expect(permission("browser_upload")).toBe("execute");
     expect(permission("browser_click")).toBe("write");
+    expect(permission("browser_read")).toBe("read");
+    // The annotation keeps the verb's real meaning.
+    expect(toolDefinition(tool("canvas_sticky")).annotations?.readOnly).toBe(
+      false,
+    );
+    expect(toolDefinition(tool("canvas_list")).annotations?.readOnly).toBe(
+      true,
+    );
+    for (const verb of VERB_TOOLS.filter((t) => t.group !== "browser")) {
+      expect(["read", "execute"]).toContain(permissionOf(verb));
+    }
   });
 
   it("returns the runtime's prose, and its refusal as an error", async () => {

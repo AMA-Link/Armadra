@@ -5580,3 +5580,21 @@ core 的工作流域搭任务行兜底扫描（每 60 秒，§15.7）的便车�
 
 - omp 的扩展（`OMP_HOOK_EVENTS`）多订阅 `tool_approval_requested` / `tool_approval_resolved`，按 Pi 的归一（`core/hook/normalize/pi.ts`）记为 `blocked`（`askKind` 为工具名，时间线 `PermissionRequest`）与 `working`。只观察、不作答：审批仍在 omp 自己的 TUI 里答；画布上节点显示等待、发通知，不再一直是 `working`。实测（omp 18.16.0）：`--approval-mode write` 下执行 bash 时扩展依次收到 `tool_call`、`tool_approval_requested`、`tool_approval_resolved`。
 - 事件不带 `pendingId`，所以不生成审批卡；write 档下协作动词免审批需要扩展在进程内注册工具（omp 没有按命令前缀放行的配置，也没有逐次的 MCP 配置），另行跟进。
+
+## 107. 终端 Claude 的画布 MCP 与 ama 协作动词的审批口径（`#862`、`#863`）
+
+> 状态：实施契约。只改注入产物、启动行与 ama 宿主适配器的权限归类；core 的路由、事件形状与协议版本不变。
+
+### 107.1 终端 Claude 走注入的 MCP
+
+- 与 §106.1 同一个服务器（`armadra-hook mcp`，名字 `armadra`，`core/hook/install/terminal-mcp.ts`）。产物多 `<数据目录>/integration/claude/armadra-mcp.json`（`{ mcpServers: { armadra: { type: "stdio", command: <客户端>, args: ["mcp"] } } }`），启动行在 `--settings` 之后多 `--mcp-config <该文件>`；不带 `--strict-mcp-config`，用户自己的 MCP 服务器照旧。`--mcp-config` 收多个值，所以注入里它后面总跟着别的旗标。
+- 两份注入设置（`settings.json`、`settings-permission.json`）的 `permissions.allow` 在 §105.2 的 Bash 规则之后多 `mcp__armadra`：只放行这个服务器的工具。Bash 规则保留，作没有 MCP 时的兜底。
+- 原因：用户自己开了 Claude 的沙箱（`sandbox.enabled`）时，Bash 里的 `armadra-hook` 连 core 的 socket 得到 `Operation not permitted`，协作动词全部不可用；MCP 服务器由 Claude 在沙箱外起，不受影响。
+- ACP 不带（`mcp: false`，与 §106.1 同一处），服务器由 `session/new.mcpServers` 给。
+
+### 107.2 ama 的协作动词按 `read` 归类
+
+- 宿主适配器（`agent-host/ama/tools.ts` 的 `permissionOf`）：`canvas`、`context` 组里除 `canvas_interrupt`、`canvas_close` 之外的动词都按 `read` 归类——ama 每个权限档都放行 `read`，所以 default、auto-edit、plan 档下改画布、投递、建节点都不逐个询问，与 Claude、Codex、OpenCode、Copilot 节点上一致。`canvas_interrupt`、`canvas_close` 仍是 `execute`。
+- `browser` 组不变：只读动词 `read`，`upload`、`download`、`close` 是 `execute`，其余 `write`。
+- 工具的 `annotations.readOnly` 仍按真实语义（只有只读动词为真），不跟着权限类改。
+- 这些动词只到连线授权的节点、带本节点令牌，core 侧不多给任何权限。
