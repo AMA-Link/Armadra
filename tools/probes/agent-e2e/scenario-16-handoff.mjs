@@ -22,7 +22,10 @@
 //   * `armadra-hook mcp` 的 `tools/call canvas_handoff_read` 与 CLI 同一请求逐字节
 //     同源。
 //
-// 不在本批：新开 Agent 作为目标、ACP 目标（见文件末尾的扩展点）。
+//   * 新开终端目标（假 Codex 替身）：预览不建节点、规格被换 409、accept 建节点并连线、
+//     首任务进终端、重复 accept 不建第二个、新节点自己的令牌读与 ack、来源与旁人被拒；
+//   * ACP 节点作为目标，以及新开 `surface: "acp"` 的目标：经 `armadra-hook mcp` 以该
+//     ACP 会话的环境读简报（写 canvas_* 工具名）、读转录、ack。
 import { execFile, execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
@@ -67,15 +70,15 @@ import {
 
 const quote = (word) => `'${String(word).replaceAll("'", "'\\''")}'`;
 
-/** 假 TUI：进程名由 `exec -a` 定；把收到的每个字节追加进日志，画一个提示符。 */
+/** 假 TUI：进程名由 `exec -a` 定；把收到的每个字节追加进日志，画 Codex 的提示符（`›` 加占位文字，过画面门的「看得见提示符」）。 */
 const FAKE_TUI = String.raw`#!/usr/bin/env node
 const { appendFileSync } = require("node:fs");
 const log = process.argv[2];
-process.stdout.write("fake tui ready\r\n> ");
+process.stdout.write("fake tui ready\r\n› Ask Codex to do anything");
 if (process.stdin.isTTY) process.stdin.setRawMode(true);
 process.stdin.on("data", (chunk) => {
   appendFileSync(log, chunk.toString("utf8"));
-  process.stdout.write("\r\n> ");
+  process.stdout.write("\r\n› Ask a follow-up question");
 });
 `;
 
@@ -131,6 +134,17 @@ async function setupWorld() {
     `#!/bin/bash\nexec -a claude-agent-acp ${quote(process.execPath)} ${quote(FAKE_AGENT)} "$@"\n`,
   );
   chmodSync(acpShim, 0o755);
+  // 新开的 Codex 目标：画布敲 `codex …` 起的是这个替身（答 --version，其余起假 TUI，
+  // 前台进程命令行里有 codex.cjs，过「前台是这个 Agent」的门）。日志路径写死在里面。
+  const tuiPath = join(scratch, "codex.cjs");
+  writeFileSync(tuiPath, FAKE_TUI);
+  const newTuiLog = join(scratch, "codex-new.log");
+  const codexShim = join(shims, "codex");
+  writeFileSync(
+    codexShim,
+    `#!/bin/sh\ncase "$*" in *--version*) echo "codex-cli 0.0.0"; exit 0;; esac\n${quote(process.execPath)} ${quote(tuiPath)} ${quote(newTuiLog)}\nexit 0\n`,
+  );
+  chmodSync(codexShim, 0o755);
   environment.PATH = `${shims}:${environment.PATH}`;
 
   const { api, origin } = await startIsolatedCore({
@@ -147,6 +161,8 @@ async function setupWorld() {
     blocked,
     api,
     origin,
+    tuiPath,
+    newTuiLog,
   };
 }
 
@@ -208,7 +224,8 @@ export default async function run() {
   const s = scenario("16-handoff");
   try {
     const world = await setupWorld();
-    const { api, data, hook, scratch, project, home } = world;
+    const { api, data, hook, scratch, project, home, tuiPath, newTuiLog } =
+      world;
     note("交接场景就位", project);
 
     const workspace = await api("/api/workspaces", {
@@ -239,6 +256,7 @@ export default async function run() {
       ["src-acp", "claude", "acp"],
       ["tgt-codex", "codex"],
       ["tgt-claude", "claude"],
+      ["tgt-acp", "claude", "acp"],
     ];
     const nodes = Object.fromEntries(
       specs.map(([title, agent, driver], index) => [
@@ -289,7 +307,7 @@ export default async function run() {
 
     // 页面把画布上的边物化成每个节点的连线文档；探针替页面写（来源 ↔ 目标，双向）。
     const sourceTitles = specs.slice(0, 5).map(([title]) => title);
-    const targetTitles = ["tgt-codex", "tgt-claude"];
+    const targetTitles = ["tgt-codex", "tgt-claude", "tgt-acp"];
     const linkDocument = (ids) =>
       api(`/api/workspaces/${workspace.id}/context-links/${ids.node.id}`, {
         method: "PUT",
@@ -321,8 +339,6 @@ export default async function run() {
     const all = (sql, ...params) => database.prepare(sql).all(...params);
 
     // 真终端会话：Codex 目标跑假 TUI（进程名 codex），其余是 /bin/sh。
-    const tuiPath = join(scratch, "codex.cjs");
-    writeFileSync(tuiPath, FAKE_TUI);
     const tuiLog = join(scratch, "codex-tui.log");
     const sessions = {};
     const startSession = async (title) => {
@@ -358,7 +374,7 @@ export default async function run() {
       return row;
     };
     for (const [title] of specs) {
-      if (title === "src-acp") continue;
+      if (title === "src-acp" || title === "tgt-acp") continue;
       const row = await startSession(title);
       note(`会话 ${title}`, row);
     }
@@ -402,38 +418,39 @@ export default async function run() {
       properties: { sessionID: "ses-handoff-probe" },
     });
 
-    // ACP 来源：假 ACP Agent 的真会话，转录是会话时间线。
-    const acp = await api("/api/acp/sessions", {
-      method: "POST",
-      body: {
-        workspaceId: workspace.id,
-        nodeId: nodes["src-acp"].id,
-        cwd: project,
-        agentId: "claude",
-        prompt: FIRST_ASK,
-      },
-    });
-    await waitFor(
-      "ACP 来源这一轮结束",
-      () => {
-        const status = one(
-          "SELECT state, state_source, transcript_path FROM agent_status WHERE node_id = ?",
-          nodes["src-acp"].id,
-        );
-        return status?.state === "done" && status.transcript_path
-          ? status
-          : undefined;
-      },
-      { timeout: 60_000, interval: 300 },
-    );
-    const acpRow = one(
-      "SELECT id, generation FROM terminal_sessions WHERE id = ?",
-      acp.id,
-    );
-    sessions["src-acp"] = {
-      id: acpRow.id,
-      generation: Number(acpRow.generation),
+    // ACP 节点（来源与目标）：假 ACP Agent 的真会话，转录是会话时间线。
+    const startAcp = async (title) => {
+      const acp = await api("/api/acp/sessions", {
+        method: "POST",
+        body: {
+          workspaceId: workspace.id,
+          nodeId: nodes[title].id,
+          cwd: project,
+          agentId: "claude",
+          prompt: FIRST_ASK,
+        },
+      });
+      await waitFor(
+        `${title} 这一轮结束`,
+        () => {
+          const status = one(
+            "SELECT state, state_source, transcript_path FROM agent_status WHERE node_id = ?",
+            nodes[title].id,
+          );
+          return status?.state === "done" && status.transcript_path
+            ? status
+            : undefined;
+        },
+        { timeout: 60_000, interval: 300 },
+      );
+      const row = one(
+        "SELECT id, generation FROM terminal_sessions WHERE id = ?",
+        acp.id,
+      );
+      sessions[title] = { id: row.id, generation: Number(row.generation) };
     };
+    await startAcp("src-acp");
+    await startAcp("tgt-acp");
 
     for (const title of [
       "src-claude",
@@ -502,6 +519,7 @@ export default async function run() {
       return answer;
     };
 
+    /** `target` 是节点标题（已有节点），或 `{ kind: "new", … }` 规格。 */
     const prepare = (source, target, goal, extra = {}) =>
       api(`/api/workspaces/${workspace.id}/handoffs`, {
         method: "POST",
@@ -509,9 +527,15 @@ export default async function run() {
           sourceNodeId: nodes[source].id,
           sourceSessionId: sessions[source].id,
           sourceGeneration: sessions[source].generation,
-          targetNodeId: nodes[target].id,
-          targetSessionId: sessions[target].id,
-          targetGeneration: sessions[target].generation,
+          target:
+            typeof target === "string"
+              ? {
+                  kind: "node",
+                  nodeId: nodes[target].id,
+                  sessionId: sessions[target].id,
+                  generation: sessions[target].generation,
+                }
+              : target,
           sections: { goal, ...(extra.sections ?? {}) },
           filePaths: [],
           byteBudget: 8192,
@@ -1082,6 +1106,303 @@ export default async function run() {
       },
     );
 
+    /* --------------------- 7. 新开终端目标（H3） --------------------- */
+
+    const refusedWith = async (promise, status) => {
+      try {
+        await promise;
+        return false;
+      } catch (error) {
+        return String(error.message).includes(`→ ${status} `);
+      }
+    };
+    const nodeCount = async () => (await api(documentPath)).nodes.length;
+    /** 建出来的节点：登记进 nodes / sessions，之后可以用 hookAs 以它的身份跑。 */
+    const adopt = async (title, nodeId, backend) => {
+      nodes[title] = { id: nodeId };
+      // 无页面的 core 里没有人挂载新节点：探针替页面起会话（页面挂载终端节点时
+      // 也是 `POST /api/terminals` 带 launch，ACP 节点是 `POST /api/acp/sessions`）。
+      const node = (await api(documentPath)).nodes.find(
+        (candidate) => candidate.id === nodeId,
+      );
+      const agent = node.data.agent;
+      if (backend === "acp") {
+        await api("/api/acp/sessions", {
+          method: "POST",
+          body: {
+            workspaceId: workspace.id,
+            nodeId,
+            cwd: node.data.cwd ?? project,
+            agentId: agent.id,
+          },
+        });
+      } else {
+        const created = await api("/api/terminals", {
+          method: "POST",
+          body: {
+            workspaceId: workspace.id,
+            cwd: node.data.cwd ?? project,
+            nodeId,
+            agent: { id: agent.id },
+            launch: true,
+          },
+        });
+        await api(`/api/terminals/${created.id}/node-token/refresh`, {
+          method: "POST",
+        });
+      }
+      const row = await waitFor(
+        `${title} 有运行中的会话`,
+        () =>
+          one(
+            "SELECT id, generation, backend_kind FROM terminal_sessions WHERE owner_node_id = ? AND status = 'running' ORDER BY generation DESC LIMIT 1",
+            nodeId,
+          ),
+        { timeout: 60_000, interval: 300 },
+      );
+      sessions[title] = { id: row.id, generation: Number(row.generation) };
+      return { ...row, backend };
+    };
+    const edgeBetween = async (left, right) =>
+      (await api(documentPath)).edges.some(
+        (edge) =>
+          (edge.source === left && edge.target === right) ||
+          (edge.source === right && edge.target === left),
+      );
+
+    const termSpec = {
+      kind: "new",
+      agentId: "codex",
+      surface: "terminal",
+      title: "接手-新终端",
+    };
+    const before = await nodeCount();
+    const termView = await prepare("src-pi", termSpec, "新开终端目标的任务", {
+      sections: { acceptance: "新节点自己读到并确认" },
+    });
+    const termId = termView.bundle.handoffId;
+    s.check(
+      "new 终端目标：预览不建节点，目标是占位身份，规格进冻结的包",
+      termView.state === "prepared" &&
+        (await nodeCount()) === before &&
+        termView.bundle.target.nodeId === "" &&
+        termView.bundle.targetSpec?.surface === "terminal" &&
+        termView.bundle.targetSpec?.agentId === "codex",
+      { state: termView.state, target: termView.bundle.target },
+    );
+    const otherView = await prepare(
+      "src-pi",
+      { ...termSpec, title: "改过的规格" },
+      "新开终端目标的任务",
+    );
+    s.check(
+      "规格不同的预览，digest 互相批准不了（409），节点数不变",
+      (await refusedWith(
+        api(
+          `/api/workspaces/${workspace.id}/handoffs/${otherView.bundle.handoffId}/accept`,
+          { method: "POST", body: { expectedDigest: termView.digest } },
+        ),
+        409,
+      )) && (await nodeCount()) === before,
+      { same: termView.digest === otherView.digest },
+    );
+    const termAccepted = await accept(termView);
+    const newTermNode = termAccepted.createdTargetNodeId;
+    s.check(
+      "accept 后建出一个新节点、与来源连线，状态 queued",
+      termAccepted.state === "queued" &&
+        typeof newTermNode === "string" &&
+        (await nodeCount()) === before + 1 &&
+        (await edgeBetween(nodes["src-pi"].id, newTermNode)),
+      { state: termAccepted.state, node: newTermNode },
+    );
+    const termSession = await adopt("new-term", newTermNode, "tmux");
+    const firstTask = await waitFor(
+      "首任务进了新节点的终端",
+      () =>
+        existsSync(newTuiLog) &&
+        readFileSync(newTuiLog, "utf8").includes("ARMADRA MESSAGE")
+          ? readFileSync(newTuiLog, "utf8")
+          : undefined,
+      { timeout: 60_000, interval: 300 },
+    ).catch(() => undefined);
+    s.check(
+      "交接作为首任务投进新节点的终端",
+      firstTask !== undefined && firstTask.includes(`handoff`),
+      firstTask?.slice(0, 300) ??
+        (existsSync(newTuiLog) ? readFileSync(newTuiLog, "utf8") : null),
+    );
+    const again = await accept(termView);
+    s.check(
+      "重复 accept 返回同一个节点，不建第二个",
+      again.createdTargetNodeId === newTermNode &&
+        (await nodeCount()) === before + 1,
+      { node: again.createdTargetNodeId },
+    );
+    s.check(
+      "新节点的会话在运行，行上记着 created_target_node_id",
+      termSession.id !== undefined &&
+        one(
+          "SELECT created_target_node_id AS n FROM agent_handoffs WHERE id = ?",
+          termId,
+        ).n === newTermNode,
+    );
+    const newBrief = await canvasAs("new-term", "handoff-read", "--id", termId);
+    s.check(
+      "新节点用自己的令牌读简报（Codex 通道写工具名）",
+      newBrief.code === 0 &&
+        newBrief.stdout.startsWith("# 交接：新开终端目标的任务") &&
+        newBrief.stdout.includes("新节点自己读到并确认") &&
+        newBrief.stdout.includes("canvas_ack("),
+      newBrief.stdout.slice(0, 200) || newBrief.stderr,
+    );
+    const newTranscript = await transcriptPage("new-term", termId);
+    s.check(
+      "新节点读来源转录（part=transcript）",
+      newTranscript.body?.mode === "entries" &&
+        newTranscript.body.entries.length >= 2 &&
+        newTranscript.body.source?.provider === "pi",
+      { mode: newTranscript.body?.mode },
+    );
+    const strangers = await Promise.all([
+      canvasAs("src-pi", "handoff-read", "--id", termId),
+      canvasAs("tgt-claude", "handoff-read", "--id", termId),
+      canvasAs("tgt-codex", "handoff-read", "--id", termId),
+    ]);
+    s.check(
+      "来源与别的节点读新开交接被拒",
+      strangers.every((answer) => answer.code !== 0),
+      strangers.map((answer) => answer.stderr || answer.stdout),
+    );
+    const newMailbox = handoffRow(termId).mailbox_id;
+    const newAck = await canvasAs("new-term", "ack", "--id", newMailbox);
+    s.check(
+      "新节点 ack 收件箱那条后状态 acknowledged",
+      newAck.code === 0 && handoffRow(termId).state === "acknowledged",
+      { code: newAck.code, out: newAck.stdout || newAck.stderr },
+    );
+
+    /* ------------------------ 8. ACP 节点作为目标 ------------------------ */
+
+    const acpView = await prepare("src-opencode", "tgt-acp", "交给 ACP 目标");
+    const acpId = acpView.bundle.handoffId;
+    await accept(acpView);
+    const acpMailbox = handoffRow(acpId).mailbox_id;
+    const toolText = (reply) => reply?.result?.content?.[0]?.text;
+    const initialize = {
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "probe", version: "0" },
+      },
+    };
+    const acpReplies = await mcp("tgt-acp", [
+      initialize,
+      {
+        method: "tools/call",
+        params: { name: "canvas_handoff_read", arguments: { id: acpId } },
+      },
+      {
+        method: "tools/call",
+        params: {
+          name: "canvas_handoff_read",
+          arguments: { id: acpId, part: "transcript" },
+        },
+      },
+      {
+        method: "tools/call",
+        params: { name: "canvas_ack", arguments: { id: acpMailbox } },
+      },
+    ]);
+    const acpBrief = acpReplies.find((reply) => reply.id === 2);
+    const acpTranscript = acpReplies.find((reply) => reply.id === 3);
+    const acpAck = acpReplies.find((reply) => reply.id === 4);
+    s.check(
+      "ACP 目标经 MCP canvas_handoff_read 读到简报，写 canvas_* 工具名",
+      acpBrief?.result?.isError !== true &&
+        toolText(acpBrief)?.startsWith("# 交接：交给 ACP 目标") &&
+        toolText(acpBrief).includes("canvas_post(") &&
+        toolText(acpBrief).includes(`canvas_ack(id="${acpMailbox}")`) &&
+        !toolText(acpBrief).includes("armadra-hook canvas"),
+      toolText(acpBrief)?.slice(0, 300) ?? acpReplies,
+    );
+    let acpPage;
+    try {
+      acpPage = JSON.parse(toolText(acpTranscript));
+    } catch {
+      acpPage = undefined;
+    }
+    s.check(
+      "ACP 目标经 MCP 读来源转录分页",
+      acpTranscript?.result?.isError !== true &&
+        acpPage?.mode === "entries" &&
+        acpPage.source?.provider === "opencode",
+      toolText(acpTranscript)?.slice(0, 200),
+    );
+    s.check(
+      "ACP 目标经 MCP canvas_ack 确认，状态 acknowledged",
+      acpAck?.result?.isError !== true &&
+        handoffRow(acpId).state === "acknowledged",
+      { ack: toolText(acpAck), state: handoffRow(acpId).state },
+    );
+
+    /* ----------------- 9. 新开 ACP 目标（surface: "acp"） ----------------- */
+
+    const acpSpec = {
+      kind: "new",
+      agentId: "claude",
+      surface: "acp",
+      title: "接手-新 ACP",
+    };
+    const newAcpView = await prepare(
+      "src-codex",
+      acpSpec,
+      "新开 ACP 目标的任务",
+    );
+    const newAcpId = newAcpView.bundle.handoffId;
+    const newAcpAccepted = await accept(newAcpView);
+    const newAcpNode = newAcpAccepted.createdTargetNodeId;
+    s.check(
+      "new ACP 目标：accept 建出节点并连线",
+      newAcpAccepted.state === "queued" &&
+        typeof newAcpNode === "string" &&
+        (await edgeBetween(nodes["src-codex"].id, newAcpNode)),
+      { state: newAcpAccepted.state, node: newAcpNode },
+    );
+    const newAcpSession = await adopt("new-acp", newAcpNode, "acp");
+    s.check(
+      "新节点的会话是 ACP 驱动",
+      newAcpSession.backend_kind === "acp",
+      newAcpSession,
+    );
+    const newAcpMailbox = handoffRow(newAcpId).mailbox_id;
+    const newAcpReplies = await mcp("new-acp", [
+      initialize,
+      {
+        method: "tools/call",
+        params: { name: "canvas_handoff_read", arguments: { id: newAcpId } },
+      },
+      {
+        method: "tools/call",
+        params: { name: "canvas_ack", arguments: { id: newAcpMailbox } },
+      },
+    ]);
+    const newAcpBrief = newAcpReplies.find((reply) => reply.id === 2);
+    s.check(
+      "新 ACP 节点经 MCP 读简报（工具名）并 ack",
+      newAcpBrief?.result?.isError !== true &&
+        toolText(newAcpBrief)?.startsWith("# 交接：新开 ACP 目标的任务") &&
+        toolText(newAcpBrief).includes("canvas_ack(") &&
+        newAcpReplies.find((reply) => reply.id === 3)?.result?.isError !==
+          true &&
+        handoffRow(newAcpId).state === "acknowledged",
+      {
+        brief: toolText(newAcpBrief)?.slice(0, 200),
+        state: handoffRow(newAcpId).state,
+      },
+    );
+
     /* ---------------------------- 收尾检查 ---------------------------- */
 
     s.check(
@@ -1095,9 +1416,6 @@ export default async function run() {
       nodes["tgt-codex"].id,
     );
     note("agent_deliveries", leftovers);
-    // 扩展点（H3）：新开 Agent 作为目标、ACP 目标——在这里照上面「目标」的写法加：
-    // prepare 的 target 换成新节点 / ACP 会话，目标侧经 `armadra-hook mcp`（ACP 没有终
-    // 端，用 MCP 工具）读，断言同一份简报与同一套分页。
   } catch (error) {
     s.fail(error);
   }
