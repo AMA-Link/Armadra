@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { render } from "../collab/transcript";
+import { setAcpTimelineSource } from "../history/registry";
 import { captureArgs, entriesAsJsonl, readTranscriptTail } from "./capture";
 
 /**
@@ -150,6 +151,30 @@ describe("readTranscriptTail", () => {
       },
     ]);
     expect(render(text)).toEqual(["[助手] a [工具 bash ls] [结果 x]"]);
+  });
+});
+
+describe("ACP 会话时间线作为来源", () => {
+  afterEach(() => setAcpTimelineSource(undefined));
+
+  it("路径是 .acp.jsonl 且文件不在时，从时间线读到尾巴与冻结游标", () => {
+    const path = join(directory, "acp", "n", "s.acp.jsonl");
+    setAcpTimelineSource(
+      () =>
+        [
+          { kind: "user", text: "接着做导出", at: 1_000 },
+          {
+            kind: "assistant",
+            parts: [{ type: "text", text: "好" }],
+            at: 2_000,
+          },
+        ] as never,
+    );
+    const tail = readTranscriptTail({ provider: "claude", path });
+    expect(tail.state).toBe("read");
+    if (tail.state !== "read") return;
+    expect(render(tail.text).join("\n")).toContain("接着做导出");
+    expect(tail.cursor).toMatchObject({ unit: "entries", endOffset: 2 });
   });
 });
 
