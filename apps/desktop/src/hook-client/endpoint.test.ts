@@ -6,7 +6,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   KEY_PORT,
@@ -14,6 +14,7 @@ import {
   KEY_TOKEN,
   KEY_VERSION,
   MAX_CANDIDATES,
+  candidateDataDir,
   discoverCandidatesFrom,
   isValidNodeId,
   loadEndpoint,
@@ -220,5 +221,34 @@ describe("candidate discovery", () => {
 
   it("never exceeds the bound", () => {
     expect(MAX_CANDIDATES).toBe(3);
+  });
+});
+
+describe("fallback data directory (#882)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is the endpoint file's directory when only that file is given", () => {
+    vi.stubEnv("ARMADRA_DATA_DIR", "");
+    vi.stubEnv("HOME", "/Users/someone");
+    expect(candidateDataDir("/tmp/isolated/hook-endpoint.env", "darwin")).toBe(
+      "/tmp/isolated",
+    );
+  });
+
+  it("follows an explicit ARMADRA_DATA_DIR over the endpoint file", () => {
+    vi.stubEnv("ARMADRA_DATA_DIR", "/tmp/explicit");
+    expect(candidateDataDir("/tmp/isolated/hook-endpoint.env", "darwin")).toBe(
+      "/tmp/explicit",
+    );
+  });
+
+  it("keeps the per-user default when neither is set", () => {
+    vi.stubEnv("ARMADRA_DATA_DIR", "");
+    vi.stubEnv("HOME", "/Users/someone");
+    expect(candidateDataDir(undefined, "darwin")).toBe(
+      path.join("/Users/someone", "Library/Application Support/Armadra"),
+    );
   });
 });

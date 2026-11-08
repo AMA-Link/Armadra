@@ -241,7 +241,24 @@ export function nodeToken(
  * *whether* it answers.
  */
 export function discoverCandidates(): Endpoint[] {
-  return discoverCandidatesFrom(endpointFilePath(), defaultDataDir());
+  const envFile = endpointFilePath();
+  return discoverCandidatesFrom(envFile, candidateDataDir(envFile));
+}
+
+/**
+ * The data directory the fallbacks (2, 3) read. A terminal is only told its
+ * endpoint file, which is always `<dataDir>/hook-endpoint.env`; without an
+ * explicit `ARMADRA_DATA_DIR` that file's directory is the data directory, so a
+ * runtime on an isolated data directory never sends its agents to the
+ * per-user default one (#882). With neither, the per-user default as before.
+ */
+export function candidateDataDir(
+  envEndpointFile: string | undefined,
+  platform: NodeJS.Platform = process.platform,
+): string | undefined {
+  if (envVar("ARMADRA_DATA_DIR") === undefined && envEndpointFile !== undefined)
+    return path.dirname(envEndpointFile);
+  return defaultDataDir(platform);
 }
 
 /**
