@@ -4931,6 +4931,7 @@ owner：本机作为客户端连别的电脑（`sources.session`，§33）时，
 - **`items`** `[--stage <阶段>] [--item <id>] [--limit N] [--offset N] [--bind-pr <编号或网页地址>]`（`--bind-pr` 见 §103.1）：调用者看得到的行是它自己派发的（协调者）与派给它的（成员自己的），别的都看不到。
   - 列表：`person/*` 在前，同一阶段内新的在前；`--limit` 1–50（缺省 20），`--offset` 是跳过的行数；`message` 每项一行（id · 标题 · 节点 · 阶段 · 最近报告首行 · `? 待决问题`），末尾写明接着读的参数；`result: { items: [{ id, title, nodeId, nodeTitle, stage, status, report, attention }], total, offset, next }`，`next` 为 `null` 表示读完。`--stage` 不是 §90.2 的取值 `400 bad_request`。
   - 单项（`--item`）：在列表字段之外多 `mandate`、`handback`、`reports`（报告历史）与 `origin: { kind, ref, text, from, to, size, next }`。来源原文按 #674 的续读约定一段一段给：每段最多 2048 字节，起点与终点都对齐到字符边界，`--offset` 是字节位置，`next` 非空就用 `--offset <next>` 接着读，拼起来就是原文。没有这个工作项 `404 item_not_found`。
+  - 资源读法（#885）：ama 有 host-api 1.2 的资源面时，适配器对它隐藏 `canvas_items` 工具，协调者用内置 `read` 读 `armadra://items`（列表：`read` 的行窗口换算成这里的 `--offset` / `--limit`，跨页拼接，`total` / `next` 取自答复）、`armadra://items/<id>`（单项，「接着读」改写成资源写法）与 `armadra://items/<id>/origin`（来源原文：按 `next` 逐段取全再按行分页）；读取仍是同一道 `POST /control/items`；旧版 ama 与 `armadra-hook canvas items` 不变。
 
 ### 90.4 分派抽屉与节点头
 
@@ -5049,6 +5050,7 @@ owner：本机作为客户端连别的电脑（`sources.session`，§33）时，
 经 `POST /control/<verb>`（与 §90.3 同一道门）；`armadra-hook canvas`、MCP、ama 的 `canvas_events` / `canvas_ack` 同一份实现（`hook-client/verbs.ts`）。
 
 - **`events`** `[--limit N]`：调用者名下未确认的事件，最早的在前；`--limit` 1–50（缺省 20）。`message` 每条一行（同卡片）；`result: { events: [{ id, item, kind, source, summary, at }], total }`。读不确认。
+  - 资源读法（#885）：ama 有 host-api 1.2 的资源面时，`canvas_events` 工具对它隐藏，协调者用内置 `read` 读 `armadra://events`：这个动词没有 `--offset`，资源取 `--limit 50` 的一页按行分页，`total` 超过一页时末尾多一行说明还有几条、确认后再读；读取仍经同一道 `POST /control/events`，确认照旧用 `canvas_ack`。
 - **`ack --event <id>`**：确认「我处理了」（不是「我看到了」）。只认自己名下的事件，不存在或是别人的 `404 event_not_found`（不泄露它在不在）；已经确认过的什么也不动、答 `acked: false`；`--event` 不带值，或与 `--id` 同给，`400 bad_request`。没有 `--event` 时 `ack` 仍是确认收件箱消息（`--id`）。`result: { event, acked }`。
 
 ### 93.4 跟进归属
