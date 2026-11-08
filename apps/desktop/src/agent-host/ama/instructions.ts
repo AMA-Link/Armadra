@@ -54,7 +54,7 @@ export function canvasToolNote(options: NoteOptions = {}): string {
     : "`canvas_items` and `canvas_events`";
   // With resources, the two read verbs are not tools: one sentence says so.
   const resourceNote = resources
-    ? "\n其中账本与事件不是工具：用内置 `read` 读 `armadra://items`（工作项列表）、`armadra://items/<id>`（单项详情）、`armadra://items/<id>/origin`（来源原文全文）、`armadra://events`（未确认的事件），用 `offset` / `limit` 分页。\nThe ledger and the events are not tools here: read `armadra://items` (the work-item list), `armadra://items/<id>` (one item), `armadra://items/<id>/origin` (the full origin text) and `armadra://events` (unacknowledged events) with the built-in `read`, paging with `offset` / `limit`."
+    ? "\n其中账本与事件不是工具：用内置 `read` 读 `armadra://items`（工作项列表）、`armadra://items/<id>`（单项详情）、`armadra://items/<id>/origin`（来源原文全文）、`armadra://events`（未确认的事件），用 `offset` / `limit` 分页。事件卡片与动词答复里写的 `canvas items --item <id>`、`canvas events` 在这里就是 `read armadra://items/<id>`、`read armadra://events`。\nThe ledger and the events are not tools here: read `armadra://items` (the work-item list), `armadra://items/<id>` (one item), `armadra://items/<id>/origin` (the full origin text) and `armadra://events` (unacknowledged events) with the built-in `read`, paging with `offset` / `limit`. Where an event card or a verb's reply says `canvas items --item <id>` or `canvas events`, that is `read armadra://items/<id>` or `read armadra://events` here."
     : "";
   return `## Armadra 画布工具 / Armadra canvas tools
 
