@@ -29,7 +29,11 @@ import {
   OMP_HOOK_EVENTS,
   PI_HOOK_EVENTS,
 } from "./events";
-import { opencodePluginSource, piExtensionSource } from "./extension-template";
+import {
+  ompExtensionTools,
+  opencodePluginSource,
+  piExtensionSource,
+} from "./extension-template";
 import {
   MOD_MODULE_FILE,
   MOD_TYPES_FILE,
@@ -466,6 +470,7 @@ export function artifactFiles(
           agentId,
           clientBin,
           agentId === "omp" ? OMP_HOOK_EVENTS : PI_HOOK_EVENTS,
+          agentId === "omp" ? ompExtensionTools() : [],
         ),
       );
       if (layout.overlay !== undefined) {

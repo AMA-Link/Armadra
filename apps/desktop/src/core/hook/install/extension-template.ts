@@ -1,3 +1,5 @@
+import { verbClass } from "../../../hook-client/verb-class";
+import { VERB_TOOLS, type VerbTool } from "../../../hook-client/verbs";
 import { HOOK_CLIENT_REVISION } from "./events";
 
 /**
@@ -70,18 +72,54 @@ export function transportPrelude(agentId: string, clientBin: string): string {
   );
 }
 
+/** One in-process tool as the generated module registers it. */
+export interface ExtensionTool {
+  readonly name: string;
+  readonly label: string;
+  readonly description: string;
+  /** The verb table's JSON Schema, passed through as is. */
+  readonly parameters: unknown;
+  /** omp's approval tier: `read`, `write` or `exec`. */
+  readonly approval: "read" | "write" | "exec";
+}
+
+/**
+ * `VERB_TOOLS` as omp tools (contract §110). The tier is the one ama files the
+ * verb under (`hook-client/verb-class.ts`), so omp's `write` approval mode
+ * runs the board and context verbs unasked and still asks for what ama asks
+ * for.
+ */
+export function ompExtensionTools(
+  tools: readonly VerbTool[] = VERB_TOOLS,
+): ExtensionTool[] {
+  return tools.map((tool) => {
+    const klass = verbClass(tool);
+    return {
+      name: tool.name,
+      label: tool.name,
+      description: tool.description,
+      parameters: tool.inputSchema,
+      approval: klass === "execute" ? "exec" : klass,
+    };
+  });
+}
+
 /**
  * The whole Pi / Oh My Pi extension: the prelude plus the `pi.on` wiring for
- * `events`. Deterministic — reinstalling writes the same bytes.
+ * `events`, and `tools` registered with `pi.registerTool` (omp only; Pi's tool
+ * API takes another schema type and is left alone). Deterministic —
+ * reinstalling writes the same bytes.
  */
 export function piExtensionSource(
   agentId: string,
   clientBin: string,
   events: readonly string[],
+  tools: readonly ExtensionTool[] = [],
 ): string {
   return (
     `${transportPrelude(agentId, clientBin)}\n` +
     `const ARMADRA_EVENTS = ${jsStringArray(events)};\n` +
+    `const ARMADRA_TOOLS = ${JSON.stringify(tools)};\n` +
     PI_WIRING
   );
 }
@@ -515,9 +553,59 @@ async function armadraHandle(name, event, ctx) {
   }
 }
 
+// One tool call is one \`armadra-hook tool <name>\`: arguments as JSON on
+// stdin, the runtime's prose on stdout — the request \`armadra-hook canvas ...\`
+// makes, so the core cannot tell the two apart. The child inherits this
+// terminal's environment (node id, endpoint file, session binding).
+function armadraRunTool(name, params, signal) {
+  return new Promise((resolve, reject) => {
+    let child;
+    try {
+      child = spawn(ARMADRA_CLIENT, ["tool", name], { stdio: ["pipe", "pipe", "pipe"], signal });
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    let out = "";
+    let err = "";
+    child.stdout.on("data", chunk => (out += chunk));
+    child.stderr.on("data", chunk => (err += chunk));
+    child.on("error", reject);
+    child.on("close", code => {
+      if (code === 0) resolve(out.trim());
+      else reject(new Error((err || out || "armadra-hook tool failed").trim()));
+    });
+    child.stdin.on("error", () => {});
+    child.stdin.end(JSON.stringify(params ?? {}));
+  });
+}
+
+function armadraRegisterTools(pi) {
+  if (typeof pi.registerTool !== "function") return;
+  for (const tool of ARMADRA_TOOLS) {
+    try {
+      pi.registerTool({
+        name: tool.name,
+        label: tool.label,
+        description: tool.description,
+        parameters: tool.parameters,
+        approval: tool.approval,
+        loadMode: "essential",
+        async execute(_toolCallId, params, signal) {
+          const text = await armadraRunTool(tool.name, params, signal);
+          return { content: [{ type: "text", text }], details: {} };
+        },
+      });
+    } catch {
+      // A build of the CLI without this tool API simply has no tools.
+    }
+  }
+}
+
 export default function (pi) {
   // Outside a canvas terminal nothing is registered at all.
   if (!armadraEnv("ARMADRA_NODE_ID")) return;
+  armadraRegisterTools(pi);
   for (const name of ARMADRA_EVENTS) {
     try {
       pi.on(name, (event, ctx) => {
