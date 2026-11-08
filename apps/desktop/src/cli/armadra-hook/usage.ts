@@ -46,6 +46,10 @@ export const CANVAS_USAGE = `CANVAS:
   help                      short collaboration guide (no provider configuration needed)
   post --to NAME --key KEY --body TEXT store a handoff for a linked agent
   inbox --limit 10 --after 0           read your pending messages without acknowledgement
+  handoff-read --id ID [--part transcript [--cursor N] [--limit N] [--raw]]
+                                      read a frozen handoff; --part transcript
+                                      pages the source conversation up to the
+                                      frozen boundary (--raw: original lines)
   ack --id ID                         acknowledge one received message
   handoff-read --id ID [--format md|json]
                                       read an approved handoff: the task brief

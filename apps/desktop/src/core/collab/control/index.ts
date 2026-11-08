@@ -2,7 +2,8 @@ import { availableAgentIds, hasCapability } from "../../agent/registry";
 import type { Caller } from "../nodes";
 import { HELP, PROTOCOL, runMailbox } from "../mailbox";
 import { Args, Refusal, Refused, asRefused } from "../refusals";
-import type { CollabContext } from "../service";
+import type { CollabContext, HandoffReadOptions } from "../service";
+import { CoreFailure } from "../../http/errors";
 import { openBrowser } from "./browser-node";
 import { cancel } from "./cancel";
 import { close } from "./close";
@@ -343,10 +344,38 @@ async function handoffRead(
       "交接域还没有装配好，无法读取交接材料。",
     );
   }
+  const part = args.text("part");
+  if (part !== undefined && part !== "brief" && part !== "transcript") {
+    throw Refusal.badRequest("--part must be brief or transcript");
+  }
+  const cursor = args.count(["cursor"]);
+  if (cursor !== undefined && cursor < 0) {
+    throw Refusal.badRequest("--cursor must be a non-negative integer");
+  }
+  const limit = args.count(["limit"]);
+  if (limit !== undefined && limit < 1) {
+    throw Refusal.badRequest("--limit must be at least 1");
+  }
+  const options: HandoffReadOptions = {
+    format,
+    ...(part === undefined ? {} : { part }),
+    ...(cursor === undefined ? {} : { cursor }),
+    ...(limit === undefined ? {} : { limit }),
+    ...(args.flag("raw") ? { raw: true } : {}),
+  };
   try {
-    const value = await reader(caller, id, sessionId, generation, { format });
-    return raw(value, "Frozen peer context");
+    const value = await reader(caller, id, sessionId, generation, options);
+    return raw(
+      value,
+      part === "transcript"
+        ? "Frozen source transcript"
+        : "Frozen peer context",
+    );
   } catch (error) {
+    if (error instanceof CoreFailure && error.status === 501) {
+      throw new Refused(error.status, error.code, error.message);
+    }
+    if (error instanceof RangeError) throw Refusal.badRequest(error.message);
     const message = error instanceof Error ? error.message : String(error);
     throw Refusal.forbidden(message);
   }
