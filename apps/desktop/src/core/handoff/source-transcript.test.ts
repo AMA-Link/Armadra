@@ -561,7 +561,10 @@ describe("handoff-read --part transcript", () => {
       done: false,
     });
     expect((ok.body as { rawLines: string[] }).rawLines).toHaveLength(1);
-    const plain = await dispatcher.dispatch("handoff-read", caller, base);
+    const plain = await dispatcher.dispatch("handoff-read", caller, {
+      ...base,
+      format: "json",
+    });
     if (!plain.ok) throw new Error(plain.message);
     expect(plain.body).toHaveProperty("bundle");
     for (const bad of [

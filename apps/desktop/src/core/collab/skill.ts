@@ -265,6 +265,7 @@ armadra-hook canvas inbox --limit 10 --after 0             # 读自己的信箱�
 armadra-hook canvas ack --id <消息 id>                      # 处理完了，标记确认
 armadra-hook canvas handoff-read --id <交接 id>             # 读交接简报（默认 --format md）
 armadra-hook canvas handoff-read --id <交接 id> --format json  # 冻结的交接包原样
+armadra-hook canvas handoff-read --id <交接 id> --part transcript [--cursor N] [--raw]  # 来源原文，分页读到冻结边界
 \`\`\`
 
 - 投递需要画布上已有连线；消息 24 小时后过期。

@@ -83,7 +83,7 @@ describe("acceptance section", () => {
   it("is stored in the bundle and rendered in the brief", async () => {
     const view = await frozen({ acceptance: "tests pass" });
     expect(view.bundle.sections.acceptance).toBe("tests pass");
-    expect(view.bundle.version).toBe(1);
+    expect(view.bundle.version).toBe(2);
     expect(renderBrief(view.bundle, { channel: "cli" })).toContain(
       "## 完成标准\ntests pass",
     );
@@ -157,6 +157,29 @@ describe("renderBrief", () => {
     const bundle = { ...view.bundle, transcriptExcerpt: "hello" };
     expect(renderBrief(bundle, { channel: "cli" })).toContain(
       `${TRANSCRIPT_READ_HINT}：5 字符`,
+    );
+  });
+
+  it("points at paged reading when the bundle froze a source cursor", async () => {
+    const view = await frozen();
+    const bundle = {
+      ...view.bundle,
+      transcriptExcerpt: "hello",
+      sourceCursor: {
+        agentId: "claude",
+        executionHost: "local-runtime",
+        locatedKey: "/tmp/x.jsonl",
+        endOffset: 10,
+        prefixSha256: null,
+        unit: "bytes",
+      },
+    } as HandoffBundle;
+    const id = view.bundle.handoffId;
+    expect(renderBrief(bundle, { channel: "cli" })).toContain(
+      `armadra-hook canvas handoff-read --id ${id} --part transcript`,
+    );
+    expect(renderBrief(bundle, { channel: "mcp" })).toContain(
+      `canvas_handoff_read(id="${id}", part="transcript")`,
     );
   });
 
