@@ -21,14 +21,30 @@ export const COMPACTION_NOTE =
   "[宿主 Armadra] 对话刚被压缩。工作项与事件的现状以 `canvas_items` 与 `canvas_events` 为准，不要凭摘要或记忆判断。\n" +
   "[Host: Armadra] The conversation was just compacted. The current state is whatever `canvas_items` and `canvas_events` show; do not rely on the summary or on memory.";
 
+/** 同一句，账本与事件改经 `armadra://` 资源读（host-api 1.2，#885）。 */
+export const COMPACTION_NOTE_RESOURCES =
+  "[宿主 Armadra] 对话刚被压缩。工作项与事件的现状以 `armadra://items` 与 `armadra://events`（用 `read` 读）为准，不要凭摘要或记忆判断。\n" +
+  "[Host: Armadra] The conversation was just compacted. The current state is whatever `read armadra://items` and `read armadra://events` show; do not rely on the summary or on memory.";
+
 type Api = Pick<HostApi, "events" | "tools" | "messages" | "log">;
 
+/** 注入的那句：有 `armadra://` 资源时说资源，否则说工具。 */
+export function compactionNote(options: { resources?: boolean } = {}): string {
+  return options.resources === true
+    ? COMPACTION_NOTE_RESOURCES
+    : COMPACTION_NOTE;
+}
+
 /** 订阅 `session_compact`；答注销函数。 */
-export function injectAfterCompaction(api: Api): () => void {
+export function injectAfterCompaction(
+  api: Api,
+  options: { resources?: boolean } = {},
+): () => void {
+  const note = compactionNote(options);
   return api.events.on("session_compact", () => {
     if (!isCoordinator(api)) return undefined;
     return api.messages
-      .sendUser(COMPACTION_NOTE, NOTE_ORIGIN)
+      .sendUser(note, NOTE_ORIGIN)
       .then(() => undefined)
       .catch((error: unknown) => {
         api.log("warn", "compaction note was not injected", {
