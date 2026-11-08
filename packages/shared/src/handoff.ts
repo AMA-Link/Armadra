@@ -88,6 +88,7 @@ export const handoffBundleSchema = z.object({
       executionHost: z.string(),
       endOffset: z.number().int().nonnegative(),
       prefixSha256: z.string().nullable(),
+      lastEntrySha256: z.string().optional(),
       unit: z.enum(["bytes", "entries", "opaque"]),
     })
     .optional(),

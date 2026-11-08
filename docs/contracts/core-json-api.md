@@ -1705,9 +1705,9 @@ CSV 按 RFC 4180：`\r\n` 换行，首行表头 `id,time,principalId,deviceId,ac
 ```
 
 - `locatedKey` 是 `Located.key`：文件来源是绝对路径，OpenCode 是 `opencode:<会话 id>`，ACP 会话是时间线路径；`executionHost` 是 `local-runtime` 或 `execution-host:<主机 id>`，转录在哪台机器上就到哪台机器读。
-- `unit` 说 `endOffset` 的单位：`bytes`（文件来源，收在冻结时最后一个完整行；`prefixSha256` 是 `[0, endOffset)` 的 sha256）、`entries`（ACP 时间线，记录条数）、`opaque`（OpenCode 的库，游标不是数；`prefixSha256` 为 `null`）。
+- `unit` 说 `endOffset` 的单位：`bytes`（文件来源，收在冻结时最后一个完整行；`prefixSha256` 是 `[0, endOffset)` 的 sha256）、`entries`（ACP 时间线，记录条数；`prefixSha256` 是前 `endOffset - 1` 条的 sha256，可选的 `lastEntrySha256` 是最后一条的——它在冻结后还在变长时，读取不给这一条并标 `lastEntryChanged: true`，冻结时的样子在摘录里；前面的条对不上即 `changed`）、`opaque`（OpenCode 的库，游标不是数；`prefixSha256` 为 `null`）。
 - 读取按游标往后，**读到 `endOffset` 为止**；冻结之后追加到来源的内容读不到。`transcriptExcerpt` 与 `cutoff` 不变。
-- Worker 的 `handoff.capture` 多一种用法 `transcriptRange: { agentId, locatedKey, unit, endOffset, prefixSha256, fromOffset, maxBytes, maxItems?, raw }`（与 `transcriptOnly: true` 同用，不碰文件与仓库），答复多 `range`：`{ state: "ok", entries | rawLines, truncatedLines?, nextOffset, done, cursorText }`，或 `{ state: "changed" | "missing" | "badCursor" }`。旧 Worker 不认它、答复里没有合法的 `range`，与主机不在线同样答 **501 `handoff_host_offline`**。
+- Worker 的 `handoff.capture` 多一种用法 `transcriptRange: { agentId, locatedKey, unit, endOffset, prefixSha256, lastEntrySha256?, fromOffset, maxBytes, maxItems?, raw }`（与 `transcriptOnly: true` 同用，不碰文件与仓库），答复多 `range`：`{ state: "ok", entries | rawLines, truncatedLines?, skippedLines?, lastEntryChanged?, nextOffset, done, cursorText }`，或 `{ state: "changed" | "missing" | "badCursor" }`。旧 Worker 不认它、答复里没有合法的 `range`，与主机不在线同样答 **501 `handoff_host_offline`**。
 
 ### 21.2 Worker 舰队
 
@@ -3077,7 +3077,7 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
   }
   ```
 
-  `mode: "raw"` 时没有 `entries`，换成 `rawLines`：同一范围的原文（文件来源是原行，OpenCode 与 ACP 时间线是每条记录一行 JSON；一行超过单页上限时截断并计入 `truncatedLines`）。`nextCursor` 是下一页的 `cursor`，读完为 `null` 且 `done: true`。密钥与私钥块在两种模式里都已替换，工具输入与结果截短。
+  `mode: "raw"` 时没有 `entries`，换成 `rawLines`：同一范围的原文（文件来源是原行，OpenCode 与 ACP 时间线是每条记录一行 JSON；一行超过单页上限时截断并计入 `truncatedLines`）。文件来源里超过 4 MB 的行整行不给，计入 `skippedLines`；时间线最后一条冻结后还在变时答 `lastEntryChanged: true` 与 `lastEntryNote`。`nextCursor` 是下一页的 `cursor`，读完为 `null` 且 `done: true`。密钥与私钥块在两种模式里都已替换，工具输入与结果截短。
 
 - 不能往后读时答 `mode: "excerpt"`：`transcriptExcerpt` 是冻结摘录，`reason` 说明原因，`nextCursor` 为 `null`、`done: true`。`version: 1` 的包与没有 `sourceCursor` 的包只有摘录；文件来源的 `prefixSha256` 对不上（被压缩或改写）或来源读不到了，另带 `transcriptChanged: true`。
 - 错误：`cursor` 不是上一页给的值或越过边界、`part` 不认得、`limit` 小于 1 答 `400`；来源在另一台执行主机而它不在线答 `501 handoff_host_offline`；未寻址的会话答 `403`。

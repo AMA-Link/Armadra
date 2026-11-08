@@ -84,6 +84,9 @@ export async function readSourceTranscript(
     unit: cursor.unit,
     endOffset: cursor.endOffset,
     prefixSha256: cursor.prefixSha256,
+    ...(cursor.lastEntrySha256 === undefined
+      ? {}
+      : { lastEntrySha256: cursor.lastEntrySha256 }),
     fromOffset: options.cursor ?? 0,
     maxBytes: PAGE_BYTES,
     ...(options.limit === undefined
@@ -119,6 +122,14 @@ export async function readSourceTranscript(
                 : {}),
             }
           : { entries: answer.entries ?? [] }),
+        ...(answer.skippedLines ? { skippedLines: answer.skippedLines } : {}),
+        ...(answer.lastEntryChanged
+          ? {
+              lastEntryChanged: true,
+              lastEntryNote:
+                "来源最后一条在冻结之后还在变，这里没给；它冻结时的样子在包的 transcriptExcerpt 里。",
+            }
+          : {}),
         nextCursor: answer.done ? null : answer.nextOffset,
         done: answer.done,
         cursorText: answer.cursorText,

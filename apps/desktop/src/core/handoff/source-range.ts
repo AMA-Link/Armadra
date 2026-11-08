@@ -45,8 +45,13 @@ export interface SourceCursor {
   readonly executionHost: string;
   /** `readHistoryEntries` 的游标：冻结时转录末尾。 */
   readonly endOffset: number;
-  /** 文件来源：`[0, endOffset)` 的 sha256；其余是 `null`。 */
+  /**
+   * 文件来源：`[0, endOffset)` 的 sha256；时间线（按条）：前 `endOffset - 1` 条的
+   * sha256；OpenCode 是 `null`。
+   */
   readonly prefixSha256: string | null;
+  /** 时间线：冻结时最后一条的 sha256。之后它若还在变长，读到它时只说明、不给。 */
+  readonly lastEntrySha256?: string;
   readonly unit: CursorUnit;
 }
 
@@ -55,6 +60,7 @@ export interface FrozenCursor {
   readonly locatedKey: string;
   readonly endOffset: number;
   readonly prefixSha256: string | null;
+  readonly lastEntrySha256?: string;
   readonly unit: CursorUnit;
 }
 
@@ -73,6 +79,7 @@ export interface RangeRequest {
   readonly unit: CursorUnit;
   readonly endOffset: number;
   readonly prefixSha256: string | null;
+  readonly lastEntrySha256?: string | undefined;
   readonly fromOffset: number;
   readonly maxBytes: number;
   /** 最多多少条（原文模式：多少行）；缺省只受字节上限约束。 */
@@ -87,6 +94,10 @@ export type RangeAnswer =
       readonly rawLines?: readonly string[];
       /** 原文模式下被截到单页上限的行数。 */
       readonly truncatedLines?: number;
+      /** 超过 4 MB 的行：整行没给，这一页里跳过了几行。 */
+      readonly skippedLines?: number;
+      /** 时间线最后一条在冻结之后还在变：这一页没给它，冻结时的样子在摘录里。 */
+      readonly lastEntryChanged?: boolean;
       readonly nextOffset: number;
       readonly done: boolean;
       readonly cursorText: string;
@@ -197,6 +208,16 @@ export function freezeCursor(
       unit === "entries" ? Number.MAX_SAFE_INTEGER : 1,
     );
     if (range.entries.length === 0) return undefined;
+    if (unit === "entries") {
+      const { head, last } = entryDigests(range.entries);
+      return {
+        locatedKey: located.key,
+        endOffset: range.endOffset,
+        prefixSha256: head,
+        lastEntrySha256: last,
+        unit,
+      };
+    }
     return {
       locatedKey: located.key,
       endOffset: range.endOffset,
@@ -206,6 +227,19 @@ export function freezeCursor(
   } catch {
     return undefined;
   }
+}
+
+/** 时间线：除最后一条之外的哈希，以及最后一条自己的哈希。 */
+function entryDigests(entries: readonly TranscriptEntry[]): {
+  head: string;
+  last: string;
+} {
+  const digestOf = (items: readonly TranscriptEntry[]): string =>
+    createHash("sha256").update(JSON.stringify(items), "utf8").digest("hex");
+  return {
+    head: digestOf(entries.slice(0, -1)),
+    last: digestOf(entries.slice(-1)),
+  };
 }
 
 /* ------------------------------- normalizing ------------------------------- */
@@ -359,6 +393,7 @@ function readFileRange(
   const entries: SourceEntry[] = [];
   const rawLines: string[] = [];
   let truncatedLines = 0;
+  let skippedLines = 0;
   let used = 2;
   let position = from;
   let full = false;
@@ -376,8 +411,9 @@ function readFileRange(
         newline = buffer.lastIndexOf(0x0a);
       }
       if (newline === -1) {
-        // 超长的一行：整行丢掉，从这个窗口之后接着读。
+        // 超长的一行：整行丢掉，从这个窗口之后接着读，并数一笔。
         position = windowEnd;
+        skippedLines += 1;
         continue;
       }
       buffer = buffer.subarray(0, newline + 1);
@@ -446,6 +482,7 @@ function readFileRange(
   return {
     state: "ok",
     ...(request.raw ? { rawLines, truncatedLines } : { entries }),
+    ...(skippedLines > 0 ? { skippedLines } : {}),
     nextOffset,
     done,
     cursorText: describe(request, located, nextOffset),
@@ -460,6 +497,31 @@ function readCursorRange(
   maxBytes: number,
   maxItems: number,
 ): RangeAnswer {
+  let lastEntryChanged = false;
+  let lastEntryOffset = -1;
+  if (request.unit === "entries" && request.prefixSha256 !== null) {
+    // 时间线是内存里的派生结果，从头读一遍核对冻结前的那些条不贵。
+    const whole = readHistoryEntries(
+      request.agentId,
+      located,
+      0,
+      Number.MAX_SAFE_INTEGER,
+    );
+    const frozen = whole.entries.filter(
+      (entry) => whole.startOffset + entry.endOffset <= request.endOffset,
+    );
+    if (frozen.length === 0) return { state: "missing" };
+    const digests = entryDigests(frozen);
+    if (digests.head !== request.prefixSha256) return { state: "changed" };
+    if (
+      request.lastEntrySha256 !== undefined &&
+      digests.last !== request.lastEntrySha256
+    ) {
+      lastEntryChanged = true;
+      const tail = frozen[frozen.length - 1] as TranscriptEntry;
+      lastEntryOffset = whole.startOffset + tail.endOffset;
+    }
+  }
   const range = readHistoryEntries(
     request.agentId,
     located,
@@ -467,14 +529,19 @@ function readCursorRange(
     Number.MAX_SAFE_INTEGER,
   );
   const eligible = range.entries.filter(
-    (entry) => range.startOffset + entry.endOffset <= request.endOffset,
+    (entry) =>
+      range.startOffset + entry.endOffset <= request.endOffset &&
+      range.startOffset + entry.endOffset !== lastEntryOffset,
   );
   if (eligible.length === 0 && from < request.endOffset) {
     return range.entries.length === 0 && request.unit === "opaque"
       ? { state: "missing" }
       : request.unit === "entries" && range.endOffset < request.endOffset
         ? { state: "missing" }
-        : finishedEmpty(request, located);
+        : {
+            ...finishedEmpty(request, located),
+            ...(lastEntryChanged ? { lastEntryChanged: true } : {}),
+          };
   }
   const entries: SourceEntry[] = [];
   const rawLines: string[] = [];
@@ -505,6 +572,7 @@ function readCursorRange(
   return {
     state: "ok",
     ...(request.raw ? { rawLines, truncatedLines: 0 } : { entries }),
+    ...(lastEntryChanged ? { lastEntryChanged: true } : {}),
     nextOffset,
     done: finished,
     cursorText: describe(request, located, nextOffset),
@@ -556,12 +624,14 @@ export function rangeRequestOf(value: unknown): RangeRequest | undefined {
   }
   const maxItems = count("maxItems");
   const sha = raw.prefixSha256;
+  const lastEntrySha256 = text("lastEntrySha256");
   return {
     agentId,
     locatedKey,
     unit: unit as CursorUnit,
     endOffset,
     prefixSha256: typeof sha === "string" ? sha : null,
+    ...(lastEntrySha256 === undefined ? {} : { lastEntrySha256 }),
     fromOffset,
     maxBytes,
     ...(maxItems === undefined ? {} : { maxItems }),
@@ -614,6 +684,10 @@ export function rangeAnswerOf(value: unknown): RangeAnswer | undefined {
     ...(typeof raw.truncatedLines === "number"
       ? { truncatedLines: raw.truncatedLines }
       : {}),
+    ...(typeof raw.skippedLines === "number"
+      ? { skippedLines: raw.skippedLines }
+      : {}),
+    ...(raw.lastEntryChanged === true ? { lastEntryChanged: true } : {}),
     nextOffset: raw.nextOffset,
     done: raw.done,
     cursorText: raw.cursorText,

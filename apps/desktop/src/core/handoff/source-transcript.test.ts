@@ -102,6 +102,25 @@ const PI = [
   line({ type: "message", message: { role: "assistant", content: "done" } }),
 ];
 
+const ev = (type: string, data: Record<string, unknown>, at: string) =>
+  line({ type, data, id: `e-${type}-${at}`, timestamp: at, parentId: null });
+
+const COPILOT = [
+  ev("session.start", { sessionId: "s1" }, "2026-11-08T09:00:00.000Z"),
+  ev("user.message", { content: "first ask" }, "2026-11-08T09:00:01.000Z"),
+  ev(
+    "assistant.message",
+    {
+      content: "looking",
+      toolRequests: [
+        { toolCallId: "k1", name: "view", arguments: { path: "a.ts" } },
+      ],
+    },
+    "2026-11-08T09:00:02.000Z",
+  ),
+  ev("assistant.message", { content: "done" }, "2026-11-08T09:00:03.000Z"),
+];
+
 function request(
   agentId: string,
   cursor: FrozenCursor,
@@ -113,6 +132,9 @@ function request(
     unit: cursor.unit,
     endOffset: cursor.endOffset,
     prefixSha256: cursor.prefixSha256,
+    ...(cursor.lastEntrySha256 === undefined
+      ? {}
+      : { lastEntrySha256: cursor.lastEntrySha256 }),
     fromOffset: 0,
     maxBytes: PAGE_BYTES,
     raw: false,
@@ -163,6 +185,7 @@ describe("freezing and reading a file source", () => {
     ["claude", CLAUDE],
     ["codex", CODEX],
     ["pi", PI],
+    ["copilot", COPILOT],
   ])("%s: every entry has the one shape, from the start", (agentId, lines) => {
     const path = write(`${agentId}.jsonl`, lines);
     const cursor = freeze(agentId, path);
@@ -177,9 +200,41 @@ describe("freezing and reading a file source", () => {
       role: "user",
       text: "first ask",
     });
-    if (agentId !== "codex") {
+    if (agentId !== "codex" && agentId !== "copilot") {
       expect(only?.entries?.some((entry) => entry.tools.length > 0)).toBe(true);
     }
+  });
+
+  it("copilot: tool requests come through in the one shape", () => {
+    const path = write("events.jsonl", COPILOT);
+    const cursor = freeze("copilot", path);
+    const entries = pages(request("copilot", cursor)).flatMap(
+      (page) => page.entries ?? [],
+    );
+    expect(entries.map((entry) => entry.text)).toEqual(
+      expect.arrayContaining(["first ask", "done"]),
+    );
+  });
+
+  it("counts a line too long to read instead of dropping it silently", () => {
+    const huge = line({
+      type: "assistant",
+      message: { role: "assistant", content: "y".repeat(4.5 * 1024 * 1024) },
+    });
+    const path = write("long.jsonl", [
+      CLAUDE[0] as string,
+      huge,
+      CLAUDE[3] as string,
+    ]);
+    const cursor = freeze("claude", path);
+    const all = pages(request("claude", cursor));
+    expect(all.reduce((sum, page) => sum + (page.skippedLines ?? 0), 0)).toBe(
+      1,
+    );
+    const texts = all.flatMap((page) =>
+      (page.entries ?? []).map((e) => e.text),
+    );
+    expect(texts).toEqual(["first ask", "done"]);
   });
 
   it("stops at the frozen boundary: later appends never show", () => {
@@ -303,11 +358,9 @@ describe("sources without a byte cursor", () => {
     setAcpTimelineSource(() => items as never);
     const located = locateHistory({ agentId: "claude", transcriptPath: path });
     const cursor = freezeCursor("claude", located!) as FrozenCursor;
-    expect(cursor).toMatchObject({
-      unit: "entries",
-      endOffset: 2,
-      prefixSha256: null,
-    });
+    expect(cursor).toMatchObject({ unit: "entries", endOffset: 2 });
+    expect(cursor.prefixSha256).toHaveLength(64);
+    expect(cursor.lastEntrySha256).toHaveLength(64);
     items.push({ kind: "user", text: "LATER", at: 3000 });
     const [page] = pages(request("claude", cursor));
     expect(page?.entries?.map((entry) => entry.text)).toEqual([
@@ -323,6 +376,28 @@ describe("sources without a byte cursor", () => {
       request("claude", cursor, { fromOffset: 1, maxItems: 1 }),
     );
     expect(second).toMatchObject({ state: "ok", done: true });
+  });
+
+  it("an ACP entry still growing after the freeze is withheld, not leaked", () => {
+    const directory = tempDir("armadra-acp-grow-");
+    const path = join(directory, "s.acp.jsonl");
+    const answer = {
+      kind: "assistant",
+      parts: [{ type: "text", text: "part" }],
+      at: 2000,
+    };
+    const items: unknown[] = [{ kind: "user", text: "ask", at: 1000 }, answer];
+    setAcpTimelineSource(() => items as never);
+    const located = locateHistory({ agentId: "claude", transcriptPath: path });
+    const cursor = freezeCursor("claude", located!) as FrozenCursor;
+    answer.parts = [{ type: "text", text: "part AND MORE AFTER FREEZE" }];
+    const [page] = pages(request("claude", cursor));
+    expect(page?.entries?.map((entry) => entry.text)).toEqual(["ask"]);
+    expect(page?.lastEntryChanged).toBe(true);
+    items[0] = { kind: "user", text: "rewritten", at: 1000 };
+    expect(readSourceRange(request("claude", cursor))).toEqual({
+      state: "changed",
+    });
   });
 
   describe("OpenCode", () => {

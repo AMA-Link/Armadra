@@ -138,7 +138,9 @@ function cursorOf(value: unknown): FrozenCursor | undefined {
     !Number.isSafeInteger(raw.endOffset) ||
     raw.endOffset < 0 ||
     (raw.unit !== "bytes" && raw.unit !== "entries" && raw.unit !== "opaque") ||
-    (raw.prefixSha256 !== null && typeof raw.prefixSha256 !== "string")
+    (raw.prefixSha256 !== null && typeof raw.prefixSha256 !== "string") ||
+    (raw.lastEntrySha256 !== undefined &&
+      typeof raw.lastEntrySha256 !== "string")
   ) {
     return undefined;
   }
@@ -146,6 +148,9 @@ function cursorOf(value: unknown): FrozenCursor | undefined {
     locatedKey: raw.locatedKey,
     endOffset: raw.endOffset,
     prefixSha256: raw.prefixSha256 as string | null,
+    ...(typeof raw.lastEntrySha256 === "string"
+      ? { lastEntrySha256: raw.lastEntrySha256 }
+      : {}),
     unit: raw.unit,
   };
 }
