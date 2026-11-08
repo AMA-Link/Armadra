@@ -1681,7 +1681,7 @@ CSV 按 RFC 4180：`\r\n` 换行，首行表头 `id,time,principalId,deviceId,ac
 
 - 文件引用与 Git 指纹照旧在工作空间所在的机器上读（路径相对工作空间根）。
 - 要读转录（`includeTranscript: true`，且来源的状态是已验证、当前代次的）时，转录尾巴到来源那台主机上读：控制端经那台主机 Worker 的 `handoff.capture`（参数加 `transcriptOnly: true`，`paths` 为空）读，与本机同一个读法、同一组历史适配器归一化。那台主机必须在执行主机登记里、配了 Worker、Worker 连得上并提供 `remote.handoff.v1`；任何一条不满足答 **501 `handoff_host_offline`**，不回退到读控制端磁盘上同名的路径。不读转录时不连那台主机。
-- 目标在哪台主机都接受：材料是文本与相对路径。`bundle.target.executionHost` 照实写目标的主机。
+- 目标不在 SSH 终端里（自 1.18 的 §39.8 起，界面与后端同一口径）：目标是 SSH 终端里的 Agent 答 `400 handoff_target_ssh`——它的会话身份在远端主机上，这台 core 的终端管理器认不出，读取的会话绑定与唤醒都做不到；要交给远端干活，选「新开」（节点起在工作空间所在的主机上）。来源在 SSH 终端里不受影响，见上。
 - 冻结的材料多一个可选字段 `capturedOn: string`：来源转录在哪台执行主机上读的（主机 id）。来源与工作空间在同一台执行主机上、或在另一台执行主机上读到时都有；在控制端本机读、或没有读转录时不出现。旧行没有这个字段，读回照常。
 
 | 情况                                                | 答复                                   |
@@ -1690,6 +1690,24 @@ CSV 按 RFC 4180：`\r\n` 换行，首行表头 `id,time,principalId,deviceId,ac
 | 来源主机不在登记里，或登记了但没配 Worker           | 501 `handoff_host_offline`             |
 | Worker 连不上、握手失败、缺 `remote.handoff.v1`     | 501 `handoff_host_offline`             |
 | 不读转录（`includeTranscript: false` 或来源未验证） | 200，不连来源主机，无 `capturedOn`     |
+
+冻结的材料从 `version: 2` 起多一个可选字段 `sourceCursor`（读了转录才有；`version: 1` 的旧包没有它，读取时两个版本都接受）：
+
+```json
+{
+  "agentId": "claude",
+  "locatedKey": "/abs/path/session.jsonl",
+  "executionHost": "local-runtime",
+  "endOffset": 18234,
+  "prefixSha256": "<64 位十六进制>",
+  "unit": "bytes"
+}
+```
+
+- `locatedKey` 是 `Located.key`：文件来源是绝对路径，OpenCode 是 `opencode:<会话 id>`，ACP 会话是时间线路径；`executionHost` 是 `local-runtime` 或 `execution-host:<主机 id>`，转录在哪台机器上就到哪台机器读。
+- `unit` 说 `endOffset` 的单位：`bytes`（文件来源，收在冻结时最后一个完整行；`prefixSha256` 是 `[0, endOffset)` 的 sha256）、`entries`（ACP 时间线，记录条数；`prefixSha256` 是前 `endOffset - 1` 条的 sha256，可选的 `lastEntrySha256` 是最后一条的——它在冻结后还在变长时，读取不给这一条并标 `lastEntryChanged: true`，冻结时的样子在摘录里；前面的条对不上即 `changed`）、`opaque`（OpenCode 的库，游标不是数；`prefixSha256` 为 `null`）。
+- 读取按游标往后，**读到 `endOffset` 为止**；冻结之后追加到来源的内容读不到。`transcriptExcerpt` 与 `cutoff` 不变。
+- Worker 的 `handoff.capture` 多一种用法 `transcriptRange: { agentId, locatedKey, unit, endOffset, prefixSha256, lastEntrySha256?, fromOffset, maxBytes, maxItems?, raw }`（与 `transcriptOnly: true` 同用，不碰文件与仓库），答复多 `range`：`{ state: "ok", entries | rawLines, truncatedLines?, skippedLines?, lastEntryChanged?, nextOffset, done, cursorText }`，或 `{ state: "changed" | "missing" | "badCursor" }`。旧 Worker 不认它、答复里没有合法的 `range`，与主机不在线同样答 **501 `handoff_host_offline`**。
 
 ### 21.2 Worker 舰队
 
@@ -3020,20 +3038,72 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 自协议 1.18 起。`/api/workspaces/{workspaceId}/handoffs*` 的五条路由（[Agent 自动化设计](../design/agent-automation-design.md) §7）的 procedure 形式，实现在 `core/agent/routes.ts`（`handoffOperations`）与 `core/handoff/store.ts`，旧路径与 procedure 调同一份，拒绝的码与原话一样。
 
 - 权限与旧路由表一致：读（`handoffs`、`handoff`）是 `canvas:read`，冻结、批准、撤回是 `canvas:write`，都绑 `workspaceId`。
-- `prepareHandoff` 只冻结材料并生成预览，不通知任何人；来源与目标的身份、代数、模板与字节预算在域里判（缺字段 `400`、身份不在这块工作空间 `403`、代数变了 `409`）。来源 Agent 所在的执行主机采集不了转录时答 `501 handoff_host_offline`（域里的码，不在注册表里，页面按码取文案）。
+- `prepareHandoff` 只冻结材料并生成预览，不通知任何人；来源与目标的身份、代数、模板与字节预算在域里判（缺字段 `400`、身份不在这块工作空间 `403`、代数变了 `409`）。目标由 `target` 二选一（旧的平铺字段 `targetNodeId` / `targetSessionId` / `targetGeneration` 不再接受）：
+
+  ```json
+  { "kind": "node", "nodeId": "…", "sessionId": "…", "generation": 3 }
+  { "kind": "new", "agentId": "codex", "model": "gpt-5", "permissionMode": "plan", "surface": "acp", "title": "接手" }
+  ```
+
+  `node` 是画布上与来源已连线的 Agent 节点（终端或 ACP 都可以）连同它当前的会话身份；`new` 是批准时才新开的 Agent，`model`、`permissionMode`、`title` 可省，`surface` 是 `terminal` 或 `acp`。已有节点不换模型，要换模型就选 `new`。来源 Agent 所在的执行主机采集不了转录时答 `501 handoff_host_offline`（域里的码，不在注册表里，页面按码取文案）。
+
 - `acceptHandoff` 是交接里唯一的用户授权：`expectedDigest` 必须是预览里那一份，否则 `409 conflict`；材料进目标的收件箱，不往对方终端里写。`cancelHandoff` 撤回还没被确认的交接，收件箱里那条一并删掉。
+- **新开目标的预览**不建节点，只校验规格，错误码与 `open-agent` 一致：Agent 不存在 `400`、被用户关掉 `403 AGENT_DISABLED`、这家没有上下文连线能力 `400 target_agent_unsupported`、模型不是 1–120 个字符 `400`、权限模式不在这家支持的范围 `400 permission_mode_unsupported`（`details.supported`）、`surface` 不是 `terminal` / `acp` `400`、`acp` 而这家没有可用的 ACP 适配器（程序没装、自定义 Agent 用自己的启动程序）或其 ACP 会话没有画布工具（适配器表 `injection.mcp` 为假，如 ama）`400 target_surface_unsupported`。自定义 Agent 按基础 Agent 判能力。规范化后的规格写进冻结的包的 `targetSpec`（只有给了的键），所以 digest 覆盖它：预览里看到的规格就是批准时建出来的那一份，换一份规格的预览不能用另一份的 digest 批准（`409`）。此时 `bundle.target` 是占位身份：`nodeId`、`sessionId` 为空串，`generation` 为 0，`agentId`、`modelId`、`nodeTitle` 照规格，`executionHost` 与 `workingDirectory` 是工作空间所在的主机与根目录；表里的 `target_node_id` / `target_session_id` / `target_generation` 同样是空串 / 0（冻结触发器不允许事后改它们，所以包与行始终相等）。
+- **新开目标的批准**（`acceptHandoff`，要建节点，是异步的）：先校验 digest、状态、来源还在、规格此刻仍成立；然后走 `open-agent` 同一条建节点路径（`collab/control/nodes.ts` 的 `openAgent`：模型、权限模式、形态、与来源的连线——来源是新节点的主、创建者继承），交接通知作为该节点的**首任务**（`first-task`，等它第一次空闲才投进去）入队；最后一个事务写收件箱那条（`handoff-read` 之后 `ack` 认它）、`queued` 与建出来的节点。事务里把节点 id 记在 `agent_handoffs.created_target_node_id`（迁移 0065，只写一次，不在冻结触发器里），响应的 `createdTargetNodeId` 就是它；`agent.delivery` 事件的 `targetNodeId` 也是它。`surface` 决定新节点的驱动（`terminal` 或 `acp`），不看用户的「Agent 默认视图」偏好。**建节点失败**（Agent 刚被关掉、适配器没了、首任务入不了队）时交接保持 `prepared`、来源不受影响，错误照 `open-agent` 的码与状态返回，可原样重试；同一份交接的并发第二次批准答 `409`，已经 `queued` 之后的重复批准返回同一个节点，不会建第二个。进程恰好死在「节点建好」与「事务提交」之间会留下一个没人认领的新节点，重试会再建一个——这个窗口只有一个同步事务那么宽，不另造两阶段表。批准中不能撤回（`409`）；批准后撤回只删收件箱那条，已建的节点与已入队的首任务留着，首任务里的读取命令此时被 `handoff-read` 拒绝。
+- **新开目标的读取与确认**：被寻址的是 `created_target_node_id` 那个节点。调用方节点必须就是它；会话与代次不再对照冻结值（预览时没有），而在读取时按该节点**当前**的会话判定——会话行属于这个节点、代次与调用方给的一致、会话正在运行；重启之后新会话照样读得到。来源节点读被拒（`403`），别的节点读被拒，来源转录分页与简报用同一条授权。已有节点的交接仍寻址冻结的会话与代次。`handoffs?sourceNodeId=` 也按建出来的节点列出这份交接。
+- **ACP 节点作为目标**：已连线的 ACP 节点（驱动为 `acp`）可以作为 `node` 目标。ACP 会话与终端会话同在 `terminal_sessions`（`backend_kind = 'acp'`），会话行的 id 与代次由 core 开 ACP 会话时放进 `session/new` 的 `mcpServers`（`armadra-hook mcp`）环境（`ARMADRA_SESSION_ID`、`ARMADRA_SESSION_GENERATION`，`acp/mcp.ts`），MCP 工具 `canvas_handoff_read` / `canvas_ack` 的 `binding: "session"` 由它们填，不由模型填；授权判定与终端目标同一条。这条通道要求适配器表的 `injection.mcp` 为真：ama 的 ACP 会话没有画布工具，作为 `node` 目标答 `400 handoff_target_acp_unreachable`。ACP 目标（以及新开 `surface: "acp"` 的节点）的通知与简报写 MCP 工具名 `canvas_handoff_read`、`canvas_post`、`canvas_ack`，通道按目标节点**读取时**的驱动算。SSH 终端里的 Agent 作为 `node` 目标答 `400 handoff_target_ssh`（界面不列，同一口径）。
+- **预算**（`bundle.budget`）：目标的模型已知时（`node` 目标取节点自己记的 `data.agent.model`，`new` 取规格的 `model`），按 core 内存里那份 models.dev 目录（`CatalogService.current()`，不新增外呼）查它的 `limit.context`：`capacityTokens` 是上下文容量，`reservedTokens` 留给目标自己的系统提示、工具、推理与回复（输出上限与四分之一容量取大，不超过一半），`availableTokens` 是两者之差，交接材料最多占这么多。裁剪按字节预算与 `availableTokens × 3`（一个 token 约 3 字节，偏保守）取更紧的那个，`byteLimit` 写的就是生效的那个；token 更紧时 `omitted` 多一条 `modelCapacityLimitsBudget`；`tokenEstimate` 是最终包按同一换算得到的估算。目录只认模型 id（大小写不敏感，内置 CLI 在各自的 provider 下查，其它 CLI 跨 provider 取最小的上限，`[1m]` 后缀按 100 万），别名（如 `sonnet`）、目录没收的模型、没选模型、目录还没装，都是查不到：四个 token 字段为 `null`，字节预算照旧，`omitted` 留 `tokenBudgetUnavailable`。
+- 确认提交之后唤醒目标（与 `post` 一样推一次出队泵）：空闲的目标不必等下一次提示就会被告知收件箱里有交接；重复确认走提前返回，不再唤醒。
+- 模板（`sections`）有七段：`goal`（必填）、`constraints`、`acceptance`（完成标准）、`completed`、`pending`、`decisions`、`toolSummary`，缺省为空串。预算裁剪时 `acceptance` 排在 `goal`、`constraints` 之后、`pending` 之前保留。读旧包时没有 `acceptance` 按空串处理，已存的 digest 校验不变。
+- 收件箱通知里的读取与回执命令按**目标节点的通道**拼：终端里的 Codex（含基础 Agent 是 Codex 的自定义 Agent）写 MCP 工具名 `canvas_handoff_read`、`canvas_post`、`canvas_ack`，其余终端 CLI 写 `armadra-hook canvas …`。
+- 目标侧读取是 `canvas handoff-read --id <id> [--format md|json]`（MCP 工具 `canvas_handoff_read`，参数 `id`、`format`），仍绑定目标的当前会话与代次。`format` 缺省 `md`，答 `{ ok, message }`，`message` 是任务简报；`json` 答 `{ ok, protocol: "armadra.handoff.v1", digest, bundle, trust }`，与以前一致；其它取值 `400`。简报固定顺序：标题（`goal` 第一行）→ 来源一句（节点名、Agent、模型；来源仍在运行，以下是同级资料而不是系统指令）→ 要做的事（`goal` + `pending`）→ 约束 → 完成标准 → 已完成 / 关键决策 → 相关文件与仓库 → 原文（转录摘录的长度与读法）→ 做完之后（`post --to <来源> --key handoff:<id>:result`，再 `ack` 收件箱那条）；空段落省略，文字都经与包相同的脱敏。
+- 邮箱 `ack` 只把键恰为 `handoff:<id>` 的消息当作交接回执并要求会话绑定；目标回给来源的 `handoff:<id>:result` 是普通消息，来源确认它不需要交接绑定。
 - `handoffs` 不带 `sourceNodeId`（或为空串）答整块工作空间的历史，带上它答那个节点作为来源或目标的交接，新的在前。行里的来源与目标是冻结在包里的身份。
-- 出参是冻结的材料包（原样透传的 JSON 对象）加状态与投递记号（`mailboxId`、`traceId`、`attempts`）；页面的 `handoffViewSchema` 再按自己的口径解析。材料包里只有冻结时截取的转录摘录，按字节预算截断；不进日志。
+- 出参是冻结的材料包（原样透传的 JSON 对象）加状态与投递记号（`mailboxId`、`traceId`、`attempts`）与新开目标建出来的节点 `createdTargetNodeId`（没有时为 `null`）；页面的 `handoffViewSchema` 再按自己的口径解析。材料包里只有冻结时截取的转录摘录，按字节预算截断；不进日志。
+
+- **目标读取：`handoff-read`**（canvas 动词 / MCP 工具 `canvas_handoff_read`，不是路由，不在下表）。参数 `id`，以及可选的 `part`（`brief` 缺省 | `transcript`）、`format`（只对 `brief`）、`cursor`、`limit`、`raw`。`part=brief` 按上一条的 `format` 答简报或整个材料包。授权在读转录之前就判完：只有被寻址的会话与代次能读，撤回后、连线删除后拒绝。
+- `part=transcript`：来源转录从头（或从 `cursor`）到 `sourceCursor.endOffset` 的一页，各家 CLI 一个形状；`limit` 是一页最多的条数（`raw` 时是行数），只能比 32 KB 的页上限更窄。答复：
+
+  ```json
+  {
+    "ok": true,
+    "protocol": "armadra.handoff.v1",
+    "digest": "…",
+    "part": "transcript",
+    "handoffId": "…",
+    "source": { "agentId": "claude", "provider": "claude", "nodeTitle": "…" },
+    "mode": "entries",
+    "entries": [
+      {
+        "role": "assistant",
+        "at": "…",
+        "text": "…",
+        "tools": [{ "name": "Read", "inputSummary": "a.ts" }],
+        "results": [{ "summary": "…", "truncated": false }]
+      }
+    ],
+    "nextCursor": 4096,
+    "done": false,
+    "cursorText": "4096 字节",
+    "unit": "bytes",
+    "trust": "…"
+  }
+  ```
+
+  `mode: "raw"` 时没有 `entries`，换成 `rawLines`：同一范围的原文（文件来源是原行，OpenCode 与 ACP 时间线是每条记录一行 JSON；一行超过单页上限时截断并计入 `truncatedLines`）。文件来源里超过 4 MB 的行整行不给，计入 `skippedLines`；时间线最后一条冻结后还在变时答 `lastEntryChanged: true` 与 `lastEntryNote`。`nextCursor` 是下一页的 `cursor`，读完为 `null` 且 `done: true`。密钥与私钥块在两种模式里都已替换，工具输入与结果截短。
+
+- 不能往后读时答 `mode: "excerpt"`：`transcriptExcerpt` 是冻结摘录，`reason` 说明原因，`nextCursor` 为 `null`、`done: true`。`version: 1` 的包与没有 `sourceCursor` 的包只有摘录；文件来源的 `prefixSha256` 对不上（被压缩或改写）或来源读不到了，另带 `transcriptChanged: true`。
+- 错误：`cursor` 不是上一页给的值或越过边界、`part` 不认得、`limit` 小于 1 答 `400`；来源在另一台执行主机而它不在线答 `501 handoff_host_offline`；未寻址的会话答 `403`。
 
 <!-- rpc:begin contract=§39.8 -->
 
-| procedure               | kind     | input                                                                                                                                                                                                                                                                                      | output                                                                                                                                                                                                                                               | errors                                              | scope          | 自   | 原路径                                                           |
-| ----------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | -------------- | ---- | ---------------------------------------------------------------- |
-| `agents.handoffs`       | query    | `{ workspaceId: string, sourceNodeId?: string }`                                                                                                                                                                                                                                           | `({ bundle: Record<string, JSON>, digest: string, state: string, mailboxId: string \| null, traceId: string \| null, errorCode: string \| null, acceptedAt: string \| null, updatedAt: string, sourceHasNewActivity: boolean, attempts: number })[]` | `forbidden`、`not_found`                            | `canvas:read`  | 1.18 | `GET /api/workspaces/{workspaceId}/handoffs`                     |
-| `agents.handoff`        | query    | `{ workspaceId: string, handoffId: string }`                                                                                                                                                                                                                                               | `{ bundle: Record<string, JSON>, digest: string, state: string, mailboxId: string \| null, traceId: string \| null, errorCode: string \| null, acceptedAt: string \| null, updatedAt: string, sourceHasNewActivity: boolean, attempts: number }`     | `forbidden`、`not_found`、`conflict`                | `canvas:read`  | 1.18 | `GET /api/workspaces/{workspaceId}/handoffs/{handoffId}`         |
-| `agents.prepareHandoff` | mutation | `{ workspaceId: string, sourceNodeId?: string, sourceSessionId?: string, sourceGeneration?: number, targetNodeId?: string, targetSessionId?: string, targetGeneration?: number, sections?: Record<string, JSON>, filePaths?: string[], byteBudget?: number, includeTranscript?: boolean }` | `{ bundle: Record<string, JSON>, digest: string, state: string, mailboxId: string \| null, traceId: string \| null, errorCode: string \| null, acceptedAt: string \| null, updatedAt: string, sourceHasNewActivity: boolean, attempts: number }`     | `bad_request`、`forbidden`、`not_found`、`conflict` | `canvas:write` | 1.18 | `POST /api/workspaces/{workspaceId}/handoffs`                    |
-| `agents.acceptHandoff`  | mutation | `{ workspaceId: string, handoffId: string, expectedDigest?: string }`                                                                                                                                                                                                                      | `{ bundle: Record<string, JSON>, digest: string, state: string, mailboxId: string \| null, traceId: string \| null, errorCode: string \| null, acceptedAt: string \| null, updatedAt: string, sourceHasNewActivity: boolean, attempts: number }`     | `bad_request`、`forbidden`、`not_found`、`conflict` | `canvas:write` | 1.18 | `POST /api/workspaces/{workspaceId}/handoffs/{handoffId}/accept` |
-| `agents.cancelHandoff`  | mutation | `{ workspaceId: string, handoffId: string, expectedDigest?: string }`                                                                                                                                                                                                                      | `{ bundle: Record<string, JSON>, digest: string, state: string, mailboxId: string \| null, traceId: string \| null, errorCode: string \| null, acceptedAt: string \| null, updatedAt: string, sourceHasNewActivity: boolean, attempts: number }`     | `bad_request`、`forbidden`、`not_found`、`conflict` | `canvas:write` | 1.18 | `POST /api/workspaces/{workspaceId}/handoffs/{handoffId}/cancel` |
+| procedure               | kind     | input                                                                                                                                                                                                                                         | output                                                                                                                                                                                                                                                                                    | errors                                              | scope          | 自   | 原路径                                                           |
+| ----------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | -------------- | ---- | ---------------------------------------------------------------- |
+| `agents.handoffs`       | query    | `{ workspaceId: string, sourceNodeId?: string }`                                                                                                                                                                                              | `({ bundle: Record<string, JSON>, digest: string, state: string, mailboxId: string \| null, traceId: string \| null, errorCode: string \| null, acceptedAt: string \| null, updatedAt: string, sourceHasNewActivity: boolean, createdTargetNodeId: string \| null, attempts: number })[]` | `forbidden`、`not_found`                            | `canvas:read`  | 1.18 | `GET /api/workspaces/{workspaceId}/handoffs`                     |
+| `agents.handoff`        | query    | `{ workspaceId: string, handoffId: string }`                                                                                                                                                                                                  | `{ bundle: Record<string, JSON>, digest: string, state: string, mailboxId: string \| null, traceId: string \| null, errorCode: string \| null, acceptedAt: string \| null, updatedAt: string, sourceHasNewActivity: boolean, createdTargetNodeId: string \| null, attempts: number }`     | `forbidden`、`not_found`、`conflict`                | `canvas:read`  | 1.18 | `GET /api/workspaces/{workspaceId}/handoffs/{handoffId}`         |
+| `agents.prepareHandoff` | mutation | `{ workspaceId: string, sourceNodeId?: string, sourceSessionId?: string, sourceGeneration?: number, target?: Record<string, JSON>, sections?: Record<string, JSON>, filePaths?: string[], byteBudget?: number, includeTranscript?: boolean }` | `{ bundle: Record<string, JSON>, digest: string, state: string, mailboxId: string \| null, traceId: string \| null, errorCode: string \| null, acceptedAt: string \| null, updatedAt: string, sourceHasNewActivity: boolean, createdTargetNodeId: string \| null, attempts: number }`     | `bad_request`、`forbidden`、`not_found`、`conflict` | `canvas:write` | 1.18 | `POST /api/workspaces/{workspaceId}/handoffs`                    |
+| `agents.acceptHandoff`  | mutation | `{ workspaceId: string, handoffId: string, expectedDigest?: string }`                                                                                                                                                                         | `{ bundle: Record<string, JSON>, digest: string, state: string, mailboxId: string \| null, traceId: string \| null, errorCode: string \| null, acceptedAt: string \| null, updatedAt: string, sourceHasNewActivity: boolean, createdTargetNodeId: string \| null, attempts: number }`     | `bad_request`、`forbidden`、`not_found`、`conflict` | `canvas:write` | 1.18 | `POST /api/workspaces/{workspaceId}/handoffs/{handoffId}/accept` |
+| `agents.cancelHandoff`  | mutation | `{ workspaceId: string, handoffId: string, expectedDigest?: string }`                                                                                                                                                                         | `{ bundle: Record<string, JSON>, digest: string, state: string, mailboxId: string \| null, traceId: string \| null, errorCode: string \| null, acceptedAt: string \| null, updatedAt: string, sourceHasNewActivity: boolean, createdTargetNodeId: string \| null, attempts: number }`     | `bad_request`、`forbidden`、`not_found`、`conflict` | `canvas:write` | 1.18 | `POST /api/workspaces/{workspaceId}/handoffs/{handoffId}/cancel` |
 
 <!-- rpc:end -->
 
@@ -5599,6 +5669,21 @@ core 的工作流域搭任务行兜底扫描（每 60 秒，§15.7）的便车�
 - 工具的 `annotations.readOnly` 仍按真实语义（只有只读动词为真），不跟着权限类改。
 - 这些动词只到连线授权的节点、带本节点令牌，core 侧不多给任何权限。
 
+## 108. ACP 下 Copilot 的画布 MCP 走启动参数（`#858`）
+
+> 状态：实施契约。只改 Copilot 适配器的启动行；core 的路由、事件形状与协议版本不变。
+
+### 108.1 为什么
+
+Copilot 的 ACP 入口只接受 http / sse 的 MCP 服务器，`session/new.mcpServers` 里的 stdio 条目被丢弃（它的日志写 `Rejecting non-http/sse MCP server`），`initialize` 的 `mcpCapabilities` 也只声明 `http`、`sse`。§14、§98 的 `armadra` 服务器因此根本没起：模型看不到画布工具，退回 shell 的 `armadra-hook canvas …`，每次一张审批卡。
+
+### 108.2 做法
+
+- 适配器表的 `injection` 多可选项 `mcpViaArgs`（只有 Copilot 为真）。为真时 `session/new.mcpServers` 为空，同一条服务器（§14 的 `canvasMcpServer`，含节点身份与会话绑定的环境变量）写进启动行：`--additional-mcp-config <内联 JSON>` 与 `--allow-tool armadra`（`core/acp/mcp.ts` 的 `copilotAcpMcpArgs`）。
+- JSON 是 `{ mcpServers: { armadra: { type: "local", command, args: ["mcp"], env, tools: ["*"] } } }`，与终端的 §106.1 同一份形状；`tools: ["*"]` 与 `--allow-tool armadra` 一个让工具可见、一个只放行这一台服务器的工具，别家的 MCP 与 shell 照旧审批。`env` 只有端点与节点身份，不带令牌。
+- SSH 节点同一条路：执行主机上的 Hook 客户端同样改写成启动参数。
+- 这一家的会话结果不带 `mcpInjected`（服务器不是随 `session/new` 发出去的）。
+
 ## 109. 终端 OpenCode 的审批答复走插件（`#857`）
 
 > 状态：实施契约。路由、事件形状与协议版本不变；变的是 OpenCode 终端的答复通道，以及答复路由里的一处取值错误。
@@ -5619,3 +5704,18 @@ core 的工作流域搭任务行兜底扫描（每 60 秒，§15.7）的便车�
 
 - OpenCode 在权限询问期间还会报工具进度，状态可能被后到的 `working` 盖掉（`blocked` 只由 `permission.asked` 设置）；审批行与卡片不受影响，答复照常有效。
 - 子代理会话（有 `parentID`）的拒绝在 TUI 里多一步填写原因；插件的 `reject` 回复不经这一步。
+
+## 110. 终端 omp 在进程内注册画布工具（`#856`）
+
+> 状态：实施契约。只改注入的 omp 扩展与 `armadra-hook` 的一个子命令；core 的路由、事件形状与协议版本不变。
+
+### 110.1 扩展注册 `VERB_TOOLS`
+
+- 注入给终端 omp 的扩展（`core/hook/install/extension-template.ts`）在原有事件转发之外，对 `VERB_TOOLS` 每一项调用 `pi.registerTool`：名字、描述、参数（表里的 JSON Schema 原样）与 `armadra-hook mcp`、ama 宿主适配器同一张表。`loadMode: "essential"`，模型直接看得到。Pi 的扩展不带工具（`ARMADRA_TOOLS = []`），只转发事件。
+- 审批档（omp 的 `approval`）取 ama 同一套归类（`hook-client/verb-class.ts`，`agent-host/ama/tools.ts` 也读它）：`read` → `read`，`write` → `write`，`execute` → `exec`。canvas、context 两组里除 `canvas_interrupt`、`canvas_close` 之外都是 `read`，所以 omp 自动编辑档（`write`）下免审批；`canvas_interrupt`、`canvas_close` 与浏览器的 `upload`、`download`、`close` 是 `exec`，仍询问。其他 bash 命令不受影响，照旧按用户策略询问。
+
+### 110.2 `armadra-hook tool <name>`
+
+- 工具的 `execute` 起 `armadra-hook tool <name>` 子进程：参数 JSON 走标准输入，成功时 stdout 是运行时的原文、退出码 0；被拒或连不上时 stderr 是拒绝的原文、退出码 1。子进程继承终端环境（节点 id、端点文件、会话绑定）。
+- 子命令内部就是 `armadra-hook mcp` 的 `tools/call`（同一个 `callTool`），所以 core 收到的请求与 shell 里的 `armadra-hook canvas ...` 完全一样，不多给任何权限。
+- 实测（omp 18.16.0，`--approval-mode=write`，场景 6）：`canvas_list` 未询问即返回画布节点；同一轮里的 `echo` 被拒。

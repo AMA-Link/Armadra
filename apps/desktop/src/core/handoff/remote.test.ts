@@ -61,9 +61,12 @@ describe("a handoff on a remote workspace", () => {
       sourceNodeId: source,
       sourceSessionId: sourceSession,
       sourceGeneration: 1,
-      targetNodeId: target,
-      targetSessionId: targetSession,
-      targetGeneration: 1,
+      target: {
+        kind: "node",
+        nodeId: target,
+        sessionId: targetSession,
+        generation: 1,
+      },
       sections: { ...EMPTY_SECTIONS, goal: "finish the port" },
       filePaths: ["a.txt", "missing.txt"],
       byteBudget: 8192,
@@ -163,7 +166,7 @@ describe("capture", () => {
       executionHost: "execution-host:far",
       transcript: { provider: "claude", path: transcript },
     });
-    expect(captured.transcript).toEqual({
+    expect(captured.transcript).toMatchObject({
       state: "read",
       text: '{"type":"user","message":"hi"}\n',
     });

@@ -45,6 +45,10 @@
 //      `mandate.basis = rule`、issue 线程已绑 → 假 forge 加评论 → 成员收到原文、协
 //      调者只多一行 `external`。自己起 core，不要登录与真模型；等 60 / 120 秒定时器，
 //      约 4–6 分钟，只在 `--only 15` 时跑。
+//   16. 对话交接 v2（#872）：见 agent-e2e/scenario-16-handoff.mjs；`--only 16` 单跑，假 ACP Agent
+//      与夹具转录，不要登录与真模型。
+//   17. 终端 OpenCode 的画布审批（#857）：见 agent-e2e/scenario-17-opencode-approval.mjs；
+//      `--only 17` 单跑，要 ARMADRA_E2E_REAL=1，真 OpenCode、免费模型。
 //   10. 六家互读（设计 cli-collaboration §8）：六种 CLI 各起一个交互式 TUI 节点
 //      连成环，下游 `context summary / transcript` 读上游、沿环 send、拒收一条
 //      排队看回执、交接 prepare → accept、会话索引与成本每家都有。没装或认证
@@ -106,7 +110,8 @@ import scenario12 from "./agent-e2e/scenario-12-acp.mjs";
 import scenario13 from "./agent-e2e/scenario-13-timeline.mjs";
 import scenario14 from "./agent-e2e/scenario-14-dispatch-bench.mjs";
 import scenario15 from "./agent-e2e/scenario-15-intake.mjs";
-import scenario16 from "./agent-e2e/scenario-16-opencode-approval.mjs";
+import scenario16 from "./agent-e2e/scenario-16-handoff.mjs";
+import scenario17 from "./agent-e2e/scenario-17-opencode-approval.mjs";
 import { cliPrerequisites, planScenarios } from "./agent-e2e/preflight.mjs";
 import { homedir } from "node:os";
 
@@ -123,7 +128,7 @@ const SCENARIOS = [
 ];
 
 /** 自己起一套 core 的场景：不走 `setup()`（不要真 CLI 的登录，也不起共用页面）。 */
-const STANDALONE = new Set(["9", "11", "12", "13", "14", "15", "16"]);
+const STANDALONE = new Set(["9", "11", "12", "13", "14", "15", "16", "17"]);
 
 async function main() {
   // C 档门：要起真 CLI / 真模型的，没设开关就在起任何进程之前退出。
@@ -134,6 +139,7 @@ async function main() {
     ...(only.has("12") && !selfTest ? ["12"] : []),
     ...(only.has("13") && !selfTest ? ["13"] : []),
     ...(only.has("16") && !selfTest ? ["16"] : []),
+    ...(only.has("17") && !selfTest ? ["17"] : []),
   ];
   if (selfTest && shared.length > 0)
     throw new Error(
@@ -206,10 +212,15 @@ async function main() {
     report.safety.before ??= fingerprint();
     await scenario15();
   }
-  // 场景 16：终端 OpenCode 的画布审批（#857），真 OpenCode、免费模型；自己起 core。
+  // 场景 16：对话交接 v2（#872），假 ACP Agent 与夹具转录，不要登录、不起页面。
   if (only.has("16")) {
     report.safety.before ??= fingerprint();
     await scenario16();
+  }
+  // 场景 17：终端 OpenCode 的画布审批（#857），真 OpenCode、免费模型；自己起 core。
+  if (only.has("17")) {
+    report.safety.before ??= fingerprint();
+    await scenario17();
   }
   for (const [id, reason] of Object.entries(plan.skip))
     scenario(id).skip(reason);

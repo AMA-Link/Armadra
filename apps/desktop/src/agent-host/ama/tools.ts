@@ -24,42 +24,12 @@ import {
   VERB_TOOLS,
   type VerbTool,
 } from "../../hook-client/verbs.js";
+import { verbClass, verbReadsOnly } from "../../hook-client/verb-class.js";
 import { type CallOutcome, callVerb } from "./client.js";
-
-/** Verbs that only read (the tool's `readOnly` annotation). */
-const READ: Readonly<Record<string, readonly string[]>> = {
-  canvas: [
-    "help",
-    "list",
-    "inbox",
-    "outbox",
-    "handoff-read",
-    "items",
-    "events",
-  ],
-  // Every context verb reads a linked node; the budget is the core's.
-  context: ["list", "summary", "transcript", "terminal"],
-  browser: ["read", "wait", "capture", "pdf"],
-};
-
-/** Verbs that stop, close or reach outside the board. */
-const EXECUTE: Readonly<Record<string, readonly string[]>> = {
-  canvas: ["interrupt", "close"],
-  context: [],
-  browser: ["upload", "download", "close"],
-};
-
-/**
- * Groups whose verbs other than {@link EXECUTE} run unasked. Each one only
- * reaches nodes the link grants and carries this node's token, so the core
- * grants nothing extra; Claude, Codex, OpenCode and Copilot run them unasked
- * too (contract §105, §106).
- */
-const UNASKED: ReadonlySet<string> = new Set(["canvas", "context"]);
 
 /** Whether a verb only reads. */
 export function readsOnly(tool: VerbTool): boolean {
-  return READ[tool.group]?.includes(tool.verb) === true;
+  return verbReadsOnly(tool);
 }
 
 /**
@@ -69,9 +39,7 @@ export function readsOnly(tool: VerbTool): boolean {
  * default mode.
  */
 export function permissionOf(tool: VerbTool): ToolPermission {
-  if (EXECUTE[tool.group]?.includes(tool.verb) === true) return "execute";
-  if (readsOnly(tool) || UNASKED.has(tool.group)) return "read";
-  return "write";
+  return verbClass(tool);
 }
 
 export type Caller = (tool: VerbTool, input: unknown) => Promise<CallOutcome>;

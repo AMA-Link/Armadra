@@ -105,6 +105,14 @@ describe("the verb tool table", () => {
     }
   });
 
+  it("lets handoff-read choose the brief or the bundle", () => {
+    const tool = toolByName("canvas_handoff_read")!;
+    expect(tool.inputSchema.properties?.["format"]).toMatchObject({
+      enum: ["md", "json"],
+    });
+    expect(tool.inputSchema.required).toEqual(["id"]);
+  });
+
   it("marks browser tools long and generates their flags from the spec", () => {
     const click = toolByName("browser_click")!;
     expect(click.long).toBe(true);

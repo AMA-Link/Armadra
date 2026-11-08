@@ -3,6 +3,7 @@ import { statSync } from "node:fs";
 import { readFileSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import { resolveInRoot } from "../workspaces/roots";
+import type { SourceCursor } from "./source-range";
 
 /**
  * The frozen bundle a handoff carries, and the budget that makes it fit.
@@ -11,7 +12,7 @@ import { resolveInRoot } from "../workspaces/roots";
  * building). Three properties are contractual and are
  * re-checked every time a stored row is read back, in `store.ts`:
  *
- *   * `version` is 1, `trust` is `peerDataNotSystemInstructions`, and
+ *   * `version` is 1 or 2, `trust` is `peerDataNotSystemInstructions`, and
  *     `sourcePreserved` is true. A bundle that says anything else is refused
  *     rather than rendered — peer material that lost its trust label would be
  *     read as an instruction.
@@ -24,6 +25,8 @@ import { resolveInRoot } from "../workspaces/roots";
 export interface Sections {
   readonly goal: string;
   readonly constraints: string;
+  /** 完成标准。旧包没有这个字段，读取时按空串处理。 */
+  readonly acceptance: string;
   readonly completed: string;
   readonly pending: string;
   readonly decisions: string;
@@ -33,6 +36,7 @@ export interface Sections {
 export const EMPTY_SECTIONS: Sections = {
   goal: "",
   constraints: "",
+  acceptance: "",
   completed: "",
   pending: "",
   decisions: "",
@@ -43,6 +47,7 @@ export const EMPTY_SECTIONS: Sections = {
 export const SECTION_KEYS = [
   "goal",
   "constraints",
+  "acceptance",
   "pending",
   "completed",
   "decisions",
@@ -61,6 +66,20 @@ export interface Identity {
   readonly accountId: string | null;
   readonly executionHost: string;
   readonly workingDirectory: string;
+}
+
+/**
+ * 「新开 Agent」目标的规格（契约 §39.8）：预览时还没有节点，规格进冻结的包，
+ * digest 覆盖它。`target` 身份此时是占位（空的节点与会话 id、代次 0），accept
+ * 建出节点之后，真实的节点 id 记在行的 `created_target_node_id` 上。
+ */
+export interface NewTargetSpec {
+  readonly kind: "new";
+  readonly agentId: string;
+  readonly model?: string;
+  readonly permissionMode?: string;
+  readonly surface: "terminal" | "acp";
+  readonly title?: string;
 }
 
 export interface Cutoff {
@@ -107,6 +126,8 @@ export interface HandoffBundle {
   readonly createdAt: string;
   readonly source: Identity;
   readonly target: Identity;
+  /** 目标是新开的 Agent 时的规格；有它就说明 `target` 是占位。 */
+  readonly targetSpec?: NewTargetSpec;
   readonly cutoff: Cutoff;
   readonly sections: Sections;
   readonly transcriptExcerpt: string;
@@ -120,11 +141,19 @@ export interface HandoffBundle {
    * §21.1). Absent when it was read on this machine, or not read at all.
    */
   readonly capturedOn?: string;
+  /**
+   * Version 2: where the source transcript ended when it was frozen, so the
+   * target can page through everything up to that boundary (contract §21.1).
+   * Absent when the transcript was not read or its end could not be fixed.
+   */
+  readonly sourceCursor?: SourceCursor;
   readonly attachments: readonly unknown[];
   readonly budget: Budget;
 }
 
 export const TRUST = "peerDataNotSystemInstructions";
+/** 估算 token 数时一个 token 按几个字节算（与 `capacity.ts` 同一个数）。 */
+const BYTES_PER_TOKEN = 3;
 export const BYTE_BUDGETS = [8192, 16384, 32768] as const;
 
 /** The largest a single referenced file may be before it is only named. */
@@ -316,8 +345,8 @@ function encodedSize(bundle: HandoffBundle): number {
  *
  * The order is the user's priority, not ours: the transcript excerpt is
  * evidence and goes first, then the tool summary, the decisions, the completed
- * and pending work, the constraints, and only then the goal. A bundle whose
- * *goal* would not fit is refused outright — a handoff that cannot say what it
+ * and pending work, the acceptance criteria, the constraints, and only then
+ * the goal. A bundle whose *goal* would not fit is refused outright — a handoff that cannot say what it
  * is for is not a shorter handoff, it is a different one.
  */
 export function fitBudget(bundle: HandoffBundle): HandoffBundle {
@@ -333,6 +362,15 @@ export function fitBudget(bundle: HandoffBundle): HandoffBundle {
   // A placeholder of the final width, so measuring the empty bundle measures
   // the shape the full one will have.
   working.cutoff = { ...working.cutoff, sha256: "0".repeat(64) };
+  // 目标模型的容量已知时包里带 token 估算；先按最宽的位数占位，量空包与裁剪都按
+  // 最终的形状量，最后再收成真值（只会更短）。
+  const priced = working.budget.capacityTokens !== null;
+  if (priced) {
+    working.budget = {
+      ...working.budget,
+      tokenEstimate: Math.ceil(working.budget.byteLimit / BYTES_PER_TOKEN),
+    };
+  }
   const omitted = [...working.budget.omitted];
   if (encodedSize(working) > working.budget.byteLimit) {
     throw new BudgetExceeded(
@@ -386,8 +424,20 @@ export function fitBudget(bundle: HandoffBundle): HandoffBundle {
         ? null
         : digest(working.transcriptExcerpt),
   };
-  encodedSize(working);
+  if (priced) settleTokenEstimate(working);
+  else encodedSize(working);
   return working;
+}
+
+/** `tokenEstimate` 由 `usedBytes` 算出，而它自己又在包里：迭代到不动点。 */
+function settleTokenEstimate(bundle: Mutable<HandoffBundle>): void {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const used = encodedSize(bundle);
+    const estimate = Math.ceil(used / BYTES_PER_TOKEN);
+    if (estimate === bundle.budget.tokenEstimate) return;
+    bundle.budget = { ...bundle.budget, tokenEstimate: estimate };
+  }
+  encodedSize(bundle);
 }
 
 function setSection(
@@ -409,6 +459,7 @@ function popOneCharacter(bundle: Mutable<HandoffBundle>): boolean {
     "decisions",
     "completed",
     "pending",
+    "acceptance",
     "constraints",
     "goal",
   ];

@@ -2,6 +2,7 @@ import {
   LAYER_GAP,
   SIBLING_GAP,
   boxesTooClose,
+  type AgentDriver,
   type LayoutDirection,
 } from "@armadra/shared";
 
@@ -246,13 +247,15 @@ export async function openAgent(
   context: CollabContext,
   caller: Caller,
   args: Args,
+  /** 交接新开目标指定形态；`open-agent` 动词自己不传，走用户的默认视图偏好。 */
+  surface?: AgentDriver,
 ): Promise<Outcome> {
   // `--candidate`（契约 §104.5）：资料先读（纯读），再占住候选直到这次结束——
   // 同一个候选并发的第二次调用当场拒绝，不会建出第二个节点。
   const intake = await loadCandidate(context, caller, args);
   const release = holdCandidate(intake);
   try {
-    return await openAgentHeld(context, caller, args, intake);
+    return await openAgentHeld(context, caller, args, intake, surface);
   } finally {
     release();
   }
@@ -263,6 +266,7 @@ async function openAgentHeld(
   caller: Caller,
   args: Args,
   intake: CandidateLoad | undefined,
+  surface?: AgentDriver,
 ): Promise<Outcome> {
   const agentId = requireAgent(
     context,
@@ -370,6 +374,7 @@ async function openAgentHeld(
     agent,
     newNodeView(context.settings, agentId, {
       resume: resume !== undefined,
+      ...(surface === undefined ? {} : { surface }),
     }),
   );
   const data = {
@@ -649,7 +654,7 @@ function agentChoices(context: CollabContext): string {
   return availableAgentIds(context.settings).join(" / ");
 }
 
-function requireAgent(
+export function requireAgent(
   context: CollabContext,
   agentId: string | undefined,
   missing: string,
@@ -1329,7 +1334,7 @@ function readTtl(args: Args): number | undefined {
 }
 
 /** `--permission-mode`：这个 CLI 真的有对应参数的那几个，别的当场拒绝。 */
-function readPermissionMode(
+export function readPermissionMode(
   context: CollabContext,
   agentId: string,
   args: Args,
@@ -1349,7 +1354,7 @@ function readPermissionMode(
   return wanted;
 }
 
-function readModel(args: Args): string | undefined {
+export function readModel(args: Args): string | undefined {
   const wanted = args.text("model");
   if (wanted === undefined) return undefined;
   const model = collapseNewlines(wanted) ?? "";

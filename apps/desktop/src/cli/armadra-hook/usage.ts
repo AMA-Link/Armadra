@@ -47,6 +47,12 @@ export const CANVAS_USAGE = `CANVAS:
   post --to NAME --key KEY --body TEXT store a handoff for a linked agent
   inbox --limit 10 --after 0           read your pending messages without acknowledgement
   ack --id ID                         acknowledge one received message
+  handoff-read --id ID [--format md|json]
+                                      read an approved handoff: the task brief
+                                      (md, default) or the frozen bundle (json)
+  handoff-read --id ID --part transcript [--cursor N] [--limit N] [--raw]
+                                      page the source conversation up to the
+                                      frozen boundary (--raw: original lines)
   ack --event EVENT-ID                acknowledge one coordinator event (handled,
                                       not just seen)
   open-agent --agent ID [--task TEXT] [--title T] [--item-title T] [--permission-mode M]
@@ -143,6 +149,7 @@ USAGE:
   armadra-hook browser <verb> [--flag value]   drive a linked browser node
   armadra-hook doctor                          diagnose the local hook endpoint
   armadra-hook mcp                             serve the canvas tools over MCP on stdio (ACP sessions)
+  armadra-hook tool <name>                     one canvas tool call: JSON arguments on stdin (omp extension)
 
 CONTEXT VERBS:
   list                      list the nodes linked to this one

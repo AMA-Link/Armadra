@@ -1,4 +1,4 @@
-// 场景 16：终端 OpenCode 的权限请求在画布里答复（契约 §109，#857）。C 档。
+// 场景 17：终端 OpenCode 的权限请求在画布里答复（契约 §109，#857）。C 档。
 //
 // 用户把 OpenCode 的 bash 设成 `ask`（隔离 HOME 里的 opencode.json）：模型一调
 // bash，OpenCode 的 TUI 就停在「Permission required」，注入的插件把
@@ -85,10 +85,10 @@ function pickFreeModel(scratch, cli) {
 const WANT_ROUTE =
   process.env.ARMADRA_E2E_OC_ROUTE === "keys" ? "keys" : "file";
 
-export default async function run16() {
-  const s = scenario("16-opencode-approval");
+export default async function run17() {
+  const s = scenario("17-opencode-approval");
   try {
-    requireReal("场景 16 ");
+    requireReal("场景 17 ");
     const scratch = realpathSync(
       mkdtempSync(join(tmpdir(), "armadra-oc-approval-")),
     );

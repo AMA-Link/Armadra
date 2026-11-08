@@ -209,8 +209,21 @@ const CANVAS: Record<ControlVerb, Row> = {
   },
   "handoff-read": {
     description:
-      "Read the frozen handoff bundle a peer approved for this session.",
-    properties: { id: str("the handoff id") },
+      "Read the handoff a peer approved for this session: a task brief by default, the frozen bundle as JSON with format=json, or the source conversation with part=transcript.",
+    properties: {
+      id: str("the handoff id"),
+      part: oneOf(
+        ["brief", "transcript"],
+        "brief (default), or transcript: the source conversation from its start up to the frozen boundary, page by page",
+      ),
+      format: oneOf(
+        ["md", "json"],
+        "brief only. md (default): the task brief; json: the frozen bundle",
+      ),
+      cursor: int("transcript: continue from this `nextCursor` (default 0)", 0),
+      limit: int("transcript: at most this many entries per page", 1),
+      raw: bool("transcript: the original lines of the same range"),
+    },
     required: ["id"],
     binding: "session",
   },

@@ -263,10 +263,13 @@ armadra-hook context terminal --node "<标题或 id>" -n 60    # 对方终端最
 armadra-hook canvas post --to <名字|已连线节点 id> --key <交接 id> --body '结论；文件路径；下一步'
 armadra-hook canvas inbox --limit 10 --after 0             # 读自己的信箱，读不等于确认
 armadra-hook canvas ack --id <消息 id>                      # 处理完了，标记确认
-armadra-hook canvas handoff-read --id <交接 id>             # 读一份冻结的交接快照
+armadra-hook canvas handoff-read --id <交接 id>             # 读交接简报（默认 --format md）
+armadra-hook canvas handoff-read --id <交接 id> --format json  # 冻结的交接包原样
+armadra-hook canvas handoff-read --id <交接 id> --part transcript [--cursor N] [--raw]  # 来源原文，分页读到冻结边界
 \`\`\`
 
 - 投递需要画布上已有连线；消息 24 小时后过期。
+- 交接简报末尾写了回报方式：做完用 \`canvas post --key handoff:<交接 id>:result\` 把结果回给来源，再 \`ack\` 收件箱里那条。
 - 同一个 \`--key\` 和正文重发是安全的。大块产物写进文件，只发路径。
 - 别轮询信箱。需要的时候读一次，处理完再 \`ack\`。
 - 你空下来而信箱里还有未读时，画布会在你的终端里投一行提示（或直接投最早那条的正文）。那一行的信封署名是 \`Armadra 收件箱\`，它提醒你去读，不替你 \`ack\`。

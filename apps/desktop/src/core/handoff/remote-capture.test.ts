@@ -8,7 +8,7 @@
  */
 
 import type { ChildProcess } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   afterAll,
@@ -26,12 +26,15 @@ import { RemoteWorker } from "../remote/worker";
 import { disposeWorkerBundle, spawnWorker } from "../remote/worker.fixture";
 import type { SshHost } from "../settings/ssh-hosts";
 import { tempDir } from "../testing/temp-dir";
+import { locateHistory } from "../history/registry";
 import { EMPTY_SECTIONS } from "./bundle";
+import { type FrozenCursor, freezeCursor } from "./source-range";
 import {
   HANDOFF_HOST_OFFLINE,
   setCaptureHosts,
   tailOf,
 } from "./remote-capture";
+import { readSourceTranscript } from "./source-transcript";
 import { prepare } from "./store";
 
 const HOST: SshHost = {
@@ -69,9 +72,12 @@ describe("a handoff from an SSH Agent on another execution host", () => {
       sourceNodeId: source,
       sourceSessionId: sourceSession,
       sourceGeneration: 1,
-      targetNodeId: target,
-      targetSessionId: targetSession,
-      targetGeneration: 1,
+      target: {
+        kind: "node",
+        nodeId: target,
+        sessionId: targetSession,
+        generation: 1,
+      },
       sections: { ...EMPTY_SECTIONS, goal: "finish the port" },
       filePaths: [],
       byteBudget: 8192,
@@ -151,6 +157,49 @@ describe("a handoff from an SSH Agent on another execution host", () => {
     expect(view.bundle.cutoff.kind).toBe("transcriptBytes");
   });
 
+  it("pages the source transcript through the Worker, up to the frozen boundary", async () => {
+    const view = await prepare(fixture.collab, fixture.workspaceId, request());
+    expect(view.bundle.sourceCursor).toMatchObject({
+      executionHost: "execution-host:far",
+      unit: "bytes",
+    });
+    appendFileSync(
+      transcript,
+      '{"type":"user","message":{"role":"user","content":"AFTER"}}\n',
+    );
+    operations.length = 0;
+    const page = await readSourceTranscript(view.bundle);
+    expect(operations).toEqual(["far:handoff.capture"]);
+    expect(page).toMatchObject({ mode: "entries", done: true });
+    expect(JSON.stringify(page.entries)).toContain("把远端那块迁完");
+    expect(JSON.stringify(page.entries)).not.toContain("AFTER");
+    const raw = await readSourceTranscript(view.bundle, { raw: true });
+    expect(raw.rawLines).toEqual([
+      '{"type":"user","message":{"role":"user","content":"把远端那块迁完"}}',
+    ]);
+  });
+
+  it("answers handoff_host_offline for a range read when the host is gone", async () => {
+    const view = await prepare(fixture.collab, fixture.workspaceId, request());
+    setRemoteCaller(async () => {
+      throw new Error("down");
+    });
+    await expect(readSourceTranscript(view.bundle)).rejects.toMatchObject({
+      status: 501,
+      code: HANDOFF_HOST_OFFLINE,
+    });
+    setRemoteCaller(async () => ({ files: [], git: {} }));
+    await expect(readSourceTranscript(view.bundle)).rejects.toMatchObject({
+      status: 501,
+      code: HANDOFF_HOST_OFFLINE,
+    });
+    hosts.clear();
+    await expect(readSourceTranscript(view.bundle)).rejects.toMatchObject({
+      status: 501,
+      code: HANDOFF_HOST_OFFLINE,
+    });
+  });
+
   it("answers handoff_host_offline when the Worker cannot be reached", async () => {
     setRemoteCaller(async () => {
       throw Object.assign(new Error("执行主机 far 的 Worker 连接断开了"), {
@@ -175,17 +224,17 @@ describe("a handoff from an SSH Agent on another execution host", () => {
     expect(operations).toEqual([]);
   });
 
-  it("needs no host when no transcript is read, and takes a target anywhere", async () => {
+  it("needs no host when no transcript is read, and refuses a target in an SSH terminal", async () => {
     hosts.clear();
     setHost(target, "elsewhere");
-    const view = await prepare(
-      fixture.collab,
-      fixture.workspaceId,
-      request({ includeTranscript: false }),
-    );
+    await expect(
+      prepare(
+        fixture.collab,
+        fixture.workspaceId,
+        request({ includeTranscript: false }),
+      ),
+    ).rejects.toMatchObject({ status: 400, code: "handoff_target_ssh" });
     expect(operations).toEqual([]);
-    expect(view.bundle.capturedOn).toBeUndefined();
-    expect(view.bundle.target.executionHost).toBe("execution-host:elsewhere");
   });
 
   it("a local source still reads its transcript here, without capturedOn", async () => {
@@ -215,15 +264,47 @@ describe("handoff.capture on the Worker", () => {
     });
     expect(captured.files).toEqual([]);
     expect(captured.git.status).toBe("unavailable");
-    expect(captured.transcript).toEqual({
+    expect(captured.transcript).toMatchObject({
       state: "read",
       text: '{"type":"user","message":"hi"}\n',
+      cursor: { unit: "bytes", locatedKey: path },
     });
     const full = handoffCapture(root, {
       paths: ["a.txt"],
       executionHost: "execution-host:far",
     });
     expect(full.files.map((file) => file.status)).toEqual(["referenced"]);
+  });
+
+  it("answers a range read on its own, and refuses a malformed one", () => {
+    const root = tempDir("armadra-range-only-");
+    const path = join(root, "session.jsonl");
+    writeFileSync(
+      path,
+      '{"type":"user","message":{"role":"user","content":"hi"}}\n',
+    );
+    const cursor = freezeCursor(
+      "claude",
+      locateHistory({ agentId: "claude", transcriptPath: path }) as never,
+    ) as FrozenCursor;
+    const answer = handoffCapture("/", {
+      transcriptOnly: true,
+      transcriptRange: {
+        agentId: "claude",
+        ...cursor,
+        fromOffset: 0,
+        maxBytes: 32768,
+        raw: false,
+      },
+    });
+    expect(answer.range).toMatchObject({
+      state: "ok",
+      done: true,
+      entries: [{ role: "user", text: "hi" }],
+    });
+    expect(
+      handoffCapture("/", { transcriptRange: { agentId: "claude" } }).range,
+    ).toEqual({ state: "badCursor" });
   });
 
   it("takes only the three answer shapes from a Worker", () => {
