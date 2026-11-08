@@ -31,7 +31,11 @@ export const SWEEP_INTERVAL_MS = 3_600_000;
 export const PERM_WAIT_SECONDS = 45;
 
 /** The built-ins that wait for the canvas' answer to a permission request. */
-export const ANSWERS_ON_CANVAS: readonly string[] = ["claude", "ama"];
+export const ANSWERS_ON_CANVAS: readonly string[] = [
+  "claude",
+  "ama",
+  "opencode",
+];
 
 /**
  * The extra PTY variable that switches the hook client from "report and exit"
@@ -41,7 +45,9 @@ export const ANSWERS_ON_CANVAS: readonly string[] = ["claude", "ama"];
  * Claude implements a hook that can answer a permission request; `ama` does
  * the same through its host adapter's approval broker (`agent-host/ama/
  * approvals.ts`, contract §15.5), which writes the same request file into the
- * same pending directory and polls for the same answer file. The user can turn
+ * same pending directory and polls for the same answer file; OpenCode does it
+ * from the injected plugin, which replies to the permission through the CLI's own
+ * client once the answer file appears (contract §109). The user can turn
  * both off with `hooks.replyApprovals`. Everything else gets an empty list,
  * which is the same as not being injected at all.
  */

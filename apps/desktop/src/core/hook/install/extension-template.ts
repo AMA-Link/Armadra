@@ -537,13 +537,91 @@ export default function (pi) {
 `;
 
 const OPENCODE_WIRING = `
+// The canvas answers an opencode permission prompt through the same pending
+// files Claude's hook uses (contract §109): the plugin writes
+// \`<pending>/<id>.json\`, and when \`<id>.answer\` appears it replies to the
+// permission through opencode's own client. Only on a canvas decision: with no
+// ARMADRA_PERM_WAIT_SECS (the user switched canvas answers off), an expired
+// wait or a prompt the human answered first, the TUI prompt is left alone.
+const ARMADRA_ANSWER_POLL_MS = 250;
+const armadraWaiting = new Map();
+
+function armadraWaitSeconds() {
+  const raw = armadraEnv("ARMADRA_PERM_WAIT_SECS");
+  if (raw === undefined || !/^\\d+$/.test(raw.trim())) return undefined;
+  const seconds = Number(raw.trim());
+  return seconds === 0 || seconds > 3600 ? undefined : seconds;
+}
+
+function armadraPendingFiles(session, id) {
+  if (!/^[A-Za-z0-9._-]{1,200}$/.test(id) || id.includes("..")) return undefined;
+  const directory = path.join(path.dirname(session.endpointFile), "pending");
+  return {
+    directory,
+    request: path.join(directory, id + ".json"),
+    answer: path.join(directory, id + ".answer"),
+  };
+}
+
+function armadraRemove(file) {
+  try {
+    fs.rmSync(file, { force: true });
+  } catch {
+    // Already gone, or the runtime's sweep will take it.
+  }
+}
+
+async function armadraReply(client, sessionID, id, reply) {
+  if (typeof client?.permission?.reply === "function") {
+    await client.permission.reply({ requestID: id, reply });
+  } else if (typeof client?.permission?.respond === "function") {
+    await client.permission.respond({ sessionID, permissionID: id, response: reply });
+  } else if (typeof client?.postSessionIdPermissionsPermissionId === "function") {
+    await client.postSessionIdPermissionsPermissionId({
+      path: { id: sessionID, permissionID: id },
+      body: { response: reply },
+    });
+  }
+}
+
+// Polls for the answer file until it appears, the wait ends or the prompt is
+// settled elsewhere (\`permission.replied\` flips \`state.done\`).
+async function armadraAwaitAnswer(client, files, state, id, sessionID, seconds) {
+  const deadline = Date.now() + seconds * 1000;
+  try {
+    while (!state.done && Date.now() < deadline) {
+      let decision;
+      try {
+        decision = fs.readFileSync(files.answer, "utf8").trim();
+      } catch {
+        // Not written yet.
+      }
+      if (decision !== undefined) {
+        armadraRemove(files.answer);
+        if (state.done) return;
+        if (decision === "allow") await armadraReply(client, sessionID, id, "once");
+        else if (decision === "deny") await armadraReply(client, sessionID, id, "reject");
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, ARMADRA_ANSWER_POLL_MS));
+    }
+  } catch {
+    // The prompt stays open in the terminal; nothing else to do.
+  } finally {
+    state.done = true;
+    armadraWaiting.delete(id);
+    armadraRemove(files.request);
+    armadraRemove(files.answer);
+  }
+}
+
 /**
  * opencode's documented plugin shape: a factory returning the hooks object.
  * The bus event arrives as \`{ type, properties }\` and is forwarded verbatim,
  * because \`normalize/opencode.rs\` is the half that decides which topics mean
  * anything — the plugin has no opinion and keeps none across versions.
  */
-export const ArmadraStatus = async () => {
+export const ArmadraStatus = async ({ client } = {}) => {
   // Outside a canvas terminal no handler is registered at all, so opencode
   // behaves exactly as if this file were not on disk.
   if (!armadraEnv("ARMADRA_NODE_ID")) return {};
@@ -553,6 +631,37 @@ export const ArmadraStatus = async () => {
         // Re-checked per event: the report is what carries the node id, and a
         // handler that outlived its terminal has nothing to report to.
         if (!armadraEnv("ARMADRA_NODE_ID")) return;
+        const properties = event?.properties;
+        const id = typeof properties?.id === "string" ? properties.id : undefined;
+        if (event?.type === "permission.replied") {
+          // The human (or another front end) settled it first: stop waiting.
+          const key = typeof properties?.requestID === "string" ? properties.requestID : id;
+          const state = key === undefined ? undefined : armadraWaiting.get(key);
+          if (state) state.done = true;
+        } else if (
+          (event?.type === "permission.asked" || event?.type === "permission.updated") &&
+          id !== undefined
+        ) {
+          const seconds = armadraWaitSeconds();
+          const session = seconds === undefined ? undefined : armadraSession();
+          const files = session === undefined ? undefined : armadraPendingFiles(session, id);
+          if (files && !armadraWaiting.has(id)) {
+            // The request file goes down before the report: the card exists the
+            // moment the report lands, and an answer to it must find the file.
+            try {
+              fs.mkdirSync(files.directory, { recursive: true, mode: 0o700 });
+              fs.writeFileSync(files.request, JSON.stringify(event), { mode: 0o600 });
+              const state = { done: false };
+              armadraWaiting.set(id, state);
+              const sessionID = typeof properties?.sessionID === "string" ? properties.sessionID : "";
+              // Not awaited: the bus must keep flowing, \`permission.replied\`
+              // included, while the canvas decides.
+              void armadraAwaitAnswer(client, files, state, id, sessionID, seconds);
+            } catch {
+              // No request file: the card falls back to keys.
+            }
+          }
+        }
         // Awaited, unlike the Pi extension's fire-and-forget handlers, because
         // opencode's ordering is the state machine: a \`session.idle\` that
         // overtook the \`message.updated\` opening the turn would report the

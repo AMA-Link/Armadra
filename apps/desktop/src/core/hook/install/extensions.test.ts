@@ -75,9 +75,11 @@ describe("the opencode plugin", () => {
     expect(source).toContain("context-sequences");
     // The route stays opencode's own.
     expect(source).toContain('"/hook/" + ARMADRA_AGENT');
-    // And the bus hook never returns a decision to opencode (§3.5).
+    // The bus hook never returns a decision to opencode (§3.5); the only
+    // reply is to the permission, from the answer file, and only when the
+    // canvas wait is on (§109).
     expect(source).not.toContain("permissionDecision");
-    expect(source).not.toContain('"deny"');
+    expect(source).not.toContain('"permission.ask"');
   });
 
   it("removes our plugin on removal and leaves a stranger alone", () => {

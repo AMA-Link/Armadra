@@ -20,6 +20,8 @@ describe("the approval wait variable", () => {
     expect(permissionWaitEnvironment("claude", true)).toHaveLength(1);
     expect(permissionWaitEnvironment("claude", false)).toEqual([]);
     expect(permissionWaitEnvironment("codex", true)).toEqual([]);
+    expect(permissionWaitEnvironment("opencode", true)).toHaveLength(1);
+    expect(permissionWaitEnvironment("opencode", false)).toEqual([]);
   });
 
   it("is set for ama, whose adapter answers through the same files", () => {
