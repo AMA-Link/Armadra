@@ -823,6 +823,9 @@ export function accept(
     targetNodeId: target.nodeId,
     outcome: "queued",
   });
+  // 事务提交后才唤醒：空闲的目标要现在就知道收件箱里有这份交接（同 `post`）。
+  // 幂等的重复确认走上面的提前返回，不会再推一次。
+  context.nudge?.(target.nodeId);
   return get(context, workspaceId, id);
 }
 
