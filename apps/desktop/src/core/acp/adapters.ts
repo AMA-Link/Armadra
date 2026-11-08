@@ -73,6 +73,11 @@ export interface AcpAdapter {
     readonly reuse: readonly ("env" | "args")[];
     readonly passthrough?: "--";
     /**
+     * `mcp` 的服务器不走 `session/new.mcpServers`、改成启动参数里的内联
+     * 配置（Copilot：它在 ACP 下只收 http / sse，stdio 条目被丢弃，#858）。
+     */
+    readonly mcpViaArgs?: boolean;
+    /**
      * 挂 Claude Code mod（契约 §59）：`CLAUDE_CODE_PLUGIN_DIRS` 指向 mod 目录、
      * `ARMADRA_MOD_PROFILE=acp`，门是适配器自带 CLI 的版本。mod 要靠节点身份
      * 找端点，所以这一家不预启动。
@@ -171,7 +176,7 @@ export const ACP_ADAPTERS: readonly AcpAdapter[] = [
     resume: "none",
     // 三条旗标在 `--acp` 下是否生效待真跑核实（G3-7）。
     modes: ACP_MODE_TABLE.copilot,
-    injection: { mcp: true, reuse: ["args", "env"] },
+    injection: { mcp: true, mcpViaArgs: true, reuse: ["args", "env"] },
     expectedProcess: ["copilot"],
     canvasTools: "mcp",
   },

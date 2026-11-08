@@ -711,7 +711,7 @@ export default async function run12() {
             method: "POST",
             body: {
               // Codex 的沙箱里 shell 连不上 core（#407）：点名 MCP 工具。
-              text: `Call your Armadra canvas list tool ${id === "codex" ? "(the `armadra` MCP server's canvas_list)" : "(or run the shell command `armadra-hook canvas list`)"} exactly once and nothing else, then answer in one line exactly: LIST=<ok if it returned a list of canvas nodes, failed otherwise>; FIRST=<the first line it returned>`,
+              text: `Call your Armadra canvas list tool ${id === "codex" || id === "copilot" ? "(the `armadra` MCP server's canvas_list, not a shell command)" : "(or run the shell command `armadra-hook canvas list`)"} exactly once and nothing else, then answer in one line exactly: LIST=<ok if it returned a list of canvas nodes, failed otherwise>; FIRST=<the first line it returned>`,
             },
           });
           // 画布工具在 Claude / Copilot 的缺省权限下要审批：卡弹出来（节点
@@ -765,7 +765,13 @@ export default async function run12() {
             .flatMap((entry) => entry.blocks ?? [])
             .filter((block) => block.type === "tool_use")
             .map((block) => block.name);
-          mark(id, "canvasTool", /LIST=ok/i.test(text), {
+          // Copilot 的 ACP 入口丢弃 stdio 服务器，画布 MCP 靠启动参数（#858）：
+          // 要由 MCP 工具执行（不是 shell），且没有任何审批卡。
+          const viaMcp =
+            id !== "copilot" ||
+            (toolNames.some((name) => /canvas_list/.test(name)) &&
+              !approvals.some((tag) => tag.startsWith("asked:")));
+          mark(id, "canvasTool", /LIST=ok/i.test(text) && viaMcp, {
             answer: text.slice(0, 200),
             tools: toolNames.slice(-3),
             approvals,

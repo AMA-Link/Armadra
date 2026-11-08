@@ -93,6 +93,36 @@ export function acpMcpServers(
   return server === undefined ? [] : [server];
 }
 
+/**
+ * Copilot 的 ACP 入口只收 http / sse 的 MCP 服务器，`session/new` 里的 stdio
+ * 条目被它丢弃（日志 `Rejecting non-http/sse MCP server`，#858）。同一条服务器
+ * 改成启动参数：`--additional-mcp-config <内联 JSON>` 加 `--allow-tool armadra`
+ * （与终端的 `copilotMcpArgs` 同一套：`tools: ["*"]`、只放行这一台服务器）。
+ * 环境变量写在配置的 `env` 里，是 `armadra-hook mcp` 的节点身份；只有地址，
+ * 不带令牌。
+ */
+export function copilotAcpMcpArgs(server: AcpStdioMcpServer): string[] {
+  const env: Record<string, string> = {};
+  for (const { name, value } of server.env) env[name] = value;
+  const config = {
+    mcpServers: {
+      [server.name]: {
+        type: "local",
+        command: server.command,
+        args: [...server.args],
+        env,
+        tools: ["*"],
+      },
+    },
+  };
+  return [
+    "--additional-mcp-config",
+    JSON.stringify(config),
+    "--allow-tool",
+    server.name,
+  ];
+}
+
 /** `AcpClient` 自己声明的可选能力；旧版没有 `features`，一律答不支持。 */
 export function clientAcceptsMcpServers(
   client: { readonly features?: unknown } = AcpClient as {
