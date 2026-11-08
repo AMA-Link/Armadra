@@ -5598,3 +5598,18 @@ core 的工作流域搭任务行兜底扫描（每 60 秒，§15.7）的便车�
 - `browser` 组不变：只读动词 `read`，`upload`、`download`、`close` 是 `execute`，其余 `write`。
 - 工具的 `annotations.readOnly` 仍按真实语义（只有只读动词为真），不跟着权限类改。
 - 这些动词只到连线授权的节点、带本节点令牌，core 侧不多给任何权限。
+
+## 110. 终端 omp 在进程内注册画布工具（`#856`）
+
+> 状态：实施契约。只改注入的 omp 扩展与 `armadra-hook` 的一个子命令；core 的路由、事件形状与协议版本不变。
+
+### 110.1 扩展注册 `VERB_TOOLS`
+
+- 注入给终端 omp 的扩展（`core/hook/install/extension-template.ts`）在原有事件转发之外，对 `VERB_TOOLS` 每一项调用 `pi.registerTool`：名字、描述、参数（表里的 JSON Schema 原样）与 `armadra-hook mcp`、ama 宿主适配器同一张表。`loadMode: "essential"`，模型直接看得到。Pi 的扩展不带工具（`ARMADRA_TOOLS = []`），只转发事件。
+- 审批档（omp 的 `approval`）取 ama 同一套归类（`hook-client/verb-class.ts`，`agent-host/ama/tools.ts` 也读它）：`read` → `read`，`write` → `write`，`execute` → `exec`。canvas、context 两组里除 `canvas_interrupt`、`canvas_close` 之外都是 `read`，所以 omp 自动编辑档（`write`）下免审批；`canvas_interrupt`、`canvas_close` 与浏览器的 `upload`、`download`、`close` 是 `exec`，仍询问。其他 bash 命令不受影响，照旧按用户策略询问。
+
+### 110.2 `armadra-hook tool <name>`
+
+- 工具的 `execute` 起 `armadra-hook tool <name>` 子进程：参数 JSON 走标准输入，成功时 stdout 是运行时的原文、退出码 0；被拒或连不上时 stderr 是拒绝的原文、退出码 1。子进程继承终端环境（节点 id、端点文件、会话绑定）。
+- 子命令内部就是 `armadra-hook mcp` 的 `tools/call`（同一个 `callTool`），所以 core 收到的请求与 shell 里的 `armadra-hook canvas ...` 完全一样，不多给任何权限。
+- 实测（omp 18.16.0，`--approval-mode=write`，场景 6）：`canvas_list` 未询问即返回画布节点；同一轮里的 `echo` 被拒。
