@@ -37,11 +37,15 @@ import { DatabaseSync } from "node:sqlite";
 
 import { probeHome } from "../probe-home.mjs";
 import { mockModelServer } from "./mock-model.mjs";
-import { CARD_MARK } from "./scenario-11-router.mjs";
+import {
+  CARD_MARK,
+  eventRows,
+  lastReadEvents,
+  readEventsCall,
+} from "./scenario-11-router.mjs";
 import {
   FAKE_KEY,
   controlAs,
-  lastToolCall,
   setupCore,
   textOf,
 } from "./scenario-11-coordinator.mjs";
@@ -96,13 +100,17 @@ async function idealScript(body) {
   const last = messages[messages.length - 1];
   if (lastUser !== undefined && textOf(lastUser).includes(CARD_MARK)) {
     if (last?.role === "user")
-      return { toolCalls: [{ name: "canvas_events", arguments: {} }] };
-    if (lastToolCall(messages) === "canvas_events") {
+      return {
+        toolCalls: [
+          readEventsCall((body.tools ?? []).map((tool) => tool.function?.name)),
+        ],
+      };
+    if (lastReadEvents(messages)) {
       const listed = textOf(
         [...messages].reverse().find((m) => m.role === "tool"),
       );
       const calls = [];
-      for (const line of listed.split("\n")) {
+      for (const line of eventRows(listed)) {
         const [id, item, kind, summary = ""] = line.split(" · ");
         if (!/^[a-z-]+:/.test(id ?? "")) continue;
         if (kind === "report" && summary.includes("ready"))
