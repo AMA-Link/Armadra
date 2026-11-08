@@ -20,7 +20,9 @@ export default defineConfig({
     // threads 池：每个文件都要建一次 jsdom、重新 import 一遍模块图，起线程比起
     // 子进程便宜。本机实测 713 个文件 148s → 126s（#870）。用例不起真进程、不发信号，
     // 不需要 desktop 那样的 forks。
-    pool: "threads",
+    // Windows 例外：threads 池在 CI 的 Windows 作业里跑到中途整个进程静默退出，
+    // 没有汇总也没有失败用例（#877），那里退回 forks。
+    pool: process.platform === "win32" ? "forks" : "threads",
     // import 会被提升，模块顶层就读 `matchMedia` 的依赖不止一个，所以这
     // 一类补丁必须在 setupFiles 里打，测试文件内的 `installDomPolyfills()`
     // 太晚了。
