@@ -554,7 +554,11 @@ function HandoffPreview({ view }: { view: HandoffView }) {
           <Badge variant="outline">{t(`handoff.${view.state}`)}</Badge>
           {view.state === "queued" && (
             <span className="text-muted-foreground">
-              {t("handoff.queuedNote")}
+              {t(
+                bundle.targetSpec
+                  ? "handoff.queuedNoteNew"
+                  : "handoff.queuedNote",
+              )}
             </span>
           )}
         </span>

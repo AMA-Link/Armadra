@@ -62,6 +62,7 @@ const zh = {
   "handoff.cancelled": "已撤回",
   "handoff.queuedNote":
     "没有写进对方的终端。它什么时候读、读不读、怎么处理，由它自己决定。",
+  "handoff.queuedNoteNew": "已作为新节点的首个任务排队。",
   "handoff.reason": "原因：{code}",
   "handoff.accepted": "已确认，材料已放进目标的收件箱。",
   "handoff.cancelledToast": "已撤回这次交接。",
@@ -135,6 +136,7 @@ const en: Record<keyof typeof zh, string> = {
   "handoff.cancelled": "Withdrawn",
   "handoff.queuedNote":
     "Nothing was written into the target's terminal. When it reads this, and whether it acts on it, is its own decision.",
+  "handoff.queuedNoteNew": "Queued as the new node's first task.",
   "handoff.reason": "Reason: {code}",
   "handoff.accepted": "Confirmed. The material is in the target's inbox.",
   "handoff.cancelledToast": "This handoff was withdrawn.",
