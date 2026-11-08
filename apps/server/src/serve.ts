@@ -71,6 +71,11 @@ export interface ServeOptions {
   readonly env?: NodeJS.ProcessEnv;
   readonly stdout?: (line: string) => void;
   readonly moduleDir?: string;
+  /**
+   * 启动到哪一步了：每进入一个会等外部东西的步骤（打开页面根、装配 core、
+   * 监听 TLS）就报一次。测试用它在启动卡住时说出卡在哪一步。
+   */
+  readonly onStep?: (step: string) => void;
 }
 
 export interface RunningServer {
@@ -162,6 +167,7 @@ export async function serve(options: ServeOptions): Promise<RunningServer> {
   } else if ((options.smtpFrom ?? "").trim() !== "") {
     throw new Error("--smtp-from 要和 --smtp-url 一起给");
   }
+  options.onStep?.("打开页面根目录");
   const webRoot = await openWebRoot(options.webRoot);
   const env: NodeJS.ProcessEnv = {
     ...(options.env ?? process.env),
@@ -171,6 +177,7 @@ export async function serve(options: ServeOptions): Promise<RunningServer> {
   const stdout =
     options.stdout ?? ((line: string) => process.stdout.write(line));
   let diagnostics: ServerDiagnostics | undefined;
+  options.onStep?.("装配 core（建库、迁移、各域安装）");
   const core = await run({
     // core 自己的监听留在回环：对外这一侧由 Gateway 的 TLS 服务负责。
     argv: [
@@ -217,6 +224,7 @@ export async function serve(options: ServeOptions): Promise<RunningServer> {
   const accounts = new AccountsService({ store });
   const hasAdmin = () => store.transaction((tx) => tx.owner() !== undefined);
 
+  options.onStep?.("Gateway 监听与自签名证书");
   let gateway: Gateway;
   let acme: AcmeManager | undefined;
   try {

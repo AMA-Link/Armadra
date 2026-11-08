@@ -378,9 +378,7 @@ describe("粗状态（没有活动，终端驱动）", () => {
   });
 });
 
-// 一万多种输入逐个断言，本机约 0.4 s；慢的 macOS runner 上越过默认的 5 s。
-// 这是枚举用例而不是性能用例，超时给足，不影响判断本身。
-describe("全组合不变量", { timeout: 30_000 }, () => {
+describe("全组合不变量", () => {
   const statuses: (DisplayStatus | undefined)[] = [
     undefined,
     { state: "working" },
@@ -426,86 +424,113 @@ describe("全组合不变量", { timeout: 30_000 }, () => {
   it(`${inputs.length} 种输入全部满足不变量`, () => {
     expect(inputs.length).toBeGreaterThan(5_000);
     const seenTones = new Set<string>();
+    // 上万次 `expect(..., label)` 每次都要先 JSON.stringify 出 label、再建一个断言
+    // 对象，是这条用例的主要耗时（慢 runner 上越过默认预算）。这里只记违反的不变量，
+    // 末尾一次断言空数组；失败信息仍带着输入与不变量名。
+    const violations: string[] = [];
+    const need = (
+      ok: boolean,
+      input: SessionDisplayInput,
+      invariant: string,
+    ): void => {
+      if (!ok) violations.push(`${invariant}: ${JSON.stringify(input)}`);
+    };
+    const busyPhases = new Set([
+      "unknown",
+      "submitting",
+      "thinking",
+      "tool",
+      "awaiting_approval",
+      "awaiting_input",
+      "responding",
+    ]);
+    const lifecyclePhases = new Set([
+      "starting",
+      "restoring",
+      "switching",
+      "sleeping",
+      "exited",
+    ]);
+    const tones = new Set<string>(STATUS_TONES);
     for (const input of inputs) {
       const r = show(input);
-      const label = JSON.stringify(input);
       seenTones.add(r.tone);
-      expect(STATUS_TONES, label).toContain(r.tone);
-      expect(r.labelKey, label).toMatch(/^status\.[a-zA-Z]+$/);
-      expect(show(input), label).toEqual(r);
+      need(tones.has(r.tone), input, "tone 在 STATUS_TONES 内");
+      need(
+        /^status\.[a-zA-Z]+$/.test(r.labelKey),
+        input,
+        "labelKey 形如 status.x",
+      );
+      need(
+        JSON.stringify(show(input)) === JSON.stringify(r),
+        input,
+        "同输入同输出",
+      );
+      const answers = r.need === "approval" || r.need === "input";
       // 进程死了（且不是生命周期阶段）：没人能答，不在忙。
       const lifecycle =
-        input.activity &&
-        ["starting", "restoring", "switching", "sleeping", "exited"].includes(
-          input.activity.phase,
-        );
+        input.activity !== undefined &&
+        lifecyclePhases.has(input.activity.phase);
       if (input.alive === false) {
-        expect(r.need === "approval" || r.need === "input", label).toBe(false);
+        need(!answers, input, "死了不要人答");
         if (!lifecycle && !input.sleeping) {
-          expect(r.busy, label).toBe(false);
-          expect(r.phase, label).toBe("exited");
+          need(r.busy === false, input, "死了不忙");
+          need(r.phase === "exited", input, "死了阶段是 exited");
         }
       }
       // 休眠：不忙，不要人答。
       if (input.sleeping) {
-        expect(r.busy, label).toBe(false);
-        expect(r.phase, label).toBe("sleeping");
-        expect(r.need === "approval" || r.need === "input", label).toBe(false);
+        need(r.busy === false, input, "休眠不忙");
+        need(r.phase === "sleeping", input, "休眠阶段是 sleeping");
+        need(!answers, input, "休眠不要人答");
       }
       // 要人答 ⇒ attention；忙 ⇒ working / attention。
-      if (r.need === "approval" || r.need === "input")
-        expect(r.tone, label).toBe("attention");
-      if (r.tone === "attention")
-        expect(r.need === "approval" || r.need === "input", label).toBe(true);
-      if (r.busy) expect(["working", "attention"], label).toContain(r.tone);
+      if (answers) need(r.tone === "attention", input, "要人答 ⇒ attention");
+      if (r.tone === "attention") need(answers, input, "attention ⇒ 要人答");
+      if (r.busy)
+        need(
+          r.tone === "working" || r.tone === "attention",
+          input,
+          "忙 ⇒ working / attention",
+        );
       // 出错未读 ⇒ failed；新回合在跑或会话正在启动 / 恢复 / 切换时，那件事优先。
       if (r.need === "error" && !r.busy && r.tone !== "queued")
-        expect(r.tone, label).toBe("failed");
+        need(r.tone === "failed", input, "出错未读 ⇒ failed");
       // 只有没有活动时才会是 unknown 阶段。
-      if (r.phase === "unknown") expect(input.activity, label).toBeUndefined();
+      if (r.phase === "unknown")
+        need(input.activity === undefined, input, "unknown 阶段无活动");
       // 有活动且没被覆盖：阶段就是活动的阶段。
       if (
         input.activity &&
         !input.sleeping &&
         !r.need &&
         !(input.alive === false)
-      ) {
-        expect(r.phase, label).toBe(input.activity.phase);
-      }
+      )
+        need(r.phase === input.activity.phase, input, "阶段 = 活动阶段");
       // busy 取代各处自己的判断：忙就一定有阶段或粗状态在忙。
-      if (r.busy)
-        expect(
-          r.phase === "unknown" ||
-            [
-              "submitting",
-              "thinking",
-              "tool",
-              "awaiting_approval",
-              "awaiting_input",
-              "responding",
-            ].includes(r.phase),
-          label,
-        ).toBe(true);
+      if (r.busy) need(busyPhases.has(r.phase), input, "忙 ⇒ 忙的阶段");
     }
+    expect(violations.slice(0, 10)).toEqual([]);
     // 八种色调都出现过。
     expect([...seenTones].sort()).toEqual([...STATUS_TONES].sort());
   });
 
   it("没有活动与程序自报时，need 只由粗状态和 alive 决定（与 agentHumanNeed 一致）", () => {
+    const mismatches: string[] = [];
     for (const input of inputs) {
       if (input.activity || input.program || input.sleeping) continue;
       const r = show(input);
       const unread = input.unread ?? input.status?.unread;
-      expect(r.need, JSON.stringify(input)).toBe(
-        agentHumanNeed({
-          state: input.status?.state,
-          pendingId: input.status?.pendingId,
-          errored: input.status?.errored,
-          unread,
-          alive: input.alive,
-        }),
-      );
+      const expected = agentHumanNeed({
+        state: input.status?.state,
+        pendingId: input.status?.pendingId,
+        errored: input.status?.errored,
+        unread,
+        alive: input.alive,
+      });
+      if (r.need !== expected) mismatches.push(JSON.stringify(input));
     }
+    expect(mismatches.slice(0, 10)).toEqual([]);
   });
 });
 

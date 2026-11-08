@@ -81,7 +81,44 @@ function call(
   });
 }
 
+/**
+ * 启动钩子的看门狗。vitest 的钩子超时只会说 `Hook timed out in 10000ms`，不说
+ * 卡在哪；Windows runner 上这个钩子超时过一次（#630），当时没法知道是建临时目录、
+ * 装配 core 还是 TLS 监听。这里在默认钩子上限之前自己收口，把当前步骤与每步
+ * 耗时写进错误信息。上限不放宽——启动在 Windows 上慢也该慢在可见的地方。
+ */
+const HOOK_BUDGET_MS = 10_000;
+const WATCHDOG_MS =
+  Number(process.env.ARMADRA_TEST_WATCHDOG_MS) || HOOK_BUDGET_MS - 1_500;
+const stepLog: { step: string; at: number }[] = [];
+let startedAt = 0;
+function enter(step: string): void {
+  stepLog.push({ step, at: Date.now() - startedAt });
+}
+function stalledMessage(): string {
+  const last = stepLog[stepLog.length - 1];
+  const trail = stepLog
+    .map((entry) => `${entry.step} @${entry.at}ms`)
+    .join(" -> ");
+  return `serve 启动在「${last?.step ?? "(未开始)"}」这一步卡住（${WATCHDOG_MS}ms 内没完成）。已走过：${trail}`;
+}
+
 beforeAll(async () => {
+  startedAt = Date.now();
+  stepLog.length = 0;
+  let timer: NodeJS.Timeout | undefined;
+  const watchdog = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(stalledMessage())), WATCHDOG_MS);
+  });
+  try {
+    await Promise.race([start(), watchdog]);
+  } finally {
+    clearTimeout(timer);
+  }
+}, HOOK_BUDGET_MS);
+
+async function start(): Promise<void> {
+  enter("建临时目录与页面夹具");
   const dataDir = tempDir("armadra-server-");
   webRoot = tempDir("armadra-web-");
   outside = tempDir("armadra-outside-");
@@ -113,9 +150,11 @@ beforeAll(async () => {
     },
     stdout: () => {},
     moduleDir: here,
+    onStep: enter,
   });
+  enter("就绪");
   origin = running.origin;
-});
+}
 
 afterAll(async () => {
   await running?.stop();
