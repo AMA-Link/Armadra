@@ -583,21 +583,33 @@ function agentOperations(collab: CollabContext) {
       }
       const answeredBy = optionalString(body, "answeredBy");
       const optionId = optionalString(body, "optionId");
-      const answer = await answerApproval(collab, pendingId, {
-        ...(decision === undefined ? {} : { decision }),
-        ...(elicitation === undefined
-          ? {}
-          : {
-              elicitation: elicitation as {
-                action: unknown;
-                content?: unknown;
-              },
-            }),
-        ...(answeredBy === undefined ? {} : { answeredBy }),
-        ...(typeof expected === "number" ? { expectedRevision: expected } : {}),
-        // ACP 审批的选项（契约 §14.4）；别的审批带了它答 400。
-        ...(optionId === undefined ? {} : { optionId }),
-      });
+      // The terminal bridge is installed after this domain, so the `collab` this
+      // closure captured has none. Read through the running context, as the
+      // launch routes do; otherwise the key fallback can never type anything.
+      const answer = await answerApproval(
+        {
+          ...collab,
+          terminals: assembledCollab()?.terminals ?? collab.terminals,
+        },
+        pendingId,
+        {
+          ...(decision === undefined ? {} : { decision }),
+          ...(elicitation === undefined
+            ? {}
+            : {
+                elicitation: elicitation as {
+                  action: unknown;
+                  content?: unknown;
+                },
+              }),
+          ...(answeredBy === undefined ? {} : { answeredBy }),
+          ...(typeof expected === "number"
+            ? { expectedRevision: expected }
+            : {}),
+          // ACP 审批的选项（契约 §14.4）；别的审批带了它答 400。
+          ...(optionId === undefined ? {} : { optionId }),
+        },
+      );
       // 审批答复是设计 §4.5 的五个审计写入点之一：一次「允许」可能让 Agent 动
       // 到磁盘，事后必须查得到是谁在什么时候答的。
       const { approval, route } = answer;
