@@ -7,7 +7,10 @@
  * `undefined` and ama runs as a plain standalone agent: the same profile, no
  * canvas tools, no reports. Inside one it registers the canvas, context and
  * browser verbs as tools, adds the tool note and the trust rule to the system
- * prompt, and reports every status event to `/hook/ama`.
+ * prompt, and reports every status event to `/hook/ama`. On an ama with
+ * host-api 1.2 the ledger and the event queue are also an `armadra://`
+ * resource namespace (`resources.ts`), and `canvas_items` / `canvas_events`
+ * are hidden in favour of the built-in `read`.
  *
  * It also provides `HostApi.runners` — `task(agent=<cli>)` becomes a node on
  * the board, followed with the `wait` verb (`runners.ts`, contract §15.5) —
@@ -27,6 +30,7 @@ import { installBroker } from "./approvals.js";
 import { injectAfterCompaction } from "./compaction.js";
 import { subscribeEvents } from "./events.js";
 import { addInstructions } from "./instructions.js";
+import { TOOLS_HIDDEN_BY_RESOURCES, registerResources } from "./resources.js";
 import { provideRunners } from "./runners.js";
 import { registerTools } from "./tools.js";
 
@@ -39,11 +43,18 @@ export const hostApi = 1 as const satisfies typeof HOST_API_VERSION;
 export function create(api: HostApi): HostAdapter | undefined {
   const nodeId = api.env.ARMADRA_NODE_ID;
   if (typeof nodeId !== "string" || nodeId.trim() === "") return undefined;
+  // host-api 1.2 (#885): the ledger and the events as `armadra://` resources
+  // read with the built-in `read`; the two tools they replace are hidden.
+  // Feature-detected — an older ama keeps the tools and the same words. The
+  // words only change once both tools are really hidden: a `disable` that
+  // fails leaves the tools in place and the note naming them.
+  const registered = registerResources(api);
   registerTools(api);
-  addInstructions(api);
+  const resources = registered && hideReplacedTools(api);
+  addInstructions(api, { resources });
   const unsubscribe = subscribeEvents(api);
   unsubscribe.push(provideRunners(api));
-  unsubscribe.push(injectAfterCompaction(api));
+  unsubscribe.push(injectAfterCompaction(api, { resources }));
   installBroker(api);
   return {
     id: ADAPTER_ID,
@@ -57,6 +68,20 @@ export function create(api: HostApi): HostAdapter | undefined {
       }
     },
   };
+}
+
+/** Hides the tools the resources replace; answers whether every one is hidden. */
+function hideReplacedTools(api: Pick<HostApi, "tools" | "log">): boolean {
+  let hidden = true;
+  for (const name of TOOLS_HIDDEN_BY_RESOURCES) {
+    try {
+      api.tools.disable(name);
+    } catch (error) {
+      api.log("warn", `could not hide ${name}`, error);
+      hidden = false;
+    }
+  }
+  return hidden;
 }
 
 export default { hostApi, create };

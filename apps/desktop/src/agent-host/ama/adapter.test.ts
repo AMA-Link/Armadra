@@ -7,9 +7,18 @@ import { AMA_HOOK_EVENTS } from "../../core/hook/install/events";
 import { TRUST_RULE } from "../../core/collab/skill";
 import { VERB_TOOLS } from "../../hook-client/verbs";
 import { AMA_EVENTS, payloadOf, subscribeEvents } from "./events";
-import { COMPACTION_NOTE, NOTE_ORIGIN } from "./compaction";
+import {
+  COMPACTION_NOTE,
+  COMPACTION_NOTE_RESOURCES,
+  NOTE_ORIGIN,
+} from "./compaction";
 import { canvasToolNote } from "./instructions";
 import { ADAPTER_ID, create, hostApi } from "./main";
+import {
+  RESOURCE_SCHEME,
+  type ResourceDefinition,
+  TOOLS_HIDDEN_BY_RESOURCES,
+} from "./resources";
 import {
   AMA_SCHEMA_KEYWORDS,
   COORDINATOR_WAIT_CAP_SECONDS,
@@ -21,11 +30,19 @@ import {
   toolDefinition,
 } from "./tools";
 
-/** A HostApi that records what the adapter did with it. */
-function fakeApi(env: NodeJS.ProcessEnv) {
+/**
+ * A HostApi that records what the adapter did with it. `resources: true`
+ * gives it host-api 1.2's resources surface (#885); the default is the
+ * pinned ama, which has none.
+ */
+function fakeApi(
+  env: NodeJS.ProcessEnv,
+  options: { readonly resources?: boolean } = {},
+) {
   const tools: ToolDefinition[] = [];
-  const instructions: unknown[] = [];
+  const instructions: { text?: string }[] = [];
   const handlers = new Map<string, (event: unknown) => unknown>();
+  const resources: ResourceDefinition[] = [];
   const api = {
     version: 1,
     agent: { name: "ama", version: "0.6.2" },
@@ -44,7 +61,19 @@ function fakeApi(env: NodeJS.ProcessEnv) {
       disable: vi.fn(),
       list: () => tools.map((tool) => tool.name),
     },
-    instructions: { add: (source: unknown) => instructions.push(source) },
+    instructions: {
+      add: (source: { text?: string }) => instructions.push(source),
+    },
+    ...(options.resources === true
+      ? {
+          resources: {
+            register: (resource: ResourceDefinition) => {
+              resources.push(resource);
+            },
+            list: () => resources.map((resource) => resource.scheme),
+          },
+        }
+      : {}),
     events: {
       on: (name: string, handler: (event: unknown) => unknown) => {
         handlers.set(name, handler);
@@ -56,7 +85,7 @@ function fakeApi(env: NodeJS.ProcessEnv) {
     ui: { notify: vi.fn(), setStatus: vi.fn() },
     log: vi.fn(),
   } as unknown as HostApi;
-  return { api, tools, instructions, handlers };
+  return { api, tools, instructions, handlers, resources };
 }
 
 describe("the ama host adapter", () => {
@@ -84,9 +113,114 @@ describe("the ama host adapter", () => {
     // ama's own `task` is left alone: the runners route it to the board.
     expect(api.tools.disable).not.toHaveBeenCalled();
     expect(instructions).toHaveLength(1);
+    // The pinned ama has no resources: the note is the one it always got.
+    expect(instructions[0]?.text).toBe(canvasToolNote());
+    expect(instructions[0]?.text).toContain("`canvas_items`");
     expect([...handlers.keys()].sort()).toEqual([...AMA_EVENTS].sort());
     adapter?.dispose?.();
     expect(handlers.size).toBe(0);
+  });
+});
+
+describe("the armadra resources (host-api 1.2)", () => {
+  it("registers the scheme, hides the two tools and says read armadra://", () => {
+    const { api, tools, instructions, resources } = fakeApi(
+      { ARMADRA_NODE_ID: "node-1" },
+      { resources: true },
+    );
+    expect(create(api)?.id).toBe(ADAPTER_ID);
+    expect(resources.map((resource) => resource.scheme)).toEqual([
+      RESOURCE_SCHEME,
+    ]);
+    // Every verb is still registered — the two are hidden, not dropped, so
+    // ama's `tools.disable` is what takes them off the table.
+    expect(tools.map((tool) => tool.name)).toEqual(
+      VERB_TOOLS.map((tool) => tool.name),
+    );
+    const disable = api.tools.disable as ReturnType<typeof vi.fn>;
+    expect(disable.mock.calls.map((call) => call[0])).toEqual([
+      ...TOOLS_HIDDEN_BY_RESOURCES,
+    ]);
+    const note = instructions[0]?.text ?? "";
+    expect(note).toBe(canvasToolNote({ resources: true }));
+    expect(note).toContain("`read armadra://items`");
+    expect(note).toContain("用 `read` 读 `armadra://events`");
+    expect(note).toContain("`armadra://items/<id>`");
+    expect(note).toContain("`armadra://items/<id>/origin`");
+    // The member following a pointer is another CLI: it keeps `canvas items`.
+    expect(note).toContain("`canvas items --item <id>`");
+    expect(note).not.toContain("canvas_items");
+    expect(note).not.toContain("canvas_events");
+    // The rest of the note is untouched.
+    expect(note).toContain("canvas_ack");
+    expect(note).toContain("canvas_notify");
+    expect(note).toContain(TRUST_RULE);
+  });
+
+  it("reads the ledger and the events through the registered scheme", async () => {
+    const { api, resources } = fakeApi(
+      { ARMADRA_NODE_ID: "node-1" },
+      { resources: true },
+    );
+    create(api);
+    const [scheme] = resources;
+    if (scheme === undefined) throw new Error("no scheme");
+    const signal = new AbortController().signal;
+    // No core answers in a unit test: the read reaches the verb caller and
+    // comes back as its error, thrown for ama to turn into a tool error.
+    await expect(scheme.read("items", { offset: 1, signal })).rejects.toThrow();
+    expect(
+      await scheme.read("no-such-path", { offset: 1, signal }),
+    ).toBeUndefined();
+  });
+
+  it("tells a compacted coordinator to read the resources, not the tools", async () => {
+    const { api, handlers, tools } = fakeApi(
+      { ARMADRA_NODE_ID: "node-1" },
+      { resources: true },
+    );
+    for (const name of ["read", "grep"]) {
+      tools.push({ name } as ToolDefinition);
+    }
+    create(api);
+    const sendUser = api.messages.sendUser as ReturnType<typeof vi.fn>;
+    sendUser.mockResolvedValue("queued");
+    await handlers.get("session_compact")?.({ tokensBefore: 1 });
+    expect(sendUser).toHaveBeenCalledWith(
+      COMPACTION_NOTE_RESOURCES,
+      NOTE_ORIGIN,
+    );
+    expect(COMPACTION_NOTE_RESOURCES).toContain("armadra://items");
+    expect(COMPACTION_NOTE_RESOURCES).not.toContain("canvas_items");
+  });
+
+  it("keeps the tools' words when a disable refuses: nothing is hidden, nothing lies", () => {
+    const { api, resources, instructions, handlers, tools } = fakeApi(
+      { ARMADRA_NODE_ID: "node-1" },
+      { resources: true },
+    );
+    for (const name of ["read", "grep"]) {
+      tools.push({ name } as ToolDefinition);
+    }
+    (api.tools.disable as ReturnType<typeof vi.fn>).mockImplementation(
+      (name: string) => {
+        if (name === "canvas_events") throw new Error("unknown tool");
+      },
+    );
+    expect(create(api)?.id).toBe(ADAPTER_ID);
+    // The scheme is there — reading it is harmless — but the note still
+    // names `canvas_items`, which is still on the table.
+    expect(resources).toHaveLength(1);
+    expect(instructions[0]?.text).toBe(canvasToolNote());
+    expect(api.log).toHaveBeenCalledWith(
+      "warn",
+      expect.stringContaining("canvas_events"),
+      expect.anything(),
+    );
+    const sendUser = api.messages.sendUser as ReturnType<typeof vi.fn>;
+    sendUser.mockResolvedValue("queued");
+    void handlers.get("session_compact")?.({ tokensBefore: 1 });
+    expect(sendUser).toHaveBeenCalledWith(COMPACTION_NOTE, NOTE_ORIGIN);
   });
 });
 
