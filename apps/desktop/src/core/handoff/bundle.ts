@@ -24,6 +24,8 @@ import { resolveInRoot } from "../workspaces/roots";
 export interface Sections {
   readonly goal: string;
   readonly constraints: string;
+  /** 完成标准。旧包没有这个字段，读取时按空串处理。 */
+  readonly acceptance: string;
   readonly completed: string;
   readonly pending: string;
   readonly decisions: string;
@@ -33,6 +35,7 @@ export interface Sections {
 export const EMPTY_SECTIONS: Sections = {
   goal: "",
   constraints: "",
+  acceptance: "",
   completed: "",
   pending: "",
   decisions: "",
@@ -43,6 +46,7 @@ export const EMPTY_SECTIONS: Sections = {
 export const SECTION_KEYS = [
   "goal",
   "constraints",
+  "acceptance",
   "pending",
   "completed",
   "decisions",
@@ -316,8 +320,8 @@ function encodedSize(bundle: HandoffBundle): number {
  *
  * The order is the user's priority, not ours: the transcript excerpt is
  * evidence and goes first, then the tool summary, the decisions, the completed
- * and pending work, the constraints, and only then the goal. A bundle whose
- * *goal* would not fit is refused outright — a handoff that cannot say what it
+ * and pending work, the acceptance criteria, the constraints, and only then
+ * the goal. A bundle whose *goal* would not fit is refused outright — a handoff that cannot say what it
  * is for is not a shorter handoff, it is a different one.
  */
 export function fitBudget(bundle: HandoffBundle): HandoffBundle {
@@ -409,6 +413,7 @@ function popOneCharacter(bundle: Mutable<HandoffBundle>): boolean {
     "decisions",
     "completed",
     "pending",
+    "acceptance",
     "constraints",
     "goal",
   ];

@@ -901,6 +901,7 @@ function sectionsOf(
   return {
     goal: read("goal"),
     constraints: read("constraints"),
+    acceptance: read("acceptance"),
     completed: read("completed"),
     pending: read("pending"),
     decisions: read("decisions"),

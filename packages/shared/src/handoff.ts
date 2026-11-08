@@ -5,6 +5,7 @@ const generation = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 export const handoffSectionsSchema = z.object({
   goal: text.min(1),
   constraints: text.default(""),
+  acceptance: text.default(""),
   completed: text.default(""),
   pending: text.default(""),
   decisions: text.default(""),

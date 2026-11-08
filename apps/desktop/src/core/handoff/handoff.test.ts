@@ -160,6 +160,30 @@ describe("accept", () => {
     expect(fixture.terminal.writes).toHaveLength(0);
   });
 
+  it("nudges the target once, after the transaction, and not again on a repeat", async () => {
+    const frozen = await prepared();
+    expect(fixture.nudged).toEqual([]);
+    accept(fixture.collab, fixture.workspaceId, frozen.bundle.handoffId, {
+      expectedDigest: frozen.digest,
+    });
+    expect(fixture.nudged).toEqual([target]);
+    accept(fixture.collab, fixture.workspaceId, frozen.bundle.handoffId, {
+      expectedDigest: frozen.digest,
+    });
+    expect(fixture.nudged).toEqual([target]);
+  });
+
+  it("does not nudge when accepting is refused", async () => {
+    const view = await prepared();
+    fixture.database.prepare("DELETE FROM context_links").run();
+    expect(() =>
+      accept(fixture.collab, fixture.workspaceId, view.bundle.handoffId, {
+        expectedDigest: view.digest,
+      }),
+    ).toThrow();
+    expect(fixture.nudged).toEqual([]);
+  });
+
   it("refuses a digest that no longer matches the preview", async () => {
     const view = await prepared();
     expect(() =>
@@ -213,6 +237,7 @@ describe("reading and acknowledging", () => {
       view.bundle.handoffId,
       targetSession,
       1,
+      { format: "json" },
     );
     expect(body).toMatchObject({ protocol: "armadra.handoff.v1" });
     expect(String(body.trust)).toContain("Reading does not acknowledge");

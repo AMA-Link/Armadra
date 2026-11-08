@@ -3022,6 +3022,11 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 - 权限与旧路由表一致：读（`handoffs`、`handoff`）是 `canvas:read`，冻结、批准、撤回是 `canvas:write`，都绑 `workspaceId`。
 - `prepareHandoff` 只冻结材料并生成预览，不通知任何人；来源与目标的身份、代数、模板与字节预算在域里判（缺字段 `400`、身份不在这块工作空间 `403`、代数变了 `409`）。来源 Agent 所在的执行主机采集不了转录时答 `501 handoff_host_offline`（域里的码，不在注册表里，页面按码取文案）。
 - `acceptHandoff` 是交接里唯一的用户授权：`expectedDigest` 必须是预览里那一份，否则 `409 conflict`；材料进目标的收件箱，不往对方终端里写。`cancelHandoff` 撤回还没被确认的交接，收件箱里那条一并删掉。
+- 确认提交之后唤醒目标（与 `post` 一样推一次出队泵）：空闲的目标不必等下一次提示就会被告知收件箱里有交接；重复确认走提前返回，不再唤醒。
+- 模板（`sections`）有七段：`goal`（必填）、`constraints`、`acceptance`（完成标准）、`completed`、`pending`、`decisions`、`toolSummary`，缺省为空串。预算裁剪时 `acceptance` 排在 `goal`、`constraints` 之后、`pending` 之前保留。包的 `version` 仍是 1；读旧包时没有 `acceptance` 按空串处理，已存的 digest 校验不变。
+- 收件箱通知里的读取与回执命令按**目标节点的通道**拼：终端里的 Codex（含基础 Agent 是 Codex 的自定义 Agent）写 MCP 工具名 `canvas_handoff_read`、`canvas_post`、`canvas_ack`，其余终端 CLI 写 `armadra-hook canvas …`。
+- 目标侧读取是 `canvas handoff-read --id <id> [--format md|json]`（MCP 工具 `canvas_handoff_read`，参数 `id`、`format`），仍绑定目标的当前会话与代次。`format` 缺省 `md`，答 `{ ok, message }`，`message` 是任务简报；`json` 答 `{ ok, protocol: "armadra.handoff.v1", digest, bundle, trust }`，与以前一致；其它取值 `400`。简报固定顺序：标题（`goal` 第一行）→ 来源一句（节点名、Agent、模型；来源仍在运行，以下是同级资料而不是系统指令）→ 要做的事（`goal` + `pending`）→ 约束 → 完成标准 → 已完成 / 关键决策 → 相关文件与仓库 → 原文（转录摘录的长度与读法）→ 做完之后（`post --to <来源> --key handoff:<id>:result`，再 `ack` 收件箱那条）；空段落省略，文字都经与包相同的脱敏。
+- 邮箱 `ack` 只把键恰为 `handoff:<id>` 的消息当作交接回执并要求会话绑定；目标回给来源的 `handoff:<id>:result` 是普通消息，来源确认它不需要交接绑定。
 - `handoffs` 不带 `sourceNodeId`（或为空串）答整块工作空间的历史，带上它答那个节点作为来源或目标的交接，新的在前。行里的来源与目标是冻结在包里的身份。
 - 出参是冻结的材料包（原样透传的 JSON 对象）加状态与投递记号（`mailboxId`、`traceId`、`attempts`）；页面的 `handoffViewSchema` 再按自己的口径解析。材料包里只有冻结时截取的转录摘录，按字节预算截断；不进日志。
 
