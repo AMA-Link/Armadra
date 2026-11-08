@@ -74,6 +74,13 @@ const MCP_LINES = {
   ],
 };
 
+/**
+ * OMP 自动编辑档（`--approval-mode=write`，契约 §110）：扩展在进程内注册的画布
+ * 工具 `canvas_list` 免审批，普通 shell 命令仍要审批（非交互没人批，被拒）。
+ */
+const OMP_TOOLS =
+  "Call the tool `canvas_list` exactly once. Then call your bash tool exactly once to run `echo ARMADRA_BASH_PROBE`. Answer in one line exactly: TOOL=<ok if canvas_list returned a list of canvas nodes, failed otherwise>; BASH=<ran if the command output ARMADRA_BASH_PROBE, refused if it was denied or needed approval>";
+
 /** 每个 CLI 非交互跑一轮的参数；注入由启动器接在后面。 */
 const LINES = {
   opencode(cli, prompt) {
@@ -412,6 +419,48 @@ export default async function run6(ctx) {
           `${id} 画布内：注入的 armadra MCP 工具能调用，不用审批`,
           viaMcp.code === "0" && /LIST=ok/i.test(viaMcp.out),
           viaMcp.out || viaMcp.err,
+        );
+      }
+      if (id === "omp") {
+        const toolsPrefix = join(scratch, `${id}-tools`);
+        await api("/api/terminals", {
+          method: "POST",
+          body: JSON.stringify({
+            workspaceId: workspace.id,
+            cwd: project,
+            nodeId: node.id,
+            agent: { id },
+            command: wrapper,
+            args: [
+              toolsPrefix,
+              launcher ?? "",
+              "-p",
+              `--model=${cli.model}`,
+              "--approval-mode=write",
+              OMP_TOOLS,
+            ],
+          }),
+        });
+        await waitSoft(() => existsSync(`${toolsPrefix}.code`), {
+          timeout: 240_000,
+          interval: 1000,
+        });
+        const tools = {
+          code: read(`${toolsPrefix}.code`).trim(),
+          out: read(`${toolsPrefix}.out`).trim().slice(-600),
+          err: read(`${toolsPrefix}.err`).trim().slice(-300),
+        };
+        entry.tools = tools;
+        s.check(
+          "omp 自动编辑档：进程内画布工具 canvas_list 免审批，读到画布",
+          tools.code === "0" && /TOOL=ok/i.test(tools.out),
+          tools.out || tools.err,
+        );
+        s.check(
+          "omp 自动编辑档：普通 bash 仍要审批（没有跑）",
+          /BASH=refused/i.test(tools.out) &&
+            !tools.out.includes("ARMADRA_BASH_PROBE\n"),
+          tools.out || tools.err,
         );
       }
       // 上报是异步的（扩展里 fire-and-forget，CLI 退出前可能还在路上）。

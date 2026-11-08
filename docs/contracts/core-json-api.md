@@ -5683,3 +5683,18 @@ Copilot 的 ACP 入口只接受 http / sse 的 MCP 服务器，`session/new.mcpS
 - JSON 是 `{ mcpServers: { armadra: { type: "local", command, args: ["mcp"], env, tools: ["*"] } } }`，与终端的 §106.1 同一份形状；`tools: ["*"]` 与 `--allow-tool armadra` 一个让工具可见、一个只放行这一台服务器的工具，别家的 MCP 与 shell 照旧审批。`env` 只有端点与节点身份，不带令牌。
 - SSH 节点同一条路：执行主机上的 Hook 客户端同样改写成启动参数。
 - 这一家的会话结果不带 `mcpInjected`（服务器不是随 `session/new` 发出去的）。
+
+## 110. 终端 omp 在进程内注册画布工具（`#856`）
+
+> 状态：实施契约。只改注入的 omp 扩展与 `armadra-hook` 的一个子命令；core 的路由、事件形状与协议版本不变。
+
+### 110.1 扩展注册 `VERB_TOOLS`
+
+- 注入给终端 omp 的扩展（`core/hook/install/extension-template.ts`）在原有事件转发之外，对 `VERB_TOOLS` 每一项调用 `pi.registerTool`：名字、描述、参数（表里的 JSON Schema 原样）与 `armadra-hook mcp`、ama 宿主适配器同一张表。`loadMode: "essential"`，模型直接看得到。Pi 的扩展不带工具（`ARMADRA_TOOLS = []`），只转发事件。
+- 审批档（omp 的 `approval`）取 ama 同一套归类（`hook-client/verb-class.ts`，`agent-host/ama/tools.ts` 也读它）：`read` → `read`，`write` → `write`，`execute` → `exec`。canvas、context 两组里除 `canvas_interrupt`、`canvas_close` 之外都是 `read`，所以 omp 自动编辑档（`write`）下免审批；`canvas_interrupt`、`canvas_close` 与浏览器的 `upload`、`download`、`close` 是 `exec`，仍询问。其他 bash 命令不受影响，照旧按用户策略询问。
+
+### 110.2 `armadra-hook tool <name>`
+
+- 工具的 `execute` 起 `armadra-hook tool <name>` 子进程：参数 JSON 走标准输入，成功时 stdout 是运行时的原文、退出码 0；被拒或连不上时 stderr 是拒绝的原文、退出码 1。子进程继承终端环境（节点 id、端点文件、会话绑定）。
+- 子命令内部就是 `armadra-hook mcp` 的 `tools/call`（同一个 `callTool`），所以 core 收到的请求与 shell 里的 `armadra-hook canvas ...` 完全一样，不多给任何权限。
+- 实测（omp 18.16.0，`--approval-mode=write`，场景 6）：`canvas_list` 未询问即返回画布节点；同一轮里的 `echo` 被拒。
