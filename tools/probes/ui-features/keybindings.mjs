@@ -42,6 +42,11 @@ async function openShortcuts(page) {
 }
 
 async function closeSettings(page) {
+  // 条件编辑框还在收起时按 Escape，键落在它身上，设置窗不关（#630）。
+  await page.until(
+    `return !document.querySelector("input[aria-label='条件']")`,
+    "条件编辑框收起",
+  );
   await page.key("Escape");
   await page.until(
     `return !document.querySelector('[role="dialog"]')`,
@@ -233,6 +238,10 @@ export default async function keybindings({ stack, output, report, scenario }) {
      const save = [...dialog.querySelectorAll("button")].find((b) => b.textContent.trim() === "保存");
      return save && !save.disabled ? save : null;`,
     "条件可保存",
+  );
+  await page.until(
+    `return [...document.querySelectorAll('[role="dialog"] code')].some((c) => c.textContent.trim() === "platform == mac")`,
+    "侧栏行显示新条件",
   );
   await sleep(300);
   await closeSettings(page);
