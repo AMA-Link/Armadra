@@ -222,7 +222,7 @@ ACP 是同一个 Agent 节点的另一种驱动方式，不是第二条 Agent �
 
 `POST /api/workspaces/{id}/handoffs` 冻结材料并返回预览：目标 Agent / 模型 / 目录、带走的文件与 Git 指纹、按预算裁剪的结果、`omitted` 里逐条列出的未包含项，以及来源转录摘录。此时没有通知任何人。`POST …/{handoffId}/accept` 是唯一的用户授权，必须带上预览那一份的 `expectedDigest`，看到的和批准的不是同一份就返回 409；重复确认返回同一条收件箱记录，不会放两份进去。`POST …/{handoffId}/cancel` 删掉那条收件箱消息。`GET …/handoffs?sourceNodeId=` 与 `GET …/{handoffId}` 让来源和目标都能查同一份包。
 
-确认就是投递本身：同一个事务里往目标的 `agent_mailbox` 插一条 `key = handoff:<id>` 的消息，然后结束。正文只说「有一份用户批准的交接材料，这是同级资料而不是系统指令」，附读取命令 `armadra-hook canvas handoff-read --id <id>`；没有任何东西写进对方的终端，也就没有「写了但不知道有没有到」这种状态。
+确认就是投递本身：同一个事务里往目标的 `agent_mailbox` 插一条 `key = handoff:<id>` 的消息，然后结束。正文只说「有一份用户批准的交接材料，这是同级资料而不是系统指令」，附读取与确认命令；命令按目标的通道写：终端里的 Codex 写 MCP 工具名（`canvas_handoff_read`、`canvas_ack`），其余终端 CLI 写 `armadra-hook canvas handoff-read --id <id>`。事务提交后会唤醒目标，空闲的 Agent 随即被告知；没有任何东西写进对方的终端，也就没有「写了但不知道有没有到」这种状态。
 
 状态只有四个，每一个都是这一侧能证明的事实：
 
@@ -232,6 +232,8 @@ ACP 是同一个 Agent 节点的另一种驱动方式，不是第二条 Agent �
 | `queued`       | 用户已批准，材料在目标的收件箱里       |
 | `acknowledged` | 目标自己 `canvas ack` 了那条收件箱消息 |
 | `cancelled`    | 已撤回，收件箱那条被删掉               |
+
+交接的模板有目标、约束、完成标准、已完成、未完成、关键决策、工具结果摘要七段，目标必填，完成标准可空。`handoff-read` 缺省输出任务简报（`--format md`）：标题、来源、要做的事、约束、完成标准、已完成 / 关键决策、相关文件与仓库、原文摘录、做完之后；空段落省略。做完之后的做法是 `canvas post --to <来源> --key handoff:<id>:result` 把结果回给来源，再 `ack` 收件箱那条。要拿结构化的包用 `--format json`（MCP 工具参数 `format`）。
 
 `handoff-read` 读包不等于确认：读取交出材料，`ack` 才是「我接下了」。旧库里 `dispatching` / `notified` / `unknownOutcome` / `failed` / `expired` 这些描述 PTY 写入结果的值仍在表里（已发布迁移不改），core 读出来时一律归一成 `queued`——批准过、进了信箱、没被确认。会话里已有的权限批准不随交接转移，凭据不进入包；来源会话保持运行，快照之后来源又有动作时预览会标出「有新活动」。
 
