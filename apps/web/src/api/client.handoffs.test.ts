@@ -142,6 +142,7 @@ describe("对话交接经 agents.* procedure", () => {
       sections: {
         goal: "finish",
         constraints: "",
+        acceptance: "",
         completed: "",
         pending: "",
         decisions: "",
