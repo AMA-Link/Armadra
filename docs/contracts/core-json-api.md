@@ -1691,6 +1691,24 @@ CSV 按 RFC 4180：`\r\n` 换行，首行表头 `id,time,principalId,deviceId,ac
 | Worker 连不上、握手失败、缺 `remote.handoff.v1`     | 501 `handoff_host_offline`             |
 | 不读转录（`includeTranscript: false` 或来源未验证） | 200，不连来源主机，无 `capturedOn`     |
 
+冻结的材料从 `version: 2` 起多一个可选字段 `sourceCursor`（读了转录才有；`version: 1` 的旧包没有它，读取时两个版本都接受）：
+
+```json
+{
+  "agentId": "claude",
+  "locatedKey": "/abs/path/session.jsonl",
+  "executionHost": "local-runtime",
+  "endOffset": 18234,
+  "prefixSha256": "<64 位十六进制>",
+  "unit": "bytes"
+}
+```
+
+- `locatedKey` 是 `Located.key`：文件来源是绝对路径，OpenCode 是 `opencode:<会话 id>`，ACP 会话是时间线路径；`executionHost` 是 `local-runtime` 或 `execution-host:<主机 id>`，转录在哪台机器上就到哪台机器读。
+- `unit` 说 `endOffset` 的单位：`bytes`（文件来源，收在冻结时最后一个完整行；`prefixSha256` 是 `[0, endOffset)` 的 sha256）、`entries`（ACP 时间线，记录条数）、`opaque`（OpenCode 的库，游标不是数；`prefixSha256` 为 `null`）。
+- 读取按游标往后，**读到 `endOffset` 为止**；冻结之后追加到来源的内容读不到。`transcriptExcerpt` 与 `cutoff` 不变。
+- Worker 的 `handoff.capture` 多一种用法 `transcriptRange: { agentId, locatedKey, unit, endOffset, prefixSha256, fromOffset, maxBytes, maxItems?, raw }`（与 `transcriptOnly: true` 同用，不碰文件与仓库），答复多 `range`：`{ state: "ok", entries | rawLines, truncatedLines?, nextOffset, done, cursorText }`，或 `{ state: "changed" | "missing" | "badCursor" }`。旧 Worker 不认它、答复里没有合法的 `range`，与主机不在线同样答 **501 `handoff_host_offline`**。
+
 ### 21.2 Worker 舰队
 
 控制连接每次握手成功，控制端按主机记下 Worker 的 `runtimeVersion` 与能力集合；连接断了只把 `connected` 置假。「过旧」是：版本比这个控制端旧（点分数字比，预发布低于同号正式版，构建元数据不比），或缺这个控制端的 Worker 会声明的任何一个能力。比控制端新的不算过旧；版本读不出来时只按能力判。
@@ -3029,6 +3047,40 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 - 邮箱 `ack` 只把键恰为 `handoff:<id>` 的消息当作交接回执并要求会话绑定；目标回给来源的 `handoff:<id>:result` 是普通消息，来源确认它不需要交接绑定。
 - `handoffs` 不带 `sourceNodeId`（或为空串）答整块工作空间的历史，带上它答那个节点作为来源或目标的交接，新的在前。行里的来源与目标是冻结在包里的身份。
 - 出参是冻结的材料包（原样透传的 JSON 对象）加状态与投递记号（`mailboxId`、`traceId`、`attempts`）；页面的 `handoffViewSchema` 再按自己的口径解析。材料包里只有冻结时截取的转录摘录，按字节预算截断；不进日志。
+
+- **目标读取：`handoff-read`**（canvas 动词 / MCP 工具 `canvas_handoff_read`，不是路由，不在下表）。参数 `id`，以及可选的 `part`（`brief` | `bundle` | `transcript`）、`cursor`、`limit`、`raw`；`brief` 目前与 `bundle` 相同。不带 `part` 或 `part` 为 `bundle`/`brief` 时答整个材料包，与之前一样。授权在读转录之前就判完：只有被寻址的会话与代次能读，撤回后、连线删除后拒绝。
+- `part=transcript`：来源转录从头（或从 `cursor`）到 `sourceCursor.endOffset` 的一页，各家 CLI 一个形状；`limit` 是一页最多的条数（`raw` 时是行数），只能比 32 KB 的页上限更窄。答复：
+
+  ```json
+  {
+    "ok": true,
+    "protocol": "armadra.handoff.v1",
+    "digest": "…",
+    "part": "transcript",
+    "handoffId": "…",
+    "source": { "agentId": "claude", "provider": "claude", "nodeTitle": "…" },
+    "mode": "entries",
+    "entries": [
+      {
+        "role": "assistant",
+        "at": "…",
+        "text": "…",
+        "tools": [{ "name": "Read", "inputSummary": "a.ts" }],
+        "results": [{ "summary": "…", "truncated": false }]
+      }
+    ],
+    "nextCursor": 4096,
+    "done": false,
+    "cursorText": "4096 字节",
+    "unit": "bytes",
+    "trust": "…"
+  }
+  ```
+
+  `mode: "raw"` 时没有 `entries`，换成 `rawLines`：同一范围的原文（文件来源是原行，OpenCode 与 ACP 时间线是每条记录一行 JSON；一行超过单页上限时截断并计入 `truncatedLines`）。`nextCursor` 是下一页的 `cursor`，读完为 `null` 且 `done: true`。密钥与私钥块在两种模式里都已替换，工具输入与结果截短。
+
+- 不能往后读时答 `mode: "excerpt"`：`transcriptExcerpt` 是冻结摘录，`reason` 说明原因，`nextCursor` 为 `null`、`done: true`。`version: 1` 的包与没有 `sourceCursor` 的包只有摘录；文件来源的 `prefixSha256` 对不上（被压缩或改写）或来源读不到了，另带 `transcriptChanged: true`。
+- 错误：`cursor` 不是上一页给的值或越过边界、`part` 不认得、`limit` 小于 1 答 `400`；来源在另一台执行主机而它不在线答 `501 handoff_host_offline`；未寻址的会话答 `403`。
 
 <!-- rpc:begin contract=§39.8 -->
 

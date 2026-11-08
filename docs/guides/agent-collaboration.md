@@ -237,6 +237,8 @@ ACP 是同一个 Agent 节点的另一种驱动方式，不是第二条 Agent �
 
 `handoff-read` 读包不等于确认：读取交出材料，`ack` 才是「我接下了」。旧库里 `dispatching` / `notified` / `unknownOutcome` / `failed` / `expired` 这些描述 PTY 写入结果的值仍在表里（已发布迁移不改），core 读出来时一律归一成 `queued`——批准过、进了信箱、没被确认。会话里已有的权限批准不随交接转移，凭据不进入包；来源会话保持运行，快照之后来源又有动作时预览会标出「有新活动」。
 
+**读到来源的原文。** 包里的 `transcriptExcerpt` 只是冻结时的尾部摘录；读了转录的包（`version: 2`）还记着 `sourceCursor`——冻结那一刻转录的末尾（文件来源是最后一个完整行的字节位置加前缀 sha256，ACP 会话是条数，OpenCode 是库的游标）。目标用 `armadra-hook canvas handoff-read --id <id> --part transcript` 从头分页读到这个边界：每页最多 32 KB，答复里的 `nextCursor` 交给下一次的 `--cursor`，`--limit N` 收窄一页的条数，`--raw` 给同一范围的原文。无论来源是 Claude、Codex、Pi、OMP、OpenCode、Copilot 还是 ACP 会话，每条都是 `{role, at, text, tools, results}`，来源是谁只写在页头的 `source`，目标不用懂对方的格式。冻结之后来源继续写的内容读不到；文件来源每次读之前核对前缀哈希，对不上（被压缩或改写）就退回冻结摘录并标 `transcriptChanged`；`version: 1` 的旧包只有摘录。来源在另一台执行主机上时，读取经那台主机的 Worker，主机不在线答 `501 handoff_host_offline`。授权与读包完全一样，且在读转录之前判完。
+
 因为不再需要目标空闲，交接对六种 CLI 一视同仁：没有状态适配的 Pi / OMP / Copilot 也能收到并读取，不再卡在 `queued`。
 
 画布上的交接关联复用已有的那条上下文连线，不新增边或图形；节点头部的 chip 显示进行中的交接，点开即是同一个预览对话框。删掉连线等于收回上下文权限，应用不会偷偷补回，core 也会因此拒绝准备、批准和读取。
