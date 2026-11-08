@@ -56,6 +56,7 @@ const BUDGETS = [8192, 16384, 32768] as const;
 const SECTION_KEYS = [
   "goal",
   "constraints",
+  "acceptance",
   "completed",
   "pending",
   "decisions",
@@ -450,6 +451,7 @@ function blankSections(): Record<SectionKey, string> {
   return {
     goal: "",
     constraints: "",
+    acceptance: "",
     completed: "",
     pending: "",
     decisions: "",

@@ -161,6 +161,9 @@ describe("handoff dialog", () => {
     openHandoff({ nodeId: SOURCE, sessionId: "s", generation: 2 });
     const goal = await screen.findByLabelText("Goal");
     fireEvent.change(goal, { target: { value: "Continue the review" } });
+    fireEvent.change(screen.getByLabelText("Acceptance criteria"), {
+      target: { value: "Tests pass" },
+    });
     // The target picker is a Radix select; setting it through the DOM is not
     // what is under test, so the choice is made the same way the mutation
     // reads it: by node id.
@@ -169,6 +172,7 @@ describe("handoff dialog", () => {
 
     await waitFor(() => expect(api.prepareHandoff).toHaveBeenCalledTimes(1));
     const request = api.prepareHandoff.mock.calls[0]![1];
+    expect(request.sections.acceptance).toBe("Tests pass");
     expect(request.targetNodeId).toBe(TARGET);
     expect(request.targetSessionId).toBe(TARGET_SESSION);
     // The target generation comes from the runtime, not from a stale guess.
