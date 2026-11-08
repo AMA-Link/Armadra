@@ -4,6 +4,7 @@ import {
   locateHistory,
   readHistoryEntries,
 } from "../history/registry";
+import { isAcpMirror } from "../history/acp-mirror";
 import type { TranscriptEntry } from "../history/types";
 import { gitFingerprint } from "../git/fingerprint";
 import {
@@ -87,7 +88,13 @@ export function readTranscriptTail(source: TranscriptSource): TranscriptTail {
   try {
     const cursor = freezeCursor(source.provider, located);
     const withCursor = cursor === undefined ? {} : { cursor };
-    if (located.path !== undefined && rendersRaw(source.provider)) {
+    // ACP 会话的 `.acp.jsonl` 不是磁盘上的文件（core 不再写它），内容由时间线派
+    // 生：不能按文件读尾巴，要经适配器读归一化记录。
+    if (
+      located.path !== undefined &&
+      !isAcpMirror(located.path) &&
+      rendersRaw(source.provider)
+    ) {
       return {
         state: "read",
         text: readTail(located.path, TRANSCRIPT_TAIL_BYTES),
