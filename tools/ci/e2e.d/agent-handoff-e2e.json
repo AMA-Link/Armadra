@@ -1,0 +1,8 @@
+{
+  "id": "agent-handoff-e2e",
+  "tier": "a",
+  "script": "tools/probes/agent-e2e.mjs",
+  "args": ["{out}", "--only", "16"],
+  "requires": ["tmux"],
+  "timeoutMinutes": 10
+}
