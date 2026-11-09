@@ -18,6 +18,19 @@ import {
 
 const probe = vi.fn();
 const backupData = vi.fn();
+/** 功能开关（#295）：防休眠策略的「有自动化运行时」跟着 scheduledTasks。 */
+const featureFlags = vi.hoisted(() => ({
+  credentials: true,
+  usage: true,
+  activityCards: true,
+  scheduledTasks: false,
+  workflows: true,
+}));
+vi.mock("@armadra/shared", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@armadra/shared")>()),
+  FEATURE_FLAGS: featureFlags,
+}));
+
 vi.mock("../../../host/connection", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../host/connection")>()),
   probeHost: (...args: unknown[]) => probe(...args),
@@ -99,6 +112,7 @@ afterEach(() => {
   access.member = false;
   access.remote = false;
   settingsState.data = {};
+  featureFlags.scheduledTasks = false;
   settingsState.mutate.mockReset();
   sampling.snapshot = null;
   backupData.mockReset();
@@ -278,5 +292,51 @@ describe("设置 → 本机服务", () => {
     // 托盘与备份都是整台机器的事，成员没有
     expect(document.querySelector("[data-slot=settings-kpi]")).toBeNull();
     expect(screen.queryByRole("button", { name: "立即备份" })).toBeNull();
+  });
+
+  describe("防休眠策略", () => {
+    // jsdom 没有 scrollIntoView，Radix Select 打开时要用。
+    beforeEach(() => {
+      Element.prototype.scrollIntoView = () => undefined;
+    });
+    async function openPolicy() {
+      draw();
+      const trigger = await screen.findByRole("combobox", {
+        name: "防休眠策略",
+      });
+      fireEvent.keyDown(trigger, { key: "ArrowDown" });
+      return trigger;
+    }
+
+    it("自动化下线时没有「有自动化运行时」", async () => {
+      settingsState.data = { power: { policy: "manual" } };
+      await openPolicy();
+      expect(
+        await screen.findByRole("option", { name: "策略：从不" }),
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole("option", { name: "策略：有自动化运行时" }),
+      ).toBeNull();
+    });
+
+    it("已存为 automation 的按 agentSessions 显示，不写回存储", async () => {
+      settingsState.data = { power: { policy: "automation" } };
+      const trigger = await openPolicy();
+      expect(trigger.textContent).toBe("策略：有活跃 Agent 会话时");
+      expect(
+        screen.queryByRole("option", { name: "策略：有自动化运行时" }),
+      ).toBeNull();
+      expect(settingsState.mutate).not.toHaveBeenCalled();
+    });
+
+    it("自动化开着时选项还在，已存值照常显示", async () => {
+      featureFlags.scheduledTasks = true;
+      settingsState.data = { power: { policy: "automation" } };
+      const trigger = await openPolicy();
+      expect(trigger.textContent).toBe("策略：有自动化运行时");
+      expect(
+        await screen.findByRole("option", { name: "策略：有自动化运行时" }),
+      ).toBeTruthy();
+    });
   });
 });

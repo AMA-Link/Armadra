@@ -90,6 +90,18 @@ const POWER_POLICIES = [
 ] as const;
 type PowerPolicyChoice = (typeof POWER_POLICIES)[number];
 
+/**
+ * 下拉里显示哪一档。core 把 `automation` 解释为「会话 + 自动化」（`power.ts`
+ * 的 `ALLOWED`）；自动化下线后没有自动化来源，等同 `agentSessions`，所以已存的
+ * `automation` 按它显示。只改显示，不改存储，用户下次选别的才会写回。
+ */
+function displayedPolicy(stored: string | undefined): string {
+  if (stored === "automation" && !featureEnabled("scheduledTasks")) {
+    return "agentSessions";
+  }
+  return stored ?? "manual";
+}
+
 /** 采样间隔。设计 §8 的默认值是 2 秒；关掉面板就不采样，所以这里不给「关」。 */
 const SAMPLE_INTERVALS = [1_000, 2_000, 5_000, 15_000] as const;
 
@@ -485,7 +497,7 @@ function PowerGroup() {
           {/* 「这台机器可不可以被拖着不睡」——笔记本和构建机的答案不一样。 */}
           <LocalSourceBadge path="power.policy" />
           <Select
-            value={settings.data?.power?.policy ?? "manual"}
+            value={displayedPolicy(settings.data?.power?.policy)}
             disabled={!settings.data}
             onValueChange={(value) =>
               save.mutate({ power: { policy: value as PowerPolicyChoice } })
@@ -500,12 +512,9 @@ function PowerGroup() {
             </SelectTrigger>
             <SelectContent>
               {POWER_POLICIES.filter(
-                // 定时任务暂时下线（#295）：「有自动化运行时」不再给新选；已经
-                // 选着它的照常显示，免得下拉框对不上当前值。
+                // 定时任务下线（#295）：没有自动化可等，「有自动化运行时」不出现。
                 (policy) =>
-                  policy !== "automation" ||
-                  featureEnabled("scheduledTasks") ||
-                  settings.data?.power?.policy === "automation",
+                  policy !== "automation" || featureEnabled("scheduledTasks"),
               ).map((policy) => (
                 <SelectItem key={policy} value={policy}>
                   {t(`resources.power.policy.${policy}`)}
