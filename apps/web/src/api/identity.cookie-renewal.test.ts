@@ -7,10 +7,16 @@ import { z } from "zod";
  * 4401 续凭据。
  */
 
-const { BASE, mocks } = vi.hoisted(() => ({
-  BASE: "https://armadra.lan:8443",
-  mocks: { nativeShell: false },
-}));
+const { BASE, mocks } = vi.hoisted(() => {
+  // Node 的 BroadcastChannel 跨同一进程里的 worker 线程投递：并行跑的
+  // identity.test.ts 在同名频道上广播的 CSRF 会换掉这里手里的那枚。这个文件
+  // 不测多窗口，`identity.ts` 加载前把它拿掉，模块就不建频道。
+  vi.stubGlobal("BroadcastChannel", undefined);
+  return {
+    BASE: "https://armadra.lan:8443",
+    mocks: { nativeShell: false },
+  };
+});
 
 vi.mock("../host/native-session", async (original) => {
   const actual = await original<typeof import("../host/native-session")>();

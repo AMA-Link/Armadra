@@ -28,6 +28,19 @@ beforeEach(() => {
     configurable: true,
     get: () => 800,
   });
+  // virtual-core 3.19 起量的是 clientHeight / clientWidth（content-box）。
+  Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+    configurable: true,
+    get() {
+      return (this as HTMLElement).dataset.slot === "git-log-rows"
+        ? VIEWPORT
+        : 0;
+    },
+  });
+  Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+    configurable: true,
+    get: () => 800,
+  });
 });
 afterEach(cleanup);
 

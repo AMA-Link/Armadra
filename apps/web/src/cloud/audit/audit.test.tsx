@@ -24,10 +24,23 @@ beforeEach(() => {
     configurable: true,
     get: () => 900,
   });
+  // virtual-core 3.19 起量的是 clientHeight / clientWidth（content-box）。
+  Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+    configurable: true,
+    get() {
+      return (this as HTMLElement).dataset.slot === "audit-rows" ? VIEWPORT : 0;
+    },
+  });
+  Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+    configurable: true,
+    get: () => 900,
+  });
 });
 afterEach(() => {
   Reflect.deleteProperty(HTMLElement.prototype, "offsetHeight");
   Reflect.deleteProperty(HTMLElement.prototype, "offsetWidth");
+  Reflect.deleteProperty(HTMLElement.prototype, "clientHeight");
+  Reflect.deleteProperty(HTMLElement.prototype, "clientWidth");
 });
 
 const table = () => screen.findByRole("table", { name: "审计" });
