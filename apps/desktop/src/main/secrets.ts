@@ -17,41 +17,56 @@ import {
  * | 平台    | 用不用                                                              | 自报        |
  * | ------- | ------------------------------------------------------------------- | ----------- |
  * | macOS   | 不用：core 维持 `security(1)`，已有条目都在钥匙串里，不出两套存放 | `keychain`  |
- * | Windows | `isEncryptionAvailable()` 时用（DPAPI）                              | `dpapi`     |
+ * | Windows | `isAsyncEncryptionAvailable()` 时用（DPAPI）                         | `dpapi`     |
  * | Linux   | 只在 `getSelectedStorageBackend()` 是 libsecret / kwallet 时用       | `libsecret` |
  *
- * Linux 的 `basic_text` 是一次 PBKDF2 迭代加写死的口令，等于明文，而
- * `isEncryptionAvailable()` 在某些版本对它仍答 true；`unknown` 是还没定下来。两者都
- * 当作「没有钥匙串」，core 落回 0600 文件并如实自报 `file`。
+ * Linux 的 `basic_text` 是一次 PBKDF2 迭代加写死的口令，等于明文，而可用性检查
+ * 在某些版本对它仍答 true；`unknown` 是还没定下来。两者都当作「没有钥匙串」，core
+ * 落回 0600 文件并如实自报 `file`。
  *
- * 只能在 `app` ready 之后调用：之前 Linux 的后端还没选出来。壳在 ready 之后才
- * spawn core，所以 spawn 那一刻判定就是对的。
+ * 只用异步那一组接口：同步的 `isEncryptionAvailable` / `encryptString` /
+ * `decryptString` 在 Electron 45 弃用、46 删除。同步封的密文异步照样解得开，已有
+ * 的 `.sealed` 文件不用迁移。
+ *
+ * 只能在 `app` ready 之后判定种类：之前 Linux 的后端还没选出来。壳在 ready 之后
+ * 判一次（{@link secretChannel}），之后才 spawn core。
  */
 
 /** 用到的那一小块 `safeStorage`，测试注入假的。 */
 export interface SafeStorageLike {
-  isEncryptionAvailable(): boolean;
-  encryptString(plainText: string): Buffer;
-  decryptString(encrypted: Buffer): string;
+  isAsyncEncryptionAvailable(): Promise<boolean>;
+  encryptStringAsync(plainText: string): Promise<Buffer>;
+  decryptStringAsync(
+    encrypted: Buffer,
+  ): Promise<{ result: string; shouldReEncrypt?: boolean }>;
   getSelectedStorageBackend?: () => string;
 }
 
 const LINUX_KEYRINGS = /^(gnome_libsecret|kwallet\d*)$/;
 
 /** 这台机器上桌面壳能给的封存种类；给不了时 `undefined`。 */
-export function sealerKind(
+export async function sealerKind(
   storage: SafeStorageLike,
   platform: NodeJS.Platform = process.platform,
-): SealerKind | undefined {
+): Promise<SealerKind | undefined> {
   if (platform === "win32") {
-    return storage.isEncryptionAvailable() ? "dpapi" : undefined;
+    return (await available(storage)) ? "dpapi" : undefined;
   }
   if (platform === "linux") {
     const backend = storage.getSelectedStorageBackend?.() ?? "unknown";
     if (!LINUX_KEYRINGS.test(backend)) return undefined;
-    return storage.isEncryptionAvailable() ? "libsecret" : undefined;
+    return (await available(storage)) ? "libsecret" : undefined;
   }
   return undefined;
+}
+
+/** 可用性检查抛错与答 false 一样：没有钥匙串。 */
+async function available(storage: SafeStorageLike): Promise<boolean> {
+  try {
+    return await storage.isAsyncEncryptionAvailable();
+  } catch {
+    return false;
+  }
 }
 
 /** spawn core 时加进它环境里的那一个变量；给不了时什么都不加。 */
@@ -78,16 +93,16 @@ function isRequest(message: unknown): message is SealRequest {
  *
  * 封的是 base64 解出来的 UTF-8 文本——`safeStorage` 只吃字符串。
  */
-export function answer(
+export async function answer(
   storage: SafeStorageLike,
   request: SealRequest,
-): SealResponse {
+): Promise<SealResponse> {
   try {
     const input = Buffer.from(request.data, "base64");
     const data =
       request.op === "seal"
-        ? storage.encryptString(input.toString("utf8"))
-        : Buffer.from(storage.decryptString(input), "utf8");
+        ? await storage.encryptStringAsync(input.toString("utf8"))
+        : Buffer.from((await storage.decryptStringAsync(input)).result, "utf8");
     return {
       type: SECRETS_MESSAGE,
       id: request.id,
@@ -111,8 +126,9 @@ export function attachSecretChannel(
 ): void {
   child.on("message", (message: unknown) => {
     if (!isRequest(message)) return;
-    const response = answer(storage, message);
-    if (child.connected) child.send?.(response);
+    void answer(storage, message).then((response) => {
+      if (child.connected) child.send?.(response);
+    });
   });
 }
 
@@ -123,17 +139,17 @@ export interface SecretChannel {
 }
 
 /**
- * 每次 spawn 现判一次种类（ready 之后才会 spawn）。给不了时把变量设成空串，免得
- * 一个从外面继承来的值让 core 去等一个不会应答的壳。
+ * ready 之后判一次种类，之后每次 spawn 都用它（判定是异步的，spawn 时的环境变量
+ * 是同步给的）。给不了时把变量设成空串，免得一个从外面继承来的值让 core 去等一个
+ * 不会应答的壳。
  */
-export function secretChannel(
+export async function secretChannel(
   storage: SafeStorageLike,
   platform: NodeJS.Platform = process.platform,
-): SecretChannel {
-  let kind: SealerKind | undefined;
+): Promise<SecretChannel> {
+  const kind = await sealerKind(storage, platform);
   return {
     environment() {
-      kind = sealerKind(storage, platform);
       return { [SEALER_ENV]: "", ...sealerEnvironment(kind) };
     },
     attach(child) {

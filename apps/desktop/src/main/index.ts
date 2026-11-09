@@ -305,8 +305,7 @@ function registerIpc(): void {
     // failure the whole ownership design is written against.
     [IPC.browserControl.channel]: (control) => {
       const asked = control as
-        | { nodeId?: unknown; action?: unknown }
-        | undefined;
+        { nodeId?: unknown; action?: unknown } | undefined;
       if (
         typeof asked?.nodeId !== "string" ||
         typeof asked.action !== "string"
@@ -473,7 +472,7 @@ async function start(): Promise<void> {
   setPackagedShell(app.isPackaged);
   registerIpc();
   // core 拿不到 `safeStorage`，封与解经 fork 的 IPC 问这里（W-SECRETS）。
-  setSecretChannel(secretChannel(safeStorage));
+  setSecretChannel(await secretChannel(safeStorage));
 
   // The drive channel binds BEFORE the Runtime is spawned, because its address
   // and one-time token only reach the Runtime through that spawn's environment.
