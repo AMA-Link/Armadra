@@ -1112,7 +1112,7 @@ try {
           body === undefined ? undefined : JSON.stringify(body),
         );
         const text = answer.body.toString("utf8");
-        let parsed = null;
+        let parsed;
         try {
           parsed = text ? JSON.parse(text) : null;
         } catch {

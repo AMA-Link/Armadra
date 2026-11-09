@@ -284,7 +284,7 @@ export function createPushSink({
       const bearer = /^bearer (.+)$/i.exec(
         String(request.headers.authorization ?? ""),
       );
-      let message = null;
+      let message;
       try {
         message = JSON.parse(request.body.toString("utf8")).message ?? null;
       } catch {

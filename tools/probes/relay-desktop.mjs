@@ -277,6 +277,7 @@ export async function runDesktop(ctx) {
     }
     throw new Error(
       `${error instanceof Error ? error.message : String(error)}\n--- Electron 日志 ---\n${log.slice(-4000)}`,
+      { cause: error },
     );
   } finally {
     page?.close();

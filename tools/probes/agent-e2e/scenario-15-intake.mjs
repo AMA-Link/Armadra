@@ -263,7 +263,7 @@ function coordinatorScript(body) {
       const text = lastToolText(messages);
       // 信里不带 id：用这次对话里前面判定过的那一条。
       const id = candidateOf(JSON.stringify(messages));
-      let ids = [];
+      let ids;
       try {
         ids = (JSON.parse(text).messages ?? []).map((entry) => entry.id);
       } catch {

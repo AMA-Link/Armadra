@@ -484,7 +484,7 @@ async function removeSandbox(sandbox) {
 export function filesWithDigest(directory, sha256, size) {
   const found = [];
   const walk = (dir) => {
-    let entries = [];
+    let entries;
     try {
       entries = readdirSync(dir, { withFileTypes: true });
     } catch {
@@ -508,7 +508,7 @@ export function filesWithDigest(directory, sha256, size) {
 /* --------------------------------- legs ---------------------------------- */
 
 async function devStackLeg({ target, required }) {
-  let healthy = false;
+  let healthy;
   try {
     healthy = (await fetch(`${DEV_STACK_SOURCE}/releases`)).ok;
   } catch {

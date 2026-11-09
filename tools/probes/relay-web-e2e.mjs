@@ -119,7 +119,7 @@ async function relayCall(issuer, method, path, { body, token } = {}) {
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const text = await answer.text();
-  let parsed = null;
+  let parsed;
   try {
     parsed = text ? JSON.parse(text) : null;
   } catch {

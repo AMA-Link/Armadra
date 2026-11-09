@@ -284,7 +284,7 @@ function streamSimulatorLog(target) {
 /** 测试期间宿主上新出现的 App 崩溃报告（模拟器里的崩溃也落在宿主的这个目录）。 */
 function collectCrashReports(since) {
   const source = join(homedir(), "Library/Logs/DiagnosticReports");
-  let names = [];
+  let names;
   try {
     names = readdirSync(source);
   } catch {

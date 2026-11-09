@@ -1097,7 +1097,7 @@ async function runFull(options, result, record, out) {
           log: fresh.log(),
           alive: fresh.pid !== undefined && alive(fresh.pid),
         });
-        let remaining = [];
+        let remaining;
         try {
           remaining = appProcesses(exe).map(({ pid, commandLine }) => ({
             pid,
@@ -1142,7 +1142,7 @@ async function runFull(options, result, record, out) {
     }
   };
 
-  let appOutput = "";
+  let appOutput;
   try {
     await phases();
   } catch (error) {

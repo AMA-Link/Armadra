@@ -172,7 +172,7 @@ export function fakeApi() {
         response.end(JSON.stringify({ input_tokens: 10, data: [] }));
         return;
       }
-      let body = {};
+      let body;
       try {
         body = JSON.parse(text || "{}");
       } catch {
@@ -556,7 +556,7 @@ function seedInteractiveClaude(core, dataDir, key) {
   mkdirSync(config, { recursive: true });
   const env = `HOME=${quote(core.home)} CLAUDE_CONFIG_DIR=${quote(config)}`;
   const work = join(dataDir, "work");
-  let real = work;
+  let real;
   try {
     real = realpathSync(work);
   } catch {

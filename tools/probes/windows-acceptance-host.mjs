@@ -153,7 +153,7 @@ export async function conptyClose(
         `/api/terminals/${session.id}/terminate`,
         { mode: "session" },
       );
-      let gone = false;
+      let gone;
       try {
         await waitFor(
           `${session.dialect} 的 shell 退出`,

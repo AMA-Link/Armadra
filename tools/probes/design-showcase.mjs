@@ -304,6 +304,7 @@ await h.run(async () => {
       const { errors } = page.drain();
       throw new Error(
         `${error.message}；页面状态 ${JSON.stringify(state)}；控制台 ${JSON.stringify(errors).slice(0, 600)}`,
+        { cause: error },
       );
     }
     await page.evaluate(`await document.fonts.ready; return true;`);
