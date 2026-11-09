@@ -2,6 +2,31 @@
 
 每个版本一节，按发布倒序。括号里是合入的 PR 编号（github.com/AMA-Link/Armadra，2026-10-11 前为 Owlbay/Armadra，旧编号照常跳转）。兼容范围以 `tools/release/compatibility.json` 为准，发布说明里的 `armadra-compatibility` 围栏由它渲染。桌面、服务器与手机 / 平板 App 共用一条版本线和一个标签 `vX.Y.Z`（规则见 `docs/guides/ci-release.md`「版本规则」）；有手机端改动的版本，在「手机与平板」小节里写，其余写在「桌面 / 服务器」下。2026-10-10 之前手机端曾单独编号（1.0.0、1.1.0），内容并入对应的 0.2.5、0.2.6。
 
+## 0.17.0（2026-11-10）
+
+版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.17.0。随包 `@armadra/agent` 0.17.0（维护版，没有用户可见的变化）与平台协议包 0.17.0（没有形状变化，协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.17.0。本版主题：桌面升到 Electron 45，**macOS 最低系统要求升到 13.3**（macOS 12 上请停留在 0.16.0），ama 的模型密钥可以在它自己的设置页里填。
+
+Version aligned with armadra-cloud and armadra-agent (all three ship 0.17.0), with `@armadra/agent` 0.17.0 (maintenance, no user-visible changes) and platform protocol 0.17.0 (no shape changes, still protocol 1.4); matching images `armadra-cloud` / `armadra-relay` 0.17.0. Highlights: the desktop app moves to Electron 45, **the minimum macOS version rises to 13.3** (stay on 0.16.0 on macOS 12), and ama's model keys can be entered on its own settings page.
+
+### 桌面 / 服务器
+
+- Electron 42 → 45.2.3（Chromium 156、Node 24.22.2）；macOS 包声明最低系统 13.3（Electron 44 起不支持 macOS 12）。随之而来：`safeStorage` 改用异步接口，已封存的数据照常解开、不用迁移；文件夹选择框从上次所在的目录打开（Electron 43 起缺省打开「下载」）；浏览器节点的「复制链接」适配异步剪贴板（#895，Closes #894）。
+  Electron 42 → 45.2.3 (Chromium 156, Node 24.22.2); the macOS app declares a 13.3 minimum (Electron 44 drops macOS 12). With it, `safeStorage` uses the async API (existing sealed data still decrypts, no migration); the folder picker opens in the last directory used (Electron 43 defaults to Downloads); "copy link" in browser nodes handles the async clipboard (#895, Closes #894).
+- ama 的模型密钥可以在「设置 → Agent CLI → Armadra Agent」里填；此前唯一的入口「凭据与密钥」页被功能开关收起，填不了（#899，Closes #898）。
+  ama's model keys can be entered under Settings → Agent CLI → Armadra Agent; the only entry used to be the Credentials page, which a feature flag hides (#899, Closes #898).
+- 「设置 → 本机服务」的防休眠策略在自动化下线时不再列「有自动化运行时」，已存为它的按「有活跃 Agent 会话时」显示（两者此时等效，不改存储）（#901，Closes #900）。
+  The keep-awake policy under Settings → Local service no longer lists "while automations run" while automations are offline; a saved value shows as "while agent sessions are active", which is equivalent then (display only) (#901, Closes #900).
+- 说明文档与源码对齐：GitHub 面板只读、连线关系名、交接与备份入口、设置分区、分组引用、工具名、手机与桌面共用版本号（#901，Closes #900）。
+  Docs aligned with the source: read-only GitHub panel, link relation names, handoff and backup entry points, settings sections, frame references, tool names, and one version line for phone and desktop (#901, Closes #900).
+- 依赖与工具链：同大版本内依赖升到最新（React 19.3、Vite 8.3、Tailwind 4.3、Capacitor 8.6 等约 50 个），pnpm 12.18.0，服务器壳与推送中继镜像的 Node 24.22.2（#895，Closes #894）；ESLint 10、TypeScript 6.0.3，新规则命中处逐条修复（#897，Closes #896）。
+  Dependencies and toolchain: in-major upgrades of about 50 dependencies (React 19.3, Vite 8.3, Tailwind 4.3, Capacitor 8.6 and others), pnpm 12.18.0, Node 24.22.2 in the server shell and push relay images (#895, Closes #894); ESLint 10 and TypeScript 6.0.3 with the new rule findings fixed one by one (#897, Closes #896).
+
+### 部署说明
+
+- 没有新的数据库迁移，契约没有新节。
+- macOS 12 不能再安装或更新到本版。
+- 配套镜像 `ghcr.io/ama-link/armadra-cloud:0.17.0`、`ghcr.io/ama-link/armadra-relay:0.17.0` 与协议包 0.17.0 同号（cloud 侧只有 Go 1.27.3、依赖与测试的维护，没有新迁移；控制台页面取自本版服务器壳镜像）；推送中继镜像 `ghcr.io/ama-link/armadra-push-relay:0.17.0` 与服务器壳镜像同号。发版顺序沿用 0.16.0：先打 Armadra `v0.17.0`，再打 armadra-cloud `v0.17.0`。
+
 ## 0.16.0（2026-11-09）
 
 版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.16.0。随包 `@armadra/agent` 0.16.0（宿主资源命名空间 host-api 1.2、异常结束后的恢复提醒、切换权限模式重评待批、子代理结构化汇报等）与平台协议包 0.16.0（没有形状变化，协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.16.0。本版主题：交接 v2（任务简报、跨 Agent 读来源原文、交给新开的 Agent），画布协作调用在各家终端 Agent 里免逐次审批，ama 协调者经 `armadra://` 资源读账本与事件。

@@ -7,7 +7,7 @@ Armadra is distributed under the MIT License (see `LICENSE`). It includes the th
 ## Shipped beside the application
 
 - **Electron and Chromium.** The notices Electron and Chromium require to accompany their binaries are shipped as `LICENSE.electron.txt` and `LICENSES.chromium.html` next to the executable (on macOS in `Armadra.app/Contents/Resources/`).
-- **ama (`@armadra/agent` 0.16.0).** Its own license and third-party notices are shipped in `resources/agent/` as `LICENSE` and `THIRD_PARTY_NOTICES.md`.
+- **ama (`@armadra/agent` 0.17.0).** Its own license and third-party notices are shipped in `resources/agent/` as `LICENSE` and `THIRD_PARTY_NOTICES.md`.
 
 ## npm packages (541)
 
@@ -4515,7 +4515,7 @@ Apache License
    limitations under the License.
 ```
 
-### @orpc/client@1.15.4
+### @orpc/client@1.16.1
 
 License: MIT
 Homepage: https://orpc.dev
@@ -4577,7 +4577,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @orpc/contract@1.15.4
+### @orpc/contract@1.16.1
 
 License: MIT
 Homepage: https://orpc.dev
@@ -4763,7 +4763,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @orpc/shared@1.15.4
+### @orpc/shared@1.16.1
 
 License: MIT
 Homepage: https://orpc.dev
@@ -4825,7 +4825,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @orpc/standard-server@1.15.4
+### @orpc/standard-server@1.16.1
 
 License: MIT
 Homepage: https://orpc.dev
@@ -4949,7 +4949,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @orpc/standard-server-fetch@1.15.4
+### @orpc/standard-server-fetch@1.16.1
 
 License: MIT
 Homepage: https://orpc.dev
@@ -5042,7 +5042,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @orpc/standard-server-peer@1.15.4
+### @orpc/standard-server-peer@1.16.1
 
 License: MIT
 Homepage: https://orpc.com
