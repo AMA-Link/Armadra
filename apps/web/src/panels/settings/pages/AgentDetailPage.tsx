@@ -22,6 +22,7 @@ import { SettingsPageHeader } from "../SettingsPageHeader";
 import { ValueLoadable } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
 import { useAgentIntegration } from "./integration/use-integration";
+import { AmaKeys } from "./AmaKeys";
 import {
   CleanupButton,
   RowValue,
@@ -182,6 +183,9 @@ export function AgentDetailPage({ agent }: { agent: AgentInfo }) {
           />
         </SettingsRow>
       </SettingsGroup>
+
+      {/* ama 的模型密钥只能在界面里填：它不读环境变量，「凭据与密钥」页又在功能开关后面（#898）。 */}
+      {agent.id === "ama" ? <AmaKeys /> : null}
 
       <SettingsGroup title={t("agents.group.install")}>
         <SettingsRow
