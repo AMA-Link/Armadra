@@ -81,7 +81,7 @@ AI Coding 画布覆盖软件开发、算法开发、数据分析与科研编程�
 - 6 种内置 CLI、协调者 `ama` 与自定义 CLI：启动、resume、权限模式、模型选择、版本探测；节点可绑定 Claude / Copilot 的第二个账号。
 - Hook / 进程内扩展 / 插件三种状态通道，归一为 `working / waiting / blocked / done`；权限请求在节点头部直答。
 - **画布内注入**：Hook、技能与画布说明只随画布启动带上，画布外启动的 CLI 零影响；SSH 终端同样适用。
-- **按连线读取上下文**：对等 / 主从两种链接，转录、摘要、终端画面按预算读取。
+- **按连线读取上下文**：共享上下文 / 派发两种链接，转录、摘要、终端画面按预算读取。
 - **两种消息模型**：拉取式 `post / inbox / ack`，推式 `send` + 投递队列、驱动租约、半截输入门，休眠节点先唤醒再投。
 - **编排**：`open-agent --after / --after-turn`、`canvas team` 并行 / 流水线 / 汇总，成员各带一条 worktree。
 - 对话交接（prepare → 预览 → accept，可跨执行主机）、子代理卡片、原生 Loop / Cron 观察卡片、会话索引、自动命名。
@@ -99,8 +99,8 @@ AI Coding 画布覆盖软件开发、算法开发、数据分析与科研编程�
 
 - **编辑器**：CodeMirror 6、快速打开、跳转行列、Git 行边标记、外部变更三方合并、草稿保护、媒体与 PDF 预览、Markdown。
 - **语言服务**：补全、诊断、hover、定义、引用、重命名、格式化。
-- **Git**：多仓库、IDEA 式工具窗口与提交图、hunk 级暂存、交互式 rebase、stash / cherry-pick / reflog、worktree 与 Frame 绑定、AI 提交信息草稿。
-- **GitHub**：Issues 与 Projects v2 状态映射、PR 创建 / 评审 / 检查 / 预期 SHA 合并、检出到 worktree。
+- **Git**：多仓库、底部停靠的工具窗口与提交图、hunk 级暂存、交互式 rebase、stash / cherry-pick / reflog、worktree 与 Frame 绑定、AI 提交信息草稿。
+- **GitHub**：只读的 Issues 与 Pull requests 列表和详情（含检查状态）。
 
 ### 浏览器节点
 

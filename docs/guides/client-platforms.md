@@ -46,7 +46,7 @@ Armadra 使用同一套 React 页面。桌面端通过 Electron 壳提供本机�
 
 ## 原生 App（Capacitor 手机壳，G3-1）
 
-`apps/mobile`（`@armadra/mobile`，Capacitor 8）把同一份 `apps/web` 生产构建**打进安装包**：不配 `server.url`、不做 OTA。App 有自己的版本线（`apps/mobile/package.json`，与桌面 / 服务器的版本无关），iOS 与 Android 的版本名、构建号都由 `apps/mobile/scripts/app-version.mjs` 派生，与主机是否兼容只看协议（[CI 与发布](ci-release.md) §2.8）。商店定位是「连接你自己的 Armadra 的通用客户端」，App 里不内置任何由我们托管的服务（[外部服务](../design/external-services.md) §5.1）。页面来源固定为 iOS `capacitor://localhost`、Android `https://localhost`，Gateway 的 CORS 只放行这两个（契约 §17.4）。
+`apps/mobile`（`@armadra/mobile`，Capacitor 8）把同一份 `apps/web` 生产构建**打进安装包**：不配 `server.url`、不做 OTA。App 与桌面、服务器共用一条版本线和标签 `vX.Y.Z`（`apps/mobile/package.json` 与根版本同号，Release 里的 APK 文件名带这个统一版本），iOS 与 Android 的版本名、构建号都由 `apps/mobile/scripts/app-version.mjs` 派生，与主机是否兼容只看协议（[CI 与发布](ci-release.md) §2.8）。商店定位是「连接你自己的 Armadra 的通用客户端」，App 里不内置任何由我们托管的服务（[外部服务](../design/external-services.md) §5.1）。页面来源固定为 iOS `capacitor://localhost`、Android `https://localhost`，Gateway 的 CORS 只放行这两个（契约 §17.4）。
 
 原生只补网页做不到的几件事，页面一半的约定在 `apps/web/src/mobile/native-bridge.ts` 文件头：
 
