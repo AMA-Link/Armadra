@@ -664,7 +664,7 @@ describe.skipIf(!enabled)("个人中转联调：隧道（契约 §32）", () => 
     expect(relayed.status).toBe(101);
     attach(
       {
-        send: (data) => relayed.socket.send(data),
+        send: (data) => relayed.socket.send(data as Uint8Array<ArrayBuffer>),
         listen: (receive) =>
           relayed.socket.addEventListener("message", (event) =>
             receive(Buffer.from(new Uint8Array(event.data as ArrayBuffer))),
