@@ -132,7 +132,7 @@ export function commitBatch(
 ): CommittedBatch {
   const empty: CommittedBatch = { nodeIds: [], itemIds: [], groupId: null };
   if (batch.nodes.length === 0 && batch.items.length === 0) return empty;
-  let result = empty;
+  let result: CommittedBatch;
   beginCoalesce(label);
   try {
     const nodeIds = batch.nodes

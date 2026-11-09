@@ -517,7 +517,7 @@ export function spawnSubordinate(
         )) ?? nodeDropPosition("terminal", {});
   const permissionMode = inheritedPermission(agent, parent);
   beginCoalesce("canvas.spawn");
-  let id = "";
+  let id: string;
   try {
     id = state.addNode("terminal", {
       position,

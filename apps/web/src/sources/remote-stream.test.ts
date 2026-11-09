@@ -533,7 +533,7 @@ describe("授予与成员事件 → 去抖重登（契约 §88.2）", () => {
       expect(socket.state).not.toBe("closed");
     }
     code = "source_access_denied";
-    world.push({ type: "grantChanged", sourceId: SOURCE, atMs: (at += 1) });
+    world.push({ type: "grantChanged", sourceId: SOURCE, atMs: at + 1 });
     await world.settle();
     expect(world.b.status).toMatchObject({
       state: "unauthorized",

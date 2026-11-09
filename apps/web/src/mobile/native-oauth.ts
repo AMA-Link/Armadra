@@ -116,7 +116,7 @@ export async function startNativeOAuth(
       body: { mode, deviceName },
     },
   );
-  let state: string | null = null;
+  let state: string | null;
   try {
     state = new URL(started.authorizeUrl).searchParams.get("state");
   } catch {

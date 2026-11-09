@@ -31,7 +31,7 @@ if (typeof globalThis.ResizeObserver !== "function") {
  * 自己的，让两边跑的是同一件事。
  */
 const dom = (globalThis as { jsdom?: { window: Window } }).jsdom;
-let storageUsable = false;
+let storageUsable: boolean;
 try {
   storageUsable = typeof globalThis.localStorage?.getItem === "function";
 } catch {
