@@ -157,3 +157,30 @@ describe("useUpdateState.refresh", () => {
     expect(mergeUpdatesState(host, shell).state).toBe("idle");
   });
 });
+
+describe("useUpdateState.download", () => {
+  it("shows the transfer while it runs, not only once it ended", async () => {
+    let release: (value: unknown) => void = () => undefined;
+    const offer = {
+      version: "0.2.1",
+      target: "darwin-aarch64",
+      manifestUrl: "https://x.invalid/latest.json",
+      packageUrl: "https://x.invalid/a.zip",
+      sha256: "a".repeat(64),
+      sizeBytes: 10,
+      signed: true,
+      notesUrl: "",
+    };
+    expose({
+      download: () => new Promise((resolve) => (release = resolve)),
+      state: { state: "downloading", offer, receivedBytes: 0, totalBytes: 10 },
+    });
+    const pending = useUpdateState.getState().download();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // The button is gone and progress events are accepted from here on.
+    expect(useUpdateState.getState().shell.state).toBe("downloading");
+    release({ state: "downloaded", offer, phase: "ready", problem: null });
+    await pending;
+    expect(useUpdateState.getState().shell.state).toBe("downloaded");
+  });
+});
