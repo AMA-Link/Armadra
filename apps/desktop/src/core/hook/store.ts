@@ -164,8 +164,7 @@ export function getAgentStatus(
   nodeId: string,
 ): AgentStatusRow | undefined {
   const row = database.prepare(`${SELECT}WHERE node_id = ?`).get(nodeId) as
-    | Row
-    | undefined;
+    Row | undefined;
   return row === undefined ? undefined : statusFromRow(row);
 }
 

@@ -6,11 +6,7 @@
  * 「认证失败」，页面就只能在 401 上无限重试。
  */
 export type IdentityErrorKind =
-  | "invalid"
-  | "unauthenticated"
-  | "permission"
-  | "conflict"
-  | "notFound";
+  "invalid" | "unauthenticated" | "permission" | "conflict" | "notFound";
 
 export class IdentityError extends Error {
   readonly name = "IdentityError";

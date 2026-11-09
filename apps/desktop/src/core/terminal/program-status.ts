@@ -26,8 +26,7 @@ const BACKSLASH = 0x5c;
 const WANTED = ["7501;", "9;4", "133;"] as const;
 
 export type ScanEvent =
-  | { readonly type: "osc"; readonly body: string }
-  | { readonly type: "reset" };
+  { readonly type: "osc"; readonly body: string } | { readonly type: "reset" };
 
 type Mode =
   | "ground"

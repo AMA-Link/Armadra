@@ -36,8 +36,7 @@ const fixture = vi.hoisted(() => ({
   instances: [] as { options: { theme?: Record<string, string> } }[],
   disposed: 0,
   proposed: { cols: 80, rows: 24 } as
-    | { cols: number; rows: number }
-    | undefined,
+    { cols: number; rows: number } | undefined,
   /** 画布缩放（缩小限帧用）。 */
   zoom: 1,
   getTerminal: vi.fn(),

@@ -414,9 +414,8 @@ export async function exportMermaid(
   }
 
   // 别的图种：渲染成 SVG → 栅格化 → 资产（内容寻址，不把字节塞进白板文档）。
-  const { renderMermaidSvg, svgToFile } = await import(
-    "@/canvas/whiteboard/mermaid/render"
-  );
+  const { renderMermaidSvg, svgToFile } =
+    await import("@/canvas/whiteboard/mermaid/render");
   const svg = await renderMermaidSvg(block.code);
   const file = await rasterizeSvg(
     svgToFile(svg, parsed.diagramType || "diagram"),

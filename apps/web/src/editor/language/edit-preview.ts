@@ -32,11 +32,7 @@ export interface TextEdit {
 }
 
 export type BlockedReason =
-  | "external"
-  | "fileOperation"
-  | "dirty"
-  | "unreadable"
-  | "noVersion";
+  "external" | "fileOperation" | "dirty" | "unreadable" | "noVersion";
 
 export interface EditPreviewFile {
   uri: string;

@@ -60,10 +60,7 @@ import {
  * （各页批次里再换成带状态的实现）。只在 DEV 与测试里被 import。
  */
 export interface MockOptions
-  extends DirectoryOptions,
-    TeamsOptions,
-    GrantsOptions,
-    AuditOptions {
+  extends DirectoryOptions, TeamsOptions, GrantsOptions, AuditOptions {
   /** 每次调用的延迟（毫秒）。 */
   readonly latencyMs?: number;
   /** 指定过程失败：`{ "sources.list": "limit_reached" }`（`?mockFail=sources.list:limit_reached`）。 */
@@ -104,9 +101,7 @@ export interface MockOptions
   readonly linkFinish?: { readonly error: string; readonly details?: unknown };
   /** `auth.oauthFinish` 的结果（缺省直接登录）：两步验证挑战，或指定的失败码与错误细节。 */
   readonly oauthFinish?:
-    | "session"
-    | "mfa"
-    | { readonly error: string; readonly details?: unknown };
+    "session" | "mfa" | { readonly error: string; readonly details?: unknown };
 }
 
 /** mock 缺省的能力位：口令登录与改口令、设备码、实时流。 */
@@ -521,8 +516,7 @@ const HANDLERS: Readonly<Record<string, Handler>> = {
   "auth.emailVerifyResend": () => ({}),
   "auth.stepUp": (input, state) => {
     const oauth = input.oauth as
-      | { provider: string; state: string }
-      | undefined;
+      { provider: string; state: string } | undefined;
     if (oauth !== undefined) {
       // 只认已绑定的身份（主体对得上）。
       if (

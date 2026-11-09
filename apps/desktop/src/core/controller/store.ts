@@ -146,8 +146,7 @@ export function idempotent<T>(
         "SELECT request_hash, result_json FROM controller_commands WHERE controller_id = ? AND workspace_id = ? AND command = ? AND command_key = ?",
       )
       .get(actor.controllerId, actor.workspaceId, command.method, key) as
-      | { request_hash: string; result_json: string }
-      | undefined;
+      { request_hash: string; result_json: string } | undefined;
     if (previous) {
       if (previous.request_hash !== digest)
         throw new ControllerError(

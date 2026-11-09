@@ -206,8 +206,7 @@ export function threadOutcome(
         "AND event_id LIKE ? ORDER BY source_at DESC LIMIT 1",
     )
     .get(itemId, thread.repo, thread.number, eventLike(thread)) as
-    | { event_id?: string }
-    | undefined;
+    { event_id?: string } | undefined;
   if (row?.event_id === undefined) return null;
   return row.event_id.endsWith(":merged") ? "merged" : "closed";
 }

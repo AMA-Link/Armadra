@@ -106,8 +106,7 @@ export function nodeNamed(
         "LEFT JOIN nodes n ON n.id = h.node_id WHERE h.board_id = ? AND h.handle = ?",
     )
     .get(boardId, handle) as unknown as
-    | { id: string; title: string }
-    | undefined;
+    { id: string; title: string } | undefined;
   return row;
 }
 

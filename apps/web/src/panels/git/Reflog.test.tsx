@@ -167,13 +167,11 @@ it("blocks a hard reset that would discard uncommitted work until it is acknowle
 
 it("refuses every recovery while another sequence is in progress", async () => {
   const props = setup({
-    loadState: vi.fn(
-      async (): Promise<GitIntegrationSnapshot> => ({
-        ...idle,
-        kind: "rebase",
-        owned: true,
-      }),
-    ),
+    loadState: vi.fn(async (): Promise<GitIntegrationSnapshot> => ({
+      ...idle,
+      kind: "rebase",
+      owned: true,
+    })),
   });
   fireEvent.click(await screen.findByText("HEAD@{1}"));
   const reset = screen.getByRole("button", { name: "gitRepo.reset" });

@@ -30,11 +30,7 @@ export type BranchTreeKind =
 
 /** 仓库根下固定的四组，Stash 有条目时出现第五组。 */
 export type BranchTreeGroup =
-  | "local"
-  | "remotes"
-  | "tags"
-  | "worktrees"
-  | "stashes";
+  "local" | "remotes" | "tags" | "worktrees" | "stashes";
 
 export interface BranchTreeNode {
   /** 展开状态与选中都按它；仓库路径已经在里面，跨仓库不会串。 */

@@ -608,8 +608,7 @@ export class ScheduleStore {
         "SELECT payload, payload_sha256 AS sha256 FROM automation_payloads WHERE workspace_id = ? AND payload_ref = ?",
       )
       .get(workspaceId, ref) as
-      | { payload: Uint8Array; sha256: Uint8Array }
-      | undefined;
+      { payload: Uint8Array; sha256: Uint8Array } | undefined;
     if (row === undefined) throw notFound("找不到这个计划的载荷");
     return row;
   }
@@ -790,8 +789,7 @@ export class ScheduleStore {
         "SELECT payload, payload_json FROM automation_receipts WHERE operation_id = ?",
       )
       .get(operationId) as
-      | { payload: Uint8Array | null; payload_json: string | null }
-      | undefined;
+      { payload: Uint8Array | null; payload_json: string | null } | undefined;
     return row === undefined ? undefined : payloadOf(row, receiptFromJson);
   }
 }

@@ -290,9 +290,8 @@ describe.skipIf(process.platform !== "win32")(
           dataDir,
         });
         expect(started?.spec.kind).toBe("pipe");
-        const { requestControl, resolveControlTarget } = await import(
-          "./control-client"
-        );
+        const { requestControl, resolveControlTarget } =
+          await import("./control-client");
         const target = resolveControlTarget(dataDir);
         expect(target?.channel).toBeDefined();
         const answer = await requestControl(target as never, {

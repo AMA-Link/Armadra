@@ -722,9 +722,8 @@ describe("连接页 · 多连接（添加连接）", () => {
   });
 
   it("流量（§76）：行尾本月上下行；点「流量」看这个源的分项，返回回到列表", async () => {
-    const { TrafficLedger, setTrafficLedger } = await import(
-      "../sources/traffic-meter"
-    );
+    const { TrafficLedger, setTrafficLedger } =
+      await import("../sources/traffic-meter");
     vi.stubGlobal("localStorage", memoryStorage());
     const ledger = new TrafficLedger({ timers: false });
     setTrafficLedger(ledger);

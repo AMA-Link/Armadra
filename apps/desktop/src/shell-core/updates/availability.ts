@@ -48,10 +48,7 @@ import type { ManagedKind } from "./managed";
  * through the release key (`installPath`), never through electron-updater.
  */
 export type SignatureState =
-  | "signed"
-  | "unsigned"
-  | "notApplicable"
-  | "unknown";
+  "signed" | "unsigned" | "notApplicable" | "unknown";
 
 /**
  * The marker a LOCAL package carries in its packaged `package.json`, injected

@@ -22,12 +22,7 @@ export const STATUS_PROVIDER_IDS = ["anthropic", "openai", "github"] as const;
 export type StatusProviderId = (typeof STATUS_PROVIDER_IDS)[number];
 
 export type StatusIndicator =
-  | "none"
-  | "minor"
-  | "major"
-  | "critical"
-  | "maintenance"
-  | "unknown";
+  "none" | "minor" | "major" | "critical" | "maintenance" | "unknown";
 
 const INDICATORS: readonly StatusIndicator[] = [
   "none",
@@ -121,8 +116,7 @@ export function parseStatusDocument(
   body: unknown,
 ): { indicator: StatusIndicator; description?: string } | undefined {
   const status = (body as { status?: unknown } | null)?.status as
-    | { indicator?: unknown; description?: unknown }
-    | undefined;
+    { indicator?: unknown; description?: unknown } | undefined;
   if (typeof status !== "object" || status === null) return undefined;
   const indicator = status.indicator;
   if (

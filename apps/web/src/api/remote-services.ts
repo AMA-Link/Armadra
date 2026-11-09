@@ -83,8 +83,7 @@ export type Confirmable<T> =
 
 /** 加个人中转还可能要先过人机验证（契约 §62）。 */
 export type Challengeable<T> =
-  | Confirmable<T>
-  | { readonly kind: "challenge"; readonly siteKey: string };
+  Confirmable<T> | { readonly kind: "challenge"; readonly siteKey: string };
 
 async function confirmable<T>(work: () => Promise<T>): Promise<Confirmable<T>> {
   try {

@@ -41,10 +41,7 @@ import {
 
 /** 一家 CLI 在这台主机上的状态；`ready` 时主表上不画徽标。 */
 export type AgentState =
-  | "ready"
-  | "installNeeded"
-  | "updateNeeded"
-  | "disabled";
+  "ready" | "installNeeded" | "updateNeeded" | "disabled";
 
 /**
  * 主表一行的状态（§2.5）：禁用优先，其次没装，再次注入产物要重新生成。

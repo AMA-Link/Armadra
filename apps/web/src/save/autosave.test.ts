@@ -47,9 +47,8 @@ vi.mock("../api/client", () => ({
 
 const { useCanvasStore } = await import("../store/canvas-store");
 const { emptyWhiteboard } = await import("../canvas/whiteboard/model");
-const { presenceClientId, resetPresenceClient } = await import(
-  "../store/canvas/presence"
-);
+const { presenceClientId, resetPresenceClient } =
+  await import("../store/canvas/presence");
 const {
   EDIT_DEBOUNCE_MS,
   LEASE_LOST_EVENT,

@@ -63,10 +63,7 @@ export function loadHandles(
 /* ------------------------------- resolution ------------------------------- */
 
 export type AddressErrorKind =
-  | "no_links"
-  | "target_unspecified"
-  | "target_not_linked"
-  | "target_ambiguous";
+  "no_links" | "target_unspecified" | "target_not_linked" | "target_ambiguous";
 
 /**
  * Why a name did not become exactly one linked node.

@@ -224,8 +224,7 @@ export function latestDelivery(
         "ORDER BY created_at DESC, rowid DESC LIMIT 1",
     )
     .get(sourceNodeId, targetNodeId) as
-    | { state: string; last_reason: string | null }
-    | undefined;
+    { state: string; last_reason: string | null } | undefined;
   return row === undefined
     ? undefined
     : { state: row.state, lastReason: row.last_reason };

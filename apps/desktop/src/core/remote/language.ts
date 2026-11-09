@@ -110,8 +110,7 @@ function applySettings(owned: LanguageState, args: OperationArgs): void {
   if (serialized === owned.settings) return;
   owned.settings = serialized;
   const current = owned.store.snapshot().language as
-    | Record<string, JsonValue>
-    | undefined;
+    Record<string, JsonValue> | undefined;
   const probes = current?.probes ?? {};
   const { probes: _controllerProbes, ...rest } = incoming as Record<
     string,

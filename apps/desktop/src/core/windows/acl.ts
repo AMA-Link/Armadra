@@ -186,8 +186,7 @@ export function pipeSddl(sid: string): string {
 }
 
 export type SddlVerdict =
-  | { readonly ok: true }
-  | { readonly ok: false; readonly reason: string };
+  { readonly ok: true } | { readonly ok: false; readonly reason: string };
 
 const FULL_CONTROL_RIGHTS = new Set([
   "ga",

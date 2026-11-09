@@ -53,7 +53,7 @@ export function replyKind(reply: string): Kind | undefined {
 /** 把 `isTerminalReplyData` 通过的一段数据拆成一条条应答。 */
 export function splitReplies(data: string): string[] {
   const parts: string[] = [];
-  for (let index = 0; index < data.length; ) {
+  for (let index = 0; index < data.length;) {
     const next = replyEnd(data, index);
     if (next === undefined) return [];
     parts.push(data.slice(index, next));

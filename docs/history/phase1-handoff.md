@@ -1305,7 +1305,7 @@ Runtime 认得出来不会再写盘。导入失败只 `toast(canvas.assetFailed)
 | 「项目」组  | 已打开的工作空间一行（chevron + 📁 + 色点 + 名字，点行 = 展开/收起，双击改名，`⋯` = 新建看板 / 重命名 / 投递记录 / 关闭 / 从列表移除）；展开后缩进列出看板                          | `WorkspaceTree` 的 `WorkspaceRow`                           |
 | 看板行      | 图标（置顶的画 `Pin`）+ 名字 + 节点数 + 信号点 + `⋯`；右键与 `⋯` 同一组动作（置顶/取消置顶、重命名、删除）；当前看板高亮                                                            | `sidebar/BoardRow.tsx`                                      |
 | Agent 折叠  | 只在**当前看板**行下面出现一行「N 个 Agent」，默认收起；展开才渲染会话列表                                                                                                          | `BoardRow` 的 `AgentsFold` + `sessions/SessionsSection.tsx` |
-| 底部        | `⚙ 设置`（Codex 那行的头像 / 语音 / 帮助不做）                                                                                                                                     | `LeftSidebar` 的 `SidebarFooter`                            |
+| 底部        | `⚙ 设置`（Codex 那行的头像 / 语音 / 帮助不做）                                                                                                                                      | `LeftSidebar` 的 `SidebarFooter`                            |
 
 宽度沿用 `--sidebar-w: 240px`，⌘⇧L（`app.sidebar`）不变。
 
@@ -1755,8 +1755,8 @@ Phase 1 把 `edges` 行投影成 tldraw 原生 `arrow`（`edgeToArrow`），两�
 
 一条 arrow 两端各自是什么，决定它是什么：
 
-| start / end                        | 结果                                                              |
-| ---------------------------------- | ----------------------------------------------------------------- |
+| start / end                       | 结果                                                              |
+| --------------------------------- | ----------------------------------------------------------------- |
 | 节点 ↔ 节点                       | 一条 `edges` 行 ⇒ 换成 `link` shape（Phase 3 的行为，一个字没改） |
 | 节点 ↔ 白板 shape                 | **内容链接**（§6.3）⇒ 保留成 tldraw arrow，写一次方向与颜色       |
 | 白板 ↔ 白板 / 只绑一端 / 完全没绑 | 普通白板箭头，不管                                                |

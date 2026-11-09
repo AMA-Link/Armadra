@@ -389,8 +389,7 @@ export class WorkflowService {
           "WHERE n.id = ? AND n.board_id = (SELECT board_id FROM nodes WHERE id = ?)",
       )
       .get(run.nodeId, run.coordinatorNodeId) as
-      | { workspace_id?: unknown }
-      | undefined;
+      { workspace_id?: unknown } | undefined;
     if (typeof place?.workspace_id !== "string") {
       throw new DomainError(
         409,

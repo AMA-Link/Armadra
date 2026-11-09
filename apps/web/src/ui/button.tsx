@@ -86,8 +86,7 @@ function withoutLeadingIcon(children: React.ReactNode): React.ReactNode {
 }
 
 export interface ButtonProps
-  extends React.ComponentProps<"button">,
-    VariantProps<typeof buttonVariants> {
+  extends React.ComponentProps<"button">, VariantProps<typeof buttonVariants> {
   asChild?: boolean;
   /**
    * 进行中：宽高不变，点一下不挤开同行内容。前导图标（标 `data-icon="inline-start"`）

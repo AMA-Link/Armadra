@@ -55,11 +55,7 @@ export type ComponentKind =
  * 界面渲染进程、GPU、其余辅助进程，以及浏览器节点的 `<webview>` guest。
  */
 export type ShellProcessKind =
-  | "shellMain"
-  | "shellRenderer"
-  | "shellGpu"
-  | "shellUtility"
-  | "browserGuest";
+  "shellMain" | "shellRenderer" | "shellGpu" | "shellUtility" | "browserGuest";
 
 const SHELL_KINDS: readonly ShellProcessKind[] = [
   "shellMain",

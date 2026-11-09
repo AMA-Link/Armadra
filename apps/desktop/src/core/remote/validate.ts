@@ -32,10 +32,7 @@ const PROBE_TIMEOUT_MS = 20_000;
 
 /** A stable key the UI translates, never a sentence. */
 export type ValidationReason =
-  | "unreachable"
-  | "noWorkerConfigured"
-  | "nodeMissing"
-  | "handshakeRefused";
+  "unreachable" | "noWorkerConfigured" | "nodeMissing" | "handshakeRefused";
 
 /** What one validation found. camelCase, contract §5.1. */
 export interface ExecutionHostValidation {

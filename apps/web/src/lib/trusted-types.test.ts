@@ -78,9 +78,8 @@ describe("Trusted Types 策略", () => {
       if (name === "default") rules.html = given.createHTML!;
       return create(name, given);
     };
-    const { installDefaultTrustedTypesPolicy } = await import(
-      "./trusted-types"
-    );
+    const { installDefaultTrustedTypesPolicy } =
+      await import("./trusted-types");
     installDefaultTrustedTypesPolicy();
     expect(tt.names).toContain("default");
     const css = "[data-radix-scroll-area-viewport]{scrollbar-width:none}";

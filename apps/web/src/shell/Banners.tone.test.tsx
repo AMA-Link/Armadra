@@ -11,9 +11,8 @@ vi.mock("../api/client", () => ({
   },
 }));
 
-const { installDomPolyfills, TestProviders } = await import(
-  "../app/test-harness"
-);
+const { installDomPolyfills, TestProviders } =
+  await import("../app/test-harness");
 const { Banner } = await import("./Banners");
 
 installDomPolyfills();

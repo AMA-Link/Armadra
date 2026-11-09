@@ -32,11 +32,7 @@ import {
  */
 
 export type OverlayKind =
-  | "popover"
-  | "dropdown"
-  | "select"
-  | "tooltip"
-  | "dialog";
+  "popover" | "dropdown" | "select" | "tooltip" | "dialog";
 
 export type Corner = "tl" | "tr" | "bl" | "br";
 

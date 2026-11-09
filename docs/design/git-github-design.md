@@ -32,33 +32,33 @@ Git 仓库/索引/文件系统是代码状态真相，core 里的状态是缓存
 
 ## 3. 完整 Git 功能范围
 
-| 功能                        | UI / 预览                                       | 实现与失败行为                                            |
-| --------------------------- | ----------------------------------------------- | --------------------------------------------------------- |
-| Init/Clone                  | 新建仓库/克隆窗口、目标目录、进度、取消         | 无仓库状态可初始化；克隆取消仅清本次生成的临时目录        |
-| 状态                        | Staged / Changes / Untracked / Conflicts 分组   | 保留重命名两端、二进制、子模块状态；未跟踪目录可展开      |
-| 文件/批量暂存               | 行内 +、选中项、全部                            | 显示作用路径；不把忽略文件自动纳入                        |
-| Hunk/行暂存                 | Diff 内选择片段并预览 patch                     | 基于 index/blob 指纹，patch stale 时重新加载，不误应用    |
-| 取消暂存                    | 行内 −、片段、全部                              | unborn HEAD 有独立处理；保留工作树内容                    |
-| 还原未暂存                  | 选择文件/hunk，展示将丢失内容                   | 明确从 index 还原；与从 HEAD 覆盖两区分开                 |
-| 未跟踪文件删除              | 删除列表、大小、可恢复路径                      | 优先暂存到回收位置；永久删除单独确认                      |
+| 功能                        | UI / 预览                                     | 实现与失败行为                                            |
+| --------------------------- | --------------------------------------------- | --------------------------------------------------------- |
+| Init/Clone                  | 新建仓库/克隆窗口、目标目录、进度、取消       | 无仓库状态可初始化；克隆取消仅清本次生成的临时目录        |
+| 状态                        | Staged / Changes / Untracked / Conflicts 分组 | 保留重命名两端、二进制、子模块状态；未跟踪目录可展开      |
+| 文件/批量暂存               | 行内 +、选中项、全部                          | 显示作用路径；不把忽略文件自动纳入                        |
+| Hunk/行暂存                 | Diff 内选择片段并预览 patch                   | 基于 index/blob 指纹，patch stale 时重新加载，不误应用    |
+| 取消暂存                    | 行内 −、片段、全部                            | unborn HEAD 有独立处理；保留工作树内容                    |
+| 还原未暂存                  | 选择文件/hunk，展示将丢失内容                 | 明确从 index 还原；与从 HEAD 覆盖两区分开                 |
+| 未跟踪文件删除              | 删除列表、大小、可恢复路径                    | 优先暂存到回收位置；永久删除单独确认                      |
 | Diff                        | staged/unstaged、commit↔commit、branch↔branch | 支持统一/并排、空白选项、搜索；二进制和大文件用摘要       |
-| 提交                        | 消息编辑器、预览文件数、签名状态                | 只提交 index；hooks 失败保留日志和消息草稿                |
-| Amend                       | 显示原提交与将变更内容                          | 明确改写历史；不默认启用、不隐含 force push               |
-| 分支创建/切换/重命名/删除   | BranchPicker、远端分支、最近分支                | 检查 ref 名、被 worktree 占用、脏文件冲突                 |
-| 从某提交创建分支            | History 行动作                                  | 固定起始 OID，预览目标与是否同时切换                      |
-| Detached checkout           | 警示当前游离状态                                | 可创建新分支保存后续提交                                  |
-| Fetch                       | 选择远端、可选 prune、进度                      | 只刷新 refs；失败不改变工作树                             |
-| Pull                        | 明确 upstream 与 ff-only/merge/rebase           | 默认 ff-only；分叉时用户选择策略                          |
-| Push / Publish branch       | 展示远端、分支及待推提交                        | 无 upstream 可设置；认证失败可重试但重新核对 refs         |
-| Sync                        | fetch → 计算差异 → 选定 pull 策略 → push        | UI 显示步骤；任一步失败停止，不是盲目 pull+push           |
-| 强制推送                    | 高级操作，展示被覆盖的远端 OID                  | 使用明确 expected OID 的 force-with-lease；远端变化则拒绝 |
-| Merge                       | 分支选择、差异预览、结果状态                    | 冲突进入 ConflictCenter；支持继续/中止                    |
-| Rebase                      | 起点、目标、提交列表                            | continue/skip/abort；交互式步骤作为可审核 todo 编辑器     |
-| Cherry-pick / Revert commit | 选择提交、方向、预览                            | 序列状态持久；冲突可继续/中止；merge commit 要求主线选择  |
-| Reset                       | soft/mixed/hard 明确区分影响范围                | hard 展示文件损失；不得由普通“撤销”触发                   |
-| Stash                       | include-untracked 可选、命名、列表、diff        | apply 与 drop 分离；pop 冲突不假定 stash 已删除           |
-| Tag / Remote                | 标签创建/删除/推送，远端增删改                  | 展示本地/远端范围；带凭据 URL 脱敏                        |
-| Reflog                      | 高级历史入口（已实施，见 §4.0）                 | 找回 OID 后创建分支；恢复动作仍有 ref 前置检查            |
+| 提交                        | 消息编辑器、预览文件数、签名状态              | 只提交 index；hooks 失败保留日志和消息草稿                |
+| Amend                       | 显示原提交与将变更内容                        | 明确改写历史；不默认启用、不隐含 force push               |
+| 分支创建/切换/重命名/删除   | BranchPicker、远端分支、最近分支              | 检查 ref 名、被 worktree 占用、脏文件冲突                 |
+| 从某提交创建分支            | History 行动作                                | 固定起始 OID，预览目标与是否同时切换                      |
+| Detached checkout           | 警示当前游离状态                              | 可创建新分支保存后续提交                                  |
+| Fetch                       | 选择远端、可选 prune、进度                    | 只刷新 refs；失败不改变工作树                             |
+| Pull                        | 明确 upstream 与 ff-only/merge/rebase         | 默认 ff-only；分叉时用户选择策略                          |
+| Push / Publish branch       | 展示远端、分支及待推提交                      | 无 upstream 可设置；认证失败可重试但重新核对 refs         |
+| Sync                        | fetch → 计算差异 → 选定 pull 策略 → push      | UI 显示步骤；任一步失败停止，不是盲目 pull+push           |
+| 强制推送                    | 高级操作，展示被覆盖的远端 OID                | 使用明确 expected OID 的 force-with-lease；远端变化则拒绝 |
+| Merge                       | 分支选择、差异预览、结果状态                  | 冲突进入 ConflictCenter；支持继续/中止                    |
+| Rebase                      | 起点、目标、提交列表                          | continue/skip/abort；交互式步骤作为可审核 todo 编辑器     |
+| Cherry-pick / Revert commit | 选择提交、方向、预览                          | 序列状态持久；冲突可继续/中止；merge commit 要求主线选择  |
+| Reset                       | soft/mixed/hard 明确区分影响范围              | hard 展示文件损失；不得由普通“撤销”触发                   |
+| Stash                       | include-untracked 可选、命名、列表、diff      | apply 与 drop 分离；pop 冲突不假定 stash 已删除           |
+| Tag / Remote                | 标签创建/删除/推送，远端增删改                | 展示本地/远端范围；带凭据 URL 脱敏                        |
+| Reflog                      | 高级历史入口（已实施，见 §4.0）               | 找回 OID 后创建分支；恢复动作仍有 ref 前置检查            |
 
 `feature/...` 是分支名称建议，不是独立 Git 操作；默认按用途建议 `feature/…`、`fix/…`、`refactor/…`，用户可编辑。遵守项目分支/工作树命名规则，禁止使用项目明确禁止的前缀。
 

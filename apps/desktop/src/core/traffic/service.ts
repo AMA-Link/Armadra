@@ -244,12 +244,10 @@ export class TrafficService {
     return {
       points: [...points.entries()]
         .sort(([a], [b]) => a - b)
-        .map(
-          ([bucketStartMs, totals]): TrafficPoint => ({
-            bucketStartMs,
-            ...totals,
-          }),
-        ),
+        .map(([bucketStartMs, totals]): TrafficPoint => ({
+          bucketStartMs,
+          ...totals,
+        })),
     };
   }
 

@@ -18,9 +18,8 @@ vi.mock("./local-runtime", () => ({
 }));
 
 const { createGroup, listGroups } = await import("./accounts");
-const { IdentityRequestError, resetIdentityCredentials } = await import(
-  "./identity"
-);
+const { IdentityRequestError, resetIdentityCredentials } =
+  await import("./identity");
 
 /** `session/csrf` 依次换出的令牌（刷新页面之后凭 refresh Cookie 换）。 */
 const TOKENS = ["a".repeat(43), "b".repeat(43)];

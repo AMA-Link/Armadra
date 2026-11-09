@@ -66,9 +66,8 @@ vi.mock("../sources/registry", async (original) => {
 const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock("@/ui/toast", () => ({ toast: toasts }));
 
-const { installDomPolyfills, TestProviders } = await import(
-  "../app/test-harness"
-);
+const { installDomPolyfills, TestProviders } =
+  await import("../app/test-harness");
 const { usePreferencesStore } = await import("../app/preferences-store");
 const { RuntimeRequestError } = await import("../api/request");
 const { Banners } = await import("./Banners");
@@ -420,9 +419,8 @@ describe("待信任设备横幅与对话框", () => {
     const dialog = await openDialog();
     await waitFor(() => expect(dialog.textContent).toContain("iOS"));
     expect(host.devices.list).toHaveBeenCalledTimes(1);
-    const { focusManager, onlineManager } = await import(
-      "@tanstack/react-query"
-    );
+    const { focusManager, onlineManager } =
+      await import("@tanstack/react-query");
     act(() => {
       focusManager.setFocused(false);
       focusManager.setFocused(true);

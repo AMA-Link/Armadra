@@ -801,8 +801,7 @@ export class WorkflowEngine {
     const gate =
       definition ??
       (run.template.steps.find((step) => step.id === stepId) as
-        | GateStep
-        | undefined);
+        GateStep | undefined);
     this.options.collab()?.publish(run.workspaceId, {
       type: "workflow.gate",
       runId: run.id,

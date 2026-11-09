@@ -99,8 +99,7 @@ export function createIdbBackend(): CacheBackend | null {
   return {
     get: async (key) =>
       (await request((await store("readonly")).get(key))) as
-        | CachedTimeline
-        | undefined,
+        CachedTimeline | undefined,
     put: async (entry) => {
       await request((await store("readwrite")).put(entry));
     },

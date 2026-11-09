@@ -112,9 +112,8 @@ async function openWindow(server: Server) {
   vi.resetModules();
   const { useCanvasStore } = await import("../../store/canvas-store");
   const { replayLocalEdits } = await import("../../save/canvas-save-queue");
-  const { clearLocalEdits, localEdits } = await import(
-    "../../store/canvas/pending"
-  );
+  const { clearLocalEdits, localEdits } =
+    await import("../../store/canvas/pending");
   const store = useCanvasStore;
   store.getState().selectBoard(board.id);
   store.getState().setDocument(server.load());

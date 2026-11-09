@@ -48,13 +48,11 @@ vi.mock("../whiteboard/store", () => ({
     items.filter((item) => ids.includes(`wb:${item.id}`)),
 }));
 
-const { installDomPolyfills, TestProviders } = await import(
-  "@/app/test-harness"
-);
+const { installDomPolyfills, TestProviders } =
+  await import("@/app/test-harness");
 const { makeItem } = await import("@/canvas/test-support");
-const { ItemMenuContent, itemMenuTargets, stickyTextOf } = await import(
-  "./item-menu"
-);
+const { ItemMenuContent, itemMenuTargets, stickyTextOf } =
+  await import("./item-menu");
 
 installDomPolyfills();
 afterEach(cleanup);

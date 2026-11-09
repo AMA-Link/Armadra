@@ -161,8 +161,7 @@ function cursorOf(value: unknown): FrozenCursor | undefined {
  */
 export function tailOf(answer: unknown): TranscriptTail {
   const tail = (answer as { transcript?: unknown } | null)?.transcript as
-    | { state?: unknown; text?: unknown }
-    | undefined;
+    { state?: unknown; text?: unknown } | undefined;
   if (tail === undefined || tail === null || typeof tail !== "object") {
     return { state: "missing" };
   }

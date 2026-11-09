@@ -59,8 +59,7 @@ export type ControlAnswer =
  * from the model.
  */
 function sessionBinding():
-  | { sessionId: string; generation: number }
-  | undefined {
+  { sessionId: string; generation: number } | undefined {
   const sessionId = envVar("ARMADRA_SESSION_ID");
   const raw = envVar("ARMADRA_SESSION_GENERATION");
   if (sessionId === undefined || raw === undefined || !/^\d+$/.test(raw)) {

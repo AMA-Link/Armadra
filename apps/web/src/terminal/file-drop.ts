@@ -182,8 +182,8 @@ export async function pasteWorkspaceFilePaths(
       );
       recognized = Boolean(
         agent &&
-          ((agent.resolvedPath && command === agent.resolvedPath) ||
-            (!/\s/.test(agent.launchCmd) && command === agent.launchCmd)),
+        ((agent.resolvedPath && command === agent.resolvedPath) ||
+          (!/\s/.test(agent.launchCmd) && command === agent.launchCmd)),
       );
     }
     if (!recognized) throw new FileDragError("fileDrag.executionUnsupported");

@@ -59,8 +59,7 @@ export async function isSaasOrigin(
  */
 export async function detectConsole(
   location:
-    | Pick<Location, "origin" | "pathname">
-    | undefined = globalThis.location,
+    Pick<Location, "origin" | "pathname"> | undefined = globalThis.location,
 ): Promise<string | null> {
   if (
     location === undefined ||

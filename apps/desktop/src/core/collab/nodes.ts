@@ -137,8 +137,7 @@ export function launchOf(
         "LIMIT 1",
     )
     .get(nodeId) as
-    | { cwd: string | null; created_at: string | null }
-    | undefined;
+    { cwd: string | null; created_at: string | null } | undefined;
   if (row === undefined) return {};
   const cwd =
     typeof row.cwd === "string" && row.cwd !== "" ? row.cwd : undefined;

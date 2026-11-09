@@ -25,13 +25,7 @@
  * 明确要求的事，不能是安装后才发现的。
  */
 export type CommandScope =
-  | "app"
-  | "canvas"
-  | "terminal"
-  | "editor"
-  | "browser"
-  | "scm"
-  | "global";
+  "app" | "canvas" | "terminal" | "editor" | "browser" | "scm" | "global";
 
 /**
  * 会在 DOM 上用 `data-keybinding-scope` 标出来的那几个：两种节点，外加 Git

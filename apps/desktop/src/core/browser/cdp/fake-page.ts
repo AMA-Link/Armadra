@@ -234,8 +234,7 @@ export class FakePage {
         return { frameId: "main" };
       case "Page.captureScreenshot": {
         const clip = params.clip as
-          | { x: number; y: number; width: number; height: number }
-          | undefined;
+          { x: number; y: number; width: number; height: number } | undefined;
         const paint = this.paint;
         if (paint === undefined || clip === undefined)
           return { data: ONE_PIXEL_PNG };

@@ -251,15 +251,15 @@ ama 的 `task(agent=<id>)` 在有宿主时只认宿主注入的 runner（第五�
 
 ### §8.1 信任边界（补全后）
 
-| 边界               | 规则                                                                                                                                                                                                             |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 边界              | 规则                                                                                                                                                                                                             |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 页面 ↔ core       | 桌面本机：回环 + preload 凭据；Gateway / 服务器：TLS + `__Host-` 会话 + CSRF + Origin；实时同步 WS 同一套 guard                                                                                                  |
 | Agent 进程 ↔ core | 节点令牌 + `terminalBinding`；`armadra-hook`、`armadra-hook mcp`、ama 适配器三者 core 不作区分、不多给权限                                                                                                       |
 | 成员 ↔ 工作空间   | scope 唯一判定（S3）；角色阶梯 + 「自己创建的终端」规则（§8.2）；工作流关卡答复要运行所在工作空间的 `operator`                                                                                                   |
-| 凭据               | `credentialRef` 值只在 SecretStore；注入只进 CLI 进程环境（经启动器，不进节点 shell）；Windows 在 DPAPI 后端落地前不开放；设置页说明子进程可读                                                                   |
-| 推送               | 载荷只有标题、短正文、深链；经中继时端到端加密，中继只见密文；只发给对该工作空间有 `canvas:read` 的 principal 的设备；令牌可撤销；发送失败不重试超过 3 次                                                        |
-| 实时文档           | 更新按 `canvas:write` 过滤；物化走同一 `saveBoard` 校验（节点类型、尺寸、8 MiB）；评论按 `canvas:write` 写、作者或 owner 删                                                                                      |
-| 身份               | 口令 scrypt 不变；passkey 公钥与 `sign_count`；TOTP 密钥在 SecretStore；OAuth 的 `client_secret` 在 SecretStore；state / PKCE 一次性；登录失败与锁定、MFA 变更、passkey 增删、OAuth 绑定、Gateway 开关全部进审计 |
+| 凭据              | `credentialRef` 值只在 SecretStore；注入只进 CLI 进程环境（经启动器，不进节点 shell）；Windows 在 DPAPI 后端落地前不开放；设置页说明子进程可读                                                                   |
+| 推送              | 载荷只有标题、短正文、深链；经中继时端到端加密，中继只见密文；只发给对该工作空间有 `canvas:read` 的 principal 的设备；令牌可撤销；发送失败不重试超过 3 次                                                        |
+| 实时文档          | 更新按 `canvas:write` 过滤；物化走同一 `saveBoard` 校验（节点类型、尺寸、8 MiB）；评论按 `canvas:write` 写、作者或 owner 删                                                                                      |
+| 身份              | 口令 scrypt 不变；passkey 公钥与 `sign_count`；TOTP 密钥在 SecretStore；OAuth 的 `client_secret` 在 SecretStore；state / PKCE 一次性；登录失败与锁定、MFA 变更、passkey 增删、OAuth 绑定、Gateway 开关全部进审计 |
 
 ### §8.2 角色决定（driver vs editor）
 

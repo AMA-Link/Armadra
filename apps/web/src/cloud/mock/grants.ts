@@ -399,8 +399,7 @@ export function grantHandlers(
   return {
     "sources.list": (input, ctx) => {
       const space = input.space as
-        | { kind: string; teamId?: string }
-        | undefined;
+        { kind: string; teamId?: string } | undefined;
       if (space?.kind !== "team")
         return personal["sources.list"]!(input, ctx.directory);
       const team = ctx.teams.teams.find((row) => row.teamId === space.teamId);
@@ -462,8 +461,7 @@ export function grantHandlers(
     },
     "sources.registrationToken": (input, ctx) => {
       const space = input.space as
-        | { kind: string; teamId?: string }
-        | undefined;
+        { kind: string; teamId?: string } | undefined;
       if (space?.kind === "team") {
         const team = ctx.teams.teams.find((row) => row.teamId === space.teamId);
         const self = team && selfOf(team);

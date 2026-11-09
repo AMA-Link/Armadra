@@ -240,8 +240,7 @@ function post(
       "SELECT id, body, expires_at FROM agent_mailbox WHERE source_node_id = ? AND target_node_id = ? AND message_key = ?",
     )
     .get(caller.node.id, target.id, key) as
-    | { id: string; body: string; expires_at: number }
-    | undefined;
+    { id: string; body: string; expires_at: number } | undefined;
   if (row === undefined) {
     throw refuse(
       429,
@@ -380,8 +379,7 @@ async function ack(
         "SELECT message_key FROM agent_mailbox WHERE id = ? AND target_node_id = ? AND workspace_id = ? AND expires_at > ?",
       )
       .get(id, caller.node.id, caller.node.workspaceId, now) as
-      | { message_key: string }
-      | undefined
+      { message_key: string } | undefined
   )?.message_key;
   // 只有 `handoff:<id>` 是交接的收件箱回执；目标回给来源的
   // `handoff:<id>:result` 是普通消息，来源确认它不需要交接会话绑定。

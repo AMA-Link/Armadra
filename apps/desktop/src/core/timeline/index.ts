@@ -246,8 +246,7 @@ export function rowLiveness(
       "SELECT status, termination_intent FROM terminal_sessions WHERE id = ?",
     )
     .get(sessionId) as
-    | { status: string; termination_intent: string }
-    | undefined;
+    { status: string; termination_intent: string } | undefined;
   if (row === undefined) return "gone";
   if (row.status === "running") return "alive";
   return row.termination_intent === "hibernate" ? "sleeping" : "gone";

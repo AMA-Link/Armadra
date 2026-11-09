@@ -215,8 +215,7 @@ export class DevLog {
         const previous = this.open.get(id);
         if (previous !== undefined) {
           const redirect = p.redirectResponse as
-            | { status?: number }
-            | undefined;
+            { status?: number } | undefined;
           previous.status = redirect?.status ?? previous.status;
           this.finish(previous, at);
         }

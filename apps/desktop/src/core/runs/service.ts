@@ -46,10 +46,7 @@ export interface RunServiceOptions {
   /** Deterministic failure injection for embedded tests; no remote control surface. */
   effectProbe?: (
     point:
-      | "launch.before"
-      | "launch.after"
-      | "delivery.before"
-      | "delivery.after",
+      "launch.before" | "launch.after" | "delivery.before" | "delivery.after",
     task: TaskRow,
   ) => void;
   context: CoreContext;

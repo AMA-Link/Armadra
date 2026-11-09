@@ -1039,11 +1039,10 @@ function rpcCode(error: unknown): number | undefined {
 
 /* ------------------------------- 按适配器起 ------------------------------- */
 
-export interface AcpAdapterStart
-  extends Omit<
-    AcpStartOptions,
-    "program" | "args" | "modeId" | "requireMode" | "resume" | "agentId"
-  > {
+export interface AcpAdapterStart extends Omit<
+  AcpStartOptions,
+  "program" | "args" | "modeId" | "requireMode" | "resume" | "agentId"
+> {
   readonly mode?: PermissionMode;
   readonly profilePath?: string;
   readonly injectionArgs?: readonly string[];

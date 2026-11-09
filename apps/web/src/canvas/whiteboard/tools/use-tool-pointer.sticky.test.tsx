@@ -32,9 +32,8 @@ vi.mock("../store", () => ({
   select: () => undefined,
 }));
 
-const { getTool, resetToolStore, setTool } = await import(
-  "../../interaction/tool-store"
-);
+const { getTool, resetToolStore, setTool } =
+  await import("../../interaction/tool-store");
 const { useToolPointer } = await import("./use-tool-pointer");
 const { registerEscapeToSelect } = await import("../../escape-to-select");
 const { setCanvasLocked } = await import("../../canvas-lock");

@@ -113,16 +113,15 @@ describe("升级与子协议", () => {
 
   it("准入门拒绝（票错、没票）：升级前答 401，没有 socket", async () => {
     const { core: made, base } = await core();
-    made.server.admission(
-      (_request, upgrade): AdmissionVerdict =>
-        upgrade
-          ? {
-              refusal: {
-                status: 401,
-                body: { code: "unauthenticated", message: "票不对" },
-              },
-            }
-          : {},
+    made.server.admission((_request, upgrade): AdmissionVerdict =>
+      upgrade
+        ? {
+            refusal: {
+              status: 401,
+              body: { code: "unauthenticated", message: "票不对" },
+            },
+          }
+        : {},
     );
     await expect(
       connectPeer(base, ["armadra-ticket.wrong", CONTROL_PROTOCOL]),

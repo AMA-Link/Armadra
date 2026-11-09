@@ -43,11 +43,7 @@
  */
 
 export type ShellDialect =
-  | "posix"
-  | "fish"
-  | "cmd"
-  | "powershell"
-  | "windows-powershell";
+  "posix" | "fish" | "cmd" | "powershell" | "windows-powershell";
 
 /**
  * A word of a launch line before it is quoted: a literal value.

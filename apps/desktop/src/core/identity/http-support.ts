@@ -352,9 +352,4 @@ export function answer<T>(
 
 /** 一份纯 JSON（WebAuthn 的选项、审计的补充信息）。 */
 export type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonValue[]
-  | { [key: string]: JsonValue };
+  string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };

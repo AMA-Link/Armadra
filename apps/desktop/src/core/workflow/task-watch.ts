@@ -59,8 +59,7 @@ export interface TaskWatchOptions {
   readonly bus?: EventBus | undefined;
   /** 推帧；协作域还没装好时缺席。 */
   readonly publish: () =>
-    | ((workspaceId: string, event: WorkspaceEvent) => void)
-    | undefined;
+    ((workspaceId: string, event: WorkspaceEvent) => void) | undefined;
   /** 毫秒。 */
   readonly clock?: () => number;
   /** 为 `false` 时不武装定时扫描（用例手动调 {@link TaskWatch.sweep}）。 */

@@ -69,8 +69,7 @@ export function intakeEvent(
         "FROM nodes n JOIN boards b ON b.id = n.board_id WHERE n.id = ?",
     )
     .get(candidate.coordinatorNodeId) as
-    | { board_id?: unknown; workspace_id?: unknown }
-    | undefined;
+    { board_id?: unknown; workspace_id?: unknown } | undefined;
   if (
     typeof place?.board_id !== "string" ||
     typeof place.workspace_id !== "string"

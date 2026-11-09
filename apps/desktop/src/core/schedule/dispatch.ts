@@ -108,8 +108,7 @@ export interface DispatchContext {
   /** 数据目录：冷启动的启动行带上画布注入（Hook、技能、说明）。 */
   readonly dataDir?: string;
   readonly publish?: () =>
-    | ((workspaceId: string, event: WorkspaceEvent) => void)
-    | undefined;
+    ((workspaceId: string, event: WorkspaceEvent) => void) | undefined;
 }
 
 const unsupported = (why: string): ScheduleError =>

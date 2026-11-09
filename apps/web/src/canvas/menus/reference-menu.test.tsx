@@ -47,12 +47,10 @@ vi.mock("@/nodes/registry", () => {
 
 const { useCanvasStore } = await import("@/store/canvas-store");
 const { emptyWhiteboard } = await import("../whiteboard/model");
-const { ContextMenu, ContextMenuContent, ContextMenuTrigger } = await import(
-  "@/ui/context-menu"
-);
-const { ReferenceSubmenu, isReferenceEdgeId } = await import(
-  "./reference-menu"
-);
+const { ContextMenu, ContextMenuContent, ContextMenuTrigger } =
+  await import("@/ui/context-menu");
+const { ReferenceSubmenu, isReferenceEdgeId } =
+  await import("./reference-menu");
 const { EdgeMenuContent } = await import("./edge-menu");
 
 const stamp = "2026-09-06T00:00:00.000Z";

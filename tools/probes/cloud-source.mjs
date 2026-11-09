@@ -45,8 +45,8 @@ export function findCloudSource(env = process.env, root = ROOT) {
 export const relayAvailable = (cloudHome, env = process.env) =>
   Boolean(
     cloudHome ||
-      env.ARMADRA_RELAY_BIN?.trim() ||
-      env.ARMADRA_PROBE_RELAY_IMAGE?.trim(),
+    env.ARMADRA_RELAY_BIN?.trim() ||
+    env.ARMADRA_PROBE_RELAY_IMAGE?.trim(),
   );
 
 export const NO_RELAY_HINT = `${NO_CLOUD_HINT}；或设 ARMADRA_RELAY_BIN（Go 中继二进制）/ ARMADRA_PROBE_RELAY_IMAGE（中继镜像）`;

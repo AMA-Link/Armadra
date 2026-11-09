@@ -247,8 +247,7 @@ export class AutomationApi {
     }
     const groups =
       (found.pattern.exec(request.path)?.groups as
-        | Record<string, string>
-        | undefined) ?? {};
+        Record<string, string> | undefined) ?? {};
     // 工作空间跟着查询串走，授权位跟着会话走：一个请求可以说它想操作哪个工作
     // 空间，不能说它有什么权限。
     const workspaceId = request.query.get("workspaceId") ?? "";

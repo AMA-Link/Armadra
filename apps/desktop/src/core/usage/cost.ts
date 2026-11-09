@@ -1227,7 +1227,7 @@ function spanKeys(from: string, to: string): string[] {
     12,
   );
   const keys: string[] = [];
-  for (let key = dateAt(cursor.getTime()); key <= to; ) {
+  for (let key = dateAt(cursor.getTime()); key <= to;) {
     keys.push(key);
     cursor.setDate(cursor.getDate() + 1);
     key = dateAt(cursor.getTime());
@@ -1352,8 +1352,7 @@ export class CostService {
     private readonly enabled: () => boolean,
     private readonly now: () => number = () => Date.now(),
     private readonly prices:
-      | PriceLookup
-      | (() => PriceLookup) = BUILT_IN_PRICES,
+      PriceLookup | (() => PriceLookup) = BUILT_IN_PRICES,
   ) {
     this.state = new ScanState(now);
   }

@@ -27,16 +27,16 @@
 
 ### 1.1 应用结构与数据模型
 
-| 维度              | 现状                                             | 设计稿                                                                         | 改动                                             |
-| ----------------- | ------------------------------------------------ | ------------------------------------------------------------------------------ | ------------------------------------------------ |
+| 维度             | 现状                                             | 设计稿                                                                         | 改动                                             |
+| ---------------- | ------------------------------------------------ | ------------------------------------------------------------------------------ | ------------------------------------------------ |
 | Workspace ↔ 画布 | 1:1（`canvases.workspace_id UNIQUE`）            | Workspace 含多个 Board，默认 `Default`                                         | 新增 `boards` 表；节点/连线挂到 board            |
-| Workspace 字段    | id/name/rootPath                                 | + 颜色、读/写/执行权限、允许外部端、最近打开时间                               | 迁移增加列                                       |
-| 节点类型          | terminal/agent/file/folder/task/diff/log（7）    | task/agent/terminal/diff/file/context/note/browser/image/log（10）             | `folder`→`context` 改名；新增 note/browser/image |
-| 连线语义          | context/input/output/depends_on/patches/verifies | link/dispatch/produce/write/trigger/ref                                        | 全量替换 + 旧数据映射                            |
-| 节点状态          | idle/running/waiting/done/failed                 | running/waiting/done/review/modified/idle/error/disconnected/connecting/linked | 扩展；`failed`→`error`                           |
-| 节点显示态        | 无                                               | `zoom: mini / normal / focus`；画布缩放 < 阈值强制 mini                        | 节点顶层新增 `zoom`                              |
-| 手绘              | 无                                               | `board.strokes[]` 世界坐标                                                     | board 级字段                                     |
-| 视口              | 每次 fitView                                     | `board.viewport {x,y,zoom}` 持久化                                             | board 级字段                                     |
+| Workspace 字段   | id/name/rootPath                                 | + 颜色、读/写/执行权限、允许外部端、最近打开时间                               | 迁移增加列                                       |
+| 节点类型         | terminal/agent/file/folder/task/diff/log（7）    | task/agent/terminal/diff/file/context/note/browser/image/log（10）             | `folder`→`context` 改名；新增 note/browser/image |
+| 连线语义         | context/input/output/depends_on/patches/verifies | link/dispatch/produce/write/trigger/ref                                        | 全量替换 + 旧数据映射                            |
+| 节点状态         | idle/running/waiting/done/failed                 | running/waiting/done/review/modified/idle/error/disconnected/connecting/linked | 扩展；`failed`→`error`                           |
+| 节点显示态       | 无                                               | `zoom: mini / normal / focus`；画布缩放 < 阈值强制 mini                        | 节点顶层新增 `zoom`                              |
+| 手绘             | 无                                               | `board.strokes[]` 世界坐标                                                     | board 级字段                                     |
+| 视口             | 每次 fitView                                     | `board.viewport {x,y,zoom}` 持久化                                             | board 级字段                                     |
 
 ### 1.2 布局与视觉
 
@@ -61,7 +61,7 @@
 | File                 | 路径 + 预览                                                              | 等宽预览（card2 背景），标题为路径，副标题语言                                                                                                                                                                                                                          |
 | Context（原 folder） | 路径 + 排除数                                                            | 路径 + 子文件 chips（前 3 个 +N）+ 大致 token 估算                                                                                                                                                                                                                      |
 | Note                 | 无                                                                       | 淡黄底 textarea、字数、@ Agent、转为任务                                                                                                                                                                                                                                |
-| Browser              | 无                                                                       | 地址栏 ‹ › ↻ ↗、iframe 内容、底部 截图到画布 / 发送给 Agent                                                                                                                                                                                                            |
+| Browser              | 无                                                                       | 地址栏 ‹ › ↻ ↗、iframe 内容、底部 截图到画布 / 发送给 Agent                                                                                                                                                                                                             |
 | Image                | 无                                                                       | 图片预览（data URL）                                                                                                                                                                                                                                                    |
 | Log                  | pre                                                                      | 过滤 chips（全部/Agent/终端/网关）+ 时间戳行                                                                                                                                                                                                                            |
 | Task                 | textarea                                                                 | 描述 + 子任务清单（checkbox）+ 派发按钮                                                                                                                                                                                                                                 |
@@ -127,26 +127,26 @@ WorkspaceSummary = Workspace & { boards: {id,name,nodeCount}[] }
 
 保留：`GET /health`、文件、终端、Agent 相关路由。修改/新增：
 
-| 方法   | 路径                                             | 说明                                                                                                                                                                    |
+| 方法 | 路径 | 说明 |
 | ------ | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| GET    | `/api/workspaces`                                | 返回 `WorkspaceSummary[]`，按 `lastOpenedAt` 倒序                                                                                                                       |
-| POST   | `/api/workspaces`                                | body `{name, rootPath, color?, permissions?, gatewayEnabled?}`；同根目录幂等返回；自动建 `Default` 看板                                                                 |
-| PATCH  | `/api/workspaces/{id}`                           | 更新 name/color/permissions/gatewayEnabled                                                                                                                              |
-| POST   | `/api/workspaces/{id}/open`                      | 刷新 `lastOpenedAt`                                                                                                                                                     |
-| GET    | `/api/workspaces/{id}/boards`                    | `Board[]`                                                                                                                                                               |
-| POST   | `/api/workspaces/{id}/boards`                    | `{name}` → `Board`                                                                                                                                                      |
-| PATCH  | `/api/workspaces/{id}/boards/{boardId}`          | `{name?, sortOrder?}`                                                                                                                                                   |
-| DELETE | `/api/workspaces/{id}/boards/{boardId}`          | 不允许删除最后一个看板（409）                                                                                                                                           |
-| GET    | `/api/workspaces/{id}/boards/{boardId}/document` | `BoardDocument`                                                                                                                                                         |
-| PUT    | `/api/workspaces/{id}/boards/{boardId}/document` | body `{expectedUpdatedAt, nodes, edges, strokes, viewport}` → `BoardDocument`（沿用 CAS 冲突 409）                                                                      |
-| GET    | `/api/workspaces/{id}/git/status`                | `{repository, branch: string                                                                                                                                            | null, changedCount, ahead?, behind?}` |
-| GET    | `/api/workspaces/{id}/git/diff`                  | 现有；`files[].status` 归一为 `M/A/D/R/?`；二进制/过大的未跟踪文件不再导致整次扫描失败，而是 `previewable:false` + 空 `patch`（UI 显示「无法预览」，导出 patch 时跳过） |
-| POST   | `/api/workspaces/{id}/git/stage`                 | `{paths: string[]}` → `git add -- <paths>`；路径必须在授权根内且为普通文件                                                                                              |
-| POST   | `/api/workspaces/{id}/git/revert`                | `{paths}` → 已跟踪：`git checkout -- <path>`；未跟踪：删除文件（拒绝 symlink/目录）；返回 `{reverted: string[]}`                                                        |
-| GET    | `/api/gateway`                                   | `{enabled:boolean, port:7420, addresses: string[], devices: [], implemented:false}`；enabled 来自当前 workspace.gatewayEnabled（query `workspaceId`）                   |
-| GET    | `/api/terminals/{sessionId}`                     | `TerminalSession`（新增 `pid: number                                                                                                                                    | null`）                               |
-| POST   | `/api/terminals/{sessionId}/terminate`           | 终止会话（现有 WS 内 terminate 也保留）                                                                                                                                 |
-| GET    | `/api/agents`                                    | 现有 `AdapterInfo[]`，新增 `resolvedPath: string                                                                                                                        | null`                                 |
+| GET | `/api/workspaces` | 返回 `WorkspaceSummary[]`，按 `lastOpenedAt` 倒序 |
+| POST | `/api/workspaces` | body `{name, rootPath, color?, permissions?, gatewayEnabled?}`；同根目录幂等返回；自动建 `Default` 看板 |
+| PATCH | `/api/workspaces/{id}` | 更新 name/color/permissions/gatewayEnabled |
+| POST | `/api/workspaces/{id}/open` | 刷新 `lastOpenedAt` |
+| GET | `/api/workspaces/{id}/boards` | `Board[]` |
+| POST | `/api/workspaces/{id}/boards` | `{name}` → `Board` |
+| PATCH | `/api/workspaces/{id}/boards/{boardId}` | `{name?, sortOrder?}` |
+| DELETE | `/api/workspaces/{id}/boards/{boardId}` | 不允许删除最后一个看板（409） |
+| GET | `/api/workspaces/{id}/boards/{boardId}/document` | `BoardDocument` |
+| PUT | `/api/workspaces/{id}/boards/{boardId}/document` | body `{expectedUpdatedAt, nodes, edges, strokes, viewport}` → `BoardDocument`（沿用 CAS 冲突 409） |
+| GET | `/api/workspaces/{id}/git/status` | `{repository, branch: string                                                                                                                                            | null, changedCount, ahead?, behind?}` |
+| GET | `/api/workspaces/{id}/git/diff` | 现有；`files[].status` 归一为 `M/A/D/R/?`；二进制/过大的未跟踪文件不再导致整次扫描失败，而是 `previewable:false` + 空 `patch`（UI 显示「无法预览」，导出 patch 时跳过） |
+| POST | `/api/workspaces/{id}/git/stage` | `{paths: string[]}` → `git add -- <paths>`；路径必须在授权根内且为普通文件 |
+| POST | `/api/workspaces/{id}/git/revert` | `{paths}` → 已跟踪：`git checkout -- <path>`；未跟踪：删除文件（拒绝 symlink/目录）；返回 `{reverted: string[]}` |
+| GET | `/api/gateway` | `{enabled:boolean, port:7420, addresses: string[], devices: [], implemented:false}`；enabled 来自当前 workspace.gatewayEnabled（query `workspaceId`） |
+| GET | `/api/terminals/{sessionId}` | `TerminalSession`（新增 `pid: number                                                                                                                                    | null`） |
+| POST | `/api/terminals/{sessionId}/terminate` | 终止会话（现有 WS 内 terminate 也保留） |
+| GET | `/api/agents` | 现有 `AdapterInfo[]`，新增 `resolvedPath: string                                                                                                                        | null` |
 
 ACP WebSocket `update` 事件的归一化（`acp.rs normalize_update`）改为结构化：
 

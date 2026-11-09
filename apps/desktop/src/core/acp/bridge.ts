@@ -181,8 +181,8 @@ export class AcpBackend implements TerminalBackend {
       if (error instanceof AcpError) {
         throw new TerminalError(
           error.code === "acp_not_installed" ||
-          error.code === "acp_unsupported" ||
-          error.code === "acp_mode_unsupported"
+            error.code === "acp_unsupported" ||
+            error.code === "acp_mode_unsupported"
             ? 400
             : error.code === "acp_auth_required"
               ? 409

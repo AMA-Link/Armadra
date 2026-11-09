@@ -197,8 +197,7 @@ export class TimelineStore {
           "SELECT head_seq, head_rev, head_json FROM timelines WHERE id = ?",
         )
         .get(id) as
-        | { head_seq: number; head_rev: number; head_json: string }
-        | undefined;
+        { head_seq: number; head_rev: number; head_json: string } | undefined;
       if (current === undefined)
         throw new Error(`timeline ${id} does not exist`);
       let head = parseHead(current.head_json);

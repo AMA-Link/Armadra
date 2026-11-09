@@ -50,8 +50,7 @@ export async function destroyRowBackend(
       "SELECT backend_ref, backend_kind FROM terminal_sessions WHERE id = ?",
     )
     .get(sessionId) as
-    | { backend_ref?: string | null; backend_kind?: string }
-    | undefined;
+    { backend_ref?: string | null; backend_kind?: string } | undefined;
   const backend = backends.get(row?.backend_kind as BackendKind);
   if (backend === undefined || !row?.backend_ref) return;
   try {

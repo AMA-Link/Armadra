@@ -550,8 +550,7 @@ export class AccountsTx {
           "AND target_kind = ? AND target_id = ? AND revoked_at_ms = 0",
       )
       .get(subjectKind, subjectId, workspaceId, targetKind, targetId) as
-      | Record<string, unknown>
-      | undefined;
+      Record<string, unknown> | undefined;
     return row === undefined ? undefined : toGrant(row);
   }
 

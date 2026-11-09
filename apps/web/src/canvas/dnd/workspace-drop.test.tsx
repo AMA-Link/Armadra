@@ -25,8 +25,7 @@ const mocks = vi.hoisted(() => ({
   localClipboard: null as string | null,
   locked: false,
   nativeDrop: null as
-    | null
-    | ((paths: string[], point: { x: number; y: number }) => void),
+    null | ((paths: string[], point: { x: number; y: number }) => void),
 }));
 vi.mock("../../api/source", async (original) => {
   const actual = await original<typeof import("../../api/source")>();

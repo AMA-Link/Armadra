@@ -74,8 +74,7 @@ export class EndorsementStore {
         "SELECT label, platform FROM trusted_devices WHERE device_id = ? AND principal_id = ?",
       )
       .get(endorsement.deviceId, endorsement.principalId) as
-      | { label?: string; platform?: string }
-      | undefined;
+      { label?: string; platform?: string } | undefined;
     const principal = this.database
       .prepare(
         "SELECT display_name FROM identity_principals WHERE principal_id = ?",
@@ -86,8 +85,7 @@ export class EndorsementStore {
         "SELECT label FROM trusted_devices WHERE device_id = ? AND principal_id = ?",
       )
       .get(endorsement.endorserDeviceId, endorsement.endorserPrincipalId) as
-      | { label?: string }
-      | undefined;
+      { label?: string } | undefined;
     const record: EndorsementRecord = {
       id: randomBytes(16).toString("hex"),
       deviceId: endorsement.deviceId.slice(0, 64),

@@ -62,9 +62,9 @@ export function ResetPassword({
         if (!live) return;
         setStage({ kind: "invalid" });
         // 404 就是「链接已失效」；别的（离线、限流）说出原因。
-        if (
-          !(failure instanceof IdentityRequestError && failure.status === 404)
-        ) {
+        if (!(
+          failure instanceof IdentityRequestError && failure.status === 404
+        )) {
           setError(securityFailure(failure, t));
         }
       },

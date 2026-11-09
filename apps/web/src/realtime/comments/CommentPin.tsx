@@ -10,8 +10,10 @@ import { memberColorVar } from "@/ui/member-dot";
  * 缩放 < 0.5 只画一个点。按 `1 / zoom` 反缩放，屏幕上尺寸不变。屏幕上挨得
  * 太近的几枚钉聚成一枚，里面画「+N」（N 是聚进来的钉数）。
  */
-export interface CommentPinProps
-  extends Omit<React.ComponentProps<typeof Button>, "children" | "color"> {
+export interface CommentPinProps extends Omit<
+  React.ComponentProps<typeof Button>,
+  "children" | "color"
+> {
   /** 这枚钉上的评论条数（含回复）。 */
   count: number;
   /** 这枚钉上还有没解决的线程。 */

@@ -122,8 +122,7 @@ export class HeadlessNode {
 
   /** 这个节点的 Chromium 主进程，给资源面板按树计入；没在跑就没有。 */
   trackedProcess():
-    | { pid: number; startTimeUnixMs: number | null }
-    | undefined {
+    { pid: number; startTimeUnixMs: number | null } | undefined {
     const pid = this.process?.pid;
     if (!this.isAlive() || pid === undefined || pid <= 0) return undefined;
     return { pid, startTimeUnixMs: this.launchedAt };

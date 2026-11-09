@@ -345,7 +345,7 @@ export function createRelayedAccess(
               });
             throw new SourceError(
               error.code === "cloud_account_unlinked" ||
-              error.code === "cloud_not_registered"
+                error.code === "cloud_not_registered"
                 ? error.code
                 : error.code === "device_rejected"
                   ? SOURCE_ERROR.deviceRejected

@@ -361,15 +361,12 @@ export function GrantsPage({
       }
     });
     return [...byId.entries()]
-      .map(
-        ([id, entries]): SubjectRow => ({
-          id,
-          kind: id === TEAM ? "team" : "person",
-          name:
-            id === TEAM ? t("cloud.grants.everyone") : (names.get(id) ?? id),
-          entries,
-        }),
-      )
+      .map(([id, entries]): SubjectRow => ({
+        id,
+        kind: id === TEAM ? "team" : "person",
+        name: id === TEAM ? t("cloud.grants.everyone") : (names.get(id) ?? id),
+        entries,
+      }))
       .sort(
         (a, b) =>
           Number(b.kind === "team") - Number(a.kind === "team") ||

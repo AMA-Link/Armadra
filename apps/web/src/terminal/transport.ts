@@ -23,11 +23,7 @@ import { openSourceSocket } from "../api/source";
  */
 
 export type TerminalTransportState =
-  | "connecting"
-  | "attaching"
-  | "live"
-  | "stale"
-  | "closed";
+  "connecting" | "attaching" | "live" | "stale" | "closed";
 
 export interface TerminalHello {
   sessionId: string;

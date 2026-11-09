@@ -31,9 +31,8 @@ vi.mock("../api/client", () => ({
 
 const { resetHostedRelay } = await import("../sources/hosted");
 const { resetMobileRelayStatus } = await import("../mobile/relay-status");
-const { installDomPolyfills, TestProviders } = await import(
-  "../app/test-harness"
-);
+const { installDomPolyfills, TestProviders } =
+  await import("../app/test-harness");
 const { usePreferencesStore } = await import("../app/preferences-store");
 const { Banners } = await import("./Banners");
 const { installLocalTransport } = await import("../api/source");

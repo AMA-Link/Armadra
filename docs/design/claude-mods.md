@@ -279,7 +279,7 @@ hook surface 上的只读路由，节点 token 必须 `verified`（与 `/control
 
   没有连线且没有待收时返回 `next(e)`（不画，横条空着就是什么都没有）。只用名字、数字与四个字形，不含可翻译的词；窄于 40 列时省去 `↔` 段。不放按钮（横条自己的 `[-]` 已经能收起；「打开画布节点」要打 core 一个新接口，不进这一版）。
 
-- toast：`inbox.latestSequence` 比上一轮大时 `$.ui.toast(\`✉ ${from}\`)`，`from` 取 `/node/overlay` 外加的 `inbox.latestFrom`（名字，没有名字用标题，`mailbox.ts:514-520` 同一条 COALESCE），**不放正文**。同一批只提示一次（按 `latestSequence` 去重，存 `$.state`）。
+- toast：`inbox.latestSequence` 比上一轮大时 `$.ui.toast(\`✉ ${from}\`)`，`from`取`/node/overlay`外加的`inbox.latestFrom`（名字，没有名字用标题，`mailbox.ts:514-520`同一条 COALESCE），**不放正文**。同一批只提示一次（按`latestSequence`去重，存`$.state`）。
 - 状态栏（M1 的）在拿到 overlay 后补成 `<节点名> · <画布名>`。
 
 ### 4.3 语言
@@ -305,15 +305,15 @@ core 不知道界面语言（`preferences-store.ts:343` 只在 localStorage）�
 
 `session.start` 里 `$.command.register` 注册（全部 `immediate: true`，不等回合）：
 
-| 命令             | 对应 `POST /control/<verb>` | argumentHint                                 |
+| 命令 | 对应 `POST /control/<verb>` | argumentHint |
 | ---------------- | --------------------------- | -------------------------------------------- | ------------- | -------------------------------- |
-| `/armadra-post`  | `post`                      | `--to NAME --key KEY --body TEXT`            |
-| `/armadra-inbox` | `inbox`                     | `[--limit N] [--after SEQ]`                  |
-| `/armadra-ack`   | `ack`                       | `--id ID`                                    |
-| `/armadra-send`  | `send`                      | `--to ID --body TEXT [--key KEY] [--no-queue | --interrupt]` |
-| `/armadra-team`  | `team`                      | `--member "AGENT                             | TITLE         | TASK"... [--chain] [--gather …]` |
-| `/armadra-open`  | `open-agent`                | `--agent ID [--task TEXT] …`                 |
-| `/armadra-list`  | `list`                      | —                                            |
+| `/armadra-post` | `post` | `--to NAME --key KEY --body TEXT` |
+| `/armadra-inbox` | `inbox` | `[--limit N] [--after SEQ]` |
+| `/armadra-ack` | `ack` | `--id ID` |
+| `/armadra-send` | `send` | `--to ID --body TEXT [--key KEY] [--no-queue | --interrupt]` |
+| `/armadra-team` | `team` | `--member "AGENT                             | TITLE         | TASK"... [--chain] [--gather …]` |
+| `/armadra-open` | `open-agent` | `--agent ID [--task TEXT] …` |
+| `/armadra-list` | `list` | — |
 
 `command.run`（matcher 只列这七个字面名，不读 `next`，validate 列为「answers its own command」）：把 `e.args` 按 `control.ts:104-132` 同一套规则切成 `--flag value` 映射（重复旗标成数组、裸旗标为 `true`、`--dry-run` 透传），POST 到 `/control/<verb>`，答 `{ text }` = core 答复里给人看的那段（与 `armadra-hook canvas` 打印的相同，所以模型读到的也相同）。错误答 `{ text: "<core 的 message>" }`，不抛。人敲命令不消耗模型 token；模型自己仍走 Bash `armadra-hook canvas` 或 MCP，一套实现三个入口。
 
@@ -379,7 +379,7 @@ core 不知道界面语言（`preferences-store.ts:343` 只在 localStorage）�
 | hot reload 重跑 `register` 导致重复 hello / 重复 `$.ui.status`       | 都是幂等；core 的 `mods.sessions` 按 `nodeId` 覆盖                                                                                                                                                                                                                                                                                           |
 | `settings-permission.json` 单独存在时 Claude 版本旧于 2.1.293        | 不可能：门关着时启动器只引用 `settings.json`                                                                                                                                                                                                                                                                                                 |
 | 轮询常驻开销                                                         | 3 s、`If-None-Match`、只在交互式终端；`-p` / ACP 不轮询                                                                                                                                                                                                                                                                                      |
-| `$.ui.status` 的 `⚠` 前缀观感                                       | 探针截图确认；不行就改 `$.ui.log` 或并入横条                                                                                                                                                                                                                                                                                                 |
+| `$.ui.status` 的 `⚠` 前缀观感                                        | 探针截图确认；不行就改 `$.ui.log` 或并入横条                                                                                                                                                                                                                                                                                                 |
 | 两个 claude 在 PATH 上（缓存版本 ≠ 真启动的版本）                    | hello 对账 → 集成页「版本不一致」                                                                                                                                                                                                                                                                                                            |
 | 整体回退                                                             | 只改一处：`claudeLoadsMods` 恒 `false`（或 `CLAUDE_MODS_MIN` 设成一个不会达到的版本），启动器下一次 prepare 即回到全套 shell hooks；产物与契约保留，不需要迁移                                                                                                                                                                               |
 

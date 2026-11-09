@@ -272,22 +272,22 @@ Ed25519，`kid` 递增；JWKS 答所有未 `retired` 的公钥；四种令牌按
 
 | 变量                          | saas | personal | 说明                                              |
 | ----------------------------- | ---- | -------- | ------------------------------------------------- |
-| `RELAY_MODE`                  | ✔   | ✔       | `saas` / `personal`（子命令覆盖）                 |
-| `RELAY_LISTEN`                | ✔   | ✔       | `0.0.0.0:8443`                                    |
-| `RELAY_PUBLIC_ORIGIN`         | ✔   | ✔       | 对外来源；personal 缺省 `https://<--host>:<port>` |
-| `RELAY_NODE_ID`               | ✔   | —        | 节点名（缺省主机名）                              |
-| `RELAY_DOMAIN`                | ✔   | —        | `src.<域>` 的 `<域>`                              |
-| `RELAY_CLOUD_ISSUER`          | ✔   | —        | cloud 的 issuer URL（JWKS 从这里拉）              |
-| `RELAY_REDIS_URL`             | ✔   | —        |                                                   |
-| `RELAY_INTERNODE_SECRET`      | ✔   | —        | 节点间 HMAC；缺省生成并拒绝多节点                 |
-| `RELAY_INTERNODE_URL`         | ✔   | —        | 本节点对其它节点的地址                            |
-| `RELAY_TLS_CERT` / `_KEY`     | ✔   | ✔       | 文件证书                                          |
-| `RELAY_DATA_DIR`              | —    | ✔       | `state.json`、tls/、acme/                         |
-| `RELAY_TLS`                   | —    | ✔       | `self-signed` / `acme` / `file` / `plain`         |
-| `RELAY_WEB_ROOT`              | —    | ✔       | 托管页面目录                                      |
-| `RELAY_METRICS_LISTEN`        | ✔   | ✔       | 缺省不开                                          |
-| `RELAY_LOG_LEVEL`             | ✔   | ✔       | `info`                                            |
-| `RELAY_ALLOW_INSECURE_TUNNEL` | ✔   | ✔       | 允许 `ws://`（只在 dev-stack）                    |
+| `RELAY_MODE`                  | ✔    | ✔        | `saas` / `personal`（子命令覆盖）                 |
+| `RELAY_LISTEN`                | ✔    | ✔        | `0.0.0.0:8443`                                    |
+| `RELAY_PUBLIC_ORIGIN`         | ✔    | ✔        | 对外来源；personal 缺省 `https://<--host>:<port>` |
+| `RELAY_NODE_ID`               | ✔    | —        | 节点名（缺省主机名）                              |
+| `RELAY_DOMAIN`                | ✔    | —        | `src.<域>` 的 `<域>`                              |
+| `RELAY_CLOUD_ISSUER`          | ✔    | —        | cloud 的 issuer URL（JWKS 从这里拉）              |
+| `RELAY_REDIS_URL`             | ✔    | —        |                                                   |
+| `RELAY_INTERNODE_SECRET`      | ✔    | —        | 节点间 HMAC；缺省生成并拒绝多节点                 |
+| `RELAY_INTERNODE_URL`         | ✔    | —        | 本节点对其它节点的地址                            |
+| `RELAY_TLS_CERT` / `_KEY`     | ✔    | ✔        | 文件证书                                          |
+| `RELAY_DATA_DIR`              | —    | ✔        | `state.json`、tls/、acme/                         |
+| `RELAY_TLS`                   | —    | ✔        | `self-signed` / `acme` / `file` / `plain`         |
+| `RELAY_WEB_ROOT`              | —    | ✔        | 托管页面目录                                      |
+| `RELAY_METRICS_LISTEN`        | ✔    | ✔        | 缺省不开                                          |
+| `RELAY_LOG_LEVEL`             | ✔    | ✔        | `info`                                            |
+| `RELAY_ALLOW_INSECURE_TUNNEL` | ✔    | ✔        | 允许 `ws://`（只在 dev-stack）                    |
 
 ## §8 错误码与关闭码
 

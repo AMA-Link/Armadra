@@ -70,11 +70,7 @@ export interface LoginPrompt {
  * 把这条流丢掉。
  */
 export type LoginProgress =
-  | "pending"
-  | "authorized"
-  | "expired"
-  | "denied"
-  | "error";
+  "pending" | "authorized" | "expired" | "denied" | "error";
 
 /** 给设置页的登录态。报令牌**在哪儿**，从不报令牌。 */
 export interface AuthState {

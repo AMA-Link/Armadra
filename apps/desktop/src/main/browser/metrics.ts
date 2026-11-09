@@ -20,11 +20,7 @@ import type { DriveEvent } from "../../shell-core/browser/drive";
 
 /** 与 `core/resources/platform.ts` 的 `ShellProcessKind` 同一组值。 */
 export type ShellProcessKind =
-  | "shellMain"
-  | "shellRenderer"
-  | "shellGpu"
-  | "shellUtility"
-  | "browserGuest";
+  "shellMain" | "shellRenderer" | "shellGpu" | "shellUtility" | "browserGuest";
 
 export interface ShellProcessReport {
   readonly pid: number;

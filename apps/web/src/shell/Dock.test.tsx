@@ -477,9 +477,8 @@ describe("一行 Dock：手机竖屏、横屏与桌面同序（#766）", () => {
 describe("整理钮的右键菜单（ui-wave2 §4.2）", () => {
   it("纵向 / 横向整理各跑一次 canvas.tidy，期间方向被覆盖、之后复原", async () => {
     const { registerCanvasCommand } = await import("../canvas/commands");
-    const { layoutDirection, setLayoutDirectionForTest } = await import(
-      "../canvas/layout-direction"
-    );
+    const { layoutDirection, setLayoutDirectionForTest } =
+      await import("../canvas/layout-direction");
     setLayoutDirectionForTest("vertical");
     const seen: string[] = [];
     const off = registerCanvasCommand("canvas.tidy", () => {

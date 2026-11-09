@@ -224,9 +224,8 @@ describe("桌面壳的请求层", () => {
    * 不自己 `new WebSocket`，所以和事件流一样先换票、经子协议升级。
    */
   it("语言服务会话流与浏览器画面流同样先换票", async () => {
-    const { createSessionTransport } = await import(
-      "../editor/language/transport"
-    );
+    const { createSessionTransport } =
+      await import("../editor/language/transport");
     const { browserStreamUrl, languageSessionUrl } = await import("./sockets");
     const { openSourceSocket } = await import("./source");
     installShellTransport();

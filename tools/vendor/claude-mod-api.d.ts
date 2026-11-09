@@ -91,12 +91,7 @@ declare module "claude-code" {
     readonly props: unknown;
   };
   export type RenderNode =
-    | RenderElement
-    | string
-    | number
-    | boolean
-    | null
-    | undefined;
+    RenderElement | string | number | boolean | null | undefined;
 
   export type TextProps = {
     color?: string;

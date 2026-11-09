@@ -244,8 +244,7 @@ export function persistedBinding(
           "json_extract(data_json, '$.agent.id') AS agent_id FROM nodes WHERE id = ?",
       )
       .get(nodeId) as unknown as
-      | { ref: unknown; agent_id: unknown }
-      | undefined;
+      { ref: unknown; agent_id: unknown } | undefined;
     if (row === undefined) return {};
     return {
       ...(typeof row.ref === "string" && row.ref !== ""

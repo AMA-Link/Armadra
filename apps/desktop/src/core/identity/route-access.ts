@@ -637,8 +637,7 @@ function databaseLookups(database: DatabaseSync): RouteAccessLookups {
   const text = (sql: string, id: string, column: string): string => {
     try {
       const row = database.prepare(sql).get(id) as
-        | Record<string, unknown>
-        | undefined;
+        Record<string, unknown> | undefined;
       const value = row?.[column];
       return typeof value === "string" ? value : "";
     } catch {

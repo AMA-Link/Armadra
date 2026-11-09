@@ -62,9 +62,9 @@ function boot() {
    * 票打开时先是连接页；SaaS 控制面上是控制台（同源平台信息说了算）；其余
    * （桌面窗口、服务器壳托管的网页）直接是画布。
    */
-  const entry: Promise<Entry> = prepareEntry().catch(
-    (): Entry => ({ kind: "app" }),
-  );
+  const entry: Promise<Entry> = prepareEntry().catch((): Entry => ({
+    kind: "app",
+  }));
 
   void entry.then((entry) => {
     createRoot(document.getElementById("root")!).render(

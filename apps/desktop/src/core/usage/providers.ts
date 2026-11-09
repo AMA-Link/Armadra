@@ -323,8 +323,7 @@ export function accountIdFromJwt(token: string): string | undefined {
 }
 
 export function codexCredentials():
-  | { token: string; accountId: string }
-  | undefined {
+  { token: string; accountId: string } | undefined {
   const directory = configRoot("codex");
   if (directory === undefined) return undefined;
   let raw: string;
@@ -380,8 +379,7 @@ function codexRateWindows(
   const result: UsageWindow[] = [];
   for (const key of ["primary", "secondary"] as const) {
     const window = record(rateLimit?.[`${key}_window`]) as
-      | CodexWindow
-      | undefined;
+      CodexWindow | undefined;
     if (window === undefined) continue;
     const percent = num(window.used_percent);
     if (percent === undefined) continue;

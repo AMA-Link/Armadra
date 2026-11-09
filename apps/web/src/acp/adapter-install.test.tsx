@@ -38,9 +38,8 @@ vi.mock("@/api/client", async () => {
   };
 });
 
-const { installDomPolyfills, TestProviders } = await import(
-  "@/app/test-harness"
-);
+const { installDomPolyfills, TestProviders } =
+  await import("@/app/test-harness");
 const { usePreferencesStore } = await import("@/app/preferences-store");
 const { translate } = await import("@/i18n");
 const {

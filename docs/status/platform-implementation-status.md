@@ -20,7 +20,7 @@
 | M1   | 大部完成       | 身份、单实例、本机控制、HTTPS 设备认证、持久存储、迁移导出/导入核验、桌面生命周期、Kanban 退役已提交；业务写入所有权仍在 Rust Runtime                                        |
 | M2   | 大部完成       | 只读/命令 Worker、远端 Worker、多 Provider 上下文、能力求交集、模型选择已提交；Windows Session Host 与 Job Object 仅交叉编译，Windows 实机未验收                             |
 | M3   | 完成（待实机） | 零客户端到点执行（命令与 Agent 会话目标）、自动化面板与两类节点、原生转平台计划、交接 API/UI/历史面板、自动命名已提交并经真实进程验证                                        |
-| M4   | 完成           | Git 全流程与进阶操作、多仓库发现与提交图、Frame↔worktree 绑定、编辑器搜索/文件管理/Markdown/外部变更已提交；LSP 按预留交付                                                  |
+| M4   | 完成           | Git 全流程与进阶操作、多仓库发现与提交图、Frame↔worktree 绑定、编辑器搜索/文件管理/Markdown/外部变更已提交；LSP 按预留交付                                                   |
 | M5   | 大部完成       | GitHub Issues/PR/状态映射/`ExternalReference` 经本地 mock GitHub 端到端验证；受控浏览器（CDP、持久 profile、帧流、Agent 动词）macOS 实机通过；真实远端回写与跨端画面未验收   |
 | M6   | 大部完成       | Host 静态托管与认证代理、对外服务开关、手机焦点页/底部导航/断线重连、远端 Worker（文件/搜索/基础 Git）已提交；仓库面板远端执行、手机实机未完成                               |
 | M7   | 大部完成       | 资源/电源、内存徽标、渲染预算与会话休眠（30 节点压力）、Windows Session Host（交叉编译）、快捷键三层、更新契约与检查、服务器模式定义文件已提交；Windows 实机与自动安装未完成 |
