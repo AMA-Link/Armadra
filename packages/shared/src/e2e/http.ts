@@ -97,7 +97,9 @@ export function channelFetch(
     try {
       stream = channel.mux.open("http", method, path);
     } catch (error) {
-      throw new TypeError(`端到端通道不可用：${String(error)}`);
+      throw new TypeError(`端到端通道不可用：${String(error)}`, {
+        cause: error,
+      });
     }
     const onAbort = () => stream.reset(RST_CODE.clientGone);
     signal?.addEventListener("abort", onAbort, { once: true });
@@ -201,7 +203,9 @@ export function channelFetch(
       stream.reset(RST_CODE.clientGone);
       if (signal?.aborted) throw abortError();
       if (error instanceof TypeError) throw error;
-      throw new TypeError(`经端到端通道的请求失败：${String(error)}`);
+      throw new TypeError(`经端到端通道的请求失败：${String(error)}`, {
+        cause: error,
+      });
     }
   };
 }
