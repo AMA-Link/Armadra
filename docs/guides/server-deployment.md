@@ -251,7 +251,7 @@ docker compose exec armadra node /app/docker/backup.mjs
 # → {"path":"/data/canvas.db.backup-manual-20261003T104106Z","bytes":720896}
 ```
 
-裸机上在页面「设置 → 数据 → 备份数据库」，或用 owner 会话 `POST /api/data/backup`。备份文件写在数据目录里，记得再拷到别的机器。
+裸机上在页面「设置 → 本机服务」页头点「立即备份」，或用 owner 会话 `POST /api/data/backup`。备份文件写在数据目录里，记得再拷到别的机器。
 
 **整卷备份**（连 `secrets/` 一起）：
 

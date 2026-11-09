@@ -17,37 +17,37 @@
 
 ## 命令表（默认配置档）
 
-| 命令                                                             | macOS                | Windows / Linux                   | 终端 | 输入 | 条件                                                             |
-| ---------------------------------------------------------------- | -------------------- | --------------------------------- | ---- | ---- | ---------------------------------------------------------------- |
-| 命令面板 `app.commandPalette`                                    | ⌘K                   | Ctrl+K / Ctrl+Shift+P             | 是   | 是   |                                                                  |
-| 设置 `app.settings`                                              | ⌘,                   | Ctrl+,                            | 是   | 是   |                                                                  |
-| 侧栏 `app.sidebar`                                               | ⇧⌘L                  | Ctrl+Shift+L                      | 是   | 是   |                                                                  |
-| 资源管理器 `app.explorer`                                        | ⇧⌘E                  | Ctrl+Shift+E                      | 是   | 是   |                                                                  |
-| 源码控制 `app.sourceControl`                                     | ⇧⌘G                  | Ctrl+Shift+G                      | 是   | 是   |                                                                  |
-| 资源面板 `app.resources`                                         | ⇧⌘U                  | Ctrl+Shift+U                      | 是   | 是   |                                                                  |
-| 快速打开 `app.quickOpen`                                         | ⌘P                   | Ctrl+P                            | 是   | 是   |                                                                  |
-| 项目搜索 `app.projectSearch`                                     | ⇧⌘H                  | Ctrl+Shift+H                      | 是   | 是   |                                                                  |
-| Git 托管 / 问题 / 引用面板                                       | 无                   | 无                                |      |      | 命令面板进入                                                     |
-| 新建终端 `canvas.newTerminal`                                    | ⌘T                   | Ctrl+T                            |      |      |                                                                  |
-| 新建 Agent `canvas.newAgent`                                     | ⇧⌘C                  | Ctrl+Shift+C                      |      |      |                                                                  |
-| 焦点模式 `canvas.focusMode`                                      | ⇧⌘F                  | Ctrl+Shift+F                      |      |      |                                                                  |
-| 最大化节点 `canvas.maximize`                                     | ⇧⌘⏎                  | Ctrl+Shift+Enter                  |      |      |                                                                  |
-| 关闭节点 `canvas.closeNode`                                      | 无（⌘W 经壳）        | 无（Ctrl+W 经壳）                 |      |      | 见「壳与菜单」                                                   |
-| 撤销 / 重做                                                      | ⌘Z / ⇧⌘Z             | Ctrl+Z / Ctrl+Shift+Z             |      |      |                                                                  |
-| 整理画布 `canvas.tidy`                                           | ⇧⌘A                  | Ctrl+Shift+A                      |      |      |                                                                  |
-| 导入 Mermaid `canvas.importMermaid`                              | ⇧⌘M                  | Ctrl+Shift+M                      |      |      |                                                                  |
-| 放大 / 缩小 / 实际大小 / 适应                                    | ⌘= ⌘- ⌘0 ⌘1          | Ctrl+= Ctrl+- Ctrl+0 Ctrl+1       |      |      |                                                                  |
-| 节点间移动焦点                                                   | ⌘←↑→↓                | Ctrl+←↑→↓                         |      |      |                                                                  |
-| 删除 `canvas.delete`                                             | ⌫ / ⌦                | Delete / Backspace                |      |      |                                                                  |
-| 复制 / 剪切 / 粘贴                                               | ⌘C ⌘X ⌘V             | Ctrl+C Ctrl+X Ctrl+V              |      |      | 粘贴放行给原生 `paste`                                           |
-| 网格 / 专注                                                      | ⌘' / ⌘.              | Ctrl+' / Ctrl+.                   |      |      | 专注：`!editorFocus`                                             |
-| 白板工具 选择 / 抓手 / 画笔 / 荧光笔 / 形状 / 直线 / 箭头 / 文字 | V H D ⇧D R L A T     | 同左                              |      |      | 工具用完保持选中；原「工具锁定」开关与 Q 键已撤掉                |
-| 终端搜索 `terminal.search`                                       | ⌘F                   | Ctrl+F                            | 是   |      | Windows / Linux 终端里 Ctrl+F 归 shell，从节点头部或命令面板打开 |
-| 保存 / 重命名 / 格式化                                           | ⌘S / F2 / ⇧⌥F        | Ctrl+S / F2 / Shift+Alt+F         |      | 是   | `editorFocus`                                                    |
-| 跳到定义 / 查找引用 / 代码操作 / 跳到行                          | F12 / ⇧F12 / ⌘. / ⌃G | F12 / Shift+F12 / Ctrl+. / Ctrl+G |      | 是   | `editorFocus`                                                    |
-| 刷新 / 后退 / 前进 / 地址栏                                      | ⌘R / ⌘[ / ⌘] / ⌘L    | Ctrl+R / Alt+← / Alt+→ / Ctrl+L   |      | 是   | `browserFocus`                                                   |
-| 提交 `scm.commit`                                                | ⌘⏎                   | Ctrl+Enter                        |      | 是   | `scmFocus`（Git 提交页内）                                       |
-| 显示 / 隐藏窗口、新建终端（系统全局）                            | 无                   | 无                                |      |      | 仅桌面壳，用户设置后才向系统注册                                 |
+| 命令                                                           | macOS                | Windows / Linux                   | 终端 | 输入 | 条件                                                             |
+| -------------------------------------------------------------- | -------------------- | --------------------------------- | ---- | ---- | ---------------------------------------------------------------- |
+| 命令面板 `app.commandPalette`                                  | ⌘K                   | Ctrl+K / Ctrl+Shift+P             | 是   | 是   |                                                                  |
+| 设置 `app.settings`                                            | ⌘,                   | Ctrl+,                            | 是   | 是   |                                                                  |
+| 侧栏 `app.sidebar`                                             | ⇧⌘L                  | Ctrl+Shift+L                      | 是   | 是   |                                                                  |
+| 资源管理器 `app.explorer`                                      | ⇧⌘E                  | Ctrl+Shift+E                      | 是   | 是   |                                                                  |
+| 源码控制 `app.sourceControl`                                   | ⇧⌘G                  | Ctrl+Shift+G                      | 是   | 是   |                                                                  |
+| 资源面板 `app.resources`                                       | ⇧⌘U                  | Ctrl+Shift+U                      | 是   | 是   |                                                                  |
+| 快速打开 `app.quickOpen`                                       | ⌘P                   | Ctrl+P                            | 是   | 是   |                                                                  |
+| 项目搜索 `app.projectSearch`                                   | ⇧⌘H                  | Ctrl+Shift+H                      | 是   | 是   |                                                                  |
+| Git 托管 / 问题 / 引用面板                                     | 无                   | 无                                |      |      | 命令面板进入                                                     |
+| 新建终端 `canvas.newTerminal`                                  | ⌘T                   | Ctrl+T                            |      |      |                                                                  |
+| 新建 Agent `canvas.newAgent`                                   | ⇧⌘C                  | Ctrl+Shift+C                      |      |      |                                                                  |
+| 焦点模式 `canvas.focusMode`                                    | ⇧⌘F                  | Ctrl+Shift+F                      |      |      |                                                                  |
+| 最大化节点 `canvas.maximize`                                   | ⇧⌘⏎                  | Ctrl+Shift+Enter                  |      |      |                                                                  |
+| 关闭节点 `canvas.closeNode`                                    | 无（⌘W 经壳）        | 无（Ctrl+W 经壳）                 |      |      | 见「壳与菜单」                                                   |
+| 撤销 / 重做                                                    | ⌘Z / ⇧⌘Z             | Ctrl+Z / Ctrl+Shift+Z             |      |      |                                                                  |
+| 整理画布 `canvas.tidy`                                         | ⇧⌘A                  | Ctrl+Shift+A                      |      |      |                                                                  |
+| 导入 Mermaid `canvas.importMermaid`                            | ⇧⌘M                  | Ctrl+Shift+M                      |      |      |                                                                  |
+| 放大 / 缩小 / 实际大小 / 适应                                  | ⌘= ⌘- ⌘0 ⌘1          | Ctrl+= Ctrl+- Ctrl+0 Ctrl+1       |      |      |                                                                  |
+| 节点间移动焦点                                                 | ⌘←↑→↓                | Ctrl+←↑→↓                         |      |      |                                                                  |
+| 删除 `canvas.delete`                                           | ⌫ / ⌦                | Delete / Backspace                |      |      |                                                                  |
+| 复制 / 剪切 / 粘贴                                             | ⌘C ⌘X ⌘V             | Ctrl+C Ctrl+X Ctrl+V              |      |      | 粘贴放行给原生 `paste`                                           |
+| 网格 / 专注                                                    | ⌘' / ⌘.              | Ctrl+' / Ctrl+.                   |      |      | 专注：`!editorFocus`                                             |
+| 白板工具 选择 / 手形 / 画笔 / 高亮 / 形状 / 直线 / 箭头 / 文字 | V H D ⇧D R L A T     | 同左                              |      |      | 工具用完保持选中；原「工具锁定」开关与 Q 键已撤掉                |
+| 终端搜索 `terminal.search`                                     | ⌘F                   | Ctrl+F                            | 是   |      | Windows / Linux 终端里 Ctrl+F 归 shell，从节点头部或命令面板打开 |
+| 保存 / 重命名 / 格式化                                         | ⌘S / F2 / ⇧⌥F        | Ctrl+S / F2 / Shift+Alt+F         |      | 是   | `editorFocus`                                                    |
+| 跳到定义 / 查找引用 / 代码操作 / 跳到行                        | F12 / ⇧F12 / ⌘. / ⌃G | F12 / Shift+F12 / Ctrl+. / Ctrl+G |      | 是   | `editorFocus`                                                    |
+| 刷新 / 后退 / 前进 / 地址栏                                    | ⌘R / ⌘[ / ⌘] / ⌘L    | Ctrl+R / Alt+← / Alt+→ / Ctrl+L   |      | 是   | `browserFocus`                                                   |
+| 提交 `scm.commit`                                              | ⌘⏎                   | Ctrl+Enter                        |      | 是   | `scmFocus`（Git 提交页内）                                       |
+| 显示 / 隐藏窗口、新建终端（系统全局）                          | 无                   | 无                                |      |      | 仅桌面壳，用户设置后才向系统注册                                 |
 
 「VS Code 风格」配置档改动：命令面板 Mod+Shift+P、侧栏 Mod+B、项目搜索 Mod+Shift+F、问题面板 Mod+Shift+M、焦点模式 Mod+Shift+\\、新建终端 Ctrl+`，导入 Mermaid 设为无。
 
