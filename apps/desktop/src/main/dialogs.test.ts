@@ -40,9 +40,12 @@ vi.mock("electron", () => ({
 
 vi.mock("./window", () => ({ getMainWindow: () => mainWindow }));
 
-import { pickDirectory } from "./dialogs";
+// Each test gets a fresh module: the picker remembers the last folder.
+let pickDirectory: typeof import("./dialogs").pickDirectory;
 
-beforeEach(() => {
+beforeEach(async () => {
+  vi.resetModules();
+  ({ pickDirectory } = await import("./dialogs"));
   calls.length = 0;
   answer = { canceled: false, filePaths: ["/picked"] };
   mainWindow = { id: 1 };
@@ -66,6 +69,33 @@ describe("the folder picker", () => {
   it("omits the default path rather than sending undefined", async () => {
     await pickDirectory();
     expect("defaultPath" in (calls[0]?.options ?? {})).toBe(false);
+  });
+});
+
+describe("where the panel opens", () => {
+  // Since Electron 43 a dialog without a default path opens in Downloads, so
+  // the shell carries the last place itself.
+  it("starts beside the last pick", async () => {
+    answer = { canceled: false, filePaths: ["/home/somebody/projects/one"] };
+    await pickDirectory();
+    await pickDirectory();
+    expect(calls[1]?.options.defaultPath).toBe("/home/somebody/projects");
+  });
+
+  it("lets a caller's own default path win", async () => {
+    answer = { canceled: false, filePaths: ["/home/somebody/projects/one"] };
+    await pickDirectory();
+    await pickDirectory({ defaultPath: "/elsewhere" });
+    expect(calls[1]?.options.defaultPath).toBe("/elsewhere");
+  });
+
+  it("keeps the last place when a pick is cancelled", async () => {
+    answer = { canceled: false, filePaths: ["/home/somebody/projects/one"] };
+    await pickDirectory();
+    answer = { canceled: true, filePaths: [] };
+    await pickDirectory();
+    await pickDirectory();
+    expect(calls[2]?.options.defaultPath).toBe("/home/somebody/projects");
   });
 });
 
