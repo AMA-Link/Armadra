@@ -6,7 +6,7 @@
  * 命令行、路径、进程名。不进 `ResourceSnapshot`：那是面板的契约。
  */
 
-import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
+import { monitorEventLoopDelay, type ELDHistogram } from "node:perf_hooks";
 
 /** 事件循环延迟报多长一段：最近 30–60 s（两段各 30 s 轮换）。 */
 export const EVENT_LOOP_WINDOW_MS = 60_000;
@@ -56,7 +56,7 @@ export const EVENT_LOOP_RESOLUTION_MS = 10;
  * `monitorEventLoopDelay` 记的是两次定时器回调之间的整段时间，含采样间隔本身
  * （空闲进程的 p50 约 10.5 ms）；这里只报超出间隔的那一段，也就是被挡住的时间。
  */
-function segmentOf(histogram: IntervalHistogram): Segment | undefined {
+function segmentOf(histogram: ELDHistogram): Segment | undefined {
   if (histogram.count === 0) return undefined;
   const excess = (nanoseconds: number) =>
     Math.max(0, nanoseconds - EVENT_LOOP_RESOLUTION_MS * 1e6);
@@ -74,7 +74,7 @@ function segmentOf(histogram: IntervalHistogram): Segment | undefined {
  * 样本多的那段。
  */
 export class EventLoopMonitor {
-  private current: IntervalHistogram | undefined;
+  private current: ELDHistogram | undefined;
   private previous: Segment | undefined;
   private rotateTimer: NodeJS.Timeout | undefined;
 

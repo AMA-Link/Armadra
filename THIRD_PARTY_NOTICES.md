@@ -9,7 +9,7 @@ Armadra is distributed under the MIT License (see `LICENSE`). It includes the th
 - **Electron and Chromium.** The notices Electron and Chromium require to accompany their binaries are shipped as `LICENSE.electron.txt` and `LICENSES.chromium.html` next to the executable (on macOS in `Armadra.app/Contents/Resources/`).
 - **ama (`@armadra/agent` 0.16.0).** Its own license and third-party notices are shipped in `resources/agent/` as `LICENSE` and `THIRD_PARTY_NOTICES.md`.
 
-## npm packages (522)
+## npm packages (541)
 
 ### @antfu/install-pkg@2.1.0
 
@@ -74,7 +74,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @capacitor/android@8.5.2
+### @capacitor/android@8.6.0
 
 License: MIT
 Author: Ionic Team
@@ -106,7 +106,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @capacitor/core@8.5.2
+### @capacitor/core@8.6.0
 
 License: MIT
 Author: Ionic Team
@@ -138,7 +138,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @capacitor/ios@8.5.2
+### @capacitor/ios@8.6.0
 
 License: MIT
 Author: Ionic Team
@@ -1227,7 +1227,7 @@ Apache License
    limitations under the License.
 ```
 
-### @codemirror/autocomplete@6.20.3
+### @codemirror/autocomplete@6.20.4
 
 License: MIT
 Author: Marijn Haverbeke
@@ -1511,7 +1511,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### @codemirror/language@6.12.4
+### @codemirror/language@6.13.1
 
 License: MIT
 Author: Marijn Haverbeke
@@ -1573,7 +1573,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### @codemirror/lsp-client@6.2.5
+### @codemirror/lsp-client@6.3.0
 
 License: MIT
 Author: Marijn Haverbeke
@@ -1635,7 +1635,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### @codemirror/state@6.7.2
+### @codemirror/state@6.7.6
 
 License: MIT
 Author: Marijn Haverbeke
@@ -1666,7 +1666,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### @codemirror/view@6.43.10
+### @codemirror/streamparser@6.0.0
 
 License: MIT
 Author: Marijn Haverbeke
@@ -1697,7 +1697,38 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### @dagrejs/dagre@3.1.1
+### @codemirror/view@6.43.15
+
+License: MIT
+Author: Marijn Haverbeke
+
+LICENSE:
+
+```text
+MIT License
+
+Copyright (C) 2018-2021 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```
+
+### @dagrejs/dagre@3.1.3
 
 License: MIT
 Author: Chris Pettitt
@@ -1727,7 +1758,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### @dagrejs/graphlib@4.0.5
+### @dagrejs/graphlib@4.0.6
 
 License: MIT
 Author: Chris Pettitt
@@ -4515,6 +4546,37 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+### @orpc/client@1.16.2
+
+License: MIT
+Homepage: https://orpc.dev
+
+LICENSE:
+
+```text
+MIT License
+
+Copyright (c) 2023 oRPC
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ### @orpc/contract@1.15.4
 
 License: MIT
@@ -4546,7 +4608,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @orpc/interop@1.15.4
+### @orpc/contract@1.16.2
 
 License: MIT
 Homepage: https://orpc.dev
@@ -4577,7 +4639,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @orpc/openapi@1.15.4
+### @orpc/interop@1.16.2
 
 License: MIT
 Homepage: https://orpc.dev
@@ -4608,7 +4670,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @orpc/openapi-client@1.15.4
+### @orpc/openapi@1.16.2
 
 License: MIT
 Homepage: https://orpc.dev
@@ -4639,7 +4701,38 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @orpc/server@1.15.4
+### @orpc/openapi-client@1.16.2
+
+License: MIT
+Homepage: https://orpc.dev
+
+LICENSE:
+
+```text
+MIT License
+
+Copyright (c) 2023 oRPC
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### @orpc/server@1.16.2
 
 License: MIT
 Homepage: https://orpc.dev
@@ -4701,6 +4794,37 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+### @orpc/shared@1.16.2
+
+License: MIT
+Homepage: https://orpc.dev
+
+LICENSE:
+
+```text
+MIT License
+
+Copyright (c) 2023 oRPC
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ### @orpc/standard-server@1.15.4
 
 License: MIT
@@ -4732,7 +4856,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @orpc/standard-server-aws-lambda@1.15.4
+### @orpc/standard-server@1.16.2
 
 License: MIT
 Homepage: https://orpc.dev
@@ -4763,7 +4887,38 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @orpc/standard-server-fastify@1.15.4
+### @orpc/standard-server-aws-lambda@1.16.2
+
+License: MIT
+Homepage: https://orpc.dev
+
+LICENSE:
+
+```text
+MIT License
+
+Copyright (c) 2023 oRPC
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### @orpc/standard-server-fastify@1.16.2
 
 License: MIT
 Homepage: https://orpc.dev
@@ -4825,7 +4980,38 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @orpc/standard-server-node@1.15.4
+### @orpc/standard-server-fetch@1.16.2
+
+License: MIT
+Homepage: https://orpc.dev
+
+LICENSE:
+
+```text
+MIT License
+
+Copyright (c) 2023 oRPC
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### @orpc/standard-server-node@1.16.2
 
 License: MIT
 Homepage: https://orpc.dev
@@ -4887,7 +5073,38 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @otplib/core@13.5.0
+### @orpc/standard-server-peer@1.16.2
+
+License: MIT
+Homepage: https://orpc.com
+
+LICENSE:
+
+```text
+MIT License
+
+Copyright (c) 2023 oRPC
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### @otplib/core@13.6.0
 
 License: MIT
 Author: Gerald Yeo
@@ -4919,7 +5136,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @otplib/hotp@13.5.0
+### @otplib/hotp@13.6.0
 
 License: MIT
 Author: Gerald Yeo
@@ -4951,7 +5168,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @otplib/plugin-base32-scure@13.5.0
+### @otplib/plugin-base32-scure@13.6.0
 
 License: MIT
 Author: Gerald Yeo
@@ -4983,7 +5200,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @otplib/plugin-crypto-noble@13.5.0
+### @otplib/plugin-crypto-noble@13.6.0
 
 License: MIT
 Author: Gerald Yeo
@@ -5015,7 +5232,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @otplib/totp@13.5.0
+### @otplib/totp@13.6.0
 
 License: MIT
 Author: Gerald Yeo
@@ -5047,7 +5264,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @otplib/uri@13.5.0
+### @otplib/uri@13.6.0
 
 License: MIT
 Author: Gerald Yeo
@@ -5653,7 +5870,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-accessible-icon@1.1.15
+### @radix-ui/primitive@1.2.0
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -5684,7 +5901,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-accordion@1.2.20
+### @radix-ui/react-accessible-icon@1.2.0
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -5715,7 +5932,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-alert-dialog@1.1.23
+### @radix-ui/react-accordion@1.3.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -5746,7 +5963,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-arrow@1.1.15
+### @radix-ui/react-alert-dialog@1.2.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -5777,7 +5994,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-aspect-ratio@1.1.15
+### @radix-ui/react-arrow@1.1.17
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -5808,7 +6025,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-avatar@1.2.6
+### @radix-ui/react-aspect-ratio@1.2.0
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -5839,7 +6056,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-checkbox@1.3.11
+### @radix-ui/react-avatar@1.3.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -5870,7 +6087,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-collapsible@1.1.20
+### @radix-ui/react-checkbox@1.4.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -5901,7 +6118,38 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-collection@1.1.15
+### @radix-ui/react-collapsible@1.2.1
+
+License: MIT
+Homepage: https://radix-ui.com/primitives
+
+LICENSE:
+
+```text
+MIT License
+
+Copyright (c) 2022 WorkOS
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### @radix-ui/react-collection@1.2.0
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -5994,7 +6242,38 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-context-menu@2.3.7
+### @radix-ui/react-context@1.3.0
+
+License: MIT
+Homepage: https://radix-ui.com/primitives
+
+LICENSE:
+
+```text
+MIT License
+
+Copyright (c) 2022 WorkOS
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### @radix-ui/react-context-menu@2.4.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -6056,7 +6335,38 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-direction@1.1.4
+### @radix-ui/react-dialog@1.3.1
+
+License: MIT
+Homepage: https://radix-ui.com/primitives
+
+LICENSE:
+
+```text
+MIT License
+
+Copyright (c) 2022 WorkOS
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### @radix-ui/react-direction@1.2.0
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -6118,7 +6428,38 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-dropdown-menu@2.1.24
+### @radix-ui/react-dismissable-layer@1.2.1
+
+License: MIT
+Homepage: https://radix-ui.com/primitives
+
+LICENSE:
+
+```text
+MIT License
+
+Copyright (c) 2022 WorkOS
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### @radix-ui/react-dropdown-menu@2.2.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -6180,6 +6521,37 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+### @radix-ui/react-focus-guards@1.2.0
+
+License: MIT
+Homepage: https://radix-ui.com/primitives
+
+LICENSE:
+
+```text
+MIT License
+
+Copyright (c) 2022 WorkOS
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ### @radix-ui/react-focus-scope@1.1.16
 
 License: MIT
@@ -6211,7 +6583,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-form@0.1.16
+### @radix-ui/react-focus-scope@1.3.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -6242,7 +6614,38 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-hover-card@1.1.23
+### @radix-ui/react-form@0.3.0
+
+License: MIT
+Homepage: https://radix-ui.com/primitives
+
+LICENSE:
+
+```text
+MIT License
+
+Copyright (c) 2022 WorkOS
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### @radix-ui/react-hover-card@1.2.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -6304,7 +6707,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-label@2.1.15
+### @radix-ui/react-label@2.1.17
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -6335,7 +6738,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-menu@2.1.24
+### @radix-ui/react-menu@2.2.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -6366,7 +6769,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-menubar@1.1.24
+### @radix-ui/react-menubar@1.2.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -6397,7 +6800,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-navigation-menu@1.2.22
+### @radix-ui/react-navigation-menu@1.4.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -6428,7 +6831,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-one-time-password-field@0.1.16
+### @radix-ui/react-one-time-password-field@0.2.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -6459,7 +6862,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-password-toggle-field@0.1.11
+### @radix-ui/react-password-toggle-field@0.2.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -6490,7 +6893,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-popover@1.1.23
+### @radix-ui/react-popover@1.3.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -6521,7 +6924,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-popper@1.3.7
+### @radix-ui/react-popper@1.4.0
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -6583,7 +6986,69 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+### @radix-ui/react-portal@1.2.0
+
+License: MIT
+Homepage: https://radix-ui.com/primitives
+
+LICENSE:
+
+```text
+MIT License
+
+Copyright (c) 2022 WorkOS
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ### @radix-ui/react-presence@1.1.10
+
+License: MIT
+Homepage: https://radix-ui.com/primitives
+
+LICENSE:
+
+```text
+MIT License
+
+Copyright (c) 2022 WorkOS
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### @radix-ui/react-presence@1.1.11
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -6645,7 +7110,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-progress@1.1.16
+### @radix-ui/react-primitive@2.2.0
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -6676,7 +7141,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-radio-group@1.4.7
+### @radix-ui/react-progress@1.2.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -6707,7 +7172,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-roving-focus@1.1.19
+### @radix-ui/react-radio-group@1.5.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -6738,7 +7203,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-scroll-area@1.2.18
+### @radix-ui/react-roving-focus@1.2.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -6769,7 +7234,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-select@2.3.7
+### @radix-ui/react-scroll-area@1.4.0
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -6800,7 +7265,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-separator@1.1.15
+### @radix-ui/react-select@2.4.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -6831,7 +7296,38 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-slider@1.4.7
+### @radix-ui/react-separator@1.2.0
+
+License: MIT
+Homepage: https://radix-ui.com/primitives
+
+LICENSE:
+
+```text
+MIT License
+
+Copyright (c) 2022 WorkOS
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### @radix-ui/react-slider@1.6.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -6893,7 +7389,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-switch@1.3.7
+### @radix-ui/react-slot@1.5.0
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -6924,7 +7420,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-tabs@1.1.21
+### @radix-ui/react-switch@1.4.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -6955,7 +7451,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-toast@1.2.23
+### @radix-ui/react-tabs@1.2.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -6986,7 +7482,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-toggle@1.1.18
+### @radix-ui/react-toast@1.3.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -7017,7 +7513,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-toggle-group@1.1.19
+### @radix-ui/react-toggle@1.2.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -7048,7 +7544,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-toolbar@1.1.19
+### @radix-ui/react-toggle-group@1.2.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -7079,7 +7575,38 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-tooltip@1.2.16
+### @radix-ui/react-toolbar@1.2.1
+
+License: MIT
+Homepage: https://radix-ui.com/primitives
+
+LICENSE:
+
+```text
+MIT License
+
+Copyright (c) 2022 WorkOS
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### @radix-ui/react-tooltip@1.4.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -7141,7 +7668,69 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+### @radix-ui/react-use-callback-ref@1.1.5
+
+License: MIT
+Homepage: https://radix-ui.com/primitives
+
+LICENSE:
+
+```text
+MIT License
+
+Copyright (c) 2022 WorkOS
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
 ### @radix-ui/react-use-controllable-state@1.2.6
+
+License: MIT
+Homepage: https://radix-ui.com/primitives
+
+LICENSE:
+
+```text
+MIT License
+
+Copyright (c) 2022 WorkOS
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### @radix-ui/react-use-controllable-state@1.3.0
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -7203,7 +7792,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-use-escape-keydown@1.1.5
+### @radix-ui/react-use-escape-keydown@1.1.6
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -7358,7 +7947,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-use-size@1.1.4
+### @radix-ui/react-use-size@1.1.5
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -7389,7 +7978,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @radix-ui/react-visually-hidden@1.2.11
+### @radix-ui/react-visually-hidden@1.2.13
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -7875,7 +8464,7 @@ Homepage: https://github.com/getsentry/sentry-javascript/tree/master/packages/se
 
 The package ships no license file; see its homepage for the license terms.
 
-### @simplewebauthn/server@14.0.3
+### @simplewebauthn/server@14.1.0
 
 License: MIT
 Author: Matthew Miller
@@ -7968,7 +8557,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @tanstack/query-core@5.101.4
+### @tanstack/query-core@5.107.1
 
 License: MIT
 Author: tannerlinsley
@@ -8000,7 +8589,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @tanstack/react-query@5.101.4
+### @tanstack/react-query@5.107.1
 
 License: MIT
 Author: tannerlinsley
@@ -8032,7 +8621,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @tanstack/react-virtual@3.14.10
+### @tanstack/react-virtual@3.14.26
 
 License: MIT
 Author: Tanner Linsley
@@ -8064,7 +8653,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @tanstack/virtual-core@3.17.8
+### @tanstack/virtual-core@3.19.11
 
 License: MIT
 Author: Tanner Linsley
@@ -9274,7 +9863,7 @@ MIT License
     SOFTWARE
 ```
 
-### @types/react@19.2.14
+### @types/react@19.3.0
 
 License: MIT
 Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react
@@ -9305,7 +9894,7 @@ MIT License
     SOFTWARE
 ```
 
-### @types/react-dom@19.2.3
+### @types/react-dom@19.3.0
 
 License: MIT
 Homepage: https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react-dom
@@ -9730,7 +10319,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### @xyflow/react@12.11.6
+### @xyflow/react@12.12.1
 
 License: MIT
 Homepage: https://reactflow.dev
@@ -9761,7 +10350,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @xyflow/system@0.0.82
+### @xyflow/system@0.0.84
 
 License: MIT
 Homepage: https://github.com/xyflow/xyflow#readme
@@ -10985,7 +11574,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### cn@0.2.5
+### cn@0.5.2
 
 License: MIT
 Homepage: https://github.com/shadcn-ui/cn#readme
@@ -13342,7 +13931,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### electron-updater@6.8.9
+### electron-updater@6.8.11
 
 License: MIT
 Author: Vladimir Krivosheev
@@ -15802,7 +16391,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### lucide-react@1.31.0
+### lucide-react@1.70.0
 
 License: ISC
 Author: Eric Fennis
@@ -17807,7 +18396,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### nodemailer@10.1.4
+### nodemailer@10.4.0
 
 License: MIT-0
 Author: Andris Reinman
@@ -17866,7 +18455,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### otplib@13.5.0
+### otplib@13.6.0
 
 License: MIT
 Author: Gerald Yeo
@@ -18254,7 +18843,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### radix-ui@1.6.7
+### radix-ui@1.8.1
 
 License: MIT
 Homepage: https://radix-ui.com/primitives
@@ -18285,7 +18874,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### react@19.2.8
+### react@19.3.1
 
 License: MIT
 Homepage: https://react.dev/
@@ -18316,7 +18905,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### react-dom@19.2.8
+### react-dom@19.3.1
 
 License: MIT
 Homepage: https://react.dev/
@@ -18482,7 +19071,7 @@ Homepage: https://github.com/theKashey/react-remove-scroll-bar#readme
 
 The package ships no license file; see its homepage for the license terms.
 
-### react-resizable-panels@4.12.4
+### react-resizable-panels@4.19.1
 
 License: MIT
 Author: Brian Vaughn
@@ -19135,7 +19724,7 @@ will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim.***
 ```
 
-### scheduler@0.27.0
+### scheduler@0.28.0
 
 License: MIT
 Homepage: https://react.dev/
@@ -19458,7 +20047,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### tailwind-merge@3.6.0
+### tailwind-merge@3.7.0
 
 License: MIT
 Author: Dany Castillo
@@ -19490,7 +20079,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### tailwindcss@4.3.3
+### tailwindcss@4.3.5
 
 License: MIT
 Homepage: https://tailwindcss.com
@@ -20462,7 +21051,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### ws@8.21.0
+### ws@8.22.1
 
 License: MIT
 Author: Einar Otto Stangvik
@@ -20559,7 +21148,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### zod@4.6.6
+### zod@4.6.7
 
 License: MIT
 Author: Colin McDonnell
@@ -20623,7 +21212,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### zustand@5.0.14
+### zustand@5.1.0
 
 License: MIT
 Author: Paul Henschel
