@@ -10,6 +10,7 @@ import type { AgentInfo } from "@armadra/shared";
 
 const mock = vi.hoisted(() => ({
   agents: vi.fn(),
+  amaCredentials: vi.fn(),
   integration: vi.fn(),
   installIntegration: vi.fn(),
   uninstallIntegration: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock("@/api/client", async () => {
     ...request,
     localRuntimeApi: {
       agents: () => mock.agents(),
+      amaCredentials: () => mock.amaCredentials(),
       agentIntegration: (id: string) => mock.integration(id),
       installAgentIntegration: (id: string) => mock.installIntegration(id),
       uninstallAgentIntegration: (id: string) => mock.uninstallIntegration(id),
@@ -455,6 +457,37 @@ describe("Agent CLI 子页", () => {
    * 接口没答上来时整页是空白的：没有 CLI 与还没读完长得一模一样，用户
    * 只能看着一张空页猜。
    */
+  /**
+   * ama 的模型密钥在它自己的子页里填：它不读环境变量，「凭据与密钥」页在功能开关后面，
+   * 没有这一组就无处可填（#898）。别的 Agent 的子页没有这一组。
+   */
+  it("puts the model keys on ama's sub-page only", async () => {
+    mock.amaCredentials.mockReset().mockResolvedValue({
+      backend: "keychain",
+      providers: [{ id: "anthropic", isSet: false }],
+    });
+    mock.agents
+      .mockReset()
+      .mockResolvedValue([
+        claude,
+        { ...claude, id: "ama", label: "Armadra Agent", launchCmd: "ama" },
+      ]);
+    mock.integration.mockImplementation(async (id: string) => ({
+      ...healthy,
+      agentId: id,
+    }));
+    const ama = view("cli:ama");
+    expect(await screen.findByText(zh("agent.amaKeys"))).toBeTruthy();
+    expect(screen.getByLabelText(zh("agent.amaKeys.key"))).toBeTruthy();
+    ama.unmount();
+
+    view("cli:claude");
+    expect(
+      await screen.findByText(zh("integration.state.installed")),
+    ).toBeTruthy();
+    expect(screen.queryByText(zh("agent.amaKeys"))).toBeNull();
+  });
+
   it("says so when there is no CLI to list", async () => {
     mock.agents.mockReset().mockResolvedValue([]);
     view(null);
