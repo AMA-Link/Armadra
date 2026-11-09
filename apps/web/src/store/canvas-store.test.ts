@@ -40,13 +40,11 @@ vi.mock("../nodes/registry", () => {
 });
 
 const { COLLAPSED_HEIGHT } = await import("./defaults");
-const { absolutePosition, resetHistory, useCanvasStore } = await import(
-  "./canvas-store"
-);
+const { absolutePosition, resetHistory, useCanvasStore } =
+  await import("./canvas-store");
 const { emptyWhiteboard } = await import("../canvas/whiteboard/model");
-const { MAX_QUEUED_NODES, queuedWriteBackCount } = await import(
-  "./canvas/writeback"
-);
+const { MAX_QUEUED_NODES, queuedWriteBackCount } =
+  await import("./canvas/writeback");
 
 const timestamp = "2026-08-13T00:00:00.000Z";
 

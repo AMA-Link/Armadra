@@ -216,8 +216,7 @@ export class AskpassService {
   private started = false;
   private spec: ListenSpec | undefined;
   private windows:
-    | { launcher: string; pipe: string; keyFile: string }
-    | undefined;
+    { launcher: string; pipe: string; keyFile: string } | undefined;
 
   constructor(private readonly options: AskpassOptions) {}
 

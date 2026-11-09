@@ -144,10 +144,10 @@ const viewportOf = (page) =>
 const sameView = (one, two) =>
   Boolean(
     one &&
-      two &&
-      Math.abs(one.cx - two.cx) < 3 &&
-      Math.abs(one.cy - two.cy) < 3 &&
-      Math.abs(one.zoom - two.zoom) < 0.01,
+    two &&
+    Math.abs(one.cx - two.cx) < 3 &&
+    Math.abs(one.cy - two.cy) < 3 &&
+    Math.abs(one.zoom - two.zoom) < 0.01,
   );
 
 const report = { status: "failed", output, scenarios: [] };

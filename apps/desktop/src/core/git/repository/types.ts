@@ -76,12 +76,7 @@ export function resetFlag(mode: ResetMode): string {
  * arbitrary command supplied by the caller, and this service never runs one.
  */
 export type RebaseTodoCommand =
-  | "pick"
-  | "reword"
-  | "edit"
-  | "squash"
-  | "fixup"
-  | "drop";
+  "pick" | "reword" | "edit" | "squash" | "fixup" | "drop";
 
 export function todoKeyword(command: RebaseTodoCommand): string {
   // A reword is written as a pick plus a generated amend; Git's own `reword`

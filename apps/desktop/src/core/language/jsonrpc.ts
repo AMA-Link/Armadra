@@ -39,12 +39,7 @@ import { MAX_MESSAGE_BYTES } from "./limits";
 export type Kind = "request" | "response" | "notification";
 
 export type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | JsonValue[]
-  | { [key: string]: JsonValue };
+  null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
 export interface JsonObject {
   [key: string]: JsonValue;

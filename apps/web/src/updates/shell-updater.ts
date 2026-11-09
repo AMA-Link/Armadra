@@ -93,9 +93,7 @@ export function shellManaged(state: ShellUpdateState): ShellManaged | null {
     return null;
   }
   const download = managed.download as
-    | Partial<NonNullable<ShellManaged["download"]>>
-    | null
-    | undefined;
+    Partial<NonNullable<ShellManaged["download"]>> | null | undefined;
   return {
     package: managed.package as ShellManagedKind,
     download:

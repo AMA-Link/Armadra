@@ -194,11 +194,9 @@ describe("原生插件", () => {
   });
 
   it("推送注册：中继必须带公钥", async () => {
-    const pushRegistration = vi.fn(
-      async (): Promise<unknown> => ({
-        registration: { platform: "ios", transport: "direct", token: "tok" },
-      }),
-    );
+    const pushRegistration = vi.fn(async (): Promise<unknown> => ({
+      registration: { platform: "ios", transport: "direct", token: "tok" },
+    }));
     inApp({ pushRegistration });
     const bridge = nativeBridge();
     await expect(bridge.pushRegistration()).resolves.toEqual({

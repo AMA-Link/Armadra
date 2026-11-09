@@ -41,10 +41,7 @@ export interface LogToolbarProps {
 
 /** 设置菜单里的四个开关；它们都是布尔，所以能共用一个渲染。 */
 type ViewToggle =
-  | "showAllBranches"
-  | "highlightMine"
-  | "compactRows"
-  | "showHashColumn";
+  "showAllBranches" | "highlightMine" | "compactRows" | "showHashColumn";
 
 function toggle(list: readonly string[], value: string): string[] {
   return list.includes(value)

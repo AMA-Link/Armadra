@@ -7,8 +7,10 @@ import { Avatar, AvatarFallback } from "@/ui/avatar";
 /** 设计系统 §3.2：头像只有 20 / 24 / 32 三档。 */
 export type AgentAvatarSize = 20 | 24 | 32;
 
-export interface AgentAvatarProps
-  extends Omit<React.ComponentProps<typeof Avatar>, "size" | "children"> {
+export interface AgentAvatarProps extends Omit<
+  React.ComponentProps<typeof Avatar>,
+  "size" | "children"
+> {
   /** 内置 id（`claude`…）或 `custom:*`。 */
   agentId: string;
   size?: AgentAvatarSize;

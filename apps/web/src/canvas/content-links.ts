@@ -332,8 +332,7 @@ export function resolveSource(
  * `nodes` 里」区分——两张表的 id 都是 uuid，不会撞。
  */
 export type ReferenceSource =
-  | { kind: "item"; item: Item }
-  | { kind: "frame"; frame: FrameSource };
+  { kind: "item"; item: Item } | { kind: "frame"; frame: FrameSource };
 
 export interface ContentDescriptor {
   /** `ContextLink.id`，也是 `.armadra/exports/<id>.png` 的文件名。 */

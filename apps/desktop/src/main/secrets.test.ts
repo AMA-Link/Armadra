@@ -19,67 +19,79 @@ function storage(
   options: { available?: boolean; backend?: string } = {},
 ): SafeStorageLike {
   return {
-    isEncryptionAvailable: () => options.available ?? true,
-    encryptString: (text) =>
-      Buffer.from(`enc:${Buffer.from(text).toString("hex")}`),
-    decryptString: (buffer) => {
+    isAsyncEncryptionAvailable: () =>
+      Promise.resolve(options.available ?? true),
+    encryptStringAsync: (text) =>
+      Promise.resolve(Buffer.from(`enc:${Buffer.from(text).toString("hex")}`)),
+    decryptStringAsync: (buffer) => {
       const text = buffer.toString();
-      if (!text.startsWith("enc:")) throw new Error("internal detail");
-      return Buffer.from(text.slice(4), "hex").toString();
+      if (!text.startsWith("enc:")) {
+        return Promise.reject(new Error("internal detail"));
+      }
+      return Promise.resolve({
+        result: Buffer.from(text.slice(4), "hex").toString(),
+      });
     },
     getSelectedStorageBackend: () => options.backend ?? "unknown",
   };
 }
 
 describe("桌面壳能给的封存种类", () => {
-  it("Windows：DPAPI 可用才用", () => {
-    expect(sealerKind(storage(), "win32")).toBe("dpapi");
-    expect(sealerKind(storage({ available: false }), "win32")).toBeUndefined();
+  it("Windows：DPAPI 可用才用", async () => {
+    expect(await sealerKind(storage(), "win32")).toBe("dpapi");
+    expect(
+      await sealerKind(storage({ available: false }), "win32"),
+    ).toBeUndefined();
   });
 
-  it("Linux：只认 libsecret / kwallet，basic_text 即使答「可用」也拒绝", () => {
-    expect(sealerKind(storage({ backend: "gnome_libsecret" }), "linux")).toBe(
+  it("Linux：只认 libsecret / kwallet，basic_text 即使答「可用」也拒绝", async () => {
+    expect(
+      await sealerKind(storage({ backend: "gnome_libsecret" }), "linux"),
+    ).toBe("libsecret");
+    expect(await sealerKind(storage({ backend: "kwallet5" }), "linux")).toBe(
       "libsecret",
     );
-    expect(sealerKind(storage({ backend: "kwallet5" }), "linux")).toBe(
-      "libsecret",
-    );
-    expect(sealerKind(storage({ backend: "kwallet6" }), "linux")).toBe(
+    expect(await sealerKind(storage({ backend: "kwallet6" }), "linux")).toBe(
       "libsecret",
     );
     expect(
-      sealerKind(storage({ backend: "basic_text", available: true }), "linux"),
+      await sealerKind(
+        storage({ backend: "basic_text", available: true }),
+        "linux",
+      ),
     ).toBeUndefined();
     expect(
-      sealerKind(storage({ backend: "unknown" }), "linux"),
+      await sealerKind(storage({ backend: "unknown" }), "linux"),
     ).toBeUndefined();
     expect(
-      sealerKind(
+      await sealerKind(
         storage({ backend: "gnome_libsecret", available: false }),
         "linux",
       ),
     ).toBeUndefined();
   });
 
-  it("macOS：不用 safeStorage，core 维持 security(1)", () => {
-    expect(sealerKind(storage(), "darwin")).toBeUndefined();
+  it("macOS：不用 safeStorage，core 维持 security(1)", async () => {
+    expect(await sealerKind(storage(), "darwin")).toBeUndefined();
   });
 
-  it("环境变量：给不了时清成空串，免得继承来的值让 core 等一个不会应答的壳", () => {
+  it("环境变量：给不了时清成空串，免得继承来的值让 core 等一个不会应答的壳", async () => {
     expect(sealerEnvironment("dpapi")).toEqual({ [SEALER_ENV]: "ipc:dpapi" });
     expect(sealerEnvironment(undefined)).toEqual({});
     expect(
-      secretChannel(storage({ backend: "basic_text" }), "linux").environment(),
+      (
+        await secretChannel(storage({ backend: "basic_text" }), "linux")
+      ).environment(),
     ).toEqual({ [SEALER_ENV]: "" });
-    expect(secretChannel(storage(), "win32").environment()).toEqual({
+    expect((await secretChannel(storage(), "win32")).environment()).toEqual({
       [SEALER_ENV]: "ipc:dpapi",
     });
   });
 });
 
 describe("应答", () => {
-  it("封与解往返，失败只回代码", () => {
-    const sealed = answer(storage(), {
+  it("封与解往返，失败只回代码", async () => {
+    const sealed = await answer(storage(), {
       type: SECRETS_MESSAGE,
       id: 1,
       op: "seal",
@@ -87,7 +99,7 @@ describe("应答", () => {
     });
     expect(sealed.ok).toBe(true);
     if (!sealed.ok) return;
-    const opened = answer(storage(), {
+    const opened = await answer(storage(), {
       type: SECRETS_MESSAGE,
       id: 2,
       op: "unseal",
@@ -97,7 +109,7 @@ describe("应答", () => {
     if (!opened.ok) return;
     expect(Buffer.from(opened.data, "base64").toString()).toBe("value");
 
-    const failed = answer(storage(), {
+    const failed = await answer(storage(), {
       type: SECRETS_MESSAGE,
       id: 3,
       op: "unseal",

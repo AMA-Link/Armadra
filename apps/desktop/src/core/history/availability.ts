@@ -15,10 +15,7 @@ import { historyAdapter } from "./registry";
  * 判断全部从 {@link historyAdapter} 派生，注册表加一行，这里的答案跟着变。
  */
 export type HistoryState =
-  | "available"
-  | "not-found"
-  | "unsupported"
-  | "disabled";
+  "available" | "not-found" | "unsupported" | "disabled";
 
 export interface HistoryAvailability {
   /** 会话索引。 */

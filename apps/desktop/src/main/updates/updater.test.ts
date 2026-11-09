@@ -471,9 +471,8 @@ describe("the restart report (§2.3, R6)", () => {
     const { controller } = await subject({
       runtimeVersion: async () => "0.1.0",
     });
-    const { writePending } = await import(
-      "../../shell-core/updates/coordinate"
-    );
+    const { writePending } =
+      await import("../../shell-core/updates/coordinate");
     writePending(directory, {
       expectedVersion: "0.2.0",
       previousVersion: "0.1.0",
@@ -496,9 +495,8 @@ describe("checking the release index (external services §3.1, §3.4)", () => {
   const SOURCE = "http://127.0.0.1:8123/repos/o/r";
 
   async function target(): Promise<string> {
-    const { shellTarget, feedName } = await import(
-      "../../shell-core/updates/offer"
-    );
+    const { shellTarget, feedName } =
+      await import("../../shell-core/updates/offer");
     const value = shellTarget(process.platform, process.arch);
     if (value === null || feedName(value) === null) {
       throw new Error("this test needs a platform a release builds for");
@@ -709,9 +707,8 @@ describe("checking the release index (external services §3.1, §3.4)", () => {
   it("downloads through this target's own feed, after checking it", async () => {
     const { index, files } = await release();
     serve(index, files);
-    const { feedName, updaterChannel } = await import(
-      "../../shell-core/updates/offer"
-    );
+    const { feedName, updaterChannel } =
+      await import("../../shell-core/updates/offer");
     const own = await target();
     const { controller } = await subject();
     await controller.checkRelease({ manual: true, nowMs: 1 });
@@ -748,9 +745,8 @@ describe("a package carrying the release key (issue #288 §2)", () => {
 
   /** A throwaway minisign key, in the files `tools/release/minisign.mjs` writes. */
   async function releaseKey() {
-    const { generateKeyPairSync, randomBytes, sign } = await import(
-      "node:crypto"
-    );
+    const { generateKeyPairSync, randomBytes, sign } =
+      await import("node:crypto");
     const { privateKey, publicKey } = generateKeyPairSync("ed25519");
     const der = publicKey.export({ format: "der", type: "spki" });
     const keyId = randomBytes(8);

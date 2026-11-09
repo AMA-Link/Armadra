@@ -100,10 +100,7 @@ export interface NativeAppInfo {
  * 后再调一次（已下好、核对过的包会复用）。
  */
 export type InstallApkStatus =
-  | "started"
-  | "permissionRequired"
-  | "checksumMismatch"
-  | "failed";
+  "started" | "permissionRequired" | "checksumMismatch" | "failed";
 
 export interface InstallApkResult {
   readonly status: InstallApkStatus;

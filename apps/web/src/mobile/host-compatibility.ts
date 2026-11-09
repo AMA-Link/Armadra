@@ -25,10 +25,7 @@ export interface ProtocolVersion {
  * - `unknown`：还没问到，或主机没报协议。
  */
 export type HostCompatibility =
-  | "compatible"
-  | "updateHost"
-  | "updateApp"
-  | "unknown";
+  "compatible" | "updateHost" | "updateApp" | "unknown";
 
 export function hostCompatibility(
   host: ProtocolVersion | null | undefined,

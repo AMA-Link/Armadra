@@ -27,9 +27,8 @@ vi.mock("../store", () => ({
   select: () => undefined,
 }));
 
-const { resetToolStore, setTool } = await import(
-  "../../interaction/tool-store"
-);
+const { resetToolStore, setTool } =
+  await import("../../interaction/tool-store");
 const { useToolPointer } = await import("./use-tool-pointer");
 
 function touch(

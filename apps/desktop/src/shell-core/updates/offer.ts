@@ -35,8 +35,7 @@ import type { HostVerdict } from "./verdict";
 
 /** A result that carries a stable reason token rather than a message. */
 export type Resolved<T> =
-  | { ok: true; value: T }
-  | { ok: false; reason: Reason };
+  { ok: true; value: T } | { ok: false; reason: Reason };
 
 function fail<T>(reason: Reason): Resolved<T> {
   return { ok: false, reason };

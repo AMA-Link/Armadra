@@ -180,8 +180,7 @@ function window(
         "WHERE target_node_id = ? AND reader_node_id = ? AND at_ms > ?",
     )
     .get(target, reader, Math.trunc(nowMs - spanMs)) as
-    | { bytes: number; oldest: number | null }
-    | undefined;
+    { bytes: number; oldest: number | null } | undefined;
   return {
     bytes: Number(row?.bytes ?? 0),
     oldestAtMs:

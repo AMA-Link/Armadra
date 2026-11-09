@@ -69,13 +69,13 @@ UI 托盘展示“后台正在运行 / 已停止”和计划数量；计划激�
 
 Protobuf 是唯一的跨进程业务契约，避免 TS DTO、Go struct、Rust struct 三份手写定义。白板文档、终端字节与图片不是强行展开成数千字段：作为带类型/版本/大小/校验和的专用载荷传输。
 
-| 通道                | 传输                                       | 内容                                                |
-| ------------------- | ------------------------------------------ | --------------------------------------------------- |
-| 客户端 → Host 命令  | HTTPS POST，`application/x-protobuf`       | 一次请求/响应、取消、查询 operation                 |
+| 通道               | 传输                                       | 内容                                                |
+| ------------------ | ------------------------------------------ | --------------------------------------------------- |
+| 客户端 → Host 命令 | HTTPS POST，`application/x-protobuf`       | 一次请求/响应、取消、查询 operation                 |
 | 客户端 ↔ Host 流   | WSS 二进制帧                               | 类型化控制帧、业务事件、终端字节、浏览器画面、订阅  |
 | Host ↔ 本机 Worker | Unix socket / Windows 命名管道，长度前缀帧 | 相同版本化 Protobuf；操作系统 ACL 加本机凭据        |
 | Host ↔ SSH Worker  | SSH 内转发的二进制流                       | 握手、命令、终端、文件块；不额外暴露远端端口        |
-| 资产上传/下载       | HTTPS 的 Protobuf 分块请求                 | uploadId、offset、bytes、hash、finalize；可断点恢复 |
+| 资产上传/下载      | HTTPS 的 Protobuf 分块请求                 | uploadId、offset、bytes、hash、finalize；可断点恢复 |
 
 浏览器不被假设可以直接使用原生 gRPC 双向流。首版明确采用 HTTPS + WSS；未来接 gRPC 只作为内部传输适配，不再新增第二套业务语义。CDP、SSH、GitHub 等外部标准仍使用各自协议，Worker/Host 在边界转换。
 

@@ -12,7 +12,7 @@
 | WebSocket             | `ws` 8.21.0                                                                       | 与 Armadra 一致；只有 `/v1/me/stream` 一条                                                                                                                       |
 | PostgreSQL 驱动       | `postgres`（postgres.js 3.4.x）                                                   | 零依赖单包、内建连接池与管道、标签模板天然参数化（无字符串拼接 SQL）、原生支持 `LISTEN/NOTIFY` 与事务辅助；比 `pg` 少 4 个传递依赖且 API 更小                    |
 | Redis 客户端          | `redis`（node-redis 5.x）                                                         | 官方维护、RESP3、`SUBSCRIBE` 用独立连接的 API 清楚；只用 `GET/SET/INCR/PEXPIRE/EXISTS/PUBLISH/SUBSCRIBE/EVAL`                                                    |
-| JWT / JWK             | `node:crypto`（Ed25519）+ 协议包 `./assertion`                                    | 不加 JOSE 库：只需要一种算法、compact 序列化由协议包提供；JWK ↔ KeyObject 用 `createPublicKey/createPrivateKey({ format: "jwk" })`                              |
+| JWT / JWK             | `node:crypto`（Ed25519）+ 协议包 `./assertion`                                    | 不加 JOSE 库：只需要一种算法、compact 序列化由协议包提供；JWK ↔ KeyObject 用 `createPublicKey/createPrivateKey({ format: "jwk" })`                               |
 | 口令 / passkey / TOTP | `node:crypto` scrypt、`@simplewebauthn/server` 14.0.3、`otplib` 13.5.0            | 与 core 同一批库同一版本（参数由 identity-vectors 钉）                                                                                                           |
 | 邮件                  | `nodemailer`（SMTP）                                                              | 验证邮件、口令重置；dev-stack 的 mailpit                                                                                                                         |
 | 迁移                  | 自写运行器（`packages/cloud-shared/src/db/migrate.ts`，~200 行）                  | 纪律与 core 的 `db/ledger.ts` 同形（SHA-384、拒绝条件、不自动清库）；第三方迁移工具都带自己的账本与方言，无法照搬同一套拒绝条件                                  |
@@ -370,14 +370,14 @@ pending ──approve(账号会话)──▶ approved ──poll──▶ consum
 
 | 变量                                   | 必填 | 说明                                                     |
 | -------------------------------------- | ---- | -------------------------------------------------------- |
-| `ARMADRA_CLOUD_ISSUER`                 | ✔   | `https://api.<cloud>`；JWT `iss`                         |
-| `ARMADRA_CLOUD_APP_ORIGIN`             | ✔   | `https://app.<cloud>`；Cookie 来源与 CSP                 |
+| `ARMADRA_CLOUD_ISSUER`                 | ✔    | `https://api.<cloud>`；JWT `iss`                         |
+| `ARMADRA_CLOUD_APP_ORIGIN`             | ✔    | `https://app.<cloud>`；Cookie 来源与 CSP                 |
 | `ARMADRA_CLOUD_LISTEN`                 |      | `0.0.0.0:8100`                                           |
-| `ARMADRA_CLOUD_DATABASE_URL`           | ✔   | `postgres://…`                                           |
-| `ARMADRA_CLOUD_REDIS_URL`              | ✔   | `redis://…`                                              |
-| `ARMADRA_CLOUD_SIGNING_KEY_FILE`       | ✔   |                                                          |
-| `ARMADRA_CLOUD_MASTER_KEY`             | ✔   | 32 字节 hex                                              |
-| `ARMADRA_CLOUD_RELAY_DOMAIN`           | ✔   | `src.<域>` 的 `<域>`（与 relay 一致）                    |
+| `ARMADRA_CLOUD_DATABASE_URL`           | ✔    | `postgres://…`                                           |
+| `ARMADRA_CLOUD_REDIS_URL`              | ✔    | `redis://…`                                              |
+| `ARMADRA_CLOUD_SIGNING_KEY_FILE`       | ✔    |                                                          |
+| `ARMADRA_CLOUD_MASTER_KEY`             | ✔    | 32 字节 hex                                              |
+| `ARMADRA_CLOUD_RELAY_DOMAIN`           | ✔    | `src.<域>` 的 `<域>`（与 relay 一致）                    |
 | `ARMADRA_CLOUD_SMTP_URL`               |      | 没有就不发邮件（验证与重置功能答 `unavailable`）         |
 | `ARMADRA_CLOUD_REQUIRE_EMAIL_VERIFIED` |      | `0/1`，缺省 0（dev）；参考部署 compose 里 1              |
 | `ARMADRA_CLOUD_OAUTH_<ID>_*`           |      | `CLIENT_ID`、`CLIENT_SECRET`、`ISSUER`（OIDC）、`SCOPES` |

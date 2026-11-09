@@ -100,9 +100,8 @@ type UpdaterModules = {
 };
 
 async function updaterModules(): Promise<UpdaterModules> {
-  const generic = await import(
-    "electron-updater/out/providers/GenericProvider"
-  );
+  const generic =
+    await import("electron-updater/out/providers/GenericProvider");
   const util = await import("electron-updater/out/util");
   const mac = await import("electron-updater/out/MacUpdater");
   const provider = await import("electron-updater/out/providers/Provider");

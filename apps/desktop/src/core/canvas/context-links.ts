@@ -156,8 +156,7 @@ export function getContextLinks(
       "SELECT node_id, links_json, updated_at FROM context_links WHERE node_id = ?",
     )
     .get(nodeId) as
-    | { node_id: string; links_json: string; updated_at: string }
-    | undefined;
+    { node_id: string; links_json: string; updated_at: string } | undefined;
   if (row === undefined) {
     return { nodeId, links: [], updatedAt: rfc3339() };
   }

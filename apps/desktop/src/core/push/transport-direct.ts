@@ -50,8 +50,7 @@ export function collapseKey(tag: string): string {
  */
 export function apnsBody(
   content:
-    | { readonly envelope: PushEnvelope }
-    | { readonly plain: PushPayload },
+    { readonly envelope: PushEnvelope } | { readonly plain: PushPayload },
 ): Record<string, unknown> {
   if ("envelope" in content) {
     return {
@@ -77,8 +76,7 @@ export function apnsBody(
 export function fcmMessage(
   token: string,
   content:
-    | { readonly envelope: PushEnvelope }
-    | { readonly plain: PushPayload },
+    { readonly envelope: PushEnvelope } | { readonly plain: PushPayload },
   tag: string,
 ): Record<string, unknown> {
   const data =

@@ -566,7 +566,7 @@ R7d 分两条线：源码层（`apps/desktop/src/**`、`apps/web/**`、删 `pack
 | `apps/host/`（含 `gen/` 的生成码与 `go.mod` / `go.sum`）                                          | 144,662    |
 | `proto/`（22 份 schema + 191 份 fixture）与 `tools/protocol.mjs`                                  | 这一批合计 |
 | 写入所有权的 e2e 与 harness（`tools/ownership*`、`tools/canvas-ownership-*`）                     | 同上       |
-| Host 的烟囱测试、`tools/github-e2e.mjs` 与它的 mock、Rust↔Go 归档互通                            | 同上       |
+| Host 的烟囱测试、`tools/github-e2e.mjs` 与它的 mock、Rust↔Go 归档互通                             | 同上       |
 | `tools/probes/core-terminal-bench.mjs`（比较两套实现）、`tools/probes/conpty-smoke`（Rust crate） | 同上       |
 
 `tools/probes/` 里另外三个探针（`connection-drag`、`git-tool-window`、`canvas-stress`）**保留**：它们量的是页面，后端只是背景。启动行从 `target/debug/armadra-runtime` 换成 `node apps/desktop/out/core/main.js --data-dir …`，读 `endpoints.json` 的那一段不动（core 写同一个文件的同一段）。

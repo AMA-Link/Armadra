@@ -573,9 +573,10 @@ describe("§31 与协议包同一份", () => {
   ]);
 
   it("§31 的错误码与协议包注册表同拼法、同状态", async () => {
-    const { ERRORS } = (await import(
-      "@armadra/platform-protocol/errors"
-    )) as unknown as { ERRORS: Record<string, { status: number }> };
+    const { ERRORS } =
+      (await import("@armadra/platform-protocol/errors")) as unknown as {
+        ERRORS: Record<string, { status: number }>;
+      };
     for (const entry of entries.filter((one) =>
       one.name.startsWith("identity.cloud."),
     )) {

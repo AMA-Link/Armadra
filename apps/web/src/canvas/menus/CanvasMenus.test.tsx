@@ -100,12 +100,10 @@ vi.mock("../whiteboard/store", () => ({
   itemsByIds: () => [],
 }));
 
-const { installDomPolyfills, TestProviders } = await import(
-  "@/app/test-harness"
-);
-const { targetForNodeId, targetForSelection, useCanvasMenus } = await import(
-  "./CanvasMenus"
-);
+const { installDomPolyfills, TestProviders } =
+  await import("@/app/test-harness");
+const { targetForNodeId, targetForSelection, useCanvasMenus } =
+  await import("./CanvasMenus");
 
 installDomPolyfills();
 afterEach(cleanup);
@@ -254,9 +252,8 @@ describe("useCanvasMenus", () => {
 
   /** 禁用原因直接显示在菜单项右侧，不再依赖原生 `title`（禁用项收不到悬停）。 */
   it("节点菜单的扩展项把禁用原因显示成值", async () => {
-    const { registerNodeMenuItems, clearNodeMenuItems } = await import(
-      "./node-menu"
-    );
+    const { registerNodeMenuItems, clearNodeMenuItems } =
+      await import("./node-menu");
     registerNodeMenuItems("sticky", () => [
       {
         id: "extra.locked",

@@ -156,17 +156,14 @@ vi.mock("../save/autosave", () => ({
   LEASE_LOST_EVENT: "armadra:canvas-lease-lost",
 }));
 
-const { dispatchWorkspaceEvent, resetWorkspaceEvents } = await import(
-  "../api/events"
-);
+const { dispatchWorkspaceEvent, resetWorkspaceEvents } =
+  await import("../api/events");
 const { useCanvasStore } = await import("../store/canvas-store");
-const { PRESENCE_HEARTBEAT_MS, useBoardSync } = await import(
-  "./use-board-sync"
-);
+const { PRESENCE_HEARTBEAT_MS, useBoardSync } =
+  await import("./use-board-sync");
 const { markPresenceActivity } = await import("../store/canvas/presence");
-const { isReadOnly, presenceClientId } = await import(
-  "../store/canvas/presence"
-);
+const { isReadOnly, presenceClientId } =
+  await import("../store/canvas/presence");
 
 function wrapper({ children }: { children: React.ReactNode }) {
   const client = new QueryClient({

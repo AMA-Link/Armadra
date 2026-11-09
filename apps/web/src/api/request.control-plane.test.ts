@@ -12,9 +12,8 @@ vi.stubGlobal("window", {
 
 const request = await import("./request");
 const { localRuntime, resetLocalRuntime } = await import("./local-runtime");
-const { isServerShellServed, setControlPlanePage } = await import(
-  "./runtime-url"
-);
+const { isServerShellServed, setControlPlanePage } =
+  await import("./runtime-url");
 
 afterAll(() => {
   setControlPlanePage(false);

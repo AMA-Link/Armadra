@@ -150,7 +150,7 @@ function compressIpv6(groups: string[]): string {
   // 最长一串 0 组缩成 `::`，与 `URL` / `isIP` 的写法一致。
   let bestStart = -1;
   let bestLength = 0;
-  for (let index = 0; index < groups.length; ) {
+  for (let index = 0; index < groups.length;) {
     if (groups[index] !== "0") {
       index += 1;
       continue;

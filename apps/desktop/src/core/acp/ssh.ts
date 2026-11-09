@@ -159,16 +159,15 @@ export function remoteAcpCommand(
 
 /* --------------------------------- 起会话 --------------------------------- */
 
-export interface AcpSshStart
-  extends Omit<
-    AcpAdapterStart,
-    | "transport"
-    | "mcpServers"
-    | "canvasMcp"
-    | "profilePath"
-    | "injectionArgs"
-    | "env"
-  > {
+export interface AcpSshStart extends Omit<
+  AcpAdapterStart,
+  | "transport"
+  | "mcpServers"
+  | "canvasMcp"
+  | "profilePath"
+  | "injectionArgs"
+  | "env"
+> {
   readonly hostId: string;
   /** 本机的数据目录：`ssh` 子进程的起点与主机密钥文件的位置。 */
   readonly dataDir: string;

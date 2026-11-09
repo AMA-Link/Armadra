@@ -421,8 +421,7 @@ export class StreamCounter {
   private closed = false;
   private live: LiveEntry | undefined;
   private cached:
-    | { generation: number; bucket: number; row: TrafficBucketRow }
-    | undefined;
+    { generation: number; bucket: number; row: TrafficBucketRow } | undefined;
 
   constructor(
     private readonly meter: TrafficMeter,

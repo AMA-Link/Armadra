@@ -23,11 +23,7 @@ export interface Authorization {
 }
 
 export type TargetState =
-  | "unknown"
-  | "ready"
-  | "busy"
-  | "offline"
-  | "unsupported";
+  "unknown" | "ready" | "busy" | "offline" | "unsupported";
 
 export interface TargetStatus {
   readonly state: TargetState;

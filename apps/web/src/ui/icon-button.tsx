@@ -20,8 +20,10 @@ import { ariaKeyShortcuts } from "@/ui/kbd-format";
  * 图标按钮没有可见文字，所以 `label` 是必填的，会写进 `aria-label`。
  * 悬停提示请在外面套 `Tooltip`，避免每个按钮都强绑一个 TooltipProvider。
  */
-export interface IconButtonProps
-  extends Omit<React.ComponentProps<typeof Button>, "aria-label" | "size"> {
+export interface IconButtonProps extends Omit<
+  React.ComponentProps<typeof Button>,
+  "aria-label" | "size"
+> {
   /** 无障碍名称，必填。 */
   label: string;
   size?: "cluster" | "dock" | "inline";

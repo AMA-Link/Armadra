@@ -32,8 +32,7 @@ export interface BrowserOptions {
   readonly client?: DriveBackend | undefined;
   readonly now?: (() => Date) | undefined;
   readonly log?:
-    | ((message: string, detail?: Record<string, unknown>) => void)
-    | undefined;
+    ((message: string, detail?: Record<string, unknown>) => void) | undefined;
 }
 
 /**

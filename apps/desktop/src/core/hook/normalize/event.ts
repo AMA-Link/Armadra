@@ -27,10 +27,7 @@ export const BLOCKED = "blocked";
 export const DONE = "done";
 
 export type AgentState =
-  | typeof WORKING
-  | typeof WAITING
-  | typeof BLOCKED
-  | typeof DONE;
+  typeof WORKING | typeof WAITING | typeof BLOCKED | typeof DONE;
 
 export type SessionPhase = "start" | "end";
 

@@ -218,7 +218,7 @@ async function diffNameStatus(
   );
   const fields = output.split("\0").filter((field) => field !== "");
   const entries: [string, string][] = [];
-  for (let index = 0; index < fields.length; ) {
+  for (let index = 0; index < fields.length;) {
     const code = fields[index] as string;
     index += 1;
     const renamed = code.startsWith("R") || code.startsWith("C");
@@ -259,7 +259,7 @@ async function diffNumstat(
   const output = await gitText(repository, args, execute);
   const fields = output.split("\0").filter((field) => field !== "");
   const entries: [number, number, string][] = [];
-  for (let index = 0; index < fields.length; ) {
+  for (let index = 0; index < fields.length;) {
     const record = fields[index] as string;
     index += 1;
     const firstTab = record.indexOf("\t");

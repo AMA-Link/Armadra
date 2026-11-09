@@ -14,7 +14,7 @@
 # 中继无状态：没有卷。密钥只给文件路径（ARMADRA_RELAY_SECRET_FILE 必填；APNs 的
 # .p8 与 FCM 服务账号可选），文件由部署方只读挂进来，文件要让 uid 10001 读得到。
 
-ARG NODE_IMAGE=node:24.21.0-bookworm-slim
+ARG NODE_IMAGE=node:24.22.2-bookworm-slim
 
 FROM ${NODE_IMAGE} AS build
 

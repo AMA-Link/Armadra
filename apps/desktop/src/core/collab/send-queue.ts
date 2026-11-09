@@ -25,11 +25,7 @@ export const SEND_QUEUE_MAX_PER_TARGET = 16;
 export type QueueOrigin = "send" | "mailbox-wake" | "first-task" | "run-task";
 
 export type QueueState =
-  | "queued"
-  | "delivering"
-  | "done"
-  | "cancelled"
-  | "expired";
+  "queued" | "delivering" | "done" | "cancelled" | "expired";
 
 /**
  * 终态是谁定的（迁移 0029，设计 `cli-collaboration.md` §4）。`''` 是投出去的

@@ -13,8 +13,7 @@ import { integrationKey } from "./pages/integration/use-integration";
 
 /** 导航行尾的徽标：计数（`Badge sm`）或一个提示点（`StatusDot 6`）。 */
 export type NavBadge =
-  | { kind: "count"; count: number }
-  | { kind: "dot"; tone: "attention" };
+  { kind: "count"; count: number } | { kind: "dot"; tone: "attention" };
 
 export type NavBadges = Readonly<Record<string, NavBadge | undefined>>;
 

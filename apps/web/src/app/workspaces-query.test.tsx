@@ -36,9 +36,8 @@ vi.mock("../api/workspaces", () => ({
   }),
 }));
 
-const { useWorkspaces, useWorkspacesQuery } = await import(
-  "./workspaces-query"
-);
+const { useWorkspaces, useWorkspacesQuery } =
+  await import("./workspaces-query");
 
 function remoteDescriptor(): SourceDescriptor {
   return {

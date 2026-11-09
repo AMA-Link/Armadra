@@ -45,8 +45,7 @@ export function installRunUi(
             "SELECT p.id,p.capabilities_json FROM controller_objects o JOIN controller_profiles p ON p.id=o.controller_id WHERE o.node_id=? AND o.workspace_id=?",
           )
           .get(nodeId, workspaceId) as
-          | { id: string; capabilities_json: string }
-          | undefined;
+          { id: string; capabilities_json: string } | undefined;
         if (!row)
           throw new ControllerError(
             "scope_denied",

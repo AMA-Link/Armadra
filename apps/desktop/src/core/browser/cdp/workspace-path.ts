@@ -23,10 +23,7 @@ import { lstatSync, realpathSync } from "node:fs";
 import { isAbsolute, resolve, sep, dirname, basename } from "node:path";
 
 export type JailFailure =
-  | "outsideWorkspace"
-  | "symlink"
-  | "missingParent"
-  | "badPath";
+  "outsideWorkspace" | "symlink" | "missingParent" | "badPath";
 
 export type JailResult =
   | { readonly ok: true; readonly path: string }

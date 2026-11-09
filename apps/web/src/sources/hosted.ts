@@ -93,8 +93,7 @@ export interface RelayHost {
  */
 export async function detectRelayHost(
   location:
-    | Pick<Location, "origin" | "pathname">
-    | undefined = globalThis.location,
+    Pick<Location, "origin" | "pathname"> | undefined = globalThis.location,
   options: CloudOptions = {},
 ): Promise<RelayHost | null> {
   if (location === undefined || !underRelayAppPath(location.pathname))

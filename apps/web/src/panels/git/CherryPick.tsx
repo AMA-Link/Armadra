@@ -90,14 +90,14 @@ export function CherryPick({
     client.getQueryData(key(null)) === metadata.data &&
     Boolean(
       preview &&
-        preview.targetOid === oid &&
-        preview.patch !== null &&
-        (!isMerge ||
-          (selectedParent !== null &&
-            !patch.isError &&
-            !patch.isFetching &&
-            preview.mainline === selectedParent &&
-            client.getQueryData(key(selectedParent)) === preview)),
+      preview.targetOid === oid &&
+      preview.patch !== null &&
+      (!isMerge ||
+        (selectedParent !== null &&
+          !patch.isError &&
+          !patch.isFetching &&
+          preview.mainline === selectedParent &&
+          client.getQueryData(key(selectedParent)) === preview)),
     );
   return (
     <form

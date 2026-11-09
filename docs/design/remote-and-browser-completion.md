@@ -255,14 +255,14 @@ AI 提交信息是唯一在两台机器上跑的面板动作，所以拆成两�
 
 结论：切换 = **重绑定并核验**，不搬文件；搬文件是用户用 Git 做的事。任何不满足核验的切换拒绝并列出阻塞项，不做「部分切换」。
 
-| 场景                                          | 结果                                                                                                                                                               |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 场景                                         | 结果                                                                                                                                                               |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 本机 ↔ 远端、远端 A → 远端 B，目标路径已存在 | `PATCH /api/workspaces/{id}/execution-host { executionHostId, rootPath }`：新主机 `RegisterRoot` 成功 → 比较 `HEAD` OID 与顶层目录列表摘要 → 一致才写入            |
-| 目标路径不存在或摘要不一致                    | 409 `root_mismatch`，返回两侧摘要；`force: true` 需要 write 权限并写审计事件 `workspace.executionHostChanged { from, to, forced }`                                 |
-| 阻塞项存在                                    | 409 `switch_blocked`，`blockers[]` 列出：打开的编辑器草稿、该工作空间的活动终端会话、活动浏览器 session、指向它的自动化计划、进行中的 owned Git 操作、进行中的上传 |
-| 要求「迁移文件」                              | `UNSUPPORTED`，消息提示在新主机 clone 后另开工作空间                                                                                                               |
-| 切换成功后                                    | 释放本地 `file_watch` 与 `remote::watch` 登记、清空 Git 仓库发现缓存、广播 `workspace.updated`，前端全量重取；节点与画布不动                                       |
-| H01 之后                                      | 同一规则表由 Host 的工作空间表面执行（`canvas.proto` 的 `Workspace.executionHostId` 已存在）；Runtime 只做核验回调                                                 |
+| 目标路径不存在或摘要不一致                   | 409 `root_mismatch`，返回两侧摘要；`force: true` 需要 write 权限并写审计事件 `workspace.executionHostChanged { from, to, forced }`                                 |
+| 阻塞项存在                                   | 409 `switch_blocked`，`blockers[]` 列出：打开的编辑器草稿、该工作空间的活动终端会话、活动浏览器 session、指向它的自动化计划、进行中的 owned Git 操作、进行中的上传 |
+| 要求「迁移文件」                             | `UNSUPPORTED`，消息提示在新主机 clone 后另开工作空间                                                                                                               |
+| 切换成功后                                   | 释放本地 `file_watch` 与 `remote::watch` 登记、清空 Git 仓库发现缓存、广播 `workspace.updated`，前端全量重取；节点与画布不动                                       |
+| H01 之后                                     | 同一规则表由 Host 的工作空间表面执行（`canvas.proto` 的 `Workspace.executionHostId` 已存在）；Runtime 只做核验回调                                                 |
 
 终端会话绑定主机，不迁移；`A04` 的「跨执行主机交接」仍不支持。
 

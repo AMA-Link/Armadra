@@ -1,3 +1,4 @@
+import { dirname } from "node:path";
 import { dialog } from "electron";
 import type { PickOptions } from "../shared/ipc";
 import { getMainWindow } from "./window";
@@ -15,6 +16,14 @@ import { getMainWindow } from "./window";
  * up behind the window it belongs to, with no way back to it.
  */
 
+/**
+ * Where the last pick landed, for this run of the shell. Since Electron 43 a
+ * dialog without `defaultPath` opens in Downloads instead of where the person
+ * last was, so the shell remembers that place itself; a caller's own
+ * `defaultPath` still wins.
+ */
+let lastDirectory: string | undefined;
+
 /** A cancelled dialog is an empty list, never a rejection: cancelling is the
  * ordinary outcome and every caller already treats "nothing picked" as one. */
 async function show(
@@ -22,14 +31,20 @@ async function show(
   options: PickOptions | undefined,
 ): Promise<string[]> {
   const window = getMainWindow();
+  const defaultPath = options?.defaultPath || lastDirectory;
   const request: Electron.OpenDialogOptions = {
     properties,
-    ...(options?.defaultPath ? { defaultPath: options.defaultPath } : {}),
+    ...(defaultPath ? { defaultPath } : {}),
   };
   const result = window
     ? await dialog.showOpenDialog(window, request)
     : await dialog.showOpenDialog(request);
-  return result.canceled ? [] : result.filePaths;
+  if (result.canceled) return [];
+  const [first] = result.filePaths;
+  // The folder the person was browsing is the one holding what they picked,
+  // so the next pick starts beside it (a sibling project is one click away).
+  if (first) lastDirectory = dirname(first);
+  return result.filePaths;
 }
 
 /**

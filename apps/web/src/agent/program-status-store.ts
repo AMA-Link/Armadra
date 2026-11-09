@@ -136,10 +136,10 @@ export interface MergedHeaderState extends HeaderState {
 export function reportedLive(status: AgentStatus | undefined): boolean {
   return Boolean(
     status?.state &&
-      !status.restored &&
-      (status.stateSource === "hook" ||
-        status.stateSource === "extension" ||
-        status.stateSource === "acp"),
+    !status.restored &&
+    (status.stateSource === "hook" ||
+      status.stateSource === "extension" ||
+      status.stateSource === "acp"),
   );
 }
 

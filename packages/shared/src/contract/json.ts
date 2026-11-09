@@ -5,12 +5,7 @@ import { z } from "zod";
  * （`contract.test.ts` 守着）；确实是一份任意 JSON 的（设置文档）用它。
  */
 export type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonValue[]
-  | { [key: string]: JsonValue };
+  string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
 export const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
   z.union([

@@ -42,8 +42,7 @@ export interface ActivityGroupProps {
   /** `toolCallId` → 关联的审批。 */
   approvals?: ReadonlyMap<string, TimelineApprovalItem> | undefined;
   renderApproval?:
-    | ((approval: TimelineApprovalItem) => React.ReactNode)
-    | undefined;
+    ((approval: TimelineApprovalItem) => React.ReactNode) | undefined;
 }
 
 /**

@@ -52,8 +52,7 @@ export function totpAt(
 }
 
 export type TotpVerdict =
-  | { readonly ok: true; readonly timeStep: number }
-  | { readonly ok: false };
+  { readonly ok: true; readonly timeStep: number } | { readonly ok: false };
 
 /**
  * 校验一个码。`afterTimeStep` 是这个人最后用过的时间步（0 = 没用过）：小于等于

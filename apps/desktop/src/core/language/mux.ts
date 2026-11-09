@@ -196,8 +196,7 @@ export class Hub {
   stopping = false;
 
   private initializeResolve:
-    | ((value: JsonValue | undefined) => void)
-    | undefined;
+    ((value: JsonValue | undefined) => void) | undefined;
   /**
    * The message from the last `initialize` the server refused, so the panel
    * can show the server's own words rather than the word "crashed".

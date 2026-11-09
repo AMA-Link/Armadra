@@ -161,9 +161,9 @@ export function leaseOnThisDevice(
   const self = current?.deviceKey ?? "";
   return Boolean(
     lease &&
-      lease.clientId !== presenceClientId() &&
-      self !== "" &&
-      lease.deviceKey === self,
+    lease.clientId !== presenceClientId() &&
+    self !== "" &&
+    lease.deviceKey === self,
   );
 }
 

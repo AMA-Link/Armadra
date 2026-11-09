@@ -24,8 +24,7 @@ export interface SettingsRouteDeps {
 }
 
 export type ParsedBody =
-  | { readonly ok: true; readonly value: JsonValue | undefined }
-  | ErrorResponse;
+  { readonly ok: true; readonly value: JsonValue | undefined } | ErrorResponse;
 
 /**
  * `request.json()`, with the throw turned into the envelope.

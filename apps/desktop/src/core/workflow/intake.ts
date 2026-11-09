@@ -256,8 +256,7 @@ export function getSource(
   id: string,
 ): IntakeSource | undefined {
   const row = database.prepare(`${SELECT_SOURCE} WHERE id = ?`).get(id) as
-    | SourceRow
-    | undefined;
+    SourceRow | undefined;
   return row === undefined ? undefined : sourceOf(row);
 }
 
@@ -379,8 +378,7 @@ export function saveSource(
       "SELECT id FROM router_sources WHERE coordinator_node_id = ? AND repo = ? AND id <> ?",
     )
     .get(input.coordinatorNodeId, input.repo, existing?.id ?? "") as
-    | { id: string }
-    | undefined;
+    { id: string } | undefined;
   if (duplicate !== undefined) {
     throw new DomainError(409, "conflict", "这个协调者已经有这个仓库的来源");
   }
@@ -587,8 +585,7 @@ export function getCandidate(
   id: string,
 ): IntakeCandidate | undefined {
   const row = database.prepare(`${SELECT_CANDIDATE} WHERE id = ?`).get(id) as
-    | CandidateRow
-    | undefined;
+    CandidateRow | undefined;
   return row === undefined ? undefined : candidateOf(row);
 }
 

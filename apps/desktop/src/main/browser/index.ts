@@ -357,7 +357,9 @@ function showGuestMenu(
   function act(id: string): void {
     switch (id) {
       case "copyLink":
-        clipboard.writeText(params.linkURL);
+        // Electron 44+ answers with a promise; a failed copy leaves the
+        // clipboard as it was, which is all a menu item can say about it.
+        void clipboard.writeText(params.linkURL).catch(() => undefined);
         return;
       case "openLinkInNewTab":
         if (allowGuestNavigation(params.linkURL)) {

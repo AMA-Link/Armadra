@@ -61,9 +61,8 @@ vi.mock("../../store/canvas-store", () => ({
   endCoalesce: vi.fn(),
 }));
 
-const { addNodeForPath, addBrowserFiles, createImageShapes } = await import(
-  "./external-content"
-);
+const { addNodeForPath, addBrowserFiles, createImageShapes } =
+  await import("./external-content");
 
 const at = { x: 0, y: 0 };
 

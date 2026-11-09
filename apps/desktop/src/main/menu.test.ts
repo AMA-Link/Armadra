@@ -66,8 +66,8 @@ interface Input {
 
 class FakeWindow {
   private listener:
-    | ((event: { preventDefault: () => void }, input: Input) => void)
-    | null = null;
+    ((event: { preventDefault: () => void }, input: Input) => void) | null =
+    null;
   readonly webContents = {
     on: (
       event: string,

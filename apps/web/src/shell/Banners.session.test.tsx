@@ -31,9 +31,8 @@ vi.mock("../host/native-session", async (original) => {
 const { HostNativeSessionError } = await import("../host/native-session");
 const { resetIdentityCredentials, shellBearer, shellSessionFailure } =
   await import("../api/identity");
-const { installDomPolyfills, TestProviders } = await import(
-  "../app/test-harness"
-);
+const { installDomPolyfills, TestProviders } =
+  await import("../app/test-harness");
 const { usePreferencesStore } = await import("../app/preferences-store");
 const { Banners } = await import("./Banners");
 

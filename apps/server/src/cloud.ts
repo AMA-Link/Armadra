@@ -875,8 +875,7 @@ async function spaceOf(
     `/api/sources/remotes/${serviceId}/spaces`,
   )) as {
     spaces?: (
-      | { kind: "personal" }
-      | { kind: "team"; teamId: string; slug: string }
+      { kind: "personal" } | { kind: "team"; teamId: string; slug: string }
     )[];
   };
   const spaces = listed.spaces ?? [];

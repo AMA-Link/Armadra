@@ -422,10 +422,9 @@ describe("opening a session", () => {
   it("keeps the runtime's own reason when it refuses the session", async () => {
     const { RuntimeRequestError } = await import("@/api/client");
     openLanguageSession.mockRejectedValue(
-      new (RuntimeRequestError as new (
-        status: number,
-        message: string,
-      ) => Error)(403, "execution_not_granted"),
+      new (
+        RuntimeRequestError as new (status: number, message: string) => Error
+      )(403, "execution_not_granted"),
     );
     const { client } = acquireLanguageClient("w1", "python", fakeSocketFactory);
     await settle();

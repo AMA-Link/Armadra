@@ -240,12 +240,12 @@ Session Host（Windows）：有活动会话时不替换，报告 `sessionHostDef
 
 ### 3.4 与桌面持有 Host 的互斥
 
-| 机制                  | 说明                                                                                                                          |
+| 机制 | 说明 |
 | --------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------- |
-| `launcher` 记录       | `start` / `serve` 新增 `--launcher desktop                                                                                    | service | cli`（桌面壳固定传 `desktop`，服务定义固定写 `service`）；写入 `hoststate`并经 Hello 与`status` 报告 |
-| 桌面侧                | 只在 Hello 报 `launcher=desktop` 时把 Host 纳入更新前停止序列；`service` / `cli` 的 Host 不停，也不在更新对话框里声称会更新它 |
-| Host 侧               | `upgrade` 遇到 `launcher=desktop` 或可执行文件位于 `.app/Contents/MacOS`、桌面安装目录内时拒绝                                |
-| 同机同时存在两种 Host | 各自数据目录、各自锁；桌面壳按 `ARMADRA_HOST_DATA_DIR` 连接；更新任一方不影响另一方                                           |
+| `launcher` 记录 | `start` / `serve` 新增 `--launcher desktop                                                                                    | service | cli`（桌面壳固定传 `desktop`，服务定义固定写 `service`）；写入 `hoststate`并经 Hello 与`status` 报告 |
+| 桌面侧 | 只在 Hello 报 `launcher=desktop` 时把 Host 纳入更新前停止序列；`service` / `cli` 的 Host 不停，也不在更新对话框里声称会更新它 |
+| Host 侧 | `upgrade` 遇到 `launcher=desktop` 或可执行文件位于 `.app/Contents/MacOS`、桌面安装目录内时拒绝 |
+| 同机同时存在两种 Host | 各自数据目录、各自锁；桌面壳按 `ARMADRA_HOST_DATA_DIR` 连接；更新任一方不影响另一方 |
 
 ## 4. 设置「更新」分区
 

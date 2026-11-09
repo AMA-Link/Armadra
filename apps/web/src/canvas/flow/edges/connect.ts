@@ -41,12 +41,7 @@ export interface ConnectionContext {
 
 /** 拒绝的理由。`none` 表示「拖到空白处」——那是取消，不是错误。 */
 export type ConnectionReject =
-  | "none"
-  | "self"
-  | "duplicate"
-  | "itemToItem"
-  | "referenceLimit"
-  | "unknown";
+  "none" | "self" | "duplicate" | "itemToItem" | "referenceLimit" | "unknown";
 
 export type ConnectionVerdict =
   | { kind: "link"; source: string; target: string }

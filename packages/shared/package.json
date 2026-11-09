@@ -24,8 +24,8 @@
     "@armadra/platform-protocol": "file:../../tools/vendor/armadra-platform-protocol-0.16.0.tgz",
     "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",
-    "@orpc/contract": "1.15.4",
-    "zod": "4.6.6"
+    "@orpc/contract": "1.16.2",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "typescript": "5.9.2",

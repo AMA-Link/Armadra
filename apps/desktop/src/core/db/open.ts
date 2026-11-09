@@ -104,8 +104,7 @@ export function openDatabase(options: OpenOptions): OpenedDatabase {
     // journalled the same way. Read first: on the WAL database every existing
     // install already has, this writes nothing.
     const journal = database.prepare("PRAGMA journal_mode").get() as
-      | { journal_mode?: string }
-      | undefined;
+      { journal_mode?: string } | undefined;
     if (journal?.journal_mode?.toLowerCase() !== "wal") {
       database.exec("PRAGMA journal_mode = WAL");
     }

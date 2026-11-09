@@ -16,10 +16,7 @@ export interface FolderSource {
 export class FolderReadError extends Error {
   constructor(
     public readonly reason:
-      | "onlyFolders"
-      | "limit"
-      | "invalidPath"
-      | "unavailable",
+      "onlyFolders" | "limit" | "invalidPath" | "unavailable",
   ) {
     super(reason);
   }

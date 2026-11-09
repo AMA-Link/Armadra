@@ -166,8 +166,7 @@ export interface ToolRowProps {
   approvals?: ReadonlyMap<string, TimelineApprovalItem> | undefined;
   /** 审批卡的渲染（B7 接 `PermissionCard`）。要稳定的引用。 */
   renderApproval?:
-    | ((approval: TimelineApprovalItem) => React.ReactNode)
-    | undefined;
+    ((approval: TimelineApprovalItem) => React.ReactNode) | undefined;
 }
 
 function ToolRowImpl({

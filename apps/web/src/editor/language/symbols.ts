@@ -79,11 +79,9 @@ function flatten(
     const name = typeof value.name === "string" ? value.name : "";
     if (!name) continue;
     const range = (value.selectionRange ?? value.range) as
-      | { start?: { line?: number } }
-      | undefined;
+      { start?: { line?: number } } | undefined;
     const location = value.location as
-      | { uri?: string; range?: { start?: { line?: number } } }
-      | undefined;
+      { uri?: string; range?: { start?: { line?: number } } } | undefined;
     const line = range?.start?.line ?? location?.range?.start?.line ?? 0;
     const symbolPath = location?.uri ? pathOfUri(location.uri) : path;
     if (!symbolPath) continue;
@@ -147,13 +145,7 @@ export async function workspaceSymbols(query: string): Promise<SymbolEntry[]> {
 
 /** 图标分组。26 种 `SymbolKind` 归成界面分得清的几类。 */
 export type SymbolIcon =
-  | "file"
-  | "module"
-  | "type"
-  | "function"
-  | "variable"
-  | "field"
-  | "other";
+  "file" | "module" | "type" | "function" | "variable" | "field" | "other";
 
 /**
  * `SymbolKind` → 图标分组。编号取自 LSP 规范，不是猜的：

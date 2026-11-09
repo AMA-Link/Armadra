@@ -379,8 +379,7 @@ export class IdentityTx {
           "ORDER BY d.created_at_ms, d.device_id LIMIT 1",
       )
       .get(principalId, role, channelDeviceId) as
-      | Record<string, unknown>
-      | undefined;
+      Record<string, unknown> | undefined;
     return row === undefined ? undefined : toDevice(row);
   }
 

@@ -61,11 +61,7 @@ export type UpdatesAction =
  * state that did not exist when this page was written.
  */
 export type HostVerdictKind =
-  | "upToDate"
-  | "available"
-  | "unsupported"
-  | "unavailable"
-  | "unknown";
+  "upToDate" | "available" | "unsupported" | "unavailable" | "unknown";
 
 export type HostSide =
   | { kind: "notAsked" }

@@ -83,8 +83,8 @@ function HostAccessBody() {
     internet.on ||
     Boolean(
       status?.enabled &&
-        status.running &&
-        status.origins.some((one) => !isLoopbackOrigin(one)),
+      status.running &&
+      status.origins.some((one) => !isLoopbackOrigin(one)),
     );
   // 点开「连接手机」才铸一枚（来源、信任锚变了重铸）；关掉就丢。票只活两分钟，过期后
   // 不自动续，等人点「新配对码」。

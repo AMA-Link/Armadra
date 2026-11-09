@@ -392,11 +392,7 @@ export interface WorkspaceEventPayloads {
   "board.comment": {
     readonly boardId: string;
     readonly action:
-      | "created"
-      | "updated"
-      | "resolved"
-      | "reopened"
-      | "deleted";
+      "created" | "updated" | "resolved" | "reopened" | "deleted";
     readonly comment: {
       readonly id: string;
       readonly parentId: string | null;

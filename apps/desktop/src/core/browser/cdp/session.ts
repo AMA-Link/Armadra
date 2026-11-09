@@ -617,5 +617,4 @@ export class CdpSession {
 
 /** A node, by the id `DOM.querySelector` gave or the one the AX tree gave. */
 export type NodeHandle =
-  | { readonly nodeId: number }
-  | { readonly backendNodeId: number };
+  { readonly nodeId: number } | { readonly backendNodeId: number };

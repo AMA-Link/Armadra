@@ -99,8 +99,7 @@ export function storedSession(
   sessionId: string,
 ): StoredSession | undefined {
   const row = database.prepare(`${SELECT} WHERE id = ?`).get(sessionId) as
-    | SessionRow
-    | undefined;
+    SessionRow | undefined;
   return row === undefined ? undefined : fromRow(row);
 }
 
@@ -109,8 +108,7 @@ export function storedForNode(
   nodeId: string,
 ): StoredSession | undefined {
   const row = database.prepare(`${SELECT} WHERE node_id = ?`).get(nodeId) as
-    | SessionRow
-    | undefined;
+    SessionRow | undefined;
   return row === undefined ? undefined : fromRow(row);
 }
 

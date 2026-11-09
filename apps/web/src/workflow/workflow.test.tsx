@@ -63,12 +63,10 @@ const { StartRunDialog, TemplateLibrary } = await import("./TemplateLibrary");
 const { RunPanel, gateLabel } = await import("./RunPanel");
 const { GateDialog } = await import("./GateDialog");
 const { RunCompare } = await import("./RunCompare");
-const { TemplateEditor, nextVersion, upgradableSchedules } = await import(
-  "./TemplateEditor"
-);
-const { FrozenScheduleAlert, refusalMessage } = await import(
-  "./FrozenScheduleAlert"
-);
+const { TemplateEditor, nextVersion, upgradableSchedules } =
+  await import("./TemplateEditor");
+const { FrozenScheduleAlert, refusalMessage } =
+  await import("./FrozenScheduleAlert");
 const { useWorkflowView } = await import("./store");
 const model = await import("./model");
 

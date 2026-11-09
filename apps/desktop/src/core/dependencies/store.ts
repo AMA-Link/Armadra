@@ -14,12 +14,7 @@ export const DEPENDENCY_CONDITIONS = ["current", "next"] as const;
 export type DependencyCondition = (typeof DEPENDENCY_CONDITIONS)[number];
 
 export type DependencyState =
-  | "waiting"
-  | "satisfied"
-  | "failed"
-  | "missing"
-  | "expired"
-  | "cancelled";
+  "waiting" | "satisfied" | "failed" | "missing" | "expired" | "cancelled";
 
 export type LaunchState = "waiting" | "launched" | "failed";
 

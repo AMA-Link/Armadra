@@ -89,8 +89,10 @@ export const STATUS_PILL_PULSES: Record<StatusTone, boolean> = {
   done: false,
 };
 
-export interface StatusPillProps
-  extends Omit<React.ComponentProps<"span">, "children"> {
+export interface StatusPillProps extends Omit<
+  React.ComponentProps<"span">,
+  "children"
+> {
   tone: StatusTone;
   label: React.ReactNode;
   /** 18（`sm`，默认）或 20（`md`）；与 `Badge` 同高。 */
@@ -195,8 +197,10 @@ export function StatusDot({
 }
 
 /** `StatusLine` 的输入：`agent/display.ts` 的 `lineOf` 产出同一形状，但本组件不依赖 `agent/`。 */
-export interface StatusLineProps
-  extends Omit<React.ComponentProps<"div">, "children"> {
+export interface StatusLineProps extends Omit<
+  React.ComponentProps<"div">,
+  "children"
+> {
   tone: StatusTone;
   /** 阶段文案（已本地化）；`aria-live="polite"` 只播这一段。 */
   label: string;

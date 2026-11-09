@@ -469,8 +469,7 @@ export interface Refresh {
 
 /** 读一张进程表：同步（远端 worker）或异步（core 的采样循环）。 */
 export type TableReader = () =>
-  | Map<number, ProcessRow>
-  | Promise<Map<number, ProcessRow>>;
+  Map<number, ProcessRow> | Promise<Map<number, ProcessRow>>;
 
 /**
  * 跨样本持有进程表与 CPU 基线。必须复用：每次都新建一个会让每一个 CPU 读数都是

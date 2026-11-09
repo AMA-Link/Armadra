@@ -115,6 +115,10 @@ mac:
   # when neither set is complete, the same "decide before the twenty-minute
   # build, not after" reasoning as docs/guides/ci-release.md §2.6.
   notarize: true
+  # Electron 44 dropped macOS 12; the README promises 13.3+ (Tailwind v4's
+  # floor). Declaring it makes Finder refuse an older system up front instead
+  # of the app dying at launch.
+  minimumSystemVersion: "13.3"
   extendInfo:
     # macOS 15+ gates any connection to an address on the user's own subnet
     # behind Local Network privacy, attributed to the RESPONSIBLE PROCESS —

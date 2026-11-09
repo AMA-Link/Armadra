@@ -219,15 +219,10 @@ export function verifyWelcome(
 }
 
 export type AuthRefusal =
-  | "missing"
-  | "malformed"
-  | "expired"
-  | "replayed"
-  | "mismatch";
+  "missing" | "malformed" | "expired" | "replayed" | "mismatch";
 
 export type AuthVerdict =
-  | { readonly ok: true }
-  | { readonly ok: false; readonly reason: AuthRefusal };
+  { readonly ok: true } | { readonly ok: false; readonly reason: AuthRefusal };
 
 /**
  * Checks one `hello`'s proof, once.

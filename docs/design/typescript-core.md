@@ -94,27 +94,27 @@ tools/hook/                       ← 新增：armadra-hook 的 sh shim 生成�
 
 ### 4.1 Host 每个职责的去处
 
-| Host 包（非测试行数）                                                             | 职责                                                             | 去处                                                                                                                                                      |
+| Host 包（非测试行数） | 职责 | 去处 |
 | --------------------------------------------------------------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ------ | ---- | -------------------------------------------- |
-| `server/`（5,033，22 文件，12 个 RPC 前缀共 119 个方法）                          | HTTP 分发、来源判定、scopes、代理、托管前端                      | `core/http`：路由表 + 来源分档（§2）+ 权限位；`proxy.go`（348）**整段删除**（同进程不用代理）；`webroot.go`（203）→ `apps/server`                         |
-| `storage/`（6,005，21 文件）                                                      | Host 自己的 SQLite：实体、revision、收据、事件                   | 表并进统一库（§6）；`entities.go` 的通用实体投影改为各域自己的表，不再有「通用实体」间接层                                                                |
-| `agenthost/`（4,380，15 文件）                                                    | Agent 状态/审批/信箱/交接/上下文链接的 Host 半边                 | 与 Runtime 的 `hook/` `collab/` **合并为一份** `core/hook` + `core/collab`（现在是两份实现对着一套语义）                                                  |
-| `worker/`（3,105，20 文件，含 `wire.go` 341、`channel.go` 326、`process.go` 442） | 拉起 Rust Worker、stdio 帧、`serve_commands`、containment        | **整段删除**                                                                                                                                              |
-| `sessionhost/`（2,969）                                                           | 会话意图与 generation 的 Host 半边                               | 并进 `core/terminal`（现在是 Host 记意图、Runtime 记 PTY，合并后一份记录）                                                                                |
-| `canvashost/`（2,778）                                                            | 画布实体的 Host 半边                                             | 并进 `core/canvas`（同上）                                                                                                                                |
-| `githost/`（2,765）                                                               | Git 操作身份与队列的 Host 半边                                   | 并进 `core/git`                                                                                                                                           |
-| `settingshost/`（2,173）                                                          | 偏好文档的 Host 半边                                             | 并进 `core/settings`                                                                                                                                      |
-| `githubapi/`（2,113）+ `githubhost/`（1,815）+ `githubcred/`（701）               | GitHub 客户端、缓存、凭据、Issue/PR 映射                         | `core/github`（Runtime 侧没有对应实现，这是**纯新增**的 4,629 行）                                                                                        |
-| `automation/`（1,976）+ `automationhost/`（1,023）                                | 计划、cron、激活、运行记录、收据                                 | `core/schedule`（Runtime 的 `automation.rs` 775 行只是端点，真逻辑在这里）                                                                                |
-| `servicedef/`（1,769）                                                            | launchd / systemd / `sc.exe` 定义生成                            | `apps/server` 的 `install                                                                                                                                 | uninstall | status | logs | upgrade`（「只生成定义、不托管」的规则不变） |
-| `fshost/`（1,347）                                                                | 工作区根注册与权限判定的 Host 半边                               | 并进 `core/files`                                                                                                                                         |
-| `updates/`（1,344）                                                               | 发布清单、下载、校验、版本比对                                   | `core/updates`；桌面壳的 electron-updater 改从 core 取清单，不再各算一遍                                                                                  |
-| `eventstream/`（1,162：hub 529、frame 319、priority 213、catchup 101）            | durable sequence、优先级队列、慢订阅者、快照续订                 | `core/bus`：**进程内事件总线 + WS 广播**。durable sequence 与 outbox 表保留（断线续订仍需要），但 outbox 与业务写入本来就同事务，现在连事务都不用跨进程了 |
-| `migration/`（952）+ `ownership/`（850）                                          | staging 导入、投影、核验、所有权切换                             | **整段删除**                                                                                                                                              |
-| `identity/`（822）+ `server/auth.go`（289）+ `localipc/`（461）                   | owner、设备、配对码、票据、会话轮转、私有控制通道                | `core/identity`。桌面壳路径简化（D6）；服务器壳保留全套                                                                                                   |
-| `daemon/`（514）+ `hoststate/`（499）+ `endpoints/`（147）                        | 单实例、数据目录锁、launcher 记录、端点公告                      | 并进 `core/main` 与已有的 `endpoints.json`（两段合一段）                                                                                                  |
-| `commanddispatch/`（275）+ `runtimelink/`（292）+ `externalservice/`（324）       | 命令派发、Runtime 链接、外部服务判定                             | 前两个删除（同进程直接调用）；`externalservice` 并进 `core/http` 的来源分档                                                                               |
-| `cmd/armadra-host/`（3,635，含 `ownership.go` 356）                               | CLI：serve / install / status / logs / upgrade / ownership / git | `apps/server` 的 CLI；`ownership.go` 删除                                                                                                                 |
+| `server/`（5,033，22 文件，12 个 RPC 前缀共 119 个方法） | HTTP 分发、来源判定、scopes、代理、托管前端 | `core/http`：路由表 + 来源分档（§2）+ 权限位；`proxy.go`（348）**整段删除**（同进程不用代理）；`webroot.go`（203）→ `apps/server` |
+| `storage/`（6,005，21 文件） | Host 自己的 SQLite：实体、revision、收据、事件 | 表并进统一库（§6）；`entities.go` 的通用实体投影改为各域自己的表，不再有「通用实体」间接层 |
+| `agenthost/`（4,380，15 文件） | Agent 状态/审批/信箱/交接/上下文链接的 Host 半边 | 与 Runtime 的 `hook/` `collab/` **合并为一份** `core/hook` + `core/collab`（现在是两份实现对着一套语义） |
+| `worker/`（3,105，20 文件，含 `wire.go` 341、`channel.go` 326、`process.go` 442） | 拉起 Rust Worker、stdio 帧、`serve_commands`、containment | **整段删除** |
+| `sessionhost/`（2,969） | 会话意图与 generation 的 Host 半边 | 并进 `core/terminal`（现在是 Host 记意图、Runtime 记 PTY，合并后一份记录） |
+| `canvashost/`（2,778） | 画布实体的 Host 半边 | 并进 `core/canvas`（同上） |
+| `githost/`（2,765） | Git 操作身份与队列的 Host 半边 | 并进 `core/git` |
+| `settingshost/`（2,173） | 偏好文档的 Host 半边 | 并进 `core/settings` |
+| `githubapi/`（2,113）+ `githubhost/`（1,815）+ `githubcred/`（701） | GitHub 客户端、缓存、凭据、Issue/PR 映射 | `core/github`（Runtime 侧没有对应实现，这是**纯新增**的 4,629 行） |
+| `automation/`（1,976）+ `automationhost/`（1,023） | 计划、cron、激活、运行记录、收据 | `core/schedule`（Runtime 的 `automation.rs` 775 行只是端点，真逻辑在这里） |
+| `servicedef/`（1,769） | launchd / systemd / `sc.exe` 定义生成 | `apps/server` 的 `install                                                                                                                                 | uninstall | status | logs | upgrade`（「只生成定义、不托管」的规则不变） |
+| `fshost/`（1,347） | 工作区根注册与权限判定的 Host 半边 | 并进 `core/files` |
+| `updates/`（1,344） | 发布清单、下载、校验、版本比对 | `core/updates`；桌面壳的 electron-updater 改从 core 取清单，不再各算一遍 |
+| `eventstream/`（1,162：hub 529、frame 319、priority 213、catchup 101） | durable sequence、优先级队列、慢订阅者、快照续订 | `core/bus`：**进程内事件总线 + WS 广播**。durable sequence 与 outbox 表保留（断线续订仍需要），但 outbox 与业务写入本来就同事务，现在连事务都不用跨进程了 |
+| `migration/`（952）+ `ownership/`（850） | staging 导入、投影、核验、所有权切换 | **整段删除** |
+| `identity/`（822）+ `server/auth.go`（289）+ `localipc/`（461） | owner、设备、配对码、票据、会话轮转、私有控制通道 | `core/identity`。桌面壳路径简化（D6）；服务器壳保留全套 |
+| `daemon/`（514）+ `hoststate/`（499）+ `endpoints/`（147） | 单实例、数据目录锁、launcher 记录、端点公告 | 并进 `core/main` 与已有的 `endpoints.json`（两段合一段） |
+| `commanddispatch/`（275）+ `runtimelink/`（292）+ `externalservice/`（324） | 命令派发、Runtime 链接、外部服务判定 | 前两个删除（同进程直接调用）；`externalservice` 并进 `core/http` 的来源分档 |
+| `cmd/armadra-host/`（3,635，含 `ownership.go` 356） | CLI：serve / install / status / logs / upgrade / ownership / git | `apps/server` 的 CLI；`ownership.go` 删除 |
 
 ### 4.2 整段删除清单
 
@@ -127,7 +127,7 @@ tools/hook/                       ← 新增：armadra-hook 的 sh shim 生成�
 | `packages/host-client/`                                                                                                                                                                    |                   8,033 | 前端只剩一套 `/api/`；`apps/web/src/host/` 的 64 个引用改打 `/api/` |
 | `pnpm protocol:{generate,check,test,fixtures}` 与 `tools/protocol.mjs`                                                                                                                     |                     150 | 无 proto 可生成                                                     |
 | `repo.rules.json` 的 `proto` 段（fixture 与三端契约测试的对应校验）                                                                                                                        |                       — | 同上                                                                |
-| Host↔Worker：`worker/`（Go）+ `apps/runtime/src/worker/`（Rust）                                                                                                                          |           3,105 + 7,675 | 同进程                                                              |
+| Host↔Worker：`worker/`（Go）+ `apps/runtime/src/worker/`（Rust）                                                                                                                           |           3,105 + 7,675 | 同进程                                                              |
 | 写入所有权：`ownership/` + `migration/`（Go）+ `apps/runtime/src/ownership/`（Rust）+ `cmd/.../ownership.go` + `write_ownership` / `host_imports` 表 + `migration/legacy` 的 14 份迁移副本 | 850 + 952 + 6,440 + 356 | 没有第二个写者                                                      |
 | `server/proxy.go` + `runtimelink/` + `commanddispatch/`                                                                                                                                    |         348 + 292 + 275 | 同进程                                                              |
 | `pnpm canvas:e2e` / `ownership:e2e`                                                                                                                                                        |                       — | 验证的是所有权切换；其中画布导出/导入的断言并入 R4 的导入导出测试   |
@@ -335,7 +335,7 @@ find crates -name '*.rs' | xargs wc -l | tail -1             # 12855
 | `hook/`                                                                  | 12,099 |   31 | 端点、鉴权、归一化、reduce、安装与修复                                                 |  172 |
 | `terminal/`                                                              |  9,933 |   29 | tmux / direct / sessionHost / ssh、GC                                                  |   87 |
 | `api/`                                                                   |  8,099 |   39 | handler（路由注册全在 `lib.rs`）                                                       |   53 |
-| `worker/`                                                                |  7,675 |   23 | Host↔Worker 帧、serve_commands、远端投影                                              |   33 |
+| `worker/`                                                                |  7,675 |   23 | Host↔Worker 帧、serve_commands、远端投影                                               |   33 |
 | `language/`                                                              |  7,122 |   24 | LSP 发现、mux、会话流                                                                  |   62 |
 | `collab/`                                                                |  6,631 |   24 | context-link / control 动词、mailbox                                                   |   53 |
 | `ownership/`                                                             |  6,440 |   21 | 所有权记录、导出导入、epoch 下发                                                       |   34 |

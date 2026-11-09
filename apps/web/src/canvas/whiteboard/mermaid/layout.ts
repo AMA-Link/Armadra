@@ -136,8 +136,7 @@ export function layoutGraph(
   const nodes = new Map<string, LaidOutNode>();
   for (const node of graph.nodes) {
     const placed = g.node(node.id) as
-      | { x?: number; y?: number; width?: number; height?: number }
-      | undefined;
+      { x?: number; y?: number; width?: number; height?: number } | undefined;
     const size = measureLabel(node.label, options);
     const w = placed?.width ?? size.w;
     const h = placed?.height ?? size.h;

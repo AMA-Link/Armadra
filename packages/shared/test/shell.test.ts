@@ -208,7 +208,7 @@ describe("shellCommandLine", () => {
  */
 function readAsCmd(line: string, env: Record<string, string>): string[] {
   let expanded = "";
-  for (let at = 0; at < line.length; ) {
+  for (let at = 0; at < line.length;) {
     const start = line.indexOf("%", at);
     if (start === -1) {
       expanded += line.slice(at);

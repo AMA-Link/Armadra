@@ -251,8 +251,7 @@ interface Blob {
 }
 
 type Encoded =
-  | { path: string; base64: string }
-  | { path: string; transfer: string };
+  { path: string; base64: string } | { path: string; transfer: string };
 
 /**
  * Stage and publish a batch on the execution host.

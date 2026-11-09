@@ -23,12 +23,7 @@
  */
 
 export type JsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | JsonValue[]
-  | { [key: string]: JsonValue };
+  null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
 export type FieldDesc =
   | { readonly kind: "string" }
@@ -100,11 +95,7 @@ export function describe<T>(
 /* ---------------------------------- 造一份 --------------------------------- */
 
 export type DeepPartial<T> = T extends
-  | string
-  | number
-  | boolean
-  | bigint
-  | Uint8Array
+  string | number | boolean | bigint | Uint8Array
   ? T
   : T extends ReadonlyArray<infer U>
     ? ReadonlyArray<DeepPartial<U>>

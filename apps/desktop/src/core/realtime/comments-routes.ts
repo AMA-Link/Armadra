@@ -65,11 +65,7 @@ export interface CommentView extends BoardComment {
 }
 
 export type CommentAction =
-  | "created"
-  | "updated"
-  | "resolved"
-  | "reopened"
-  | "deleted";
+  "created" | "updated" | "resolved" | "reopened" | "deleted";
 
 export interface CommentRoutesOptions {
   readonly database: DatabaseSync;

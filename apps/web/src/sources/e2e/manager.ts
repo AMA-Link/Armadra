@@ -372,9 +372,9 @@ export class E2eChannels {
         }
       }
     } catch (error) {
-      if (
-        !(error instanceof E2eAccessError && error.code === "device_rejected")
-      )
+      if (!(
+        error instanceof E2eAccessError && error.code === "device_rejected"
+      ))
         pendingApprovals.dismiss(target.sourceId);
       throw error;
     }

@@ -161,11 +161,8 @@ describe("挑战证书", () => {
     expect(acmeExtension(parsed.raw, "other.thumbprint")).toBe(false);
 
     const ip = new X509Certificate(
-      acmeChallengeCertificate(
-        "198.51.100.7",
-        keyAuthorization,
-        new Date(),
-      ).cert,
+      acmeChallengeCertificate("198.51.100.7", keyAuthorization, new Date())
+        .cert,
     );
     expect(ip.subjectAltName).toBe("IP Address:198.51.100.7");
   });
@@ -217,11 +214,15 @@ describe("Gateway 监听上的 tls-alpn-01", () => {
           response.on("end", () =>
             done({
               body: Buffer.concat(chunks).toString("utf8"),
-              cn: (
-                response.socket as unknown as {
-                  getPeerCertificate(): PeerCertificate;
-                }
-              ).getPeerCertificate().subject.CN,
+              // `@types/node` 24.19 types a subject field as possibly
+              // repeated; this certificate has exactly one CN.
+              cn: String(
+                (
+                  response.socket as unknown as {
+                    getPeerCertificate(): PeerCertificate;
+                  }
+                ).getPeerCertificate().subject.CN,
+              ),
             }),
           );
         },

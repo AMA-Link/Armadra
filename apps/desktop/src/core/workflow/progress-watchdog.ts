@@ -68,8 +68,7 @@ export interface ProgressWatchdogOptions {
   readonly database: DatabaseSync;
   /** 推帧；协作域还没装好时缺席。 */
   readonly publish: () =>
-    | ((workspaceId: string, event: WorkspaceEvent) => void)
-    | undefined;
+    ((workspaceId: string, event: WorkspaceEvent) => void) | undefined;
   /** 每次现读：设置改了下一轮扫描就生效。 */
   readonly thresholds: () => WatchdogThresholds;
   /** 节点最近一次输出的时刻（毫秒）：终端的 PTY 输出、ACP 会话的时间线写入。 */
@@ -259,8 +258,7 @@ export class ProgressWatchdog implements StallSource {
           "ORDER BY created_at DESC, rowid DESC LIMIT 1",
       )
       .get(task.coordinatorNodeId, task.nodeId) as
-      | { state?: string }
-      | undefined;
+      { state?: string } | undefined;
     return row?.state === "queued" || row?.state === "delivering";
   }
 

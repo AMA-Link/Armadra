@@ -449,8 +449,7 @@ export function restoreWorkspace(
  */
 export function getWorkspace(database: DatabaseSync, id: string): Workspace {
   const row = database.prepare(`${SELECT_WORKSPACE} WHERE id = ?`).get(id) as
-    | WorkspaceRow
-    | undefined;
+    WorkspaceRow | undefined;
   if (row === undefined) throw notFound("Workspace was not found");
   return fromRow(row);
 }

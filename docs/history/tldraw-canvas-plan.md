@@ -295,7 +295,7 @@ Phase 1 出口：`pnpm test`、`typecheck`、`cargo test`、clippy 零告警；�
 
 | agent    | 交付                                                                                                                 |
 | -------- | -------------------------------------------------------------------------------------------------------------------- |
-| edges    | 箭头 ↔ edge 双向：创建、删除、方向与样式、合法性、撤销一致；把手起笔工具；节点删除级联                              |
+| edges    | 箭头 ↔ edge 双向：创建、删除、方向与样式、合法性、撤销一致；把手起笔工具；节点删除级联                               |
 | overlays | rope / subagent 卡片迁到 `OnTheCanvas`；`derived-edges` 测试复用；`StatusMiniMap` 的状态描边在 tldraw Minimap 上复现 |
 
 **已完成（2026-09-04）**：边的身份改记在 shape 上、合法性推迟到交互结束再判；rope 与子代理卡片迁到 `OnTheCanvas`，缩略图按 Agent 状态描边。

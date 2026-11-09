@@ -337,8 +337,8 @@ async function item3Raster(d, zooms, guestWebContents) {
   // below 1 while peak gradient holds near its zoom-1 value.
   const rerasterised = Boolean(
     verdict &&
-      verdict.maxGradientRatio_2_over_1 >= 0.9 &&
-      verdict.intermediateFractionRatio_2_over_1 <= 0.85,
+    verdict.maxGradientRatio_2_over_1 >= 0.9 &&
+    verdict.intermediateFractionRatio_2_over_1 <= 0.85,
   );
   return {
     title:

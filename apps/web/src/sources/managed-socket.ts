@@ -29,12 +29,7 @@ export const BACKGROUND_CAP_MS = 30_000;
 export const PING_TIMEOUT_MS = 3_000;
 
 export type ManagedSocketState =
-  | "connecting"
-  | "open"
-  | "backoff"
-  | "waiting"
-  | "unauthorized"
-  | "closed";
+  "connecting" | "open" | "backoff" | "waiting" | "unauthorized" | "closed";
 
 /** 页面环境：`online` 与可见性。 */
 export interface SocketEnvironment {

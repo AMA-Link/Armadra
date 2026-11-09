@@ -76,7 +76,7 @@ export function useFileDropPaste(
           pendingPhase: usePendingLaunchStore.getState().entries[nodeId]?.phase,
           acknowledged: Boolean(
             agent?.sessionId ||
-              useAgentStatusStore.getState().statuses[scoped(nodeId)],
+            useAgentStatusStore.getState().statuses[scoped(nodeId)],
           ),
         };
       };

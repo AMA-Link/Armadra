@@ -11,12 +11,7 @@ import { fileURLToPath } from "node:url";
 
 export interface SinkRecord {
   readonly kind:
-    | "apns"
-    | "fcm"
-    | "fcm-token"
-    | "webpush"
-    | "unifiedpush"
-    | "relay";
+    "apns" | "fcm" | "fcm-token" | "webpush" | "unifiedpush" | "relay";
   readonly method: string;
   readonly path: string;
   readonly httpVersion: string;

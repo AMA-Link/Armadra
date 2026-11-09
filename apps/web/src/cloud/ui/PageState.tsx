@@ -8,11 +8,7 @@ import { EmptyState } from "@/ui/state";
 
 /** 整页的五种状态（云端控制台 §3.0）。 */
 export type PageStateKind =
-  | "error"
-  | "forbidden"
-  | "notFound"
-  | "maintenance"
-  | "sessionExpired";
+  "error" | "forbidden" | "notFound" | "maintenance" | "sessionExpired";
 
 /** 错误码落到哪一种：认不出的都是「按 code 的错误」。 */
 export function pageStateKind(code?: string): PageStateKind {

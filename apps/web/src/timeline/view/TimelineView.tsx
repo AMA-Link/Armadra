@@ -35,11 +35,9 @@ import { VirtualTurnList } from "./VirtualTurnList";
 
 export interface TurnActions {
   renderApproval?:
-    | ((approval: TimelineApprovalItem) => React.ReactNode)
-    | undefined;
+    ((approval: TimelineApprovalItem) => React.ReactNode) | undefined;
   renderElicitation?:
-    | ((elicitation: TimelineElicitationItem) => React.ReactNode)
-    | undefined;
+    ((elicitation: TimelineElicitationItem) => React.ReactNode) | undefined;
   onRetry?: (() => void) | undefined;
   onContinue?: (() => void) | undefined;
   /** 用户行「编辑后重发」：把这句填回输入框。 */

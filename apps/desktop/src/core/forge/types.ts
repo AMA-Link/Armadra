@@ -28,11 +28,7 @@ export type ForgeIssueState = "open" | "closed";
 export type ForgePullState = "open" | "closed" | "merged";
 export type ForgeMergeable = "mergeable" | "conflicting" | "unknown";
 export type ForgeFileStatus =
-  | "added"
-  | "modified"
-  | "removed"
-  | "renamed"
-  | "other";
+  "added" | "modified" | "removed" | "renamed" | "other";
 export type ForgeCheckState = "pending" | "success" | "failure" | "neutral";
 export type ForgeRollup = ForgeCheckState | "none";
 export type ForgeMergeMethod = "merge" | "squash" | "rebase";
