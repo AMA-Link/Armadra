@@ -92,8 +92,8 @@ function descriptors(value: unknown): PublicKeyCredentialDescriptor[] {
 }
 
 function credentialJson(credential: PublicKeyCredential): Json {
-  const withJson = credential as PublicKeyCredential & { toJSON?: () => Json };
-  if (typeof withJson.toJSON === "function") return withJson.toJSON();
+  const withJson = credential as { toJSON?: () => unknown };
+  if (typeof withJson.toJSON === "function") return withJson.toJSON() as Json;
   const response = credential.response as AuthenticatorResponse &
     Partial<AuthenticatorAttestationResponse & AuthenticatorAssertionResponse>;
   const body: Json = {

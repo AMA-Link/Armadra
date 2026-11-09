@@ -121,7 +121,7 @@ export class ManagedSocket {
     return this.socket;
   }
 
-  send(data: string | ArrayBufferLike | Blob | ArrayBufferView): boolean {
+  send(data: Parameters<WebSocket["send"]>[0]): boolean {
     if (this.current !== "open" || this.socket === null) return false;
     this.socket.send(data);
     return true;
