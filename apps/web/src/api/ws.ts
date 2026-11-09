@@ -137,7 +137,7 @@ export class ControlChannel extends EventTarget {
   }
 
   /** 上游 peer 客户端看的状态：连接中（含等待重连）、开着、停了。 */
-  get readyState(): number {
+  get readyState(): WebSocket["readyState"] {
     if (this.fatal !== null) return CLOSED;
     const state = this.managed.state;
     if (state === "closed" || state === "unauthorized") return CLOSED;

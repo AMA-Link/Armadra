@@ -545,7 +545,7 @@ function writeExecutables(
       typeof file.content === "string"
         ? Buffer.from(file.content, "utf8")
         : file.content;
-    let same = false;
+    let same: boolean;
     try {
       same =
         readFileSync(path).equals(bytes) &&

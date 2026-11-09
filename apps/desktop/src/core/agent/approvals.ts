@@ -165,7 +165,7 @@ const SELECT =
   "created_at, answered_at, revision FROM agent_approvals ";
 
 function approvalOf(row: ApprovalRow): AgentApproval {
-  let request: unknown = null;
+  let request: unknown;
   try {
     request = JSON.parse(row.request_json);
   } catch {
@@ -755,7 +755,7 @@ export function sweepOrphans(
     );
     if (!ours) continue;
     const path = join(directory, entry.name);
-    let stale = false;
+    let stale: boolean;
     try {
       stale = now - statSync(path).mtimeMs > olderThanMs;
     } catch {

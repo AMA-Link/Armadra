@@ -124,7 +124,7 @@ describe("租户", () => {
     fireEvent.click(within(detail).getByRole("button", { name: "停用" }));
 
     // 没理由：不调用，理由框标红。
-    let dialog = await confirmWith("停用", { name: "研发组" });
+    const dialog = await confirmWith("停用", { name: "研发组" });
     expect(status).not.toHaveBeenCalled();
     expect(within(dialog).getByText("填写理由")).toBeTruthy();
     // 有理由、名字不对：不调用。
@@ -144,7 +144,7 @@ describe("租户", () => {
     fireEvent.click(
       await within(detail).findByRole("button", { name: "恢复" }),
     );
-    dialog = await confirmWith("恢复", { reason: "误判", name: "研发组" });
+    await confirmWith("恢复", { reason: "误判", name: "研发组" });
     await waitFor(() =>
       expect(status).toHaveBeenLastCalledWith({
         teamId: "team_mock_rd",

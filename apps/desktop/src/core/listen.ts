@@ -234,9 +234,12 @@ async function bindTcp(
       throw new Error(
         `${address} is already in use; stop the process holding it or pass ` +
           `--listen tcp:127.0.0.1:0 to let the kernel choose a port`,
+        { cause: error },
       );
     }
-    throw new Error(`could not listen on ${address}: ${describe(error)}`);
+    throw new Error(`could not listen on ${address}: ${describe(error)}`, {
+      cause: error,
+    });
   }
   const bound = server.address();
   if (bound === null || typeof bound === "string") {

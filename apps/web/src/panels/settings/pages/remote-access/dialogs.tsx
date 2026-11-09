@@ -469,7 +469,7 @@ export function JoinLinkDialog({
   }
 
   const ready = url.trim() !== "";
-  let host = "";
+  let host: string;
   try {
     host = new URL(url.trim()).host;
   } catch {

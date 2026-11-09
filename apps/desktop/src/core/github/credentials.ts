@@ -591,7 +591,7 @@ export class CredentialService {
       if (error instanceof GithubApiError) throw error;
       throw githubError("unavailable");
     }
-    let login = "";
+    let login: string;
     try {
       login =
         (JSON.parse(response.body.toString("utf8")) as { login?: string })

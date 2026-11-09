@@ -8,7 +8,7 @@
 
 ```sh
 cd tools/probes/electron-webview
-npm install          # electron 42.10.1 + @xyflow/react 12.11.6 + react 19.2.8 + esbuild
+npm install          # electron 45.2.3 + @xyflow/react 12.11.6 + react 19.2.8 + esbuild
 npm run probe        # = node build.mjs && electron . --probe
 ```
 

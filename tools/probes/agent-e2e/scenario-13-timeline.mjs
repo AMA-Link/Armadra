@@ -457,7 +457,9 @@ export default async function run13() {
           { timeout: TURN_TIMEOUT, interval: 300 },
         );
       } catch (error) {
-        throw new Error(`${error.message}；最后看到 ${JSON.stringify(last)}`);
+        throw new Error(`${error.message}；最后看到 ${JSON.stringify(last)}`, {
+          cause: error,
+        });
       }
     };
 

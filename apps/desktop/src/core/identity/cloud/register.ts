@@ -226,7 +226,7 @@ export class CloudRegistry {
       throw fail("source_unreachable", "远程服务登记的不是这台机器");
     }
     // 公钥集只认同一个来源下的地址：登记答案不该把验签的钥指到别处。
-    let jwksOrigin = "";
+    let jwksOrigin: string;
     try {
       jwksOrigin = new URL(registration.jwksUrl).origin;
     } catch {

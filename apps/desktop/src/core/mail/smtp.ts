@@ -83,7 +83,7 @@ export function parseSmtpUrl(raw: string, fromOption = ""): SmtpParse {
   const query = new URLSearchParams(matched[4] ?? "");
 
   let host: string;
-  let portText = "";
+  let portText: string;
   if (hostPort.startsWith("[")) {
     const close = hostPort.indexOf("]");
     if (close < 0) return { ok: false, reason: "SMTP 主机的 IPv6 写法不对" };

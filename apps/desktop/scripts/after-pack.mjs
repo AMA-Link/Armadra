@@ -122,6 +122,7 @@ export function copyWithRetry(
       if (now() - started > limitMs) {
         throw new Error(
           `after-pack: ${source} stayed busy for ${limitMs / 1000}s (${error.code})`,
+          { cause: error },
         );
       }
       sleep(stepMs);

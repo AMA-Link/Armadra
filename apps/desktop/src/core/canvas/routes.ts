@@ -629,7 +629,7 @@ async function* openPresence(
       ...value,
       clients: value.clients.map(({ lastSeenAt: _seen, ...rest }) => rest),
     });
-  let last = "";
+  let last: string;
   try {
     if (!canRead()) throw fail("forbidden", "没有这块画布的读授权了");
     let item = renew();

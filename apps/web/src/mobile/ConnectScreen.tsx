@@ -675,7 +675,7 @@ export function ConnectScreen({
     setRelayIssuer(issuer);
     setBusy(true);
     void (async () => {
-      let cloud = false;
+      let cloud: boolean;
       try {
         cloud = (await relay?.isCloud(issuer)) === true;
       } catch {

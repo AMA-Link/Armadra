@@ -400,7 +400,7 @@ export function ticketedWebSocket(
       return this.inner?.extensions ?? "";
     }
 
-    send(data: string | ArrayBufferLike | Blob | ArrayBufferView): void {
+    send(data: Parameters<WebSocket["send"]>[0]): void {
       if (this.inner === null || this.inner.readyState !== 1)
         throw new DOMException("WebSocket is not open", "InvalidStateError");
       this.inner.send(data);

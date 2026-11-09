@@ -23,7 +23,7 @@ export function checkAddress(raw: string): AddressCheck {
     return { ok: true, address: `https://${text}` };
   }
   if (/^http:\/\//i.test(text)) {
-    let host = "";
+    let host: string;
     try {
       host = new URL(text).hostname;
     } catch {

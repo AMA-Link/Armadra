@@ -114,6 +114,7 @@ export function protectKeyFile(
       `无法收紧密钥文件的权限（icacls ${path}）：${
         error instanceof Error ? error.message : String(error)
       }`,
+      { cause: error },
     );
   }
 }

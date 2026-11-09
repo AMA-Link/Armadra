@@ -189,7 +189,7 @@ export class E2eClientChannel {
     };
     const send = (unit: Uint8Array) => {
       counters.wireOut += unit.length;
-      socket.send(unit);
+      socket.send(unit as Uint8Array<ArrayBuffer>);
     };
     const timeout = setTimeout(
       () => fail(new E2eChannelError("handshake", "握手超时")),
@@ -402,7 +402,7 @@ export class E2eClientChannel {
         (unit) => {
           if (this.closedWith !== null) return;
           this.counters.wireOut += unit.length;
-          this.socket.send(unit);
+          this.socket.send(unit as Uint8Array<ArrayBuffer>);
         },
         (error: unknown) => this.fatal(`记录封不上：${String(error)}`),
       );

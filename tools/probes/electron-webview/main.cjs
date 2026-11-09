@@ -160,7 +160,7 @@ async function run(fn) {
 async function waitFor(fn, what, timeoutMs = 20000) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    let ok = false;
+    let ok;
     try {
       ok = await fn();
     } catch {

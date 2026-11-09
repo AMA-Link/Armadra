@@ -833,7 +833,7 @@ export class ScanState {
         continue;
       }
       let since = this.snapshotSince.get(agent) ?? 0;
-      let samples: readonly CostSample[] = [];
+      let samples: readonly CostSample[];
       try {
         samples = source.collect(since, context);
       } catch {

@@ -236,7 +236,9 @@ export default async function mobile({ stack, output, report, scenario }) {
         `return document.querySelector('[data-slot="mobile-focus"]')?.innerText ?? document.body.innerText;`,
       )
       .catch(() => "");
-    throw new Error(`${error.message}\n页面：${String(text).slice(0, 600)}`);
+    throw new Error(`${error.message}\n页面：${String(text).slice(0, 600)}`, {
+      cause: error,
+    });
   } finally {
     await page.close();
     await stack.api("/api/gateway", {

@@ -283,7 +283,7 @@ export class UpdatesController {
         body: index.body,
         checkedAtMs: nowMs,
       });
-      let parsed: unknown = null;
+      let parsed: unknown;
       try {
         parsed = JSON.parse(index.body);
       } catch {

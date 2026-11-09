@@ -129,8 +129,8 @@ export function watermark(database: DatabaseSync): {
   readonly floor: number;
   readonly watermark: number;
 } {
-  let floor = 0;
-  let last = 0;
+  let floor: number;
+  let last: number;
   try {
     const meta = database
       .prepare(

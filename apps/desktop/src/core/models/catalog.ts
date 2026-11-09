@@ -248,6 +248,7 @@ export function parse(document: string, fetchedAt: string): Catalog {
   } catch (error) {
     throw new Error(
       `models.dev: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     );
   }
   const providers = asRecord(upstream);

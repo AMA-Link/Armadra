@@ -197,7 +197,7 @@ export function findUnder(
         continue;
       }
       if (!entry.isFile() || !matches(entry.name)) continue;
-      let modified = 0;
+      let modified: number;
       try {
         modified = statSync(path).mtimeMs;
       } catch {

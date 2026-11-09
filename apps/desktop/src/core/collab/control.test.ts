@@ -580,7 +580,9 @@ describe("team", () => {
           { cwd: fixture.directory, encoding: "utf8", stdio: "pipe" },
         ).trim();
       } catch (error) {
-        throw new Error(String((error as { stderr?: unknown }).stderr));
+        throw new Error(String((error as { stderr?: unknown }).stderr), {
+          cause: error,
+        });
       }
     }
     beforeEach(() => {

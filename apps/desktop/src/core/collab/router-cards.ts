@@ -129,7 +129,7 @@ export class RouterCards {
     if (inserted.kind !== "inserted")
       return this.fail(coordinatorNodeId, nowMs);
     const item = inserted.item;
-    let delivered = false;
+    let delivered: boolean;
     try {
       const outcome = await attempt(context, item, { queue: false });
       // `unknown`（PTY 写到一半失败）与发送路径一致：不知道对面收到了多少，就当

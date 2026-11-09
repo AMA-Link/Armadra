@@ -55,13 +55,9 @@ export async function runGuestLink({
     s.ok("团队要求登录才能用链接：以没有授予的 member 登录后加入");
     await consoleSignIn(guestTab, accounts.member);
     await guestTab.goto(created.url);
-    landingKind = await guestTab.until(
-      landingReady,
-      "登录后落地页出现「加入」",
-      {
-        timeout: 30_000,
-      },
-    );
+    await guestTab.until(landingReady, "登录后落地页出现「加入」", {
+      timeout: 30_000,
+    });
   }
   const landing = await guestTab.evaluate(
     'return document.querySelector("h1")?.parentElement?.innerText ?? "";',

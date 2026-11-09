@@ -577,6 +577,7 @@ export async function waitForRuntime(
         first.health,
         error instanceof Error ? error.message : String(error),
       ),
+      { cause: error },
     );
   }
   await runtime.restart();
@@ -612,6 +613,7 @@ export async function takeOverAddress(address: RuntimeAddress): Promise<void> {
   } catch (error) {
     throw new Error(
       `could not read ${endpoints}: ${error instanceof Error ? error.message : error}`,
+      { cause: error },
     );
   }
   const found = staleRuntimeRecord(contents, address);
@@ -653,6 +655,7 @@ export async function stopStaleRuntime(record: RuntimeRecord): Promise<void> {
   } catch (error) {
     throw new Error(
       `could not signal process ${record.processId}: ${error instanceof Error ? error.message : error}`,
+      { cause: error },
     );
   }
   process.stderr.write(
