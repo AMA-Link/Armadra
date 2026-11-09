@@ -8231,7 +8231,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @sentry/electron@7.20.0
+### @sentry/electron@7.20.2
 
 License: MIT
 Author: Sentry
@@ -14638,7 +14638,7 @@ Copyright (c) 2012 Felix Geisendörfer (felix@debuggable.com) and contributors
  THE SOFTWARE.
 ```
 
-### framer-motion@13.1.0
+### framer-motion@13.5.1
 
 License: MIT
 Author: Matt Perry
@@ -18170,7 +18170,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### motion@13.1.0
+### motion@13.5.1
 
 License: MIT
 Author: Matt Perry
@@ -18202,7 +18202,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### motion-dom@13.0.0
+### motion-dom@13.5.1
 
 License: MIT
 Author: Matt Perry
@@ -18234,7 +18234,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### motion-utils@13.0.0
+### motion-utils@13.5.0
 
 License: MIT
 Author: Matt Perry
