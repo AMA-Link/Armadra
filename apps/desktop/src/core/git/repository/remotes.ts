@@ -143,7 +143,7 @@ async function syncStop(
   step: string,
   error: unknown,
 ): Promise<Error> {
-  let position = "unreadable";
+  let position: string;
   try {
     const state = await service.head(context.repository);
     position = `${state.headOid ?? "no commit"} on ${
@@ -152,7 +152,7 @@ async function syncStop(
   } catch {
     position = "unreadable";
   }
-  let remoteOid = "unreadable";
+  let remoteOid: string;
   try {
     remoteOid =
       (await service.remoteTrackingOid(context.repository, remote, branch)) ??

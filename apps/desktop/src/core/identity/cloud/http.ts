@@ -342,7 +342,7 @@ export class CloudHttp {
           },
         );
       }
-      let issuer = "";
+      let issuer: string;
       try {
         issuer = decodeURIComponent(trusted?.[1] ?? "");
       } catch {

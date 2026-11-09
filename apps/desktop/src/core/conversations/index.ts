@@ -371,7 +371,7 @@ function forgetMissing(
 ): number {
   // 根不一定是目录：OpenCode 的根是它的 SQLite 库文件，候选是库里的行
   // （`opencode:<id>`），不是文件。根还在（目录或文件）就按候选逐行对账。
-  let present = false;
+  let present: boolean;
   try {
     const stats = statSync(root);
     present = stats.isDirectory() || stats.isFile();

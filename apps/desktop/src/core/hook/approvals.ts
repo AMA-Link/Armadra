@@ -124,7 +124,7 @@ export function sweepOrphans(
     const path = join(directory, name);
     const extension = extname(name).slice(1);
     if (!["json", "answer", "tmp"].includes(extension)) continue;
-    let stale = false;
+    let stale: boolean;
     try {
       stale = now - statSync(path).mtimeMs > olderThanMs;
     } catch {

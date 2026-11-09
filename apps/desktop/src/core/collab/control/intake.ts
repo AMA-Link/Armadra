@@ -162,7 +162,7 @@ async function readMaterial(
       bodyError: error instanceof ForgeError ? error.kind : "unavailable",
     };
   }
-  let material: ThreadMaterial = empty;
+  let material: ThreadMaterial;
   try {
     if (candidate.kind === "issue") {
       const issue = await remote.getIssue(repo, candidate.number);

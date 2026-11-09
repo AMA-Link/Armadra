@@ -83,7 +83,7 @@ export class AssertionVerifier {
     }
     const key = await this.options.jwks.key(registration, parts.header.kid);
     if (key === undefined) return invalid("不认识签这张断言的钥");
-    let signed = false;
+    let signed: boolean;
     try {
       signed = verify(null, parts.signingInput, key, parts.signature);
     } catch {

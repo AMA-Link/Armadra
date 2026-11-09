@@ -383,7 +383,7 @@ export interface AgentApproval {
 }
 
 function approvalFromRow(row: Row): AgentApproval {
-  let request: unknown = null;
+  let request: unknown;
   try {
     request = JSON.parse(String(row.request_json));
   } catch {

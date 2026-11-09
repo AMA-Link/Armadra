@@ -94,7 +94,7 @@ const SELECT_WORKSPACE =
  * fix or remove.
  */
 function fromRow(row: WorkspaceRow): Workspace {
-  let permissions = DEFAULT_PERMISSIONS;
+  let permissions: WorkspacePermissions;
   try {
     const parsed = JSON.parse(
       row.permissions_json,

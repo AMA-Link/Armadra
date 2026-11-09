@@ -218,7 +218,7 @@ function relayCall(
         response.on("data", (chunk: Buffer) => chunks.push(chunk));
         response.on("end", () => {
           const text = Buffer.concat(chunks).toString("utf8");
-          let body: Record<string, unknown> = {};
+          let body: Record<string, unknown>;
           try {
             body =
               text === "" ? {} : (JSON.parse(text) as Record<string, unknown>);
@@ -335,7 +335,7 @@ async function viaRelay(
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const text = await response.text();
-  let parsed: Record<string, unknown> = {};
+  let parsed: Record<string, unknown>;
   try {
     parsed = text === "" ? {} : (JSON.parse(text) as Record<string, unknown>);
   } catch {

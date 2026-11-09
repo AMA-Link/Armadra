@@ -217,7 +217,7 @@ export class ForgeService {
   private githubSide(): { base: string; configured: boolean; login: string } {
     const service = this.options.github?.();
     const config = service?.store.config();
-    let base = PUBLIC_API_BASE;
+    let base: string;
     try {
       base = normalizeApiBase(config?.apiBase);
     } catch {

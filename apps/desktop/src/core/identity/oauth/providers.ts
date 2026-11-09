@@ -346,7 +346,7 @@ export async function verifyIdToken(input: {
   const kid = typeof header.kid === "string" ? header.kid : undefined;
   const jwk = await input.directory.key(input.metadata.jwksUri, kid, alg);
   if (jwk === undefined) throw invalid("找不到签名公钥");
-  let ok = false;
+  let ok: boolean;
   try {
     const key = createPublicKey({ key: jwk, format: "jwk" });
     ok = verify(

@@ -480,7 +480,7 @@ export function window(plan: AutomationPlan, nowMs: number): DueWindow {
   if (config === undefined) throw invalid();
   const at = num(plan.nextDueUnixMs);
   if (at <= 0 || at > nowMs) throw invalid("这个计划现在还没到期");
-  let slot = "";
+  let slot: string;
   let next = 0;
   let count = 1;
   let truncated = false;

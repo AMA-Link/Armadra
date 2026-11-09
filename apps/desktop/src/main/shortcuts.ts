@@ -45,7 +45,7 @@ export function applyShortcuts(request: unknown): BindingOutcome[] {
     // `register` answers false when the combination is already held — the OS
     // does not distinguish the reasons, and "taken" is the only explanation a
     // user can act on.
-    let bound = false;
+    let bound: boolean;
     try {
       bound = globalShortcut.register(checked.accelerator, () =>
         perform(binding.id),
