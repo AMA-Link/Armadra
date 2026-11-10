@@ -45,7 +45,7 @@
   },
   "agent": {
     "package": "@armadra/agent",
-    "version": "0.17.0",
+    "version": "0.17.1",
     "hostApi": 1
   },
   "platform": {
