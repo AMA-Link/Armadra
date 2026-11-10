@@ -42,6 +42,8 @@ class FakeUpdater extends EventEmitter {
   forceDevUpdateConfig = false;
   feed: unknown = null;
   installs = 0;
+  /** How many transfers were started. */
+  downloads = 0;
   /** Set to make `downloadUpdate` reject instead of resolving. */
   failure: Error | null = null;
   /** The file `downloadUpdate` resolves with. */
@@ -59,6 +61,7 @@ class FakeUpdater extends EventEmitter {
   }
 
   async downloadUpdate(token: { cancel: () => void }) {
+    this.downloads += 1;
     this.emit("download-progress", { transferred: 7, total: 13 });
     if (this.hold) {
       await new Promise<void>((resolve) => {
@@ -213,6 +216,7 @@ beforeEach(() => {
   updater.version = "0.2.0";
   updater.hold = null;
   updater.installs = 0;
+  updater.downloads = 0;
   cancellations.length = 0;
   sent.length = 0;
   restarts = 0;
@@ -311,6 +315,53 @@ it("a cancelled transfer keeps the offer and stops the bytes", async () => {
   // `downloadFinished`, and that refusal is read as "do not keep these bytes".
   expect((await running).state).toBe("available");
   expect(updater.installs).toBe(0);
+});
+
+it("a second download while one is running starts no second transfer", async () => {
+  updater.hold = () => undefined;
+  const { controller } = await subject();
+  await controller.check(verdict());
+  const first = controller.download();
+  await new Promise((resolve) => setImmediate(resolve));
+  // The refused start leaves the state at `downloading`, which is what the
+  // old check read as "started" — and ran a second transfer beside the first.
+  expect((await controller.download()).state).toBe("downloading");
+  expect(updater.downloads).toBe(1);
+  // The first transfer is still the armed one: nothing cancelled it.
+  expect(cancellations.at(-1)?.cancelled).toBe(false);
+  updater.hold?.();
+  expect((await first).state).toBe("downloaded");
+  expect(updater.downloads).toBe(1);
+});
+
+it("a second check while one is running asks nothing more", async () => {
+  const { controller } = await subject();
+  let checks = 0;
+  vi.stubGlobal("fetch", async () => {
+    checks += 1;
+    return new Response("", { status: 404 });
+  });
+  const first = controller.check(verdict());
+  expect(controller.state().state).toBe("checking");
+  expect((await controller.check(verdict())).state).toBe("checking");
+  await first;
+  expect(checks).toBeLessThanOrEqual(1);
+});
+
+it("a second restart while one is preparing installs nothing twice", async () => {
+  const controller = await staged();
+  let stop: () => void = () => undefined;
+  runtimeStops = () => new Promise<void>((resolve) => (stop = resolve));
+  const first = controller.install();
+  await new Promise((resolve) => setImmediate(resolve));
+  expect(await controller.install()).toMatchObject({
+    state: "downloaded",
+    phase: "preparing",
+  });
+  stop();
+  await first;
+  expect(updater.installs).toBe(1);
+  expect(restarts).toBe(1);
 });
 
 describe("stopping the background before an install (§2.3, R5)", () => {

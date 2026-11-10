@@ -167,6 +167,9 @@ function loadElectronUpdater(): typeof import("electron-updater") {
   return loaded;
 }
 
+/** The longest the page waits between two progress readings. */
+const PROGRESS_INTERVAL_MS = 100;
+
 export class UpdatesController {
   private machine: Machine | null = null;
   private readonly cancellation = new Cancellation();
@@ -174,6 +177,8 @@ export class UpdatesController {
   private transfer: Pick<CancellationToken, "cancel"> | null = null;
   private staged: { offer: Offer; file: string } | null = null;
   private readonly stagedListeners = new Set<(staged: Staged) => void>();
+  /** When the page last heard about progress, for the throttle. */
+  private progressSentAtMs = 0;
   /** The channel of the last check; a download uses the same one. */
   private channel: offer.Channel = "stable";
 
@@ -220,6 +225,20 @@ export class UpdatesController {
     return this.state();
   }
 
+  /**
+   * Applies an event that starts something — a check, a transfer, a restart —
+   * and says whether this call is the one that started it.
+   *
+   * The state after a refused start can look exactly like an accepted one: a
+   * second "download" while the first is running leaves the state at
+   * `downloading`, so reading the state alone let a second transfer run beside
+   * the first — two progress streams on one bar, and a second `rmSync` of the
+   * download directory under the first one's open file.
+   */
+  private begin(event: Event): boolean {
+    return this.current().apply(event);
+  }
+
   /* ------------------------------- the check ----------------------------- */
 
   /**
@@ -227,8 +246,7 @@ export class UpdatesController {
    * against the release manifest before calling anything available (§2.2).
    */
   async check(input: unknown): Promise<UpdateState> {
-    const started = this.apply({ type: "checkStarted" });
-    if (started.state !== "checking") return started;
+    if (!this.begin({ type: "checkStarted" })) return this.state();
     return this.apply(
       await evaluate(readVerdict(input), null, this.environment().pubkey ?? ""),
     );
@@ -308,8 +326,7 @@ export class UpdatesController {
       });
       return this.state();
     }
-    const started = this.apply({ type: "checkStarted" });
-    if (started.state !== "checking") return started;
+    if (!this.begin({ type: "checkStarted" })) return this.state();
     const index = await fetchIndex(source, usable);
     if (!index.ok) {
       return this.apply({
@@ -435,10 +452,12 @@ export class UpdatesController {
     // A failure that kept its offer is retried from the offer, so a person
     // pressing "try again" does not have to check first.
     if (this.state().state === "failed") this.apply({ type: "retry" });
-    const started = this.apply({ type: "downloadStarted" });
+    if (!this.begin({ type: "downloadStarted" })) return this.state();
+    const started = this.state();
     if (started.state !== "downloading") return started;
     const pending = started.offer;
 
+    this.progressSentAtMs = 0;
     const token = this.cancellation.arm();
     const outcome = await Promise.race([
       this.transferBytes(pending).then((result) => ({ result })),
@@ -503,6 +522,17 @@ export class UpdatesController {
       receivedBytes: transferred,
       totalBytes: total,
     });
+    // The direct transfer reports every chunk — thousands per package. The
+    // machine takes all of them; the page gets one every
+    // `PROGRESS_INTERVAL_MS`, and always the last one.
+    const nowMs = Date.now();
+    if (
+      (total <= 0 || transferred < total) &&
+      nowMs - this.progressSentAtMs < PROGRESS_INTERVAL_MS
+    ) {
+      return;
+    }
+    this.progressSentAtMs = nowMs;
     // Resolved at send time. See the rule at the top of this file.
     sendToWindow(IPC.updatesProgress.channel, {
       receivedBytes: transferred,
@@ -679,7 +709,8 @@ export class UpdatesController {
    * helper / the installer takes over.
    */
   async install(): Promise<UpdateState> {
-    const preparing = this.apply({ type: "restartRequested" });
+    if (!this.begin({ type: "restartRequested" })) return this.state();
+    const preparing = this.state();
     if (preparing.state !== "downloaded" || preparing.phase !== "preparing") {
       return preparing;
     }

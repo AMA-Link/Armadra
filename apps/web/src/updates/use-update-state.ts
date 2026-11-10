@@ -164,11 +164,22 @@ export const useUpdateState = create<UpdatesStore>((set, get) => {
     },
 
     async download() {
-      set({ shell: await shellDownload() });
+      // The shell's answer only comes back once the whole package is in. Until
+      // then the page would keep showing "available" — a button that seems to
+      // do nothing and invites a second press — and drop every progress event,
+      // which is only accepted while the state is `downloading`. The shell
+      // enters `downloading` before its first await, and IPC replies arrive in
+      // order, so reading the state right after asking already shows it.
+      const finished = shellDownload();
+      set({ shell: await shellState() });
+      set({ shell: await finished });
     },
 
     async install() {
-      set({ shell: await shellInstall() });
+      // Same reason: the restart's `preparing` phase hides the button at once.
+      const finished = shellInstall();
+      set({ shell: await shellState() });
+      set({ shell: await finished });
     },
 
     async dismiss() {
