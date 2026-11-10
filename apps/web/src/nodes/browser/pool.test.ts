@@ -139,11 +139,59 @@ describe("applyWebviewPool", () => {
     expect(ghost.style?.display).toBe("none");
     // 分组可能属于另一个工作空间；留着 parentId 会让 React Flow 算不出子流坐标。
     expect(ghost.parentId).toBeUndefined();
-    expect(ghost.position).toEqual({ x: 0, y: 0 });
     expect(ghost.selected).toBe(false);
     expect(ghost.draggable).toBe(false);
     expect(ghost.selectable).toBe(false);
     expect(ghost.connectable).toBe(false);
+  });
+
+  it("ghost 零尺寸、落在第一个顶层节点上：缩略图画不出它，也撑不大范围（#905）", () => {
+    applyWebviewPool([
+      browser("b1", {
+        position: { x: 0, y: 0 },
+        width: 1280,
+        height: 800,
+        measured: { width: 1280, height: 800 },
+      }),
+    ]);
+    const out = applyWebviewPool([
+      node("child", "terminal", {
+        parentId: "g1",
+        position: { x: 10, y: 10 },
+      }),
+      node("t1", "terminal", { position: { x: -1335, y: -233 } }),
+    ]);
+    const ghost = out.find((each) => each.id === "b1") as ArmadraFlowNode;
+
+    expect(ghost.width).toBe(0);
+    expect(ghost.height).toBe(0);
+    expect(ghost.measured).toEqual({ width: 0, height: 0 });
+    // 子节点的 position 是相对父节点的，不能拿来当画布坐标。
+    expect(ghost.position).toEqual({ x: -1335, y: -233 });
+
+    // 一个顶层节点都没有：退回原点。
+    const empty = applyWebviewPool([]);
+    expect(empty.find((each) => each.id === "b1")?.position).toEqual({
+      x: 0,
+      y: 0,
+    });
+  });
+
+  it("ghost 复活时尺寸与位置是活着时的那一份", () => {
+    const live = browser("b1", {
+      position: { x: 40, y: 60 },
+      width: 1280,
+      height: 800,
+      measured: { width: 1280, height: 800 },
+    });
+    applyWebviewPool([live]);
+    applyWebviewPool([terminal("t1")]);
+    const back = applyWebviewPool([live]);
+    const revived = back.find((each) => each.id === "b1") as ArmadraFlowNode;
+
+    expect(revived.position).toEqual({ x: 40, y: 60 });
+    expect(revived.width).toBe(1280);
+    expect(revived.measured).toEqual({ width: 1280, height: 800 });
   });
 
   it("切回来时 ghost 复活成活条目，且没有换过位置", () => {

@@ -1,5 +1,6 @@
 import * as React from "react";
 import type { CanvasNode } from "@armadra/shared";
+import type { XYPosition } from "@xyflow/react";
 
 import type { ArmadraFlowNode, CanvasFlowNode } from "@/canvas/sync/project";
 
@@ -35,7 +36,7 @@ import { useCanvasStore } from "@/store/canvas-store";
  * ## ghost
  *
  * 切工作空间、折叠分组、节点被投影丢掉时，条目不离开 pool，只变成 **ghost**：
- * 同一个 node id、`display:none`、不可拖不可选不可连、位置钉在原点、不回写。
+ * 同一个 node id、`display:none`、零尺寸、不可拖不可选不可连、不回写。
  * guest 因此毫发无损（`display:none` 是实测安全的那一类），回来时还是同一个
  * 进程、同一份页面状态。ghost 数量有上限，逐出最久退休的那个。
  *
@@ -148,15 +149,24 @@ function isBrowserNode(node: CanvasFlowNode): node is ArmadraFlowNode {
  * 把一个活条目降级成 ghost。
  *
  * 五件事缺一不可：`display:none` 让 guest 活着但不可见；去掉 `parentId`（它的
- * 分组可能属于另一个工作空间，React Flow 找不到父节点会算不出子流坐标）；位置
- * 钉在原点；三个交互开关全关；`selected` 清掉（否则切回来时选区是上一个工作
- * 空间留下的）。
+ * 分组可能属于另一个工作空间，React Flow 找不到父节点会算不出子流坐标）；尺寸
+ * 归零、落在 `anchor`；三个交互开关全关；`selected` 清掉（否则切回来时选区是
+ * 上一个工作空间留下的）。
+ *
+ * 尺寸归零是为了缩略图与「适应」（#905）：不能用 `hidden`（React Flow 会卸载
+ * 节点，guest 当场重载），而 `<MiniMap>` 与 `getNodesBounds` 只认 `hidden`，
+ * 一个保留原尺寸的 ghost 会在缩略图里画出一块看不见的矩形，并撑大两边的
+ * 范围。零面积的点不会被画出来；放在 `anchor`（当前画布里已有的一个点）上，
+ * 也就不会把范围撑到别处去。条目里留着活着时的投影，复活时尺寸照旧。
  */
-function ghostOf(node: ArmadraFlowNode): ArmadraFlowNode {
+function ghostOf(node: ArmadraFlowNode, anchor: XYPosition): ArmadraFlowNode {
   const { parentId: _parentId, ...rest } = node;
   return {
     ...rest,
-    position: { x: 0, y: 0 },
+    position: anchor,
+    width: 0,
+    height: 0,
+    measured: { width: 0, height: 0 },
     selected: false,
     draggable: false,
     selectable: false,
@@ -232,12 +242,23 @@ export function applyWebviewPool(
     queueMicrotask(notify);
   }
 
+  const anchor = ghostAnchor(rest);
   return [
     ...rest,
     ...entries.map((entry) =>
-      entry.retiredAt === null ? entry.node : ghostOf(entry.node),
+      entry.retiredAt === null ? entry.node : ghostOf(entry.node, anchor),
     ),
   ];
+}
+
+/**
+ * ghost 落在哪：当前投影里第一个顶层节点的左上角（它的 `position` 就是画布
+ * 坐标），一个都没有就原点。这个点本来就在内容范围里，零面积的 ghost 放在
+ * 这里不会改变缩略图与「适应」的范围。
+ */
+function ghostAnchor(nodes: readonly CanvasFlowNode[]): XYPosition {
+  const top = nodes.find((node) => !node.parentId);
+  return top ? { x: top.position.x, y: top.position.y } : { x: 0, y: 0 };
 }
 
 /** 逐出最久退休者，直到 ghost 数量落回上限。活着的永远不动。 */
