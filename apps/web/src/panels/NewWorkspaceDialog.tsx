@@ -1,7 +1,7 @@
 import { Loadable } from "@/loading/Loadable";
 import { Skeleton } from "@/ui/skeleton";
 import { SkeletonList } from "@/ui/skeletons";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   useInfiniteQuery,
   useMutation,
@@ -16,7 +16,13 @@ import { isDesktop, pickDirectory } from "../platform";
 import { useT } from "../app/preferences-store";
 import { useCreateWorkspace } from "../app/workspace-actions";
 import { isCloneUrl } from "../app/workspace-create";
-import { sk } from "../sources/scope";
+import { srcKey } from "../sources/scope";
+import {
+  LOCAL_SOURCE_ID,
+  type Source,
+  currentSource,
+  pinSource,
+} from "../api/source";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import {
@@ -67,6 +73,11 @@ export interface NewWorkspaceDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated?: (workspace: Workspace) => void;
+  /**
+   * 建在哪台电脑上；省略是此刻的源。侧栏「我的其他电脑」那一段的 `+` 给那台，
+   * 对话框里的缺省目录、账号、克隆与登记都发往它（#903）。
+   */
+  source?: Source;
 }
 
 /**
@@ -85,8 +96,34 @@ export function NewWorkspaceDialog({
   open,
   onOpenChange,
   onCreated,
+  source: target,
 }: NewWorkspaceDialogProps) {
   const t = useT();
+  // 打开那一刻定下目标：对话框开着时当前源换了，请求也不跟着换。
+  const [fallback, setFallback] = useState(() => currentSource());
+  useEffect(() => {
+    if (open) setFallback(currentSource());
+  }, [open]);
+  const machine = target ?? fallback;
+  const sourceId = machine.sourceId;
+  const api = useMemo(
+    () =>
+      pinSource(
+        {
+          cloneDefaults: () => runtimeApi.cloneDefaults(),
+          cloneRepository: runtimeApi.cloneRepository,
+          gitCloneStatus: runtimeApi.gitCloneStatus,
+          cancelClone: runtimeApi.cancelClone,
+          forgeAccounts: () => forgeAccounts(),
+          forgeRepositories: (account: string, cursor: string | null) =>
+            forgeRepositories(account, cursor),
+        },
+        machine,
+      ),
+    [machine],
+  );
+  // 本机的系统选择器选出来的是本机路径：目标是别的电脑时只能手填。
+  const canPick = isDesktop() && sourceId === LOCAL_SOURCE_ID;
   const queryClient = useQueryClient();
   const createWorkspace = useCreateWorkspace();
   const [mode, setMode] = useState<NewWorkspaceMode>("repository");
@@ -116,8 +153,8 @@ export function NewWorkspaceDialog({
   }, [open]);
 
   const defaults = useQuery({
-    queryKey: ["git-clone-defaults"],
-    queryFn: () => runtimeApi.cloneDefaults(),
+    queryKey: srcKey(sourceId, "git-clone-defaults"),
+    queryFn: () => api.cloneDefaults(),
     enabled: open,
     staleTime: Infinity,
     retry: false,
@@ -130,8 +167,8 @@ export function NewWorkspaceDialog({
   }, [defaultParent, open]);
 
   const accounts = useQuery({
-    queryKey: ["forge-accounts"],
-    queryFn: () => forgeAccounts(),
+    queryKey: srcKey(sourceId, "forge-accounts"),
+    queryFn: () => api.forgeAccounts(),
     enabled: open && mode === "repository",
     staleTime: 60_000,
     retry: false,
@@ -140,8 +177,9 @@ export function NewWorkspaceDialog({
   const host = accountHost ?? accountList[0]?.host ?? null;
 
   const repositories = useInfiniteQuery({
-    queryKey: ["forge-repositories", host],
-    queryFn: ({ pageParam }) => forgeRepositories(host as string, pageParam),
+    queryKey: srcKey(sourceId, "forge-repositories", host),
+    queryFn: ({ pageParam }) =>
+      api.forgeRepositories(host as string, pageParam),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.nextCursor,
     enabled: open && mode === "repository" && host !== null,
@@ -151,7 +189,9 @@ export function NewWorkspaceDialog({
   const listed = repositories.data?.pages.flatMap((page) => page.items) ?? [];
 
   const finish = (workspace: Workspace) => {
-    void queryClient.invalidateQueries({ queryKey: sk("workspaces") });
+    void queryClient.invalidateQueries({
+      queryKey: srcKey(sourceId, "workspaces"),
+    });
     onOpenChange(false);
     onCreated?.(workspace);
   };
@@ -159,7 +199,7 @@ export function NewWorkspaceDialog({
   const source = mode === "url" ? url.trim() : (repository ?? "");
   const start = useMutation({
     mutationFn: () =>
-      runtimeApi.cloneRepository({ url: source, parent: parent.trim() }),
+      api.cloneRepository({ url: source, parent: parent.trim() }),
     onSuccess: (started) => {
       setFailure(null);
       setJobId(started.jobId);
@@ -168,14 +208,14 @@ export function NewWorkspaceDialog({
   });
 
   const local = useMutation({
-    mutationFn: () => createWorkspace(path),
+    mutationFn: () => createWorkspace(path, { source: machine }),
     onSuccess: finish,
     onError: (cause: Error) => setFailure(cause.message),
   });
 
   const status = useQuery({
-    queryKey: ["git-clone", jobId],
-    queryFn: () => runtimeApi.gitCloneStatus(jobId as string),
+    queryKey: srcKey(sourceId, "git-clone", jobId),
+    queryFn: () => api.gitCloneStatus(jobId as string),
     enabled: jobId !== null,
     refetchInterval: (query) =>
       query.state.data?.state === "running" || query.state.data === undefined
@@ -214,10 +254,10 @@ export function NewWorkspaceDialog({
     if (open) return;
     const running = jobRef.current;
     if (running) {
-      void runtimeApi.cancelClone(running).catch(() => undefined);
+      void api.cancelClone(running).catch(() => undefined);
       jobRef.current = null;
     }
-  }, [open]);
+  }, [api, open]);
 
   const lines = status.data?.lines ?? [];
   const lastLine = lines[lines.length - 1] ?? "";
@@ -391,7 +431,7 @@ export function NewWorkspaceDialog({
                   disabled={busy}
                   onChange={(event) => setPath(event.target.value)}
                 />
-                {isDesktop() && (
+                {canPick && (
                   <Button
                     variant="outline"
                     size="icon"
@@ -435,7 +475,7 @@ export function NewWorkspaceDialog({
                 disabled={busy}
                 onChange={(event) => setParent(event.target.value)}
               />
-              {isDesktop() && (
+              {canPick && (
                 <Button
                   variant="outline"
                   size="icon"

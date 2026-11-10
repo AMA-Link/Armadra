@@ -14,36 +14,78 @@ const cloneDefaults = vi.fn();
 const forgeAccounts = vi.fn();
 const forgeRepositories = vi.fn();
 const createWorkspace = vi.fn();
+/** 每个调用发出时的当前源（`withCurrentSource` 钉住的那台）。 */
+const sentTo = vi.hoisted(() => [] as [string, string][]);
+const desktop = vi.hoisted(() => ({ on: false }));
 
-vi.mock("../api/client", () => ({
-  runtimeApi: {
-    cloneRepository: (input: unknown) => cloneRepository(input),
-    gitCloneStatus: (jobId: string) => gitCloneStatus(jobId),
-    cancelClone: (jobId: string) => cancelClone(jobId),
-    cloneDefaults: () => cloneDefaults(),
-  },
-  isConflict: () => false,
-}));
+vi.mock("../api/client", async () => {
+  const { currentSource } = await import("../api/source");
+  const at =
+    <A extends unknown[], R>(name: string, run: (...args: A) => R) =>
+    (...args: A): R => {
+      sentTo.push([name, currentSource().sourceId]);
+      return run(...args);
+    };
+  return {
+    runtimeApi: {
+      cloneRepository: at("clone", (input: unknown) => cloneRepository(input)),
+      gitCloneStatus: at("status", (jobId: string) => gitCloneStatus(jobId)),
+      cancelClone: at("cancel", (jobId: string) => cancelClone(jobId)),
+      cloneDefaults: at("defaults", () => cloneDefaults()),
+    },
+    isConflict: () => false,
+  };
+});
 
-vi.mock("../api/forge", () => ({
-  forgeAccounts: () => forgeAccounts(),
-  forgeRepositories: (host: string, cursor?: string | null) =>
-    forgeRepositories(host, cursor ?? null),
-}));
+vi.mock("../api/forge", async () => {
+  const { currentSource } = await import("../api/source");
+  return {
+    forgeAccounts: () => {
+      sentTo.push(["accounts", currentSource().sourceId]);
+      return forgeAccounts();
+    },
+    forgeRepositories: (host: string, cursor?: string | null) => {
+      sentTo.push(["repositories", currentSource().sourceId]);
+      return forgeRepositories(host, cursor ?? null);
+    },
+  };
+});
 
-vi.mock("../files/gateway", () => ({
-  filesGateway: {
-    createWorkspace: (request: unknown) => createWorkspace(request),
-  },
-}));
+vi.mock("../files/gateway", async () => {
+  const { currentSource } = await import("../api/source");
+  return {
+    filesGateway: {
+      createWorkspace: (request: unknown) => {
+        sentTo.push(["create", currentSource().sourceId]);
+        return createWorkspace(request);
+      },
+    },
+  };
+});
 
 vi.mock("../platform", () => ({
   pickDirectory: vi.fn().mockResolvedValue(null),
-  isDesktop: () => false,
+  isDesktop: () => desktop.on,
 }));
 
 import { installDomPolyfills, TestProviders } from "../app/test-harness";
 import { cloneProgress, NewWorkspaceDialog } from "./NewWorkspaceDialog";
+import type { Source } from "../api/source";
+
+/** 「我的其他电脑」里的一台：只要标识，请求由上面的替身记下发往哪台。 */
+const REMOTE: Source = {
+  sourceId: "src-remote",
+  httpBase: "https://relay.example/s/src-remote",
+  wsBase: "wss://relay.example/s/src-remote",
+  credentials: {
+    mode: "none",
+    access: async () => null,
+    renew: async () => false,
+    csrf: async () => null,
+    renewCsrf: async () => null,
+  },
+  fetch: () => Promise.reject(new Error("not used")),
+} as unknown as Source;
 
 installDomPolyfills();
 afterEach(cleanup);
@@ -103,6 +145,8 @@ describe("NewWorkspaceDialog", () => {
     ]) {
       mock.mockReset();
     }
+    sentTo.length = 0;
+    desktop.on = false;
     cancelClone.mockResolvedValue(undefined);
     cloneDefaults.mockResolvedValue({ parent: "/home/me/Projects" });
     forgeAccounts.mockResolvedValue([
@@ -114,11 +158,12 @@ describe("NewWorkspaceDialog", () => {
     });
   });
 
-  function open(onCreated = vi.fn(), onOpenChange = vi.fn()) {
+  function open(onCreated = vi.fn(), onOpenChange = vi.fn(), source?: Source) {
     render(
       <TestProviders>
         <NewWorkspaceDialog
           open
+          source={source}
           onOpenChange={onOpenChange}
           onCreated={onCreated}
         />
@@ -282,5 +327,58 @@ describe("NewWorkspaceDialog", () => {
     expect(createWorkspace.mock.calls[0]?.[0]).not.toHaveProperty(
       "createDirectory",
     );
+  });
+
+  it("目标是别的电脑（#903）：缺省目录、账号、克隆与轮询都发往那台", async () => {
+    gitCloneStatus.mockResolvedValue({
+      state: "done",
+      lines: [],
+      workspace: WORKSPACE,
+    });
+    cloneRepository.mockResolvedValue({ jobId: "job-r" });
+    const { onCreated } = open(vi.fn(), vi.fn(), REMOTE);
+
+    fireEvent.click(await screen.findByText("octo/demo"));
+    await waitFor(() =>
+      expect((screen.getByLabelText("父目录") as HTMLInputElement).value).toBe(
+        "/home/me/Projects",
+      ),
+    );
+    fireEvent.click(primary("克隆"));
+    await waitFor(() => expect(onCreated).toHaveBeenCalled(), {
+      timeout: 3_000,
+    });
+
+    const names = new Set(sentTo.map(([name]) => name));
+    for (const name of ["defaults", "accounts", "repositories", "clone"])
+      expect(names.has(name)).toBe(true);
+    expect(sentTo.filter(([, sourceId]) => sourceId !== "src-remote")).toEqual(
+      [],
+    );
+  });
+
+  it("目标是别的电脑（#903）：本地文件夹登记发往那台；桌面壳也不给本机的选择器", async () => {
+    desktop.on = true;
+    createWorkspace.mockResolvedValue(WORKSPACE);
+    const { onCreated } = open(vi.fn(), vi.fn(), REMOTE);
+    tab("本地");
+
+    fireEvent.change(await screen.findByLabelText("路径"), {
+      target: { value: "/srv/demo" },
+    });
+    expect(screen.queryByRole("button", { name: "选择" })).toBeNull();
+    fireEvent.click(primary("打开"));
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    expect(sentTo.filter(([name]) => name === "create")).toEqual([
+      ["create", "src-remote"],
+    ]);
+  });
+
+  it("目标是本机：桌面壳给系统文件夹选择器", async () => {
+    desktop.on = true;
+    open();
+    tab("本地");
+    expect(await screen.findByRole("button", { name: "选择" })).toBeTruthy();
   });
 });
