@@ -2,6 +2,24 @@
 
 每个版本一节，按发布倒序。括号里是合入的 PR 编号（github.com/AMA-Link/Armadra，2026-10-11 前为 Owlbay/Armadra，旧编号照常跳转）。兼容范围以 `tools/release/compatibility.json` 为准，发布说明里的 `armadra-compatibility` 围栏由它渲染。桌面、服务器与手机 / 平板 App 共用一条版本线和一个标签 `vX.Y.Z`（规则见 `docs/guides/ci-release.md`「版本规则」）；有手机端改动的版本，在「手机与平板」小节里写，其余写在「桌面 / 服务器」下。2026-10-10 之前手机端曾单独编号（1.0.0、1.1.0），内容并入对应的 0.2.5、0.2.6。
 
+## 0.17.1（2026-11-10）
+
+版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.17.1。随包 `@armadra/agent` 0.17.1（没有改动，只对齐版本）与平台协议包 0.17.1（没有形状变化，协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.17.1。本版是修复版：远程电脑上可以新建项目与画布，缩略图不再画出切走画布留下的浏览器节点。
+
+Version aligned with armadra-cloud and armadra-agent (all three ship 0.17.1), with `@armadra/agent` 0.17.1 (no changes, version alignment only) and platform protocol 0.17.1 (no shape changes, still protocol 1.4); matching images `armadra-cloud` / `armadra-relay` 0.17.1. A bugfix release: projects and boards can be created on a remote computer, and the minimap no longer draws browser nodes left over from a board you switched away from.
+
+### 桌面 / 服务器
+
+- 远程电脑上可新建项目与画布：侧栏「我的其他电脑」里在线的每一段段头都有添加项目入口，本机组的入口在打开远程工作空间后也不再消失；添加项目对话框发往指定的那台电脑（缺省目录、账号与查询缓存按电脑区分，远程目标不给本机文件夹选择器），建好即以那台电脑打开，之后「新建画布」也建在那台上（#904，Closes #903）。
+  Projects and boards can be created on a remote computer: every online section under "My other computers" has an add-project entry, and the local group's entry no longer disappears after opening a remote workspace; the add-project dialog talks to the chosen computer (default folder, accounts and query caches per computer, no local folder picker for a remote target), opens the new project on that computer, and "New board" then creates boards there too (#904, Closes #903).
+- 桌面版切走含浏览器节点的画布后，缩略图不再在原点画出一块看不见、点不中的灰色方块，「适应」视图也不再被它撑大；切回来时浏览器节点位置与尺寸照旧，页面不重载（#906，Closes #905）。
+  On desktop, after switching away from a board with a browser node, the minimap no longer draws an invisible, unclickable grey box at the origin and fit view is no longer stretched by it; switching back keeps the browser node's position and size without reloading the page (#906, Closes #905).
+
+### 部署说明
+
+- 没有新的数据库迁移，契约没有新节。
+- 配套镜像 `ghcr.io/ama-link/armadra-cloud:0.17.1`、`ghcr.io/ama-link/armadra-relay:0.17.1` 与协议包 0.17.1 同号（cloud 侧没有代码改动；控制台页面取自本版服务器壳镜像）；推送中继镜像 `ghcr.io/ama-link/armadra-push-relay:0.17.1` 与服务器壳镜像同号。发版顺序沿用 0.17.0：先打 Armadra `v0.17.1`，再打 armadra-cloud `v0.17.1`。
+
 ## 0.17.0（2026-11-10）
 
 版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.17.0。随包 `@armadra/agent` 0.17.0（维护版，没有用户可见的变化）与平台协议包 0.17.0（没有形状变化，协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.17.0。本版主题：桌面升到 Electron 45，**macOS 最低系统要求升到 13.3**（macOS 12 上请停留在 0.16.0），ama 的模型密钥可以在它自己的设置页里填。
