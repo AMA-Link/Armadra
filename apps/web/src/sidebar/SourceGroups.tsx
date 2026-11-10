@@ -20,6 +20,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { ChevronDown, Folder } from "lucide-react";
 
 import { reorderSources } from "../api/remote-services";
+import { type Source, localSource } from "../api/source";
 import { RUNTIME_VIA_SERVER_SHELL } from "../api/request";
 import { usePreferencesStore, useT } from "../app/preferences-store";
 import { useCanvasStore } from "../store/canvas-store";
@@ -55,6 +56,7 @@ import {
   CollapsibleTrigger,
 } from "@/ui/collapsible";
 import { Spinner } from "@/ui/spinner";
+import { AddProjectButton } from "./AddProjectButton";
 import { StatusDot } from "@/ui/status-pill";
 import { toast } from "@/ui/toast";
 
@@ -73,8 +75,15 @@ import { toast } from "@/ui/toast";
 interface WorkspaceGroupsProps {
   /** 当前那台电脑的那一段（工作空间树）。 */
   tree: React.ReactNode;
-  /** 「这台电脑」组的外壳（组标题、添加项目、拖入目录），内容由这里给。 */
-  renderLocal: (content: React.ReactNode, current: boolean) => React.ReactNode;
+  /**
+   * 「这台电脑」组的外壳（组标题、添加项目、拖入目录），内容由这里给；`source`
+   * 是这台电脑的源（手机与中继托管的页面上是选中的那台主机）。
+   */
+  renderLocal: (
+    content: React.ReactNode,
+    current: boolean,
+    source: Source,
+  ) => React.ReactNode;
 }
 
 export function WorkspaceGroups(props: WorkspaceGroupsProps) {
@@ -89,6 +98,7 @@ export function WorkspaceGroups(props: WorkspaceGroupsProps) {
         {props.tree}
       </div>,
       true,
+      sources[0]?.source ?? localSource,
     );
   return <Groups {...props} sources={sources} />;
 }
@@ -139,6 +149,7 @@ function Groups({
                   {contentOf(section)}
                 </div>,
                 section.connection.descriptor.sourceId === currentId,
+                section.connection.source,
               )}
             </React.Fragment>
           );
@@ -474,6 +485,17 @@ function hostOutdated(section: SourceSection): boolean {
   );
 }
 
+/**
+ * 在这台上添加项目（#903）：只给我自己的、连上了的电脑。他人分享的主机只发
+ * 工作空间上的授权，建工作空间要全局授权，点了必然 403；离线与在连的点不开。
+ */
+function canAddProject(
+  kind: Exclude<WorkspaceGroupKey, "local">,
+  section: SourceSection,
+): boolean {
+  return kind === "mine" && section.state === "ready" && !section.stale;
+}
+
 function openRemoteAccess(): void {
   usePreferencesStore.getState().setLastSettingsSection(REMOTE_SECTION);
   useCanvasStore.getState().setPanel("settings", true);
@@ -574,6 +596,18 @@ function SourceBlock({
           >
             {t("remote.hosted.signInAgain")}
           </Button>
+        )}
+        {canAddProject(kind, section) && (
+          // 段头是拖动排序的把手；对话框经 portal 渲染，事件仍沿 React 树冒到
+          // 这里——在输入框里拖选文字不能变成拖动这一段。
+          // eslint-disable-next-line jsx-a11y/no-static-element-interactions -- 只拦冒泡、不是控件：交互在里面的按钮与对话框上
+          <span
+            className="contents"
+            onPointerDown={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
+            <AddProjectButton source={connection.source} />
+          </span>
         )}
         <span className="sr-only">{t(pill.key)}</span>
       </div>

@@ -19,7 +19,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Folder, MoreHorizontal, Plus, SquarePen } from "lucide-react";
+import { Folder, MoreHorizontal, SquarePen } from "lucide-react";
 import type { WorkspaceSummary } from "@armadra/shared";
 
 import { useSessions } from "../agent/sessions";
@@ -33,7 +33,8 @@ import {
   useArchiveWorkspace,
   useRemoveWorkspace,
 } from "../app/remove-workspace";
-import { NewWorkspaceDialog } from "../panels/NewWorkspaceDialog";
+import type { Source } from "../api/source";
+import { AddProjectButton } from "./AddProjectButton";
 import { useCanvasStore } from "../store/canvas-store";
 import { Button } from "@/ui/button";
 import { Spinner } from "@/ui/spinner";
@@ -248,8 +249,12 @@ export function WorkspaceTree() {
                 <PendingRows loading={workspaces.isPending} rows={2} />
               </ul>
             }
-            renderLocal={(content, current) => (
-              <LocalGroup folderImport={folderImport} current={current}>
+            renderLocal={(content, current, source) => (
+              <LocalGroup
+                folderImport={folderImport}
+                current={current}
+                source={source}
+              >
                 {content}
               </LocalGroup>
             )}
@@ -278,16 +283,18 @@ function GroupTitle({
 }
 
 /**
- * 「这台电脑」组：添加项目与拖入目录都落在本机，所以只在打开的是本机的
- * 工作空间时给（打开着别的电脑时它们会落到那台去）。
+ * 「这台电脑」组：添加项目钉在本机（`source`），打开着别的电脑上的工作空间时
+ * 也照样给（#903）。拖入目录走当前源，所以只在打开的是本机的工作空间时接。
  */
 function LocalGroup({
   folderImport,
   current,
+  source,
   children,
 }: {
   folderImport: ReturnType<typeof useProjectFolderImport>;
   current: boolean;
+  source: Source;
   children: ReactNode;
 }) {
   const t = useT();
@@ -303,7 +310,10 @@ function LocalGroup({
     >
       <GroupTitle
         action={
-          current ? <AddProjectButton busy={folderImport.busy} /> : undefined
+          <AddProjectButton
+            source={source}
+            busy={current && folderImport.busy}
+          />
         }
       >
         {t("workspaceGroups.local")}
@@ -327,34 +337,6 @@ function LocalGroup({
       )}
       {children}
     </section>
-  );
-}
-
-/**
- * 「这台电脑」组标题右边的 `+`：走系统目录选择器，选完即建即开；浏览器里没有
- * 选择器，退回手填路径的新建文件夹对话框（对已存在的目录就是「打开」）。
- */
-function AddProjectButton({ busy }: { busy: boolean }) {
-  const t = useT();
-  const openWorkspace = useOpenWorkspace();
-  const [dialog, setDialog] = useState(false);
-
-  return (
-    <>
-      <IconButton
-        label={t("sidebar.addProject")}
-        className="shrink-0"
-        disabled={busy}
-        onClick={() => setDialog(true)}
-      >
-        <Plus />
-      </IconButton>
-      <NewWorkspaceDialog
-        open={dialog}
-        onOpenChange={setDialog}
-        onCreated={openWorkspace}
-      />
-    </>
   );
 }
 

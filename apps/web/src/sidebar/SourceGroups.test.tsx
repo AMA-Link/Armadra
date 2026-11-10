@@ -16,7 +16,10 @@ const listed = vi.hoisted(() => ({
   data: [] as { sourceId: string; workspace: { id: string; name: string } }[],
   pending: new Set<string>(),
 }));
-vi.mock("../app/workspace-actions", () => ({ useOpenWorkspace: () => open }));
+vi.mock("../app/workspace-actions", () => ({
+  useOpenWorkspace: () => open,
+  useCreateWorkspace: () => vi.fn(),
+}));
 vi.mock("../app/workspaces-query", async () => {
   const { useSources, useSourceStates } = await import("../sources/context");
   return {
@@ -154,8 +157,12 @@ function mount() {
       <SourcesProvider registry={registry}>
         <WorkspaceGroups
           tree={<div data-testid="tree" />}
-          renderLocal={(content, current) => (
-            <section aria-label="local-shell" data-current={current}>
+          renderLocal={(content, current, source) => (
+            <section
+              aria-label="local-shell"
+              data-current={current}
+              data-local-source={source.sourceId}
+            >
               {content}
             </section>
           )}
@@ -289,6 +296,25 @@ describe("侧栏三组", () => {
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByRole("region", { name: "ann" })).toBeNull();
     expect(screen.getByRole("region", { name: "pat" })).toBeTruthy();
+  });
+
+  it("添加项目（#903）：本人在线的每台电脑段头都有 `+`；分享的、离线的、在连的没有", async () => {
+    await hydrate([
+      descriptor("a", 1),
+      descriptor("b", 2),
+      descriptor("c", 3),
+      descriptor("ann", 4, { origin: "shared", ownerName: "ann" }),
+    ]);
+    mount();
+    const shell = screen.getByRole("region", { name: "local-shell" });
+    expect(shell.getAttribute("data-local-source")).toBe("local");
+    const adds = [...document.querySelectorAll("[data-add-project]")].map(
+      (one) => one.getAttribute("data-add-project"),
+    );
+    expect(adds).toEqual(["a"]);
+    const a = screen.getByRole("region", { name: "a-label" });
+    fireEvent.click(within(a).getByRole("button", { name: "Add project" }));
+    expect(await screen.findByRole("dialog")).toBeTruthy();
   });
 
   it("点一行打开那个工作空间（带上它的源）；当前那台换成树", async () => {

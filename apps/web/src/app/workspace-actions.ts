@@ -13,7 +13,8 @@ import {
   rememberWorkspace,
   usePreferencesStore,
 } from "./preferences-store";
-import { sk } from "../sources/scope";
+import { sk, srcKey } from "../sources/scope";
+import { type Source, sourceById, withCurrentSource } from "../api/source";
 import { workspaceRequest } from "./workspace-create";
 
 /**
@@ -30,27 +31,35 @@ export function useCreateWorkspace() {
   return useCallback(
     async (
       rootPath: string,
-      options: { createDirectory?: boolean } = {},
+      options: {
+        createDirectory?: boolean;
+        /**
+         * 建在哪台电脑上；省略是此刻的源。侧栏从「我的其他电脑」那一段添加项目
+         * 时给那台，请求与缓存键都落在它身上（#903）。
+         */
+        source?: Source;
+      } = {},
     ): Promise<Workspace> => {
-      const existing =
-        queryClient.getQueryData<WorkspaceSummary[]>(sk("workspaces")) ?? [];
+      const source = options.source ?? sourceById(activeSourceId());
+      const key = srcKey(source.sourceId, "workspaces");
+      const existing = queryClient.getQueryData<WorkspaceSummary[]>(key) ?? [];
       const request = workspaceRequest(
         rootPath,
         existing,
         options.createDirectory ?? false,
       );
+      // 每一次发送都钉在那台上：重发在 `await` 之后，那时当前源可能已经换了。
+      const create = (body: typeof request) =>
+        withCurrentSource(source, () => filesGateway.createWorkspace(body));
       let workspace: Workspace;
       // 经文件域网关：根注册落在哪一侧，取决于文件域现在归谁写。
       try {
-        workspace = await filesGateway.createWorkspace(request);
+        workspace = await create(request);
       } catch (cause) {
         if (!request.createDirectory || !isConflict(cause)) throw cause;
-        workspace = await filesGateway.createWorkspace({
-          ...request,
-          createDirectory: false,
-        });
+        workspace = await create({ ...request, createDirectory: false });
       }
-      void queryClient.invalidateQueries({ queryKey: sk("workspaces") });
+      void queryClient.invalidateQueries({ queryKey: key });
       return workspace;
     },
     [queryClient],

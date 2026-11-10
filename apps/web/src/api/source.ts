@@ -225,12 +225,21 @@ export function withCurrentSource<T>(source: Source, run: () => T): T {
  * 都发往本机 core，当前打开的是别人的工作空间也一样。非函数成员原样保留。
  */
 export function pinLocal<T extends object>(api: T): T {
+  return pinSource(api, localSource);
+}
+
+/**
+ * 把一组 `api/*` 方法钉在 `source` 上（{@link pinLocal} 的一般形式）：侧栏在
+ * 「我的其他电脑」那一段添加项目时，对话框里的每个调用都发往那台，而不是此刻
+ * 打开着工作空间的那台。只覆盖每个方法第一个 `await` 之前取源的那一步。
+ */
+export function pinSource<T extends object>(api: T, source: Source): T {
   const pinnedApi: Record<string, unknown> = {};
   for (const [name, member] of Object.entries(api)) {
     pinnedApi[name] =
       typeof member === "function"
         ? (...args: unknown[]) =>
-            withCurrentSource(localSource, () =>
+            withCurrentSource(source, () =>
               (member as (...a: unknown[]) => unknown)(...args),
             )
         : member;
