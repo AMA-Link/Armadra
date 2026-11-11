@@ -9,6 +9,7 @@ import {
   readRuntimeBases,
   resetEndpoints,
   resolveEndpoints,
+  resolveOwnEndpoints,
 } from "./transport";
 
 /**
@@ -79,6 +80,75 @@ describe("resolving the page's bases", () => {
     expect(await readRuntimeBases(directory)).toBeUndefined();
     writeFileSync(join(directory, "endpoints.json"), '{"runtime":');
     expect(await readRuntimeBases(directory)).toBeUndefined();
+  });
+});
+
+describe("the record of the Runtime this shell started (#485)", () => {
+  const record = (instanceId: string, port: number) => ({
+    runtime: {
+      instanceId,
+      http: `http://127.0.0.1:${port}`,
+      websocket: `ws://127.0.0.1:${port}`,
+    },
+  });
+
+  it("skips a killed Runtime's leftover record until the new one writes its own", async () => {
+    // 被杀掉的上一个 core 没有撤回记录；新 core 先在私有地址上应答，稍后才写记录。
+    publish(record("previous", 64024));
+    let clock = 0;
+    let sleeps = 0;
+    const answer = await resolveOwnEndpoints(directory, EXTERNAL, "current", {
+      now: () => clock,
+      sleep: async (ms) => {
+        clock += ms;
+        sleeps += 1;
+        if (sleeps === 3) publish(record("current", 61304));
+      },
+    });
+    expect(answer).toEqual({
+      httpBase: "http://127.0.0.1:61304",
+      wsBase: "ws://127.0.0.1:61304",
+      dataDir: directory,
+    });
+    expect(sleeps).toBe(3);
+  });
+
+  it("answers at once when the record already names the instance", async () => {
+    publish(record("current", 61304));
+    const answer = await resolveOwnEndpoints(directory, EXTERNAL, "current", {
+      sleep: async () => {
+        throw new Error("should not wait");
+      },
+    });
+    expect(answer.httpBase).toBe("http://127.0.0.1:61304");
+  });
+
+  it("gives up after the timeout with what it last read, never hanging", async () => {
+    publish(record("previous", 64024));
+    let clock = 0;
+    const answer = await resolveOwnEndpoints(directory, EXTERNAL, "current", {
+      timeoutMs: 200,
+      pollMs: 50,
+      now: () => clock,
+      sleep: async (ms) => {
+        clock += ms;
+      },
+    });
+    expect(answer.httpBase).toBe("http://127.0.0.1:64024");
+    expect(clock).toBe(200);
+  });
+
+  it("falls back to the documented port when no record ever appears", async () => {
+    let clock = 0;
+    const answer = await resolveOwnEndpoints(directory, EXTERNAL, "current", {
+      timeoutMs: 100,
+      pollMs: 50,
+      now: () => clock,
+      sleep: async (ms) => {
+        clock += ms;
+      },
+    });
+    expect(answer).toEqual(fallbackEndpoints(EXTERNAL, directory));
   });
 });
 

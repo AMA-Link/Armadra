@@ -192,6 +192,16 @@ describe("the published endpoint record", () => {
       http: "http://127.0.0.1:61611",
       websocket: "ws://127.0.0.1:61611",
     });
+    // 写记录的 Runtime 的实例号一并给出，壳据此认出它自己起的那个（#485）。
+    expect(
+      publishedRuntimeBases(
+        '{"runtime":{"instanceId":"abc","http":"http://127.0.0.1:9"}}',
+      ),
+    ).toEqual({
+      http: "http://127.0.0.1:9",
+      websocket: "ws://127.0.0.1:9",
+      instanceId: "abc",
+    });
     // A record with only an http base still implies its WebSocket origin.
     expect(
       publishedRuntimeBases('{"runtime":{"http":"http://localhost:9"}}'),
