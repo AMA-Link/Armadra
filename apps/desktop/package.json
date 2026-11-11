@@ -37,7 +37,7 @@
     "yjs": "13.6.33"
   },
   "devDependencies": {
-    "@armadra/agent": "0.17.1",
+    "@armadra/agent": "0.17.2",
     "@electron/rebuild": "^4.2.1",
     "@tailwindcss/vite": "4.3.5",
     "@types/js-yaml": "4.0.9",
