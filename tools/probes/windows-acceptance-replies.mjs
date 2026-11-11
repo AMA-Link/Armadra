@@ -151,14 +151,16 @@ export function dsrVerdict(seen, ticks) {
   const answers = receivedInputs(text).filter(
     (row) => typeof row.phase === "number",
   );
-  const replies = answers.filter(
-    (row) => Buffer.from(row.hex, "hex").toString("latin1") === DSR_OK,
+  // `seen` 里同一个 TICK 的输出可能在快照与实时输出里各出现一次，所以按 TICK 号去重。
+  const byTick = new Map();
+  for (const row of answers) byTick.set(row.phase, row.hex);
+  const replies = [...byTick.values()].filter(
+    (hex) => Buffer.from(hex, "hex").toString("latin1") === DSR_OK,
   ).length;
-  const others = answers.length - replies;
-  const perTick = new Set(answers.map((row) => row.phase));
+  const others = byTick.size - replies;
   const ok = forwarded
-    ? answers.length === 0
-    : others === 0 && perTick.size === answers.length && replies >= ticks - 1;
+    ? byTick.size === 0
+    : others === 0 && replies >= ticks - 1;
   return {
     ok,
     forwarded,
