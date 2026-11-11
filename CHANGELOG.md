@@ -2,6 +2,28 @@
 
 每个版本一节，按发布倒序。括号里是合入的 PR 编号（github.com/AMA-Link/Armadra，2026-10-11 前为 Owlbay/Armadra，旧编号照常跳转）。兼容范围以 `tools/release/compatibility.json` 为准，发布说明里的 `armadra-compatibility` 围栏由它渲染。桌面、服务器与手机 / 平板 App 共用一条版本线和一个标签 `vX.Y.Z`（规则见 `docs/guides/ci-release.md`「版本规则」）；有手机端改动的版本，在「手机与平板」小节里写，其余写在「桌面 / 服务器」下。2026-10-10 之前手机端曾单独编号（1.0.0、1.1.0），内容并入对应的 0.2.5、0.2.6。
 
+## 0.17.2（2026-11-12）
+
+版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.17.2。随包 `@armadra/agent` 0.17.2（没有改动，只对齐版本）与平台协议包 0.17.2（没有形状变化，协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.17.2。本版是修复版：更新的下载、检查与重启不再并发两路，ACP 会话时间线改成条目卡片版式，桌面壳重启 core 后页面不再指向旧端口。
+
+Version aligned with armadra-cloud and armadra-agent (all three ship 0.17.2), with `@armadra/agent` 0.17.2 (no changes, version alignment only) and platform protocol 0.17.2 (no shape changes, still protocol 1.4); matching images `armadra-cloud` / `armadra-relay` 0.17.2. A bugfix release: update download, check and restart no longer run twice at once, the ACP session timeline uses an item-card layout, and after the desktop shell restarts its core the page no longer points at a stale port.
+
+### 桌面 / 服务器
+
+- 桌面版更新：下载、检查、重启进行中再点一次不再并发第二路；点下载后页面立即进入「正在下载」，按钮消失，进度不再被丢弃；页面进度节流到每 100ms 一条（#893，Closes #892）。
+  Desktop updates: clicking download, check or restart again while one is running no longer starts a second one; after clicking download the page switches to "Downloading" right away, the button goes away and progress is no longer dropped; progress to the page is throttled to one message per 100 ms (#893, Closes #892).
+- ACP 会话时间线换成条目卡片版式：工具、命令、思考与活动组是带边框的条目，所有条目共用一条左缘，宽度跟着节点走，不再限制最大宽度；命令条目写出完整命令行、退出码与耗时（运行中实时计时），运行中自动展开跟随输出、结束收起，没有输出时写「无输出」；Agent 自己跑的命令（如 Codex）在 `_meta` 里报的输出与退出码也并进时间线，展开后不再是空块（#909，Closes #908）。
+  The ACP session timeline uses an item-card layout: tools, commands, thinking and activity groups are bordered items sharing one left edge, and width follows the node with no maximum; command items show the full command line, exit code and duration (live while running), expand to follow output while running and collapse when done, and say "No output" when there was none; output and exit codes an agent reports in `_meta` for commands it runs itself (such as Codex) now reach the timeline, so those commands no longer expand to an empty block (#909, Closes #908).
+- 桌面壳只认自己起的 core 写下的 `endpoints.json` 记录：core 崩溃重启后，页面不再读到上一个 core 的旧端口或缺省端口而所有请求失败（#912，Closes #911）。
+  The desktop shell only accepts the `endpoints.json` record written by the core it started: after the core crashes and restarts, the page no longer picks up the previous core's stale port or the fallback port and fails every request (#912, Closes #911).
+- Windows 打包验收的代答探针按实测修正（ConPTY 自己应答 DA1 与 DSR 5n，结果里写明宿主路径未走到），终端 manager 与探针主文件拆分，行为不变；夜间 Android 插桩补模拟器崩溃的诊断（#910，Closes #573；#912，Refs #485）。
+  The Windows packaged-acceptance host-reply probe is corrected from measurements (ConPTY answers DA1 and DSR 5n itself, and the result says the host path was not exercised); the terminal manager and the probe's main file are split without behaviour changes; the nightly Android instrumentation gains diagnostics for emulator crashes (#910, Closes #573; #912, Refs #485).
+
+### 部署说明
+
+- 没有新的数据库迁移，契约没有新节。
+- 配套镜像 `ghcr.io/ama-link/armadra-cloud:0.17.2`、`ghcr.io/ama-link/armadra-relay:0.17.2` 与协议包 0.17.2 同号（cloud 侧没有代码改动；控制台页面取自本版服务器壳镜像）；推送中继镜像 `ghcr.io/ama-link/armadra-push-relay:0.17.2` 与服务器壳镜像同号。发版顺序沿用 0.17.1：先打 Armadra `v0.17.2`，再打 armadra-cloud `v0.17.2`。
+
 ## 0.17.1（2026-11-10）
 
 版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.17.1。随包 `@armadra/agent` 0.17.1（没有改动，只对齐版本）与平台协议包 0.17.1（没有形状变化，协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.17.1。本版是修复版：远程电脑上可以新建项目与画布，缩略图不再画出切走画布留下的浏览器节点。
