@@ -55,6 +55,7 @@ import { createServer, request as httpRequest } from "node:http";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isolatedEnv, probeHome } from "./probe-home.mjs";
+import { startHostWatch } from "./android-host-watch.mjs";
 import { TIMED_OUT, boundedRun } from "./bounded-run.mjs";
 import { harness } from "./shell-e2e-lib.mjs";
 
@@ -520,6 +521,16 @@ const TEST_TIMEOUT_MS = 4 * 60_000;
 const timedOutNote = (code) => (code === TIMED_OUT ? "，超时被杀" : "");
 
 async function android(mint, port, assetUrl) {
+  // 模拟器进程在插桩中途无声消失时，host-watch*.log 里有当时的内存与内核日志（#485）。
+  const watch = startHostWatch({ dir: output });
+  try {
+    await androidRun(mint, port, assetUrl, watch);
+  } finally {
+    await watch.stop();
+  }
+}
+
+async function androidRun(mint, port, assetUrl, watch) {
   const reversed = await run(
     "adb-reverse",
     "adb",
@@ -594,7 +605,11 @@ async function android(mint, port, assetUrl) {
   check(
     code === 0,
     "插桩用例：连接页 → 钉扎 → 配对 → 画布 → 两个连接重开落在选择服务 → 选它进画布 → 切换服务回选择页；图片带 Bearer；原生 OAuth 深链收尾",
-    `gradle exit ${code}${timedOutNote(code)}`,
+    `gradle exit ${code}${timedOutNote(code)}${
+      watch.sample()
+        ? "；模拟器进程中途消失（宿主进程崩溃，不是用例断言失败），现场见 host-watch-gone.log 与 host-watch-coredump.log"
+        : ""
+    }`,
   );
 }
 
