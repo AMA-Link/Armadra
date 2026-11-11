@@ -23,11 +23,11 @@ export const ENTRY_FRAME =
 export const ENTRY_TEXT = "min-w-0 border border-transparent px-2.5";
 
 /**
- * 卡片的标题行（折叠按钮）：整行宽、左缘与内容一致。按钮自带 1px 透明边框（聚焦时
+ * 卡片的标题行（折叠按钮，`Button size=sm` 28 高）：整行宽、左缘与内容一致。按钮自带 1px 透明边框（聚焦时
  * 换色），内边距扣掉这 1px。
  */
 export const ENTRY_TRIGGER =
-  "h-7 w-full min-w-0 justify-start gap-1.5 rounded-none px-[calc(--spacing(2.5)-1px)] font-normal aria-expanded:bg-transparent aria-expanded:hover:bg-hover disabled:opacity-100";
+  "w-full min-w-0 justify-start gap-1.5 rounded-none px-[calc(--spacing(2.5)-1px)] font-normal aria-expanded:bg-transparent aria-expanded:hover:bg-hover disabled:opacity-100";
 
 /** 卡片展开的内容：标题行下一条分隔线，内容与标题同一左缘。 */
 export const ENTRY_BODY =
