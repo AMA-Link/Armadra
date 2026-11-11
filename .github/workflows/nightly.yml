@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       scenario:
-        description: "private-channels 只跑 Windows 私有通道作业（抢占管道名、第二个本地用户），空为全部"
+        description: "private-channels 只跑 Windows 私有通道作业（抢占管道名、第二个本地用户），windows-acceptance 只跑 Windows 打包验收作业，空为全部"
         required: false
         default: ""
 
@@ -58,7 +58,7 @@ jobs:
   # ARMADRA_DEV_STACK=1 让 e2e.mjs 先 `pnpm dev-stack up`、跑完 down。
   linux:
     needs: gate
-    if: ${{ needs.gate.outputs.run == 'true' && inputs.scenario != 'private-channels' }}
+    if: ${{ needs.gate.outputs.run == 'true' && inputs.scenario != 'private-channels' && inputs.scenario != 'windows-acceptance' }}
     name: Linux 打包与 B 档
     runs-on: ubuntu-22.04
     timeout-minutes: 120
@@ -144,7 +144,7 @@ jobs:
   # 上面的 x64 作业跑。
   linux-arm64:
     needs: gate
-    if: ${{ needs.gate.outputs.run == 'true' && inputs.scenario != 'private-channels' }}
+    if: ${{ needs.gate.outputs.run == 'true' && inputs.scenario != 'private-channels' && inputs.scenario != 'windows-acceptance' }}
     name: Linux arm64 打包与安装
     runs-on: ubuntu-22.04-arm
     timeout-minutes: 90
@@ -195,7 +195,7 @@ jobs:
   # 公证，直接执行 release 目录里的 .app。
   macos:
     needs: gate
-    if: ${{ needs.gate.outputs.run == 'true' && inputs.scenario != 'private-channels' }}
+    if: ${{ needs.gate.outputs.run == 'true' && inputs.scenario != 'private-channels' && inputs.scenario != 'windows-acceptance' }}
     name: macOS 打包与 B 档
     runs-on: macos-15
     timeout-minutes: 120
@@ -250,7 +250,7 @@ jobs:
   # app-version.mjs 写给两个原生工程。真机、签名与商店上传要用户的证书。
   mobile-ios:
     needs: gate
-    if: ${{ needs.gate.outputs.run == 'true' && inputs.scenario != 'private-channels' }}
+    if: ${{ needs.gate.outputs.run == 'true' && inputs.scenario != 'private-channels' && inputs.scenario != 'windows-acceptance' }}
     name: mobile (ios simulator)
     runs-on: macos-latest
     timeout-minutes: 90
@@ -310,7 +310,7 @@ jobs:
 
   mobile-android:
     needs: gate
-    if: ${{ needs.gate.outputs.run == 'true' && inputs.scenario != 'private-channels' }}
+    if: ${{ needs.gate.outputs.run == 'true' && inputs.scenario != 'private-channels' && inputs.scenario != 'windows-acceptance' }}
     name: mobile (android emulator)
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -478,7 +478,7 @@ jobs:
   # 账户，所以不进每个 PR 的并行套件；手动触发时 scenario=private-channels 只跑这一个。
   windows-private-channels:
     needs: gate
-    if: ${{ needs.gate.outputs.run == 'true' }}
+    if: ${{ needs.gate.outputs.run == 'true' && inputs.scenario != 'windows-acceptance' }}
     name: windows private channels (squatter + second user)
     runs-on: windows-latest
     timeout-minutes: 30
@@ -503,7 +503,7 @@ jobs:
   # 生产依赖里出现 high 及以上的漏洞时本作业失败，由 report 开 issue，不阻断合并。
   hygiene:
     needs: gate
-    if: ${{ needs.gate.outputs.run == 'true' && inputs.scenario != 'private-channels' }}
+    if: ${{ needs.gate.outputs.run == 'true' && inputs.scenario != 'private-channels' && inputs.scenario != 'windows-acceptance' }}
     name: 依赖审计与 knip 报告
     runs-on: ubuntu-latest
     timeout-minutes: 20

@@ -6,32 +6,44 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 /**
  * 会话宿主代答验收的被测程序（#565）：往终端里发查询，把收到的每一段输入原样记成
- * `GOT:<阶段>:<十六进制>`，所以「谁答了查询」读 capture 就知道。
+ * `GOT:<阶段>:<十六进制>`，所以「谁答了查询」读 capture 就知道。第二个参数选查询：
+ * `da1`（默认，`ESC [ c`）或 `dsr5`（`ESC [ 5 n`）。
  *
- *   * `replay`：先发一次 DA1（`ESC [ c`）和 `REPLAYSENT`，6 秒后再发一次 DA1 和
- *     `SECONDQUERY`，此后的输入记在阶段 `live` 下，之前的记在 `replay` 下；
- *   * `loop`：每秒发一次 DA1 和 `TICK:<n>`，输入记在当时的 n 下。用 DA1 而不是 DSR 5n：
- *     三方对 DA1 的应答字节各不相同（{@link PROBE_DA1}、{@link HOST_DA1}、控制台自己的），
- *     读输入就分得出是谁答的。
+ *   * `replay`：先发一次查询和 `REPLAYSENT`，然后等探针附着之后往 stdin 写一个 BEL
+ *     （`\x07`，{@link REPLAY_SIGNAL}）作信号——不用固定时延，慢机器上也不会抢跑——
+ *     收到信号才发第二次查询和 `SECONDQUERY`。此后的输入记在阶段 `live` 下，之前的记
+ *     在 `replay` 下；信号本身不记；
+ *   * `loop`：每秒发一次查询和 `TICK:<n>`，输入记在当时的 n 下。宿主代答验收用 DA1
+ *     而不是 DSR 5n：三方对 DA1 的应答字节各不相同（{@link PROBE_DA1}、{@link HOST_DA1}、
+ *     控制台自己的），读输入就分得出是谁答的；DSR 5n 三方都答 `ESC [ 0 n`，分不出来，
+ *     所以它只用来看 ConPTY 转不转（{@link dsrVerdict}）。
  */
 export const QUERY_SCRIPT = [
   "const mode = process.argv[2];",
+  "const query = process.argv[3] === 'dsr5' ? '\\x1b[5n' : '\\x1b[c';",
   "let phase = mode === 'replay' ? 'replay' : 0;",
+  "const signalled = () => { phase = 'live'; process.stdout.write(query + '\\r\\nSECONDQUERY\\r\\n'); };",
   "if (process.stdin.isTTY) process.stdin.setRawMode(true);",
   "process.stdin.resume();",
-  "process.stdin.on('data', (chunk) => process.stdout.write('\\r\\nGOT:' + phase + ':' + chunk.toString('hex') + '\\r\\n'));",
+  "process.stdin.on('data', (chunk) => {",
+  "  let text = chunk.toString('latin1');",
+  "  if (mode === 'replay' && phase === 'replay' && text.includes('\\x07')) { text = text.replace('\\x07', ''); signalled(); }",
+  "  if (text.length > 0) process.stdout.write('\\r\\nGOT:' + phase + ':' + Buffer.from(text, 'latin1').toString('hex') + '\\r\\n');",
+  "});",
   "if (mode === 'replay') {",
-  "  process.stdout.write('\\x1b[c\\r\\nREPLAYSENT\\r\\n');",
-  "  setTimeout(() => { phase = 'live'; process.stdout.write('\\x1b[c\\r\\nSECONDQUERY\\r\\n'); }, 6000);",
-  "  setTimeout(() => process.exit(0), 40000);",
+  "  process.stdout.write(query + '\\r\\nREPLAYSENT\\r\\n');",
+  "  setTimeout(() => process.exit(0), 60000);",
   "} else {",
   "  const timer = setInterval(() => {",
   "    phase += 1;",
-  "    process.stdout.write('\\x1b[c\\r\\nTICK:' + phase + '\\r\\n');",
+  "    process.stdout.write(query + '\\r\\nTICK:' + phase + '\\r\\n');",
   "    if (phase >= 90) { clearInterval(timer); process.exit(0); }",
   "  }, 1000);",
   "}",
 ].join("\n");
+
+/** 探针附着之后写进程序 stdin 的信号：BEL，程序见到它才发第二次查询。 */
+export const REPLAY_SIGNAL = "\u0007";
 
 /** 探针扮演的页面终端对 DA1 的应答（只在探针决定时发）。 */
 export const PROBE_DA1 = "\u001b[?1;2c";
@@ -122,6 +134,47 @@ export function hostAnswerVerdict(
   return { ok, counts, duplicated };
 }
 
+/** DSR 5n 的应答：「终端没问题」。宿主、探针与控制台都答这一个。 */
+export const DSR_OK = "\u001b[0n";
+
+/**
+ * DSR 5n 一段的判定（#573 第 1 项）：`seen` 是一个只附着、不答查询的视图在一段 TICK
+ * 里看到的输出，`ESC [ 5 n` 在里面说明 ConPTY 把查询转给了外面。
+ *
+ *   * 转了：有可写附着在，宿主不答，程序一份应答都不该收到；
+ *   * 没转（控制台自己答了）：每个 TICK 一份 `ESC [ 0 n`，宿主代答的路径在这台机器上
+ *     走不到，记 `skipped` 并写明原因。
+ */
+export function dsrVerdict(seen, ticks) {
+  const text = String(seen);
+  const forwarded = text.includes("\u001b[5n");
+  const answers = receivedInputs(text).filter(
+    (row) => typeof row.phase === "number",
+  );
+  // `seen` 里同一个 TICK 的输出可能在快照与实时输出里各出现一次，所以按 TICK 号去重。
+  const byTick = new Map();
+  for (const row of answers) byTick.set(row.phase, row.hex);
+  const replies = [...byTick.values()].filter(
+    (hex) => Buffer.from(hex, "hex").toString("latin1") === DSR_OK,
+  ).length;
+  const others = byTick.size - replies;
+  const ok = forwarded
+    ? byTick.size === 0
+    : others === 0 && replies >= ticks - 1;
+  return {
+    ok,
+    forwarded,
+    replies,
+    others,
+    ...(forwarded
+      ? {}
+      : {
+          skipped:
+            "ConPTY 自己回答 ESC[5n，查询不会转给外面，宿主代答的路径在这台机器上走不到",
+        }),
+  };
+}
+
 /**
  * 回放一段的判定（`stale` / `live` 是阶段 `replay` / `live` 的输入）。两种情形都要求：
  * 探针替回放里旧查询发的应答不到程序，实时查询只到一份应答。
@@ -165,7 +218,7 @@ async function runSessionHostReplies({ app, work, workspaceId, wsDir, shell }) {
     );
   const script = join(work, "query-program.js");
   writeFileSync(script, QUERY_SCRIPT);
-  const start = async (mode, wanted) => {
+  const start = async (mode, wanted, query = "da1") => {
     const response = await app.api("POST", "/api/terminals", {
       workspaceId,
       cwd: wsDir,
@@ -175,7 +228,7 @@ async function runSessionHostReplies({ app, work, workspaceId, wsDir, shell }) {
     if (typeof id !== "string") return { error: response };
     const typed = await app.terminal(
       id,
-      [`"${process.execPath}" "${script}" ${mode}\r`],
+      [`"${process.execPath}" "${script}" ${mode} ${query}\r`],
       wanted,
       60_000,
     );
@@ -214,6 +267,8 @@ async function runSessionHostReplies({ app, work, workspaceId, wsDir, shell }) {
     data: PROBE_DA1,
     reply: true,
   });
+  // 第二次查询由探针发信号触发（程序见到 BEL 才发），不靠启动后的固定时延（#573 第 2 项）。
+  await watch("Send", "late", { type: "input", data: REPLAY_SIGNAL });
   let sawSecond = false;
   let liveSeen = "";
   for (let waited = 0; waited < 20_000; waited += 250) {
@@ -259,8 +314,30 @@ async function runSessionHostReplies({ app, work, workspaceId, wsDir, shell }) {
     inputs: sample([...stale, ...live]),
   };
   const replayOk = opened?.ok === true && replayCheck.ok;
+  detail.hostPath = forwardedReplay
+    ? { exercised: true }
+    : {
+        exercised: false,
+        skipped:
+          "ConPTY 自己回答 DA1，查询不会转给外面，宿主代答的路径在这台机器上走不到；这里只验控制台答了、宿主与探针的都没到",
+      };
 
-  // 二、宿主代答的切换：没有附着时宿主答；有可写附着（页面的终端负责答，这里它
+  // 二、DSR 5n：ConPTY 转不转。一个只看不答的附着在几个 TICK 里读程序的输出（程序把
+  // 收到的输入也打在屏幕上），判定见 dsrVerdict。
+  const dsr = await start("loop", "TICK:1", "dsr5");
+  if (dsr.id === undefined) {
+    return { ok: false, detail: { ...detail, dsr } };
+  }
+  await watch("Open", "dsr", dsr.id);
+  await sleep(6_000);
+  const dsrSeen = (await watch("Read", "dsr"))?.seen ?? "";
+  await watch("Close", "dsr");
+  await finish(dsr.id);
+  const dsrCheck = dsrVerdict(dsrSeen, Math.max(1, lastTick(dsrSeen) - 2));
+  detail.dsr5n = dsrCheck;
+  const dsrOk = lastTick(dsrSeen) >= 3 && dsrCheck.ok;
+
+  // 三、宿主代答的切换：没有附着时宿主答；有可写附着（页面的终端负责答，这里它
   // 故意不答）时宿主不答；附着离开后宿主接着答。TICK 号两头各留两格余量。
   const loop = await start("loop", "TICK:1");
   if (loop.id === undefined) {
@@ -309,6 +386,7 @@ async function runSessionHostReplies({ app, work, workspaceId, wsDir, shell }) {
   return {
     ok:
       replayOk &&
+      dsrOk &&
       watching?.ok === true &&
       reopened?.ok === true &&
       forwardedLoop === forwardedReplay &&

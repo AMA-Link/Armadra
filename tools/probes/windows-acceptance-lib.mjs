@@ -37,7 +37,7 @@ export const CHECKS = [
   ["sessionHost.process", "会话宿主进程在，命名管道 armadra-session-* 在"],
   [
     "sessionHost.replies",
-    "会话宿主与查询应答（#565）：附着回放里的旧查询不算待答，实时查询只答一份，每次查询至多一份应答；ConPTY 转出查询时宿主在没有可写附着时代答、有可写附着时不答、附着离开后接着答，控制台自己答时宿主不答",
+    "会话宿主与查询应答（#565）：附着回放里的旧查询不算待答，实时查询只答一份，每次查询至多一份应答；ConPTY 转出查询时宿主在没有可写附着时代答、有可写附着时不答、附着离开后接着答，控制台自己答时宿主不答；另看 DSR 5n 被 ConPTY 转出还是吞掉（detail.dsr5n、detail.hostPath 写明宿主代答的路径有没有走到）",
   ],
   [
     "launcher.dialects",
