@@ -27,6 +27,7 @@ import { DiffCounts, diffStat } from "@/acp/DiffBlock";
 import { mcpToolDisplay } from "@/acp/mcp-tools";
 import { basename } from "@/files/file-operations";
 import { cn } from "@/lib/cn";
+import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import {
   Collapsible,
@@ -36,10 +37,17 @@ import {
 import { Shimmer } from "@/ui/shimmer";
 import { Spinner } from "@/ui/spinner";
 import { StatusPill } from "@/ui/status-pill";
+import {
+  ENTRY_BODY,
+  ENTRY_FRAME,
+  ENTRY_NESTED_BODY,
+  ENTRY_TRIGGER,
+} from "../entry";
 import { formatDuration } from "../format";
 import { ToolContentView } from "../parts/ToolContentView";
 import { ToolInput } from "../parts/ToolInput";
 import { memoRow } from "../row-memo";
+import { useElapsed } from "../use-elapsed";
 
 export const KIND_ICONS: Record<TimelineToolKind, LucideIcon> = {
   read: FileText,
@@ -167,6 +175,71 @@ export interface ToolRowProps {
   /** 审批卡的渲染（B7 接 `PermissionCard`）。要稳定的引用。 */
   renderApproval?:
     ((approval: TimelineApprovalItem) => React.ReactNode) | undefined;
+  /** 嵌在活动组或子代理里：没有自己的边框。 */
+  plain?: boolean | undefined;
+  /** 测试用：固定当前时间。 */
+  now?: number | undefined;
+}
+
+type TerminalContent = Extract<
+  TimelineToolItem["content"][number],
+  { type: "terminal" }
+>;
+
+/** 工具上最后一个终端部件（命令的输出与退出码在它身上）。 */
+function lastTerminal(item: TimelineToolItem): TerminalContent | undefined {
+  for (let i = item.content.length - 1; i >= 0; i--) {
+    const part = item.content[i];
+    if (part?.type === "terminal") return part;
+  }
+  return undefined;
+}
+
+/** 标题行右侧的退出码：0 是描边，非零与被终止是危险色。 */
+function ExitBadge({ code }: { code: number | null }) {
+  const t = useT();
+  return (
+    <Badge
+      data-slot="timeline-tool-exit"
+      data-numeric
+      variant={code === 0 ? "outline" : "destructive"}
+      size="sm"
+      className="shrink-0 font-mono"
+    >
+      {code === null
+        ? t("timeline.terminal.killed")
+        : t("timeline.terminal.exit", { code })}
+    </Badge>
+  );
+}
+
+/** 标题行右侧的时长：结束了是总时长，运行中从开始实时计时。 */
+function Elapsed({
+  item,
+  running,
+  now,
+}: {
+  item: TimelineToolItem;
+  running: boolean;
+  now: number | undefined;
+}) {
+  const live = useElapsed(running, item.startedAt, now);
+  const text =
+    item.endedAt !== undefined
+      ? formatDuration(item.endedAt - item.startedAt)
+      : running
+        ? live
+        : "";
+  if (text === "") return null;
+  return (
+    <span
+      data-numeric
+      data-slot="timeline-tool-duration"
+      className="font-mono text-caption text-muted-foreground"
+    >
+      {text}
+    </span>
+  );
 }
 
 function ToolRowImpl({
@@ -175,6 +248,8 @@ function ToolRowImpl({
   approvals,
   approval,
   renderApproval,
+  plain,
+  now,
 }: ToolRowProps) {
   const t = useT();
   const pendingApproval =
@@ -184,39 +259,40 @@ function ToolRowImpl({
     nested?.some(
       (child) => approvals?.get(child.toolCallId)?.state === "pending",
     ) === true;
-  const [manual, setManual] = React.useState<boolean | null>(null);
-  const open = manual ?? nestedPending;
-  const setOpen = setManual;
   // MCP 调用按来源（`item.mcp`）换成本地化的名字与图标，不显示 `mcp.<服务器>.<工具>`。
   const mcp = mcpToolDisplay(item.mcp, t);
   const Icon = mcp?.Icon ?? KIND_ICONS[item.toolKind];
   const running = item.status === "in_progress" || item.status === "pending";
+  const terminal = lastTerminal(item);
+  // 命令：`execute` 类，或带着终端输出的调用。
+  const command =
+    mcp === null && (item.toolKind === "execute" || terminal !== undefined);
+  // 命令在跑时展开看实时输出，结束后收起。用户手动开合之后以用户为准。
+  const [manual, setManual] = React.useState<boolean | null>(null);
+  const open =
+    manual ?? (nestedPending || (command && item.status === "in_progress"));
   const stat = React.useMemo(() => toolDiffStat(item.content), [item.content]);
   const shown = item.locations.slice(0, MAX_LOCATIONS);
   const hidden = item.locations.slice(MAX_LOCATIONS);
   const rest = hidden.length;
-  const duration =
-    item.endedAt !== undefined
-      ? formatDuration(item.endedAt - item.startedAt)
-      : "";
-  // 终端部件已经显示了命令，入参摘要里不再重复一行。
-  const terminalCommand = item.content.some(
-    (part) =>
-      part.type === "terminal" &&
-      part.command !== undefined &&
-      part.command === item.input?.command,
-  );
+  // 命令行：终端部件带了就用它的，没带就用入参里的（Agent 自己跑的命令）。
+  const commandLine = terminal?.command ?? item.input?.command;
+  // 终端部件会显示命令，入参摘要里不再重复一行。
   const input =
-    item.input !== undefined && terminalCommand
+    item.input !== undefined &&
+    terminal !== undefined &&
+    commandLine !== undefined
       ? { ...item.input, command: undefined }
       : item.input;
+  const exitCode = terminal?.exitCode;
   const hasBody =
     input !== undefined ||
     item.content.length > 0 ||
     (nested?.length ?? 0) > 0 ||
     rest > 0;
   // 已完成、进行中不挂状态字：图标位已经说明了；只有等待、失败、取消要读得出来。
-  // 被人拒了的调用：审批的结局行已经写了「已拒绝」，工具行不再叠一枚「失败」。
+  // 被人拒了的调用：审批的结局行已经写了「已拒绝」，工具行不再叠一枚「失败」；
+  // 退出码已经写在标题行上的失败也不再叠。
   const rejected =
     approval !== undefined &&
     approval.state === "answered" &&
@@ -225,7 +301,7 @@ function ToolRowImpl({
       ?.kind.startsWith("reject") === true;
   const statusText =
     item.status === "pending" ||
-    (item.status === "failed" && !rejected) ||
+    (item.status === "failed" && !rejected && exitCode === undefined) ||
     item.status === "cancelled";
   // 标题里已经写了文件的，不再重复文件名；有行号的仍留一枚「:行号」，行号不在标题里。
   const title = mcp?.title ?? item.title;
@@ -241,16 +317,22 @@ function ToolRowImpl({
     <div
       data-slot="timeline-tool"
       data-status={item.status}
-      className="min-w-0"
+      data-command={command || undefined}
+      className="flex min-w-0 flex-col"
     >
-      <Collapsible open={open} onOpenChange={setOpen}>
+      <Collapsible
+        open={open}
+        onOpenChange={setManual}
+        className={plain ? "min-w-0" : ENTRY_FRAME}
+      >
         <CollapsibleTrigger asChild>
           <Button
             variant="ghost"
             size="sm"
             disabled={!hasBody}
             className={cn(
-              "group/tool w-full min-w-0 justify-start gap-1.5 px-2 font-normal aria-expanded:bg-transparent aria-expanded:hover:bg-hover disabled:opacity-100",
+              ENTRY_TRIGGER,
+              "group/tool",
               item.status === "completed" &&
                 "text-muted-foreground hover:text-foreground",
             )}
@@ -260,7 +342,7 @@ function ToolRowImpl({
               active={item.status === "in_progress"}
               className={cn(
                 "min-w-0 truncate text-meta",
-                item.toolKind === "execute" && mcp === null && "font-mono",
+                command && "font-mono",
               )}
             >
               {title}
@@ -289,15 +371,9 @@ function ToolRowImpl({
                 deletions={stat.deletions}
               />
             )}
-            <span className="ml-auto flex shrink-0 items-center gap-1.5">
-              {duration !== "" && (
-                <span
-                  data-numeric
-                  className="font-mono text-caption text-muted-foreground"
-                >
-                  {duration}
-                </span>
-              )}
+            <span className="ml-auto flex shrink-0 items-center gap-1.5 pl-1">
+              {exitCode !== undefined && <ExitBadge code={exitCode} />}
+              <Elapsed item={item} running={running} now={now} />
               {statusText && (
                 <StatusPill
                   tone={TOOL_STATUS_TONES[item.status]}
@@ -308,7 +384,7 @@ function ToolRowImpl({
                 <ChevronRight
                   aria-hidden
                   data-open={open || undefined}
-                  className="text-muted-foreground opacity-0 transition-[opacity,rotate] duration-(--dur-fast) group-hover/tool:opacity-100 group-focus-visible/tool:opacity-100 data-open:rotate-90 data-open:opacity-100"
+                  className="text-muted-foreground transition-[rotate] duration-(--dur-fast) data-open:rotate-90"
                 />
               )}
             </span>
@@ -317,37 +393,62 @@ function ToolRowImpl({
         {hasBody && (
           <CollapsibleContent
             data-slot="timeline-tool-body"
-            className="ml-3.5 flex flex-col gap-1.5 border-l border-border py-1.5 pr-1 pl-3"
+            className="flex min-w-0 flex-col"
           >
-            {rest > 0 && (
-              <ul
-                data-slot="timeline-tool-locations"
-                className="flex flex-col gap-0.5 font-mono text-caption text-muted-foreground"
+            <div className={plain ? ENTRY_NESTED_BODY : ENTRY_BODY}>
+              {rest > 0 && (
+                <ul
+                  data-slot="timeline-tool-locations"
+                  className="flex flex-col gap-0.5 font-mono text-caption text-muted-foreground"
+                >
+                  {hidden.map((location, index) => (
+                    <li key={index} className="min-w-0 truncate">
+                      {location.path}
+                      {location.line ? `:${location.line}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {input !== undefined && <ToolInput input={input} />}
+              {item.content.map((content, index) => (
+                <ToolContentView
+                  key={index}
+                  content={
+                    content.type === "terminal" &&
+                    content.command === undefined &&
+                    commandLine !== undefined
+                      ? { ...content, command: commandLine }
+                      : content
+                  }
+                  running={running}
+                  exitInHeader
+                />
+              ))}
+              {command && terminal === undefined && !running && (
+                <span
+                  data-slot="timeline-tool-no-output"
+                  className="text-caption text-muted-foreground"
+                >
+                  {t("timeline.terminal.noOutput")}
+                </span>
+              )}
+            </div>
+            {(nested?.length ?? 0) > 0 && (
+              <div
+                data-slot="timeline-tool-nested"
+                className="flex min-w-0 flex-col border-t border-border py-0.5"
               >
-                {hidden.map((location, index) => (
-                  <li key={index} className="min-w-0 truncate">
-                    {location.path}
-                    {location.line ? `:${location.line}` : ""}
-                  </li>
+                {nested?.map((child) => (
+                  <ToolRow
+                    key={child.id}
+                    item={child}
+                    approval={approvals?.get(child.toolCallId)}
+                    renderApproval={renderApproval}
+                    plain
+                  />
                 ))}
-              </ul>
+              </div>
             )}
-            {input !== undefined && <ToolInput input={input} />}
-            {item.content.map((content, index) => (
-              <ToolContentView
-                key={index}
-                content={content}
-                running={running}
-              />
-            ))}
-            {nested?.map((child) => (
-              <ToolRow
-                key={child.id}
-                item={child}
-                approval={approvals?.get(child.toolCallId)}
-                renderApproval={renderApproval}
-              />
-            ))}
           </CollapsibleContent>
         )}
       </Collapsible>
@@ -355,7 +456,7 @@ function ToolRowImpl({
         <div
           data-slot="timeline-tool-approval"
           data-pending={pendingApproval || undefined}
-          className="pt-1 pl-7"
+          className={plain ? "px-2.5 pb-1.5" : "pt-1.5"}
         >
           {renderApproval(approval)}
         </div>

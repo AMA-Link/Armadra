@@ -13,7 +13,9 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/ui/collapsible";
+import { cn } from "@/lib/cn";
 import { Spinner } from "@/ui/spinner";
+import { ENTRY_FRAME, ENTRY_TRIGGER } from "./entry";
 import { ThoughtRow } from "./rows/ThoughtRow";
 import { ToolRow } from "./rows/ToolRow";
 
@@ -46,7 +48,8 @@ export interface ActivityGroupProps {
 }
 
 /**
- * 连续的只读类工具（读、搜、取网页）与思考折成一行摘要（设计 §3.1）。进行中或有审批
+ * 连续的只读类工具（读、搜、取网页）与思考折成一张摘要卡片（设计 §3.1），成员在卡片里
+ * 上下排开、没有各自的边框。进行中或有审批
  * 在等答复时保持展开；结束后收起，点开看明细。用户手动开合之后以用户为准。
  */
 export const ActivityGroup = React.memo(function ActivityGroup({
@@ -71,13 +74,16 @@ export const ActivityGroup = React.memo(function ActivityGroup({
       onOpenChange={setManual}
       data-slot="timeline-group"
       data-running={entry.running || undefined}
-      className="min-w-0"
+      className={ENTRY_FRAME}
     >
       <CollapsibleTrigger asChild>
         <Button
           variant="ghost"
           size="sm"
-          className="w-full min-w-0 justify-start gap-1.5 px-2 font-normal aria-expanded:bg-transparent aria-expanded:hover:bg-hover text-muted-foreground hover:text-foreground"
+          className={cn(
+            ENTRY_TRIGGER,
+            "text-muted-foreground hover:text-foreground",
+          )}
         >
           {entry.running ? (
             <Spinner size={12} />
@@ -95,17 +101,18 @@ export const ActivityGroup = React.memo(function ActivityGroup({
       </CollapsibleTrigger>
       <CollapsibleContent
         data-slot="timeline-group-body"
-        className="ml-3.5 flex flex-col gap-0.5 border-l border-border pl-1"
+        className="flex min-w-0 flex-col border-t border-border py-0.5"
       >
         {entry.items.map((member) =>
           member.kind === "thought" ? (
-            <ThoughtRow key={member.id} item={member} />
+            <ThoughtRow key={member.id} item={member} plain />
           ) : (
             <ToolRow
               key={member.id}
               item={member}
               approval={approvals?.get(member.toolCallId)}
               renderApproval={renderApproval}
+              plain
             />
           ),
         )}

@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TerminalFeedLink } from "./terminal-feed";
-import type { TerminalSnapshot } from "./terminals";
+import { CHANGE_INTERVAL_MS, type TerminalSnapshot } from "./terminals";
 
 function snap(
   terminalId: string,
@@ -139,5 +139,138 @@ describe("TerminalFeedLink", () => {
     }
     expect(link.updateFor(snap("t0", "x"))).toBeUndefined();
     expect(link.updateFor(snap("t99", "x"))).toBeDefined();
+  });
+});
+
+/** Agent 自己跑命令时一条只带输出块的更新（终端 id 就是工具 id）。 */
+const chunk = (data: string, toolCallId = "c1") => ({
+  sessionUpdate: "tool_call_update",
+  toolCallId,
+  _meta: { terminal_output_delta: { data, terminal_id: toolCallId } },
+});
+
+describe("TerminalFeedLink：Agent 在 _meta 里报的输出与退出", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("输出块攒成尾部，退出码随结束那条更新补进终端内容", () => {
+    const link = new TerminalFeedLink(() => undefined);
+    link.decorate(
+      toolCall([{ type: "terminal", terminalId: "c1" }], {
+        _meta: { terminal_info: { cwd: "/w", terminal_id: "c1" } },
+      }),
+    );
+    const first = link.decorate(chunk("line 1\n")) as {
+      content: unknown[];
+    };
+    expect(first.content).toEqual([
+      { type: "terminal", terminalId: "c1", output: "line 1\n" },
+    ]);
+    link.decorate(chunk("line 2\n"));
+    const done = link.decorate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "c1",
+      status: "failed",
+      content: [{ type: "terminal", terminalId: "c1" }],
+      _meta: {
+        terminal_exit: { exit_code: 3, signal: null, terminal_id: "c1" },
+      },
+    }) as { status: string; content: unknown[] };
+    expect(done.status).toBe("failed");
+    expect(done.content).toEqual([
+      {
+        type: "terminal",
+        terminalId: "c1",
+        output: "line 1\nline 2\n",
+        exitCode: 3,
+      },
+    ]);
+  });
+
+  it("不显示终端的命令：退出码在 rawOutput，工具内容里补一份终端", () => {
+    const link = new TerminalFeedLink(() => undefined);
+    link.decorate(chunk("a.txt\n", "c2"));
+    const done = link.decorate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "c2",
+      status: "completed",
+      rawOutput: { exit_code: 0 },
+      content: [{ type: "content", content: { type: "text", text: "ok" } }],
+    }) as { content: unknown[] };
+    expect(done.content).toEqual([
+      { type: "content", content: { type: "text", text: "ok" } },
+      { type: "terminal", terminalId: "c2", output: "a.txt\n", exitCode: 0 },
+    ]);
+  });
+
+  it("被信号杀掉：terminal_exit 没有退出码记 null", () => {
+    const link = new TerminalFeedLink(() => undefined);
+    const done = link.decorate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "c3",
+      _meta: {
+        terminal_exit: {
+          exit_code: null,
+          signal: "SIGKILL",
+          terminal_id: "c3",
+        },
+      },
+    }) as { content: Array<Record<string, unknown>> };
+    expect(done.content[0]).toMatchObject({ terminalId: "c3", exitCode: null });
+  });
+
+  it("只带输出块的更新节流：原样放过，攒一段合成一条", () => {
+    vi.useFakeTimers();
+    const emitted: unknown[] = [];
+    const link = new TerminalFeedLink(
+      () => undefined,
+      (update) => emitted.push(update),
+    );
+    link.decorate(toolCall([{ type: "terminal", terminalId: "c1" }]));
+    const a = chunk("a");
+    expect(link.decorate(a)).toBe(a);
+    link.decorate(chunk("b"));
+    expect(emitted).toEqual([]);
+    vi.advanceTimersByTime(CHANGE_INTERVAL_MS);
+    expect(emitted).toEqual([
+      {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "c1",
+        content: [{ type: "terminal", terminalId: "c1", output: "ab" }],
+      },
+    ]);
+    // 结束那条自己带着输出，等着的合成取消。
+    link.decorate(chunk("c"));
+    const done = link.decorate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "c1",
+      status: "completed",
+      _meta: {
+        terminal_exit: { exit_code: 0, signal: null, terminal_id: "c1" },
+      },
+    }) as { content: unknown[] };
+    expect(done.content).toEqual([
+      { type: "terminal", terminalId: "c1", output: "abc", exitCode: 0 },
+    ]);
+    vi.advanceTimersByTime(CHANGE_INTERVAL_MS * 2);
+    expect(emitted).toHaveLength(1);
+    link.decorate(chunk("d"));
+    link.dispose();
+    vi.advanceTimersByTime(CHANGE_INTERVAL_MS * 2);
+    expect(emitted).toHaveLength(1);
+  });
+
+  it("输出只留尾部，标出总字节数", () => {
+    const link = new TerminalFeedLink(() => undefined);
+    const big = "x".repeat(70 * 1024);
+    const update = link.decorate(chunk(big)) as {
+      content: Array<Record<string, unknown>>;
+    };
+    expect(update.content[0]).toMatchObject({
+      truncated: true,
+      originalBytes: big.length,
+    });
+    expect((update.content[0]?.output as string).length).toBe(64 * 1024);
   });
 });

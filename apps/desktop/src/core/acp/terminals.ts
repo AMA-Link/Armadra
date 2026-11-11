@@ -78,7 +78,7 @@ export interface AcpTerminalsOptions {
 }
 
 /** 尾部缓冲：超过两倍上限才压缩一次，摊下来每字节常数次拷贝。 */
-class TailBuffer {
+export class TailBuffer {
   private chunks: Buffer[] = [];
   private size = 0;
   private total = 0;

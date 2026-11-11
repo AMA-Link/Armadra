@@ -337,7 +337,7 @@ Claude Code
 - 工具条：每条消息 / 工具行右上角一个 `absolute` 的 `IconButton inline` 组，`opacity-0 group-hover:opacity-100 group-focus-within:opacity-100`，触屏（`(hover: none)`）常显——**这是消息级的次要动作**，与节点头的常显要求不同；每个钮都有 `aria-label`，Tab 可达时自然显形。
 - 文字可选：根 `select-text`（覆盖 React Flow 的 `user-select: none`），`nopan nodrag nowheel`。
 - 代码与路径：`font-mono text-[length:var(--text-code)]`，`overflow-wrap: anywhere`；长 URI 截断 `text-overflow: ellipsis` + `title`。
-- 用户气泡宽度 `max-w-[85%]`；助手段落 `max-w-[72ch]`（better-typography 量宽）。
+- ~~用户气泡宽度 `max-w-[85%]`；助手段落 `max-w-[72ch]`（better-typography 量宽）。~~ #908 起取消：提问左对齐占满宽度，条目宽度一律跟着节点，见[设计系统](design-system.md) §5.1。
 - 空 / 加载 / 错误 / 离线：现状保留（`Empty` / `Skeleton` / `Alert` / 顶部 `Alert`）。
 - 手机：同一组件（DS §5.1）；工具条常显；`Command` 弹层用 `Sheet bottom`（`ui/command` 已有 `CommandDialog`，手机走 `ResponsiveDialog`）。
 

@@ -20,6 +20,7 @@ vi.mock("@/store/canvas-store", () => {
 vi.mock("@/files/open-editor", () => ({ openFileInEditor: vi.fn() }));
 
 import { ActivityGroup, summaryLabel } from "./ActivityGroup";
+import { formatDuration } from "./format";
 import { latestPlan, PlanBar } from "./PlanBar";
 import {
   assistantItem,
@@ -572,9 +573,11 @@ describe("ToolRow", () => {
     expect(screen.getByText(/已截断/)).toBeTruthy();
     const terminal = document.querySelector("[data-slot=timeline-terminal]");
     expect(terminal?.textContent).toContain("ls");
+    // 退出码在卡片标题行上，终端块里不再重复。
     expect(
-      terminal?.querySelector("[data-slot=timeline-exit]")?.textContent,
+      document.querySelector("[data-slot=timeline-tool-exit]")?.textContent,
     ).toBe("退出 2");
+    expect(terminal?.querySelector("[data-slot=timeline-exit]")).toBeNull();
     const colored = [...(terminal?.querySelectorAll("pre span") ?? [])].find(
       (n) => n.textContent === "fail",
     );
@@ -1013,13 +1016,30 @@ describe("ToolRow 界面（设计系统 §5.1）", () => {
     );
   });
 
-  it("puts the expanded body behind a guide line", () => {
+  it("is a bordered card; the body sits inside it on the same left edge", () => {
     render(
       <ToolRow item={row({ input: { command: "ls" }, toolKind: "execute" })} />,
     );
     fireEvent.click(screen.getByRole("button"));
-    const body = document.querySelector("[data-slot=timeline-tool-body]");
-    expect(body?.className).toContain("border-l");
+    const card = document.querySelector(
+      "[data-slot=timeline-tool] > [data-slot=collapsible]",
+    );
+    expect(card?.className).toContain("border-border");
+    expect(screen.getByRole("button").className).toContain(
+      "px-[calc(--spacing(2.5)-1px)]",
+    );
+    const body = document.querySelector("[data-slot=timeline-tool-body] > div");
+    expect(body?.className).toContain("border-t");
+    expect(body?.className).toContain("px-2.5");
+    expect(body?.className).not.toContain("ml-");
+  });
+
+  it("nested rows have no frame of their own", () => {
+    render(<ToolRow item={row()} plain />);
+    const card = document.querySelector(
+      "[data-slot=timeline-tool] > [data-slot=collapsible]",
+    );
+    expect(card?.className).not.toContain("border");
   });
 
   it("shimmers the name and spins only while running", () => {
@@ -1090,5 +1110,148 @@ describe("ToolRow 界面（设计系统 §5.1）", () => {
     cleanup();
     render(<ToolRow item={row({ toolKind: "read" })} />);
     expect(document.querySelector("[data-slot=diff-counts]")).toBeNull();
+  });
+});
+
+describe("命令条目（#908）", () => {
+  const command = (patch: Partial<TimelineToolItem> = {}) =>
+    toolItem(1, "cmd", {
+      toolKind: "execute",
+      title: "python3 -c 'import sys; sys.exit(3)'",
+      input: { command: "python3 -c 'import sys; sys.exit(3)'" },
+      ...patch,
+    });
+
+  it("标题行写退出码与耗时；非零退出不再叠「失败」", () => {
+    render(
+      <ToolRow
+        item={command({
+          status: "failed",
+          content: [
+            { type: "terminal", terminalId: "cmd", output: "", exitCode: 3 },
+          ],
+        })}
+      />,
+    );
+    const exit = document.querySelector("[data-slot=timeline-tool-exit]");
+    expect(exit?.textContent).toBe("退出 3");
+    expect(exit?.getAttribute("data-variant")).toBe("destructive");
+    expect(
+      document.querySelector("[data-slot=timeline-tool-duration]")?.textContent,
+    ).toBe(formatDuration(1200));
+    expect(screen.queryByText("失败")).toBeNull();
+  });
+
+  it("被终止的命令写「已终止」", () => {
+    render(
+      <ToolRow
+        item={command({
+          status: "failed",
+          content: [{ type: "terminal", terminalId: "cmd", exitCode: null }],
+        })}
+      />,
+    );
+    expect(
+      document.querySelector("[data-slot=timeline-tool-exit]")?.textContent,
+    ).toBe("已终止");
+  });
+
+  it("终端部件没带命令行时用入参里的；入参不再重复，结束了没有输出写「无输出」", () => {
+    render(
+      <ToolRow
+        item={command({
+          status: "completed",
+          content: [{ type: "terminal", terminalId: "cmd", exitCode: 0 }],
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button"));
+    const line = document.querySelector(
+      "[data-slot=timeline-terminal-command]",
+    );
+    expect(line?.textContent).toContain("sys.exit(3)");
+    expect(
+      document.querySelector("[data-slot=timeline-tool-input]")?.textContent ??
+        "",
+    ).not.toContain("sys.exit(3)");
+    expect(
+      document.querySelector("[data-slot=timeline-terminal-empty]")
+        ?.textContent,
+    ).toBe("无输出");
+  });
+
+  it("运行中自动展开看输出、实时计时；结束后收起", () => {
+    const running = command({
+      status: "in_progress",
+      endedAt: undefined,
+      content: [{ type: "terminal", terminalId: "cmd", output: "step 1\n" }],
+    });
+    const { rerender } = render(
+      <ToolRow item={running} now={running.startedAt + 3_000} />,
+    );
+    expect(screen.getByText("step 1")).toBeTruthy();
+    expect(
+      document.querySelector("[data-slot=timeline-tool-duration]")?.textContent,
+    ).toBe(formatDuration(3_000));
+    rerender(
+      <ToolRow
+        item={{
+          ...running,
+          rev: running.rev + 1,
+          status: "completed",
+          endedAt: running.startedAt + 4_000,
+          content: [
+            {
+              type: "terminal",
+              terminalId: "cmd",
+              output: "step 1\n",
+              exitCode: 0,
+            },
+          ],
+        }}
+      />,
+    );
+    expect(screen.queryByText("step 1")).toBeNull();
+  });
+});
+
+describe("条目共用一条左缘、宽度跟着节点走（#908）", () => {
+  it("助手正文没有最大宽度，与卡片同一档内边距", () => {
+    withServices(
+      <AssistantRow item={as(assistantItem(1, "hi"), "assistant")} />,
+    );
+    const row = document.querySelector("[data-slot=timeline-assistant]");
+    expect(row?.className).not.toMatch(/max-w-/);
+    expect(row?.className).toContain("px-2.5");
+    expect(row?.className).toContain("border-transparent");
+  });
+
+  it("提问左对齐、占满宽度", () => {
+    withServices(<UserRow item={as(userItem(1, "ask"), "user")} />);
+    const row = document.querySelector("[data-slot=timeline-user]");
+    expect(row?.className).not.toMatch(/max-w-|self-end|items-end/);
+    expect(document.querySelector("[data-role=user]")?.className).toContain(
+      "px-2.5",
+    );
+  });
+
+  it("活动组的成员没有各自的边框", () => {
+    const entry = activityGroups(
+      [
+        toolItem(1, "r1", { title: "Read a" }),
+        toolItem(1, "r2", { title: "Read b" }),
+      ],
+      { groupable: () => true },
+    )[0];
+    if (entry?.type !== "group") throw new Error("expected a group");
+    render(<ActivityGroup entry={entry} />);
+    fireEvent.click(screen.getAllByRole("button")[0] as HTMLElement);
+    const members = document.querySelectorAll(
+      "[data-slot=timeline-group-body] [data-slot=timeline-tool] > [data-slot=collapsible]",
+    );
+    expect(members.length).toBe(2);
+    for (const member of members) {
+      expect(member.className).not.toContain("border");
+    }
   });
 });
