@@ -11,39 +11,33 @@ import {
 } from "@/ui/collapsible";
 import { Shimmer } from "@/ui/shimmer";
 import { TextSwap } from "@/ui/text-swap";
+import { cn } from "@/lib/cn";
+import {
+  ENTRY_BODY,
+  ENTRY_FRAME,
+  ENTRY_NESTED_BODY,
+  ENTRY_TRIGGER,
+} from "../entry";
 import { formatDuration } from "../format";
 import { StreamingMarkdown } from "../parts/StreamingMarkdown";
 import { memoRow } from "../row-memo";
+import { useElapsed } from "../use-elapsed";
 import { PartView } from "./AssistantRow";
 
 export interface ThoughtRowProps {
   item: TimelineThoughtItem;
+  /** 嵌在活动组里：没有自己的边框。 */
+  plain?: boolean | undefined;
   /** 测试用：固定当前时间。 */
   now?: number | undefined;
 }
 
-/** 流式时标题后面实时跳动的秒数（从这一条开始的时刻算起）。 */
-function useElapsed(
-  active: boolean,
-  since: number,
-  fixed: number | undefined,
-): string {
-  const [now, setNow] = React.useState(() => fixed ?? Date.now());
-  React.useEffect(() => {
-    if (!active || fixed !== undefined) return;
-    setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [active, fixed]);
-  return formatDuration(Math.max(0, (fixed ?? now) - since));
-}
-
 /**
- * 思考（设计系统 §5.1）：默认折叠。流式时标题「思考」带微光，后面是实时秒数；结束后
- * 固定成「思考了 12 s」（标签用 `TextSwap` 换字）。没有时长的历史记录只写「思考」。
- * 展开是 Markdown。
+ * 思考（设计系统 §5.1）：一张默认折叠的条目卡片。流式时标题「思考」带微光，后面是
+ * 实时秒数；结束后固定成「思考了 12 s」（标签用 `TextSwap` 换字）。没有时长的历史
+ * 记录只写「思考」。展开是 Markdown，限高可滚。
  */
-function ThoughtRowImpl({ item, now }: ThoughtRowProps) {
+function ThoughtRowImpl({ item, plain, now }: ThoughtRowProps) {
   const t = useT();
   const [open, setOpen] = React.useState(false);
   const elapsed = useElapsed(item.streaming, item.at, now);
@@ -60,15 +54,22 @@ function ThoughtRowImpl({ item, now }: ThoughtRowProps) {
       onOpenChange={setOpen}
       data-slot="timeline-thought"
       data-streaming={item.streaming || undefined}
+      className={plain ? "min-w-0" : ENTRY_FRAME}
     >
       <CollapsibleTrigger asChild>
         <Button
           variant="ghost"
           size="sm"
-          className="gap-1.5 px-2 font-normal aria-expanded:bg-transparent aria-expanded:hover:bg-hover text-muted-foreground hover:text-foreground"
+          className={cn(
+            ENTRY_TRIGGER,
+            "text-muted-foreground hover:text-foreground",
+          )}
         >
           <Brain aria-hidden />
-          <Shimmer active={item.streaming} className="text-meta">
+          <Shimmer
+            active={item.streaming}
+            className="min-w-0 truncate text-meta"
+          >
             <TextSwap>{label}</TextSwap>
           </Shimmer>
           {item.streaming && elapsed !== "" && (
@@ -79,13 +80,16 @@ function ThoughtRowImpl({ item, now }: ThoughtRowProps) {
           <ChevronRight
             aria-hidden
             data-open={open || undefined}
-            className="transition-[rotate] duration-(--dur-fast) data-open:rotate-90"
+            className="ml-auto transition-[rotate] duration-(--dur-fast) data-open:rotate-90"
           />
         </Button>
       </CollapsibleTrigger>
       <CollapsibleContent
         data-slot="timeline-thought-body"
-        className="ml-3.5 max-h-64 overflow-y-auto border-l border-border py-0.5 pr-1 pl-3 text-muted-foreground"
+        className={cn(
+          plain ? ENTRY_NESTED_BODY : ENTRY_BODY,
+          "max-h-64 overflow-y-auto text-muted-foreground",
+        )}
       >
         {item.text !== "" && (
           <StreamingMarkdown text={item.text} className="text-meta" />

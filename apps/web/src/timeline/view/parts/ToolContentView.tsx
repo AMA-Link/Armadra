@@ -18,9 +18,12 @@ import { TerminalBlock } from "./TerminalBlock";
 export function ToolContentView({
   content,
   running,
+  exitInHeader,
 }: {
   content: TimelineToolContent;
   running: boolean;
+  /** 退出码已经写在工具卡片的标题行上：终端块里不再重复。 */
+  exitInHeader?: boolean | undefined;
 }) {
   const t = useT();
   const { source } = useTimelineServices();
@@ -74,6 +77,7 @@ export function ToolContentView({
           truncated={content.truncated}
           originalBytes={content.originalBytes}
           running={running}
+          showExit={!exitInHeader}
         />
       );
     case "image":

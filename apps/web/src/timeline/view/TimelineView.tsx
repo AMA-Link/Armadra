@@ -19,6 +19,7 @@ import { DeferredSkeleton } from "@/loading/DeferredSkeleton";
 import { SkeletonTurns } from "@/ui/skeletons";
 import { ActivityGroup } from "./ActivityGroup";
 import { ActivityLine } from "./ActivityLine";
+import { ENTRY_TEXT } from "./entry";
 import { planProgress } from "./PlanBar";
 import { AssistantRow } from "./rows/AssistantRow";
 import { NoticeRow } from "./rows/NoticeRow";
@@ -52,7 +53,10 @@ function PlanLine({ plan }: { plan: TimelinePlanItem }) {
   return (
     <div
       data-slot="timeline-plan-line"
-      className="flex items-center gap-1.5 px-2 text-meta text-muted-foreground"
+      className={cn(
+        ENTRY_TEXT,
+        "flex items-center gap-1.5 text-meta text-muted-foreground",
+      )}
     >
       <ListChecks className="size-3.5 shrink-0" />
       <span className="min-w-0 truncate">{current?.content}</span>
@@ -140,7 +144,7 @@ export const TurnSection = React.memo(function TurnSection({
     <section
       data-slot="timeline-turn-section"
       data-turn={block.turn}
-      className="flex min-w-0 flex-col gap-2 px-3 pb-4"
+      className="flex min-w-0 flex-col gap-1.5 px-3 pb-4"
     >
       {view.entries.map((entry) => {
         if (entry.type === "group") {

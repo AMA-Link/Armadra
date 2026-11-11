@@ -4,7 +4,9 @@ import type { TimelineUserItem } from "@armadra/shared";
 import { Action, ActionBar, CopyAction } from "@/acp/MessageActions";
 import { useT } from "@/app/preferences-store";
 import { Badge } from "@/ui/badge";
+import { cn } from "@/lib/cn";
 import { Card } from "@/ui/card";
+import { ENTRY_INSET } from "../entry";
 import { ImagePart } from "../parts/ImagePart";
 import { memoRow } from "../row-memo";
 
@@ -14,18 +16,21 @@ export interface UserRowProps {
   onEdit?: ((text: string) => void) | undefined;
 }
 
-/** 右侧气泡：纯文本加附件缩略图。 */
+/** 回合的开头：左对齐、占满宽度的提问块（`--surface-raised`），纯文本加附件缩略图。 */
 function UserRowImpl({ item, onEdit }: UserRowProps) {
   const t = useT();
   const attachments = item.attachments ?? [];
   return (
     <div
       data-slot="timeline-user"
-      className="group/act relative flex max-w-[85%] flex-col items-end gap-0.5 self-end"
+      className="group/act relative flex min-w-0 flex-col"
     >
       <Card
         data-role="user"
-        className="gap-1.5 rounded-card bg-raised px-2.5 py-1.5 text-body [overflow-wrap:anywhere] whitespace-pre-wrap"
+        className={cn(
+          ENTRY_INSET,
+          "gap-1.5 rounded-control bg-raised py-1.5 text-body text-strong shadow-none [overflow-wrap:anywhere] whitespace-pre-wrap",
+        )}
       >
         {item.text !== "" && <span>{item.text}</span>}
         {attachments.length > 0 && (
@@ -55,7 +60,7 @@ function UserRowImpl({ item, onEdit }: UserRowProps) {
         )}
       </Card>
       {item.text !== "" && (
-        <ActionBar className="absolute top-0 right-full mr-1">
+        <ActionBar className="absolute -top-2 right-1 rounded-control bg-raised">
           {onEdit !== undefined && (
             <Action
               label={t("acp.message.editResend")}

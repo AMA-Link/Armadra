@@ -3,7 +3,9 @@ import type { TimelineAssistantItem, TimelinePart } from "@armadra/shared";
 
 import { Action, ActionBar, CopyAction } from "@/acp/MessageActions";
 import { useT } from "@/app/preferences-store";
+import { cn } from "@/lib/cn";
 import { Spinner } from "@/ui/spinner";
+import { ENTRY_TEXT } from "../entry";
 import { AudioPart } from "../parts/AudioPart";
 import { ImagePart } from "../parts/ImagePart";
 import { ResourceLinkPart, ResourcePart } from "../parts/ResourcePart";
@@ -65,7 +67,7 @@ export function PartView({ part }: { part: TimelinePart }) {
   }
 }
 
-/** 助手消息：按部件顺序渲染；文本是流式 Markdown，其余是结构化部件。 */
+/** 助手消息：按部件顺序渲染；文本是流式 Markdown，其余是结构化部件。宽度跟着节点走。 */
 function AssistantRowImpl({ item, prompt, onRegenerate }: AssistantRowProps) {
   const t = useT();
   const text = item.parts
@@ -79,7 +81,7 @@ function AssistantRowImpl({ item, prompt, onRegenerate }: AssistantRowProps) {
       data-slot="timeline-assistant"
       data-role="assistant"
       data-streaming={item.streaming || undefined}
-      className="group/act relative flex max-w-[72ch] flex-col gap-1.5"
+      className={cn(ENTRY_TEXT, "group/act relative flex flex-col gap-1.5")}
     >
       {item.parts.map((part, index) => (
         <PartView key={index} part={part} />
@@ -88,7 +90,7 @@ function AssistantRowImpl({ item, prompt, onRegenerate }: AssistantRowProps) {
         <Spinner size={12} className="text-muted-foreground" />
       )}
       {text.trim() !== "" && (
-        <ActionBar className="absolute -top-2 right-0 rounded-control bg-card">
+        <ActionBar className="absolute -top-2 right-1 rounded-control bg-card">
           <CopyAction text={text} />
           {onRegenerate !== undefined &&
             prompt !== undefined &&
