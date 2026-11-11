@@ -20,6 +20,7 @@ import {
   HOST_DA1,
   PROBE_DA1,
   answerSources,
+  dsrVerdict,
   hostAnswerVerdict,
   lastTick,
   receivedInputs,
@@ -122,6 +123,24 @@ export function selfTests() {
       ).duplicated,
       [7],
       "同一格两份应答",
+    );
+    const dsrOk = (tick) => `GOT:${tick}:${hex("\u001b[0n")}`;
+    const swallowed = dsrVerdict(
+      ["TICK:1", dsrOk(1), "TICK:2", dsrOk(2), "TICK:3", dsrOk(3)].join("\r\n"),
+      3,
+    );
+    equal(swallowed.ok, true, "控制台自己答 DSR 5n、每格一份");
+    equal(swallowed.forwarded, false, "DSR 5n 没转发");
+    equal(typeof swallowed.skipped, "string", "没转发时写明跳过的原因");
+    equal(
+      dsrVerdict("\u001b[5n\r\nTICK:1\r\n\u001b[5n\r\nTICK:2", 2).ok,
+      true,
+      "DSR 5n 转发、没人答",
+    );
+    equal(
+      dsrVerdict(`\u001b[5n\r\nTICK:1\r\n${dsrOk(1)}`, 1).ok,
+      false,
+      "DSR 5n 转发时宿主在有可写附着时答了要判失败",
     );
     const stale = inputs.filter((row) => row.phase === "replay");
     const live = inputs.filter((row) => row.phase === "live");
