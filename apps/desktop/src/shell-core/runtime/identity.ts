@@ -161,10 +161,14 @@ export function ownsRuntime(
  * and the shell agree on which Runtime is meant. A record naming anything but
  * a loopback HTTP base is refused rather than passed on — the shell must not
  * point the page at a machine nobody asked for.
+ *
+ * `instanceId` is the Runtime that wrote the record. A Runtime killed without
+ * withdrawing leaves its record behind, so the id is the only way to tell that
+ * record from the one a replacement is about to write.
  */
 export function publishedRuntimeBases(
   endpointsJson: string,
-): { http: string; websocket: string } | undefined {
+): { http: string; websocket: string; instanceId?: string } | undefined {
   let document: unknown;
   try {
     document = JSON.parse(endpointsJson);
@@ -191,7 +195,9 @@ export function publishedRuntimeBases(
     typeof record.websocket === "string"
       ? record.websocket
       : parsed.origin.replace(/^http/, "ws");
-  return { http: parsed.origin, websocket };
+  return typeof record.instanceId === "string"
+    ? { http: parsed.origin, websocket, instanceId: record.instanceId }
+    : { http: parsed.origin, websocket };
 }
 
 /** The address this shell asked the Runtime to listen on. */

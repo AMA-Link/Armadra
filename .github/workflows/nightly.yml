@@ -362,6 +362,13 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      # 模拟器死于段错误时，探针用 gdb 取转储里各线程的栈（#485，android-host-watch.mjs）。
+      - name: 装 gdb
+        timeout-minutes: 5
+        shell: bash
+        # 只是诊断：装不上不挡测试。
+        continue-on-error: true
+        run: command -v gdb > /dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq gdb; }
       # 系统镜像偶尔下载到半截（sdkmanager 只警告 “Error on ZipFile unknown archive”，之后模拟器起不来）：
       # 先自己装，没装好就删了重来；runner 动作随后发现已装就跳过。
       - name: 预装系统镜像（重试）

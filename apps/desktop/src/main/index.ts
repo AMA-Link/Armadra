@@ -60,6 +60,7 @@ import {
   fallbackEndpoints,
   publishEndpoints,
   resolveEndpoints,
+  resolveOwnEndpoints,
 } from "./transport";
 import {
   applyContentSecurityPolicy,
@@ -552,11 +553,14 @@ async function start(): Promise<void> {
   installRelayOriginRewrite();
   traceLifecycle(`page origin ${page.origin}`);
 
+  // 自己起的 core 就绪后的实例号；没起来或不归这个壳管就没有。
+  let ownInstance: string | undefined;
   if (ownsRuntime(development, process.env.ARMADRA_DESKTOP_OWNS_RUNTIME)) {
     const address = ownedRuntimeAddress();
     runtime.start(address);
     try {
       await waitForRuntime(runtime, address);
+      ownInstance = runtime.announcedInstance();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       process.stderr.write(`${message}\n`);
@@ -567,7 +571,16 @@ async function start(): Promise<void> {
     }
   }
 
-  publishEndpoints(await transportEndpoints());
+  // 自己起的 core：只认带着它宣告的实例号的那条记录，不用上一个被杀掉的 core 留下的（#485）。
+  publishEndpoints(
+    ownInstance === undefined
+      ? await transportEndpoints()
+      : await resolveOwnEndpoints(
+          dataDir(),
+          externalRuntimeBase(),
+          ownInstance,
+        ),
+  );
   // 源表里记着的远程服务与源：CSP 与证书钉扎在页面载入前就位。零配置时表里
   // 只有本机，什么也不放行；读不到不挡窗口。
   await refreshRemoteTrust((path, init) => coreSession.fetch(path, init));

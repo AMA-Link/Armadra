@@ -110,7 +110,7 @@ node tools/ci/e2e.mjs --tier b --list     # 只列出清单
   - `linux-arm64`（ubuntu-22.04-arm）：打 arm64 包、断言 glibc 基线，只跑 `deb-install`
     （`--only deb-install`；其余 B 档条目与架构无关）。
   - `macos`（macos-15）：同样打包，跑 `packaged-smoke --no-real-cli`。
-  - `mobile-ios` / `mobile-android`：模拟器里跑 `mobile-shell-e2e.mjs`。Android 这一路的每条 Gradle / adb 命令都有上限（`tools/probes/bounded-run.mjs`：输出边收边写、每分钟一行心跳；插桩超时先抓 logcat、截图、窗口焦点与 Gradle 各 JVM 的线程栈再杀进程组），插桩步骤另有 30 分钟的步级兜底、作业 60 分钟，所以卡住时是步骤失败并带着现场，不再等到作业被取消。
+  - `mobile-ios` / `mobile-android`：模拟器里跑 `mobile-shell-e2e.mjs`。Android 这一路的每条 Gradle / adb 命令都有上限（`tools/probes/bounded-run.mjs`：输出边收边写、每分钟一行心跳；插桩超时先抓 logcat、截图、窗口焦点与 Gradle 各 JVM 的线程栈再杀进程组），插桩步骤另有 30 分钟的步级兜底、作业 60 分钟，所以卡住时是步骤失败并带着现场，不再等到作业被取消。模拟器进程在插桩中途消失（logcat 只剩 `waiting for device`）时，`android-host-watch.mjs` 在产物里留三份现场：每 5 秒一行的 `host-watch.log`（宿主 CPU 型号、可用内存、负载、模拟器常驻内存）、进程消失瞬间的 `host-watch-gone.log`（内核日志、崩溃转储目录、占内存最多的进程）与后台取的 `host-watch-coredump.log`（systemd-coredump 的信号与可执行文件，装了 gdb 时还有各线程栈）；`result.json` 里该步骤的说明会注明「模拟器进程中途消失」。夜间 Android 失败的已知原因是 runner 上模拟器的 qemu 进程段错误（#485），不是用例断言。
   - `report`：任一作业失败、超时（结果 `cancelled`）或整次运行被取消、且在 main 上时，用默认的 `GITHUB_TOKEN`（作业级
     `issues: write`）开一个「夜间 B 档失败」issue，已有开着的同名 issue 就追加评论；
     正文是运行链接与每条作业失败的条目（`e2e.mjs` 在 `GITHUB_OUTPUT` 里写
