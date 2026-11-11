@@ -240,7 +240,7 @@ export class AcpSession implements AcpSessionIdentity {
   private title: string | null = null;
   private readonly feed: AcpFeed | undefined;
   private readonly terminals: AcpTerminals | undefined;
-  private readonly terminalLink: TerminalFeedLink | undefined;
+  private readonly terminalLink: TerminalFeedLink;
   /** 状态 reducer 眼里此刻是不是 `working`：工具信号只在它变了才走 `apply`（L5）。 */
   private workingSignalled = false;
   private lastExecuteTitle: string | undefined;
@@ -266,13 +266,17 @@ export class AcpSession implements AcpSessionIdentity {
         // 回合在跑才开新终端：命令由 Agent 在人发起的回合里、过了审批才会下。
         authorize: () => !this.closed && this.running !== undefined,
         onChange: (snapshot) => {
-          const update = this.terminalLink?.updateFor(snapshot);
+          const update = this.terminalLink.updateFor(snapshot);
           if (update !== undefined) this.feed?.update(update, false);
         },
       });
       this.terminals = terminals;
-      this.terminalLink = new TerminalFeedLink((id) => terminals.snapshot(id));
     }
+    // 客户端终端与 Agent 自己跑的命令（`_meta` 里的输出与退出）都在这里并进时间线。
+    this.terminalLink = new TerminalFeedLink(
+      (id) => this.terminals?.snapshot(id),
+      (update) => this.feed?.update(update, false),
+    );
     if (options.resumeSessionId !== undefined) {
       this.replayMirror = options.mirrorFor(options.resumeSessionId);
     }
@@ -870,6 +874,7 @@ export class AcpSession implements AcpSessionIdentity {
    */
   async terminate(): Promise<void> {
     this.closed = true;
+    this.terminalLink.dispose();
     const host = this.host;
     if (host === undefined) {
       await this.terminals?.dispose();
@@ -937,7 +942,7 @@ export class AcpSession implements AcpSessionIdentity {
       }
     }
     // 时间线拿到的是补了终端输出的那一份。
-    this.feed?.update(this.terminalLink?.decorate(update) ?? update, false);
+    this.feed?.update(this.terminalLink.decorate(update), false);
     if (
       update.sessionUpdate === "tool_call" ||
       update.sessionUpdate === "tool_call_update"
@@ -1051,6 +1056,7 @@ export class AcpSession implements AcpSessionIdentity {
 
   private onExit(exit: AcpExit): void {
     this.closed = true;
+    this.terminalLink.dispose();
     // Agent 没了：它起的终端子进程按 pid 一并收掉（不留孤儿）。
     void this.terminals?.dispose();
     // 我们要它退的（休眠、切换驱动、结束）由发起方写提示；自己没的才是退出。
