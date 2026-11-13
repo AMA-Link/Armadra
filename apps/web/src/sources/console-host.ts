@@ -1,7 +1,3 @@
-import {
-  MIN_CORE_VERSION_ROLE_ONLY_ASSERTION,
-  MIN_CORE_VERSION_TEAM_ASSERTION,
-} from "@armadra/platform-protocol";
 import { SOURCE_CORE_OUTDATED } from "@armadra/shared";
 
 import {
@@ -59,9 +55,8 @@ import { SOURCE_ERROR, SourceError } from "./types";
  * - **登出广播**：`BroadcastChannel("armadra.cloud.session")`——控制台登出 / 换账号时各 `/h/`
  *   标签页尽力 `session/logout`、清自己那份、盖上「已登出」；复制出的标签页用它认领同一份记录。
  * - **授予同步**：`grantChanged`（这台）与自己的 `memberChanged` 去抖合并后重登（§2.3）。
- * - **失败态与版本门**：断言答 `source_core_outdated`（armadra-cloud#152）就是「版本太旧」；
- *   旧服务端版本门也答 `source_access_denied`，这时按 `sources.get` 的 `coreVersion` 分出
- *   「版本太旧」与「没有权限」（§2.5，过渡期的兜底）。
+ * - **失败态与版本门**：断言答 `source_core_outdated`（armadra-cloud#152）就是「版本太旧」，
+ *   答 `source_access_denied` 就是「没有权限」（§2.5）。
  * - **访客记录**（§2.8）：按分享链接进过这台主机的访客记录（`localStorage`，托管页那一份）——
  *   没有 Cookie 会话、或 Cookie 账号看不到 / 没权限进这台主机时，用它经托管中继以访客进入；
  *   两样都没有才去登录。访客的访问被收回 → 「访问已被收回」。
@@ -127,39 +122,7 @@ function writeRecord(
   }
 }
 
-/* ------------------------------- 版本门 ---------------------------------- */
-
-function parseVersion(text: string): number[] | null {
-  const found = /^v?(\d+)\.(\d+)\.(\d+)/.exec(text.trim());
-  return found === null ? null : found.slice(1, 4).map(Number);
-}
-
-/** `a < b`（只比 major.minor.patch）；认不出的版本不算旧。 */
-export function versionBelow(a: string, b: string): boolean {
-  const left = parseVersion(a);
-  const right = parseVersion(b);
-  if (left === null || right === null) return false;
-  for (let at = 0; at < 3; at += 1) {
-    if (left[at]! !== right[at]!) return left[at]! < right[at]!;
-  }
-  return false;
-}
-
 export type HostDetail = Awaited<ReturnType<CloudClient["sources"]["get"]>>;
-
-/**
- * 旧服务端的版本门对旧主机答的也是 `source_access_denied`（新服务端改答独立的
- * `source_core_outdated`，armadra-cloud#152/#160，控制面 0.11.0 起；0.11 之前的控制面——自建部署、
- * 本地 dev-stack 仍是 0.10.0 镜像——还在答旧码，所有环境升到 0.11 前保留这道兜底）：
- * 团队主机按 {@link MIN_CORE_VERSION_TEAM_ASSERTION}，个人空间里别人的主机按
- * {@link MIN_CORE_VERSION_ROLE_ONLY_ASSERTION}；自己的个人主机没有门。
- */
-export function hostTooOld(detail: HostDetail): boolean {
-  if (detail.space?.kind === "team")
-    return versionBelow(detail.coreVersion, MIN_CORE_VERSION_TEAM_ASSERTION);
-  if (detail.owner) return false;
-  return versionBelow(detail.coreVersion, MIN_CORE_VERSION_ROLE_ONLY_ASSERTION);
-}
 
 /* --------------------------------- 状态 ---------------------------------- */
 
@@ -430,13 +393,6 @@ export function createConsoleHost(options: ConsoleHostOptions): ConsoleHost {
               setView({ kind: "expired" });
             // 版本门的独立码：直接是「版本太旧」，不必看目录里的版本。
             if (codeOf(error) === SOURCE_CORE_OUTDATED)
-              throw new SourceError(HOST_FAILURE.tooOld);
-            // 兜底：旧服务端版本门与访问被收回同答 `source_access_denied`，按目录里的版本分。
-            if (
-              codeOf(error) === SOURCE_ERROR.accessRevoked &&
-              detail !== null &&
-              hostTooOld(detail)
-            )
               throw new SourceError(HOST_FAILURE.tooOld);
             throw error;
           }
