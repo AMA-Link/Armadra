@@ -2,6 +2,29 @@
 
 每个版本一节，按发布倒序。括号里是合入的 PR 编号（github.com/AMA-Link/Armadra，2026-10-11 前为 Owlbay/Armadra，旧编号照常跳转）。兼容范围以 `tools/release/compatibility.json` 为准，发布说明里的 `armadra-compatibility` 围栏由它渲染。桌面、服务器与手机 / 平板 App 共用一条版本线和一个标签 `vX.Y.Z`（规则见 `docs/guides/ci-release.md`「版本规则」）；有手机端改动的版本，在「手机与平板」小节里写，其余写在「桌面 / 服务器」下。2026-10-10 之前手机端曾单独编号（1.0.0、1.1.0），内容并入对应的 0.2.5、0.2.6。
 
+## 0.17.3（2026-11-13）
+
+版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.17.3。随包 `@armadra/agent` 0.17.3（没有改动，只对齐版本）与平台协议包 0.17.3（没有形状变化，协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.17.3。本版是修复版：控制面连接不再按主机版本猜版本门，`source_access_denied` 只表示访问被收回；开发依赖 `minimatch` 换成已修复版本。
+
+Version aligned with armadra-cloud and armadra-agent (all three ship 0.17.3), with `@armadra/agent` 0.17.3 (no changes, version alignment only) and platform protocol 0.17.3 (no shape changes, still protocol 1.4); matching images `armadra-cloud` / `armadra-relay` 0.17.3. A bugfix release: control-plane connections no longer guess a version gate from the host version, and `source_access_denied` only means access was revoked; the development dependency `minimatch` moves to a fixed version.
+
+### 桌面 / 服务器
+
+- 删掉 0.11 之前控制面的版本门兜底：断言答 `source_access_denied` 就是访问被收回，不再去查目录、按主机版本猜是不是版本过旧；版本过旧只认 `source_core_outdated`；契约 §88.2 与共享包注释同步（#917，Closes #916）。
+  Removed the pre-0.11 control-plane version-gate fallback: when the assertion answers `source_access_denied` access was revoked, with no directory lookup to guess an outdated version from the host version; an outdated version is recognised only by `source_core_outdated`; contract §88.2 and the shared-package comments follow (#917, Closes #916).
+- 依赖：`minimatch` 9 / 10 用 override 换成 11.0.4，修 GHSA-g3hv-75wg-m249（只在 lint 开发链，不进发布产物；#919，Closes #918）。
+  Dependencies: `minimatch` 9 / 10 is overridden to 11.0.4 to fix GHSA-g3hv-75wg-m249 (only in the lint development chain, not in release artifacts; #919, Closes #918).
+
+### 开发流程
+
+- 忽略 `cap sync` 生成的手机壳配置文件；用户待办清单勾掉已办完的项（#915，Closes #914）。
+  `cap sync` generated mobile-shell config files are now ignored; finished items are ticked off in the user action checklist (#915, Closes #914).
+
+### 部署说明
+
+- 没有新的数据库迁移，契约没有新节。
+- 配套镜像 `ghcr.io/ama-link/armadra-cloud:0.17.3`、`ghcr.io/ama-link/armadra-relay:0.17.3` 与协议包 0.17.3 同号（cloud 侧只有开发依赖改动；控制台页面取自本版服务器壳镜像）；推送中继镜像 `ghcr.io/ama-link/armadra-push-relay:0.17.3` 与服务器壳镜像同号。发版顺序沿用 0.17.2：先打 Armadra `v0.17.3`，再打 armadra-cloud `v0.17.3`。
+
 ## 0.17.2（2026-11-12）
 
 版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.17.2。随包 `@armadra/agent` 0.17.2（没有改动，只对齐版本）与平台协议包 0.17.2（没有形状变化，协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.17.2。本版是修复版：更新的下载、检查与重启不再并发两路，ACP 会话时间线改成条目卡片版式，桌面壳重启 core 后页面不再指向旧端口。
