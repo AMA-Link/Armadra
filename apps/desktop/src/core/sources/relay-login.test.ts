@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { fail } from "../http/errors";
-import { AttributionQueue, RelayExchanges, olderThan } from "./relay-login";
+import { AttributionQueue, RelayExchanges } from "./relay-login";
 import type { NativeCredentials } from "./source-client";
 
 const credentials = (token: string): NativeCredentials => ({
@@ -42,15 +42,6 @@ describe("经中继换票的合并（契约 §88.2）", () => {
     expect(memo.shared(KEY, a, false, 10_000_000)).toBeUndefined();
     // 自己到来之前就完成的不算。
     expect(memo.shared(KEY, memo.arrival(KEY), false, 0)).toBeUndefined();
-  });
-});
-
-describe("版本比较", () => {
-  it("x.y.z 逐段比，认不出答 false", () => {
-    expect(olderThan("0.9.4", "0.10.0")).toBe(true);
-    expect(olderThan("0.10.0", "0.10.0")).toBe(false);
-    expect(olderThan("1.0.0-beta", "0.11.0")).toBe(false);
-    expect(olderThan("", "0.10.0")).toBe(false);
   });
 });
 

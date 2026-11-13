@@ -8,9 +8,8 @@ import {
  * 远程服务版本门的独立错误码（armadra-cloud#152，协议包 0.11.0 起）：`sources.assertion` 因主机
  * core 低于签断言的门槛而拒签时答 403 `source_core_outdated`，`details` 是 `{ coreVersion, minVersion }`
  * （`coreVersion` 没上报是空串）。码、`details` 的类型与 schema 都取自协议包。
- *
- * 0.11.0 之前的服务端把版本门与访问被收回同答 `source_access_denied`；还在跑旧控制面的环境
- * （自建或没升级的部署）仍会这样答，调用方保留按版本比对的兜底（`console-host.ts`、`relay-login.ts`）。
+
+ * `source_access_denied` 只表示访问被收回；0.11.0 之前控制面的同码版本门不再兼容（#916）。
  */
 export const SOURCE_CORE_OUTDATED = errorCodeSchema.enum.source_core_outdated;
 

@@ -10,7 +10,6 @@ import {
   announceHostTrusted,
   onHostTrusted,
 } from "./cloud-session-channel";
-import { hostTooOld, versionBelow } from "./console-host";
 import { onGrantSynced } from "./grant-synced";
 import { SourceError } from "./types";
 import {
@@ -530,22 +529,19 @@ describe("控制台 /h/ 进主机", () => {
     off();
   });
 
-  it("source_access_denied 按版本分两种：团队主机低于门槛是版本太旧，否则没有权限", async () => {
+  it("source_access_denied 就是没有权限：目录里主机版本再旧也不判成版本太旧", async () => {
     const denied = async () => {
       throw Object.assign(new Error("denied"), {
         status: 403,
         code: "source_access_denied",
       });
     };
-    const old = setup({
+    const { host } = setup({
       assertion: denied,
       detail: async () => detail({ coreVersion: "0.9.4" }),
     });
-    await old.host.open();
-    expect(old.host.view).toEqual({ kind: "failed", code: "source_too_old" });
-    const current = setup({ assertion: denied });
-    await current.host.open();
-    expect(current.host.view).toEqual({
+    await host.open();
+    expect(host.view).toEqual({
       kind: "failed",
       code: "source_access_denied",
     });
@@ -678,36 +674,5 @@ describe("控制台 /h/ 进主机", () => {
     const ctx = setup({ detail: async () => detail({ owner: true }) });
     await ctx.host.open();
     expect(ctx.host.ownerMismatch).toBe(true);
-  });
-});
-
-describe("版本门", () => {
-  it("比 major.minor.patch；认不出的不算旧", () => {
-    expect(versionBelow("0.9.9", "0.10.0")).toBe(true);
-    expect(versionBelow("0.10.0", "0.10.0")).toBe(false);
-    expect(versionBelow("v0.11.2-rc.1", "0.11.0")).toBe(false);
-    expect(versionBelow("dev", "0.10.0")).toBe(false);
-  });
-
-  it("团队主机按团队门槛；个人空间别人的主机按 role-only 门槛；自己的个人主机没有门", () => {
-    expect(hostTooOld(detail({ coreVersion: "0.9.0" }) as never)).toBe(true);
-    expect(
-      hostTooOld(
-        detail({
-          coreVersion: "0.10.0",
-          space: undefined,
-          owner: false,
-        }) as never,
-      ),
-    ).toBe(true);
-    expect(
-      hostTooOld(
-        detail({
-          coreVersion: "0.1.0",
-          space: undefined,
-          owner: true,
-        }) as never,
-      ),
-    ).toBe(false);
   });
 });

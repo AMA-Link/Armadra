@@ -353,33 +353,25 @@ describe("契约 §86：Armadra 云挂载的团队与归属", () => {
     expect(c.accessToken).not.toBe(a.accessToken);
   });
 
-  it("断言答 source_access_denied 原样透传：目录里主机版本低于门槛带 hostOutdated，否则是收回", async () => {
+  it("断言答 source_access_denied 原样透传：就是收回，不按目录里的主机版本猜版本门", async () => {
     world.cloud.owner = false;
     await saas.mount({ serviceId, sourceId: RELAYED_ID });
     world.cloud.denyAssertion = true;
-    const answer = (promise: Promise<unknown>) =>
-      promise.then(
-        () => null,
-        (error: { code?: string; details?: unknown }) => error,
-      );
+    // 目录里报的是低于门槛的旧版本：版本门只认 source_core_outdated，这里仍是收回。
     world.cloud.sources = [
       { sourceId: RELAYED_ID, name: "h", coreVersion: "0.9.4" },
     ];
-    const old = await answer(saas.session(RELAYED_ID, "relayed"));
-    expect(old).toMatchObject({
-      code: "source_access_denied",
-      details: { reason: "hostOutdated", coreVersion: "0.9.4" },
-    });
-    world.cloud.sources = [
-      { sourceId: RELAYED_ID, name: "h", coreVersion: "9.0.0" },
-    ];
-    const revoked = (await answer(saas.session(RELAYED_ID, "relayed"))) as {
-      code?: string;
-      details?: unknown;
-    };
+    const listings = () =>
+      world.requests.filter((one) => one.url.endsWith("/v1/me/sources")).length;
+    const before = listings();
+    const revoked = (await saas.session(RELAYED_ID, "relayed").then(
+      () => null,
+      (error: { code?: string; details?: unknown }) => error,
+    )) as { code?: string; details?: unknown };
     expect(revoked.code).toBe("source_access_denied");
     expect(revoked.details).toBeUndefined();
-    // 存着的刷新令牌不动：版本门与收回都不是这把会话的问题。
+    expect(listings()).toBe(before);
+    // 存着的刷新令牌不动：收回不是这把会话的问题。
     expect(await stored()).toBeDefined();
     delete world.cloud.denyAssertion;
   });
