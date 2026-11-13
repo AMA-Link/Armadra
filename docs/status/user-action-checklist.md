@@ -1,6 +1,6 @@
 # 用户待办清单
 
-> 状态：2026-10-05 汇总。补全与 G5（G5-00…G5-30）已全部合入，代码侧没有挂着的工作包；下面每一项都要维护者提供账号、证书、设备或域名，或在 GitHub 上动手。来源：[G5 剩余事项计划](../design/g5-remaining-plan.md) §4 B 档、[补全进度](completion-progress.md) G4-1「需用户提供」与 G5 各节的「没做 / 需用户提供」，合并去重。
+> 状态：2026-10-05 汇总，2026-11-13 勾掉已办完的项（`[x]`）。补全与 G5（G5-00…G5-30）已全部合入，代码侧没有挂着的工作包；下面每一项都要维护者提供账号、证书、设备或域名，或在 GitHub 上动手。来源：[G5 剩余事项计划](../design/g5-remaining-plan.md) §4 B 档、[补全进度](completion-progress.md) G4-1「需用户提供」与 G5 各节的「没做 / 需用户提供」，合并去重。
 > 每条写：**提供**什么、**填在**哪里（secret / 变量 / 设置项 / 环境变量）、**验证**用什么命令或探针。不写真实值；步骤细节见各条链接的指南。secret 与变量都指 GitHub 仓库 AMA-Link/Armadra 的 Actions 设置。
 
 ## 1. 证书与签名
@@ -17,7 +17,7 @@
   - 提供：Azure Artifact Signing 账户与 Entra 应用；或 OV 证书文件与口令；或自托管 Windows runner 加 USB 令牌。
   - 填在：Azure 路径 secrets `AZURE_TENANT_ID` / `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` 加变量 `AZURE_SIGNING_ENDPOINT` / `AZURE_SIGNING_ACCOUNT` / `AZURE_SIGNING_PROFILE`；证书文件路径 secrets `WINDOWS_CERT_BASE64` / `WINDOWS_CERT_PASSWORD`；令牌路径变量 `ARMADRA_WIN_CERT_SHA1`（Windows 作业的 `runs-on` 改成自托管标签）。三条路都要变量 `ARMADRA_WIN_PUBLISHER_NAME`（证书主体 CN）。
   - 验证：安装包与 `Armadra.exe` 上 `Get-AuthenticodeSignature` 为 `Valid`；`node windows-acceptance.mjs --installer <Setup.exe> --require-signed` 的 `install.signature` 通过。
-- [ ] **minisign 发布密钥**
+- [x] **minisign 发布密钥**（已完成：secret `ARMADRA_RELEASE_SIGNING_KEY` 已配置，发布产物带 `.sig`）
   - 提供：`node tools/release/sign.mjs keygen --pubkey-out <minisign.pub>` 生成的私钥；公钥自己留存并公开。
   - 填在：secret `ARMADRA_RELEASE_SIGNING_KEY`。
   - 验证：draft 里每个产物带 `.sig`、`latest.json` 非空；对下载的发布目录跑 `node tools/release/sign.mjs verify --dir <dir> --pubkey <minisign.pub>`。
@@ -29,7 +29,7 @@
   - 提供：App ID `dev.armadra.mobile` 与 `dev.armadra.mobile.NotificationService`（开 Push Notifications 与 Keychain Sharing）、分发证书、两份 provisioning profile。
   - 填在：本机 Xcode 签名；secrets `IOS_DISTRIBUTION_P12_BASE64`、`IOS_DISTRIBUTION_PASSWORD`、`IOS_PROVISIONING_PROFILE_BASE64` 已在[客户端平台](../guides/client-platforms.md)「真机与商店」里约定，目前没有工作流读取。
   - 验证：真机装上 App，按「真机与商店」第 7 步扫码 → 钉扎 → 配对 → 画布。
-- [ ] **Android 上传密钥**
+- [x] **Android 上传密钥**（已完成：发布工作流从 secrets `ANDROID_UPLOAD_KEYSTORE_BASE64`、`ANDROID_UPLOAD_KEYSTORE_PASSWORD`、`ANDROID_UPLOAD_KEY_ALIAS` 读取，Release 带签名 APK；本机备份在 `~/.armadra-signing/`）
   - 提供：上传用 keystore、口令与别名。
   - 填在：构建时的环境变量 `ANDROID_UPLOAD_KEYSTORE`（文件路径）、`ANDROID_UPLOAD_KEYSTORE_PASSWORD`、`ANDROID_UPLOAD_KEY_ALIAS`（可选 `ANDROID_UPLOAD_KEY_PASSWORD`），`apps/mobile/android/app/build.gradle` 只从环境读。
   - 验证：`./gradlew :app:bundleRelease` 出签名的 AAB，`apksigner verify` / `jarsigner -verify` 通过。
@@ -40,11 +40,11 @@
   - 提供：一个 R2 桶、只授权这个桶读写的 S3 API 令牌、桶的公开自定义域名。
   - 填在：secrets `CLOUDFLARE_R2_ACCESS_KEY_ID`、`CLOUDFLARE_R2_SECRET_ACCESS_KEY`；变量 `CLOUDFLARE_ACCOUNT_ID`、`CLOUDFLARE_R2_BUCKET`、`ARMADRA_MIRROR_PUBLIC_URL`（全缺跳过，缺一部分失败）。
   - 验证：发布一次后 `release.yml` 的 `mirror` 作业通过，转正后 `distribute.yml` 的 `mirror` 作业通过；`node tools/release/mirror.mjs verify --base <公开地址> --pubkey <minisign.pub>`。客户端第二个检查地址要把镜像加进 `release.yml` 的 `ARMADRA_UPDATER_ENDPOINTS`（现在只写 GitHub），这是一处代码改动，域名定了再做。
-- [ ] **CHANGELOG 发布日期**
+- [x] **CHANGELOG 发布日期**（已完成：0.2.0 于 2026-10-07 发布）
   - 提供：0.2.0 的发布日期。
   - 填在：`CHANGELOG.md` 的 `## 0.2.0（未发布）` 改成 `## 0.2.0（YYYY-MM-DD）`。
   - 验证：`node tools/release/changelog.mjs check --version 0.2.0 --released` 通过；不改的话 `release.yml` 在 `verify` 就失败。
-- [ ] **打标签、审阅 draft、转正**
+- [x] **打标签、审阅 draft、转正**（已完成：0.2.0 起每次发版照此执行，最新 v0.17.2）
   - 提供：发版决定。
   - 填在：推 `v0.2.0` 标签；`release.yml` 建出 draft 后人工审阅说明（顶部会列出未签名的平台）再转正。
   - 验证：`pnpm release:check`、`pnpm release:dry-run` 先在本机过；标签触发的 `server-image.yml` 把服务器壳镜像推到 GHCR，转正后 `distribute.yml` 跑完（[CI 与发布](../guides/ci-release.md) §2.7、§3.1）。
@@ -55,7 +55,7 @@
 
 ## 3. 外部账号与服务
 
-- [ ] **稳定域名与公网主机**
+- [x] **稳定域名与公网主机**（已完成：`app.armadra.com`、`relay.armadra.com` 在公网主机上，Let's Encrypt 证书）
   - 提供：域名、一台公网可达的主机（或反向代理）。
   - 填在：服务器壳 `ARMADRA_PUBLIC_ORIGIN`、`ARMADRA_ACME_EMAIL`（可选 `ARMADRA_ACME_CHALLENGE=tls-alpn-01`），见[服务器部署](../guides/server-deployment.md)第 2–3 节。
   - 验证：部署指南第 3 节签出 Let's Encrypt 证书；手机浏览器不装 CA 直接打开；真手机注册并登录 passkey。OAuth 回调、通用链接、商店审核演示服务器都依赖这一项。
@@ -118,7 +118,7 @@
   - 提供：一台可 SSH 登录的 Linux / macOS 主机。
   - 填在：设置 → SSH 与执行主机里登记。
   - 验证：`remote-e2e` 没有真主机模式，按它的步骤手工走：建远端工作空间、Git 长操作、SSH 终端里的注入与 Hook 中继、跨主机交接、SSH 节点切到 ACP 答一轮。
-- [ ] **nightly 首跑与观察项**
+- [x] **nightly 首跑与观察项**（已完成：main 的定时夜间已全绿，含 `linux-arm64`；见 #485）
   - 提供：无（看 CI）。
   - 填在：无。
   - 验证：`gh run list --repo AMA-Link/Armadra --workflow nightly.yml` 里 main 的夜间运行：`linux-arm64` 作业的 `deb-install`（arm64 deb 与 AppImage）通过；`server-caddy-e2e` 通过；日志里统计「配对重试后完成」出现的次数（R-89 的修复是推断的）。
@@ -152,7 +152,7 @@
 
 ## 6. 仓库管理
 
-- [ ] **Dependabot 警报 #49、#50**
-  - 提供：无。
-  - 填在：GitHub → Security → Dependabot，#49 `braces`、#50 `http-cache-semantics` 选「代码路径不可达 / 仅构建期」dismiss，理由见 [CI 与发布](../guides/ci-release.md) §3.2。
-  - 验证：`gh api 'repos/AMA-Link/Armadra/dependabot/alerts?state=open'` 答空。
+- [ ] **Dependabot 警报 #120、#127**（#49、#50 已处理）
+  - 提供：决定。
+  - 现状：#127 `minimatch`（中危）要升到 11，牵动 eslint、shadcn、electron-builder 的主版本；#120 `deepmerge`（低危）上游没有修复版。
+  - 验证：`gh api 'repos/AMA-Link/Armadra/dependabot/alerts?state=open'` 答空，或在 GitHub → Security → Dependabot 写明理由后 dismiss。
