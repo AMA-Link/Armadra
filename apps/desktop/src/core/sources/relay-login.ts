@@ -275,29 +275,13 @@ export function relayOriginOf(assertion: {
   return assertion.relayOrigin || new URL(assertion.relayBaseUrl).origin;
 }
 
-/** `a` 是否早于 `b`（`x.y.z`，忽略预发布后缀）；认不出答 `false`。 */
-export function olderThan(a: string, b: string): boolean {
-  const parse = (value: string) =>
-    /^(\d+)\.(\d+)\.(\d+)/.exec(value.trim())?.slice(1).map(Number);
-  const left = parse(a);
-  const right = parse(b);
-  if (left === undefined || right === undefined) return false;
-  for (let index = 0; index < 3; index += 1) {
-    if (left[index]! !== right[index]!) return left[index]! < right[index]!;
-  }
-  return false;
-}
-
 /**
  * 要断言；被版本门拒签时对外一律答 `source_access_denied` 带
  * `{ reason: "hostOutdated", coreVersion, minVersion }`（契约 §88.2），否则是访问被收回：
  *
- * - 远程服务答独立的 `source_core_outdated`（armadra-cloud#152，协议包 0.11 起）：直接用它的
- *   `details`，不再查目录；`details` 不全时按这类断言的门槛补 `minVersion`。
- * - 0.11.0 之前的控制面（armadra-cloud#160 之前；自建部署、dev-stack 的 0.10.0 镜像）仍答
- *   `source_access_denied`，所有环境升到 0.11 前保留这道兜底：远程服务目录里这台主机登记的
- *   `coreVersion` 低于控制面签断言的门槛（团队主机看 `MIN_CORE_VERSION_TEAM_ASSERTION`，
- *   个人空间看 `MIN_CORE_VERSION_ROLE_ONLY_ASSERTION`）就是版本过旧；目录问不到按收回。
+ * - 远程服务的版本门答独立的 `source_core_outdated`（armadra-cloud#152）：用它的 `details`，
+ *   `details` 不全时按这类断言的门槛补 `minVersion`。
+ * - `source_access_denied` 就是访问被收回，不带 `details`。
  *
  * 两种都不删存着的刷新令牌（不是这把会话的问题，`RELOGIN_REFUSALS` 只管 `cloud/login` 的拒绝）。
  */
@@ -320,13 +304,7 @@ export async function assertionExplained(
       );
     }
     if (error.code !== "source_access_denied") throw error;
-    throw await explainAccessDenied(
-      remote,
-      endpoint,
-      accessToken,
-      sourceId,
-      team,
-    );
+    throw fail("source_access_denied", "远程服务不再允许访问这个源");
   }
 }
 
@@ -342,23 +320,6 @@ function hostOutdated(coreVersion: string, minVersion: string): CoreFailure {
     coreVersion,
     minVersion,
   });
-}
-
-async function explainAccessDenied(
-  remote: RemoteClient,
-  endpoint: RemoteEndpoint,
-  accessToken: string,
-  sourceId: string,
-  team: boolean,
-): Promise<CoreFailure> {
-  const denied = fail("source_access_denied", "远程服务不再允许访问这个源");
-  const listed = await remote.sources(endpoint, accessToken).catch(() => []);
-  const coreVersion =
-    listed.find((one) => one.sourceId === sourceId)?.coreVersion ?? "";
-  const minVersion = minVersionFor(team);
-  return olderThan(coreVersion, minVersion)
-    ? hostOutdated(coreVersion, minVersion)
-    : denied;
 }
 
 /**
