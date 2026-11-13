@@ -51,6 +51,13 @@ overrides:
   # shadcn's ts-morph and by electron-builder's app-builder-lib; the 1.x/2.x
   # copies used elsewhere are unaffected.
   "brace-expansion@>=4.0.0 <5.0.12": 5.0.12
+  # GHSA-g3hv-75wg-m249: minimatch 7.x through 11.0.0. Pulled in as 9.x by
+  # electron-builder's @electron/universal and as 10.x by eslint's
+  # @eslint/config-array and shadcn's ts-morph. Unlike the entries above this
+  # one crosses a major: the parents' ranges do not admit 11 yet. 11.x keeps the
+  # same named exports and ships both ESM and CJS builds; 3.x/5.x copies are out
+  # of range.
+  "minimatch@>=7.0.0 <11.0.1": 11.0.4
   # GHSA-h3mg-xc3c-68pw, GHSA-j6r3-76f7-8jcv, GHSA-rxp7-6hxx-x8q5: ip-address
   # through 10.7.3. Pulled in by shadcn through socks.
   "ip-address@<10.7.4": 10.7.4
