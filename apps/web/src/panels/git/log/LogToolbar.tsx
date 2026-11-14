@@ -11,7 +11,6 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../../ui/dropdown-menu";
@@ -33,15 +32,44 @@ export interface LogToolbarProps {
   authors: readonly { name: string; email: string }[];
   /** 可选的分支（左栏树里的引用键）。 */
   references: readonly { key: string; label: string }[];
-  /** 已发现的仓库：路径 → 名字。 */
-  repositories: readonly { path: string; name: string }[];
+  /** 已发现的仓库：路径、名字与仓库色（与表格行首色块同色）。 */
+  repositories: readonly { path: string; name: string; color: string }[];
   /** `git config user.email`；读不到时「我的」这一项不出现。 */
   myEmail: string | null;
 }
 
 /** 设置菜单里的四个开关；它们都是布尔，所以能共用一个渲染。 */
 type ViewToggle =
-  "showAllBranches" | "highlightMine" | "compactRows" | "showHashColumn";
+  | "showAllBranches"
+  | "highlightMine"
+  | "compactRows"
+  | "showHashColumn"
+  | "collapseMerges";
+
+/**
+ * 仓库色块按钮的下一份筛选（#927 B1）。`selected` 空 = 全部仓库。
+ *
+ * - 普通点击：显示 / 隐藏这一个；至少留一个，全选回到空列表（= 不筛选）。
+ * - ⌘ 点击：只看这一个；已经只看它时再点一次回到全部。
+ */
+export function nextRepositories(
+  all: readonly string[],
+  selected: readonly string[],
+  path: string,
+  solo: boolean,
+): string[] {
+  const current = selected.length === 0 ? [...all] : [...selected];
+  if (solo) {
+    return current.length === 1 && current[0] === path ? [] : [path];
+  }
+  const next = current.includes(path)
+    ? current.filter((entry) => entry !== path)
+    : [...current, path];
+  if (next.length === 0) return [...selected];
+  return all.every((entry) => next.includes(entry))
+    ? []
+    : all.filter((entry) => next.includes(entry));
+}
 
 function toggle(list: readonly string[], value: string): string[] {
   return list.includes(value)
@@ -207,36 +235,8 @@ export function LogToolbar({
 
       <Facet
         label={t("gitLog.toolbar.path")}
-        count={git.repositories.length + git.paths.length}
+        count={git.paths.length}
       >
-        <DropdownMenuLabel>
-          {t("gitLog.toolbar.allRepositories")}
-        </DropdownMenuLabel>
-        {repositories.map((repository) => (
-          <DropdownMenuCheckboxItem
-            key={repository.path}
-            checked={git.repositories.includes(repository.path)}
-            onSelect={(event) => event.preventDefault()}
-            onCheckedChange={(checked) => {
-              // ⌘ 点击 = 只要这一个；普通点击是多选里的加减。
-              const additive = !lastClickWasModified;
-              set(
-                "repositories",
-                additive
-                  ? toggle(git.repositories, repository.path)
-                  : checked
-                    ? [repository.path]
-                    : [],
-              );
-            }}
-            onPointerDown={(event) => {
-              lastClickWasModified = event.metaKey || event.ctrlKey;
-            }}
-          >
-            {repository.name}
-          </DropdownMenuCheckboxItem>
-        ))}
-        <DropdownMenuSeparator />
         <div className="flex items-center gap-1 p-2">
           <Input
             value={path}
@@ -279,6 +279,51 @@ export function LogToolbar({
         ))}
       </Facet>
 
+      {repositories.length > 1 && (
+        <div
+          role="group"
+          aria-label={t("gitLog.toolbar.repositories")}
+          data-slot="git-log-repository-filter"
+          className="flex flex-wrap items-center gap-1"
+        >
+          {repositories.map((repository) => {
+            const on =
+              git.repositories.length === 0 ||
+              git.repositories.includes(repository.path);
+            return (
+              <Button
+                key={repository.path}
+                size="sm"
+                variant="outline"
+                aria-pressed={on}
+                title={t("gitLog.toolbar.repositoryToggle", {
+                  name: repository.name,
+                })}
+                className="gap-1.5 aria-[pressed=false]:text-muted-foreground aria-[pressed=false]:opacity-60"
+                onClick={(event) =>
+                  set(
+                    "repositories",
+                    nextRepositories(
+                      repositories.map((entry) => entry.path),
+                      git.repositories,
+                      repository.path,
+                      event.metaKey || event.ctrlKey,
+                    ),
+                  )
+                }
+              >
+                <span
+                  aria-hidden
+                  className="h-3.5 w-1 rounded-full"
+                  style={{ background: repository.color }}
+                />
+                {repository.name}
+              </Button>
+            );
+          })}
+        </div>
+      )}
+
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -294,6 +339,7 @@ export function LogToolbar({
           {setting("highlightMine", t("gitLog.toolbar.highlightMine"))}
           {setting("compactRows", t("gitLog.toolbar.compactRows"))}
           {setting("showHashColumn", t("gitLog.toolbar.showHashColumn"))}
+          {setting("collapseMerges", t("gitLog.toolbar.collapseMerges"))}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -318,12 +364,6 @@ export function LogToolbar({
     </div>
   );
 }
-
-/**
- * ⌘ 点击的判据必须在 `onCheckedChange` 之前就记下来：Radix 的 checkbox 项
- * 只把「勾没勾上」交出来，修饰键在那一刻已经没了。
- */
-let lastClickWasModified = false;
 
 function Facet({
   label,

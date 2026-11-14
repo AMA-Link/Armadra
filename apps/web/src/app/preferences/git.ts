@@ -71,6 +71,8 @@ export interface GitPreferences {
   highlightMine: boolean;
   compactRows: boolean;
   showHashColumn: boolean;
+  /** 按第一父折叠合并带进来的分支提交（#927 B1）。 */
+  collapseMerges: boolean;
   /** 详情里的变更文件：树形（false）还是平铺（true）。 */
   flatFiles: boolean;
   /** 提交页变更树的排列方式。 */
@@ -100,6 +102,7 @@ export const GIT_KEYS: Record<keyof GitPreferences, string> = {
   highlightMine: KEY("highlightMine"),
   compactRows: KEY("compactRows"),
   showHashColumn: KEY("showHashColumn"),
+  collapseMerges: KEY("collapseMerges"),
   flatFiles: KEY("flatFiles"),
   // 键名与字段名不一致是故意的：这一项原来住在提交页自己的 `preferences.ts`
   // 里，沿用旧键，已经存过的人搬过来之后仍然停在自己选的那个排列上。
@@ -145,6 +148,7 @@ export function storedGitPreferences(): GitPreferences {
     highlightMine: storedBoolean(GIT_KEYS.highlightMine, false),
     compactRows: storedBoolean(GIT_KEYS.compactRows, false),
     showHashColumn: storedBoolean(GIT_KEYS.showHashColumn, true),
+    collapseMerges: storedBoolean(GIT_KEYS.collapseMerges, true),
     flatFiles: storedBoolean(GIT_KEYS.flatFiles, false),
     changeLayout: storedEnum(GIT_KEYS.changeLayout, GIT_CHANGE_LAYOUTS, "tree"),
   };
