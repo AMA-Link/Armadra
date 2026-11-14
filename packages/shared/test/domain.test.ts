@@ -49,6 +49,7 @@ describe("canvas domain v3", () => {
       "browser",
       "automation",
       "agentActivity",
+      "git",
     ]);
     expect(NODE_TYPES).not.toContain("agent");
     expect(NODE_TYPES).not.toContain("log");
@@ -109,6 +110,7 @@ describe("canvas domain v3", () => {
         source: "subagent",
         sessionId: "session-1",
       },
+      { kind: "git" },
     ];
     for (const data of payloads) {
       const parsed = canvasNodeSchema.safeParse(
@@ -138,6 +140,7 @@ describe("canvas domain v3", () => {
         executionHostId: "0123456789abcdef0123456789abcdef",
       },
       { kind: "agentActivity", sourceNodeId: otherNodeId },
+      { kind: "git" },
     ];
     expect(payloads).toHaveLength(NODE_TYPES.length);
     for (const data of payloads) {
