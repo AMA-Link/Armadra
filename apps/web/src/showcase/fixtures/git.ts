@@ -14,6 +14,8 @@ interface Spec {
   subject: string;
   at: string;
   refs?: string[];
+  /** `Co-authored-by:` 尾注里的 Agent。 */
+  agent?: "claude" | "codex";
 }
 
 const SPECS: Spec[] = [
@@ -82,6 +84,7 @@ const SPECS: Spec[] = [
     parents: ["b2c"],
     subject: "chore(deps): minimatch 升到 11.0.4，去掉旧 override",
     at: "2026-11-13T07:46:00Z",
+    agent: "claude",
   },
   {
     repo: "Armadra",
@@ -89,6 +92,7 @@ const SPECS: Spec[] = [
     parents: ["b3"],
     subject: "fix(tools): glob 调用改用新签名",
     at: "2026-11-13T07:31:00Z",
+    agent: "claude",
   },
   {
     repo: ".",
@@ -133,6 +137,7 @@ const SPECS: Spec[] = [
     parents: ["c2c"],
     subject: "feat(relay): heartbeat 间隔读环境变量",
     at: "2026-11-12T21:40:00Z",
+    agent: "codex",
   },
   {
     repo: "armadra-cloud",
@@ -180,6 +185,12 @@ export const GIT_LOG_COMMITS: GitLogCommit[] = SPECS.map((spec) => ({
   subject: spec.subject,
   authorName: "Owlbay",
   authorEmail: "owlbay@example.invalid",
+  coAuthors:
+    spec.agent === "claude"
+      ? [{ name: "Claude", email: "noreply@anthropic.com" }]
+      : spec.agent === "codex"
+        ? [{ name: "Codex", email: "codex@openai.com" }]
+        : [],
   authorTime: spec.at,
   committerTime: spec.at,
   refs: spec.refs ?? [],
