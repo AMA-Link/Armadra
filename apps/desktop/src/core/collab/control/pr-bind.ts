@@ -1,10 +1,6 @@
 import type { ForgeKind } from "../../forge/types";
-import { forgeService } from "../../forge/registry";
+import { forgeService, workspaceRepository } from "../../forge/registry";
 import type { ForgeService } from "../../forge/service";
-import { gitService } from "../../git";
-import { RepositoryService } from "../../git/repository/service";
-import { canonicalize } from "../../workspaces/roots";
-import { getWorkspace } from "../../workspaces/table";
 import type { Caller } from "../nodes";
 import { Args, Refused } from "../refusals";
 import type { CollabContext } from "../service";
@@ -13,7 +9,7 @@ import type { CollabContext } from "../service";
  * `report --pr` 与 `items --bind-pr` 的 PR 引用解析（契约 §103.1）。
  *
  * 引用是一个编号（`12`、`#12`）或一个 PR 的网页地址。编号按**工作区的 Git 远端**
- * （`origin`）认仓库；地址自带仓库。仓库一律交给托管平台域认（`resolve`），
+ * （选中的主 remote，不一定是 `origin`）认仓库；地址自带仓库。仓库一律交给托管平台域认（`resolve`），
  * 那里有 GitHub / Gitea / GitLab 的识别与多级子组的规矩；认不出平台的拒绝。
  */
 
@@ -25,7 +21,7 @@ export interface ResolvedPull {
   readonly url: string;
 }
 
-/** 可替换的外部依赖（用例用）：托管平台服务，与工作区 `origin` 的地址。 */
+/** 可替换的外部依赖（用例用）：托管平台服务，与工作区主 remote 的地址。 */
 export interface PullBindDeps {
   readonly forge: () => ForgeService | undefined;
   readonly originUrl: (
@@ -34,29 +30,16 @@ export interface PullBindDeps {
   ) => Promise<string | undefined>;
 }
 
-let fallbackGit: RepositoryService | undefined;
-
+/**
+ * 工作区的仓库地址：选中的那个 remote（用户选择 → gh-resolved → upstream →
+ * origin → 名字排序首个，契约 §111.1），ssh 别名已换成真实主机。读不到
+ * （不是本机 Git 仓库、没有 remote、远程执行主机）是 `undefined`。
+ */
 async function workspaceOrigin(
-  context: CollabContext,
+  _context: CollabContext,
   workspaceId: string,
 ): Promise<string | undefined> {
-  try {
-    const workspace = getWorkspace(context.database, workspaceId);
-    if (workspace.executionHostId !== undefined) return undefined;
-    const root = canonicalize(workspace.rootPath);
-    const git = gitService() ?? (fallbackGit ??= new RepositoryService());
-    const repository = await git.context(root, ".");
-    const output = await git.read(repository.repository, [
-      "remote",
-      "get-url",
-      "--",
-      "origin",
-    ]);
-    const url = output.toString("utf8").trim();
-    return url === "" ? undefined : url;
-  } catch {
-    return undefined;
-  }
+  return await workspaceRepository()?.selectedRemoteUrl(workspaceId);
 }
 
 export const pullBindDeps: { current: PullBindDeps } = {
@@ -158,7 +141,7 @@ export async function resolvePullFlag(
     remoteUrl = await deps.originUrl(context, workspaceId);
     if (remoteUrl === undefined) {
       throw bad(
-        "按编号认不出仓库（工作区不是本机 Git 仓库，或没有 origin）；请改给 PR 的网页地址。",
+        "按编号认不出仓库（工作区不是本机 Git 仓库、没有 remote，或在远程执行主机上）；请改给 PR 的网页地址。",
       );
     }
   }

@@ -227,6 +227,7 @@ describe("识别（§29.1）", () => {
       apiBase: null,
       webUrl: null,
       credential: false,
+      credentialSource: null,
       accountLogin: null,
     });
     await configureHost(h);
@@ -963,6 +964,45 @@ describe("列仓库（§29.7）", () => {
       (r) => r.path === "/user/repos",
     )!;
     expect(request.headers.authorization).toBe("Bearer ghp_pasted_token_value");
+  });
+});
+
+describe("讨论路由（契约 §111.4）", () => {
+  it("issue 与 PR 的评论是现有 conversation 的 items；issue 没有评审与行内评论", async () => {
+    const h = await harness();
+    await configureHost(h);
+    h.gitea.comments.set(5, [
+      { id: 2, login: "bob", body: "后一条", at: 20 },
+      { id: 1, login: "alice", body: "先一条", at: 10 },
+    ]);
+    h.gitea.reviews.set(5, [
+      {
+        id: 9,
+        login: "carol",
+        body: "改一下",
+        state: "REQUEST_CHANGES",
+        at: 15,
+      },
+    ]);
+    const issue = await h.call("GET", `${REPO_PATH}/issues/5/comments`);
+    expect(issue.status).toBe(200);
+    expect(Object.keys(issue.body)).toEqual(["items"]);
+    expect(issue.body.items.map((item: { body: string }) => item.body)).toEqual(
+      ["先一条", "后一条"],
+    );
+    const pull = await h.call("GET", `${REPO_PATH}/pulls/5/comments`);
+    expect(pull.body.items.map((item: { kind: string }) => item.kind)).toEqual([
+      "comment",
+      "review",
+      "comment",
+    ]);
+    expect(pull.body.items[1]).toMatchObject({
+      author: "carol",
+      state: "changes_requested",
+    });
+    expect((await h.call("GET", `${REPO_PATH}/pulls/x/comments`)).status).toBe(
+      400,
+    );
   });
 });
 

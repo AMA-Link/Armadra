@@ -215,6 +215,16 @@ export const OUTBOUND = {
     defaultOn: false,
     documented: true,
   },
+  forgeProbe: {
+    // 只对用户 remote 里出现、又认不出平台的主机探一次：GET /api/v3/meta、
+    // /api/v1/version、/api/v4/version，不带凭据，不跟重定向（契约 §111.3）。
+    url: "https://<用户 remote 里的主机>",
+    purpose: "认出自托管代码托管平台（GitHub 企业版、Gitea / Forgejo、GitLab）",
+    cadence: "每主机每 10 分钟至多 1 次（认不出的 2 分钟）",
+    switch: null,
+    defaultOn: false,
+    documented: true,
+  },
   cloudApi: {
     // 地址是用户在「远程服务」里加的 issuer（个人中转或 SaaS，契约 §33），这里
     // 只是占位主机。个人中转多是自签证书，按加入时给的 CA 指纹钉扎。只有加过

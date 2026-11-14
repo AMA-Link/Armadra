@@ -13,6 +13,10 @@
  * 带工作空间时（契约 §75），2、3 先查那个工作空间自己的两种行，都没有才查整台
  * 机器的。
  *
+ * 第 4 条之前还有一档自动认（契约 §111.3）：已知主机（gitlab.com、gitea.com、
+ * codeberg.org）与探测过的主机（用户 remote 里出现的，HTTPS 问公开版本端点）。
+ * 这一档只给平台，`credential` 仍按实际。
+ *
  * 令牌只经 SecretStore（`armadra-forge-<id>`）；响应里只有「有没有令牌」。
  */
 
@@ -28,7 +32,7 @@ import {
   validName,
   webHostFor,
 } from "../github/remote";
-import { GITHUB_SOURCE_NONE } from "../github/store";
+import { GITHUB_SOURCE_GH_CLI, GITHUB_SOURCE_NONE } from "../github/store";
 import type { GithubService } from "../github/service";
 import { githubError } from "../github/errors";
 import { GithubRepositoryRefSchema } from "../github/schema";
@@ -38,6 +42,7 @@ import { GiteaForge, giteaApiBase, giteaWebRoot } from "./gitea";
 import { GithubForge } from "./github";
 import { GitlabForge, gitlabApiBase, gitlabWebRoot } from "./gitlab";
 import type { ForgeConfigRecord, ForgeStore } from "./store";
+import type { PlatformProbe } from "./probe";
 import { loopbackHost } from "./transport";
 import {
   CONFIGURABLE_FORGES,
@@ -59,17 +64,27 @@ const GITHUB_PUBLIC_HOSTS = ["github.com", "www.github.com", "ssh.github.com"];
 
 export type DetectionSource = "github" | "config";
 
+/** 令牌从哪儿来（契约 §111.2）；没有令牌是 `null`。 */
+export type CredentialSource =
+  "ghCli" | "glab" | "tea" | "gitCredential" | "stored";
+
 /** `GET /api/forge/repos/{host}/{owner}/{name}` 的答复（§29.2）。 */
 export interface ForgeDetection {
   readonly repository: ForgeRepo;
   readonly forge: ForgeKind | null;
+  /**
+   * 识别依据。`null` 时 `forge` 为 `null` 是不认识；`forge` 有值则是自动认出的
+   * （已知主机或探测，没有配置行，契约 §111.3）。
+   */
   readonly source: DetectionSource | null;
-  /** 命中的配置行；GitHub 与不认识时 `null`。 */
+  /** 命中的配置行；GitHub、自动认出与不认识时 `null`。 */
   readonly configKey: string | null;
   readonly apiBase: string | null;
   readonly webUrl: string | null;
   /** 现在有没有能用的令牌（不花远端配额，只看存着没有）。 */
   readonly credential: boolean;
+  /** 令牌来源；没有令牌 `null`。 */
+  readonly credentialSource: CredentialSource | null;
   readonly accountLogin: string | null;
 }
 
@@ -103,6 +118,8 @@ export interface ForgeServiceOptions {
   readonly fetch?: typeof globalThis.fetch;
   readonly now?: () => number;
   readonly newId?: () => string;
+  /** 平台探测（契约 §111.3）；不给就只认配置行与 GitHub。 */
+  readonly probe?: PlatformProbe;
 }
 
 export function validHost(host: string): boolean {
@@ -198,6 +215,20 @@ export function configKey(host: string, owner?: string, name?: string): string {
   return `${repo.host}/${repo.owner}/${repo.name}`;
 }
 
+function unknownDetection(repo: ForgeRepo): ForgeDetection {
+  return {
+    repository: repo,
+    forge: null,
+    source: null,
+    configKey: null,
+    apiBase: null,
+    webUrl: null,
+    credential: false,
+    credentialSource: null,
+    accountLogin: null,
+  };
+}
+
 function newSecretId(): string {
   return randomBytes(8).toString("hex");
 }
@@ -214,7 +245,12 @@ export class ForgeService {
   /* --------------------------------- 识别 --------------------------------- */
 
   /** GitHub 凭据当前对着的 API 根，与它有没有配凭据。 */
-  private githubSide(): { base: string; configured: boolean; login: string } {
+  private githubSide(): {
+    base: string;
+    configured: boolean;
+    login: string;
+    source: CredentialSource | null;
+  } {
     const service = this.options.github?.();
     const config = service?.store.config();
     let base: string;
@@ -230,6 +266,12 @@ export class ForgeService {
         config !== undefined &&
         config.source !== GITHUB_SOURCE_NONE,
       login: config?.accountLogin ?? "",
+      source:
+        config === undefined || config.source === GITHUB_SOURCE_NONE
+          ? null
+          : config.source === GITHUB_SOURCE_GH_CLI
+            ? "ghCli"
+            : "stored",
     };
   }
 
@@ -287,6 +329,7 @@ export class ForgeService {
         apiBase,
         webUrl: `https://${webHost}/${repo.owner}/${repo.name}`,
         credential,
+        credentialSource: credential ? side.source : null,
         accountLogin: credential && side.login !== "" ? side.login : null,
       };
     }
@@ -297,16 +340,7 @@ export class ForgeService {
       (!nested || config.forge === "gitlab") &&
       !(nested && this.githubHost(repo.host));
     if (!usable || config === undefined) {
-      return {
-        repository: repo,
-        forge: null,
-        source: null,
-        configKey: null,
-        apiBase: null,
-        webUrl: null,
-        credential: false,
-        accountLogin: null,
-      };
+      return this.automatic(repo, nested);
     }
     return {
       repository: repo,
@@ -316,11 +350,53 @@ export class ForgeService {
       apiBase: config.apiBase,
       webUrl: `${webRoot(config.forge, config.apiBase)}/${repo.owner}/${repo.name}`,
       credential: config.credentialRef !== "",
+      credentialSource: config.credentialRef !== "" ? "stored" : null,
       accountLogin:
         config.credentialRef !== "" && config.accountLogin !== ""
           ? config.accountLogin
           : null,
     };
+  }
+
+  /**
+   * 没有配置行时的识别：已知主机或探测过的主机给平台（契约 §111.3）。令牌另说，
+   * 这里 `credential` 为 `false`；多级子组只有 GitLab 有。
+   */
+  private automatic(repo: ForgeRepo, nested: boolean): ForgeDetection {
+    const probed = this.options.probe?.peek(repo.host);
+    if (probed === undefined || probed === null) {
+      return unknownDetection(repo);
+    }
+    if (nested && probed.forge !== "gitlab") return unknownDetection(repo);
+    const root =
+      probed.forge === "github"
+        ? `https://${repo.host}`
+        : webRoot(probed.forge, probed.apiBase);
+    return {
+      repository: repo,
+      forge: probed.forge,
+      source: null,
+      configKey: null,
+      apiBase: probed.apiBase,
+      webUrl: `${root}/${repo.owner}/${repo.name}`,
+      credential: false,
+      credentialSource: null,
+      accountLogin: null,
+    };
+  }
+
+  /**
+   * 识别之前的一步：这个主机没配置、不是 GitHub 管的，就探一次平台（有缓存）。
+   * 认得出的主机不联网。不会抛。
+   */
+  async warm(host: string, workspaceId = ""): Promise<void> {
+    const probe = this.options.probe;
+    if (probe === undefined) return;
+    if (this.githubHost(host) || this.row(host, workspaceId) !== undefined) {
+      return;
+    }
+    if (!validHost(host) || loopbackHost(host)) return;
+    await probe.probe(host);
   }
 
   /**
@@ -406,6 +482,12 @@ export class ForgeService {
     return this.client(config.forge, config.apiBase, () =>
       this.token(config.credentialRef),
     );
+  }
+
+  /** {@link forgeFor} 之前先 {@link warm}：路由与后台读都走这一条。 */
+  async forgeForReady(repo: ForgeRepo, workspaceId = ""): Promise<Forge> {
+    await this.warm(repo.host, workspaceId);
+    return this.forgeFor(repo, workspaceId);
   }
 
   private client(

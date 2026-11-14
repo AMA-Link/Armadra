@@ -155,7 +155,7 @@ async function readMaterial(
   if (forge === undefined || repo === undefined) return empty;
   let remote;
   try {
-    remote = forge.forgeFor(repo, candidate.workspaceId);
+    remote = await forge.forgeForReady(repo, candidate.workspaceId);
   } catch (error) {
     return {
       ...empty,

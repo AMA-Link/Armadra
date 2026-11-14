@@ -4403,3 +4403,17 @@ nightly 在 `b8353492`（运行 37338174906）之后连续失败。逐个作业�
 验证：`pnpm check` 通过；全量测试 desktop 6436、web 6520、shared 634、server 112、mobile 32、push-relay 9 全过（web 的 `console-host.test.ts` 一例在全量并发下超时一次，单跑与重跑全过，与本改动无关）。新用例：`hook/runner-done.test.ts`（3）、`task-watch.test.ts` 新增 3、`runners.test.ts` 新增 3。变异检查 14 个（ingest 不验令牌 / 不看 provider / 不发事件、round 不校验、`releaseWait` 不顾挂着的 `wait`、不认协调者、不放标记、不订阅、间隔回到 5 秒、适配器不做特性探测 / 不用 `start` 时的键 / 不过滤 runner / 不注销 / `start` 不记键）全部被抓到。
 
 没做 / 限制：没有对真 ama 与真 CLI 成员跑端到端；`completed` 那一轮行已由 `wait` 落下，事件只对中断、停止、`wait` 放弃等情况起作用。
+
+## 代码托管全自动识别：工作空间仓库与平台探测（包 1，Refs #922，2026-11-13）
+
+做了什么：
+
+- **仓库解析**（`core/forge/workspace.ts`、`remotes.ts`、`selection.ts`）：对工作空间根跑 `git rev-parse --show-toplevel` 与 `git remote -v`（只取 fetch），主 remote 顺序「用户选择 → `remote.<name>.gh-resolved` → upstream → origin → 名字排序首个」；用户选择按工作空间存进迁移 0066 的 `forge_workspace_remote`（仓库里没有工作空间级设置存储，所以新增；主键 `workspace_id`，随工作空间外键删除）。地址里的凭据在进答复前剥掉。远程执行主机的工作空间：现有执行主机通道没有读 remote 的操作，答 `remoteHostUnavailable`，不回退读控制端磁盘。
+- **SSH 别名**（`ssh-alias.ts`）：scp 与 `ssh://` 写法先 `ssh -G` 取 `HostName`（3 秒超时、最小环境、按别名缓存 5 分钟，失败用原值）。
+- **平台探测**（`probe.ts`，外呼登记 `OUTBOUND.forgeProbe`）：已知主机直接认；用户 remote 里的其他主机 HTTPS 问 `/api/v3/meta`、`/api/v1/version`、`/api/v4/version`（401 也算 GitLab），按主机缓存；结果只在没有配置行时用，`credential` 仍按实际。
+- **路由与 procedure**：`POST|PUT /api/forge/workspace-repository`（`forge.workspaceRepository` / `forge.selectWorkspaceRemote`）、`GET …/issues/{n}/comments`、`…/pulls/{n}/comments`（`forge.issueComments` / `forge.pullComments`，现有 `Forge.conversation` 的 `items`）；`ForgeDetection` 加 `credentialSource`（包 1 只给 `ghCli` / `stored`）。契约 §111，§29.1、§29.2 补引用，协议 1.56。
+- **PR 绑定**（`collab/control/pr-bind.ts`）：按编号认仓库改用选中的 remote，不再写死 `origin`；`intake` 读正文先预热（`forgeForReady`）。
+
+实测：新增用例 `remotes.test.ts`、`ssh-alias.test.ts`、`probe.test.ts`、`workspace-repository.test.ts`（含真 git 临时仓库）与 `forge.test.ts` 的讨论路由；`pnpm contract:check` 通过。
+
+没做 / 限制：远程执行主机上的 remote 读取（需要给 Worker 加操作，另议）；web 的面板自动识别与 remote 下拉在 web 线；令牌复用（gh / glab / tea / git credential）在包 2。
