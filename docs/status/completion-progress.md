@@ -4416,3 +4416,16 @@ nightly 在 `b8353492`（运行 37338174906）之后连续失败。逐个作业�
 接口（按 `docs/armadra/plans/forge-auto-detect.md` 的形状，web 侧 zod 在 `apps/web/src/api/forge.ts`）：`forge.issueComments` / `forge.pullComments`（`{ items: ForgeConversationItem[] }`）；`forge.workspaceRepository`、`forge.selectWorkspaceRemote`、`forge.hosts`、`forge.setReuseLocalLogins` 的形状先写好，包 3 使用。契约类型随 core 线落进 `@armadra/shared` 之前，页面经窄接口调用。
 
 没做 / 限制：评审意见没有 `文件:行号`（`ForgeConversationItem` 没有这两个字段）；真实 core 的讨论路由要等 core 线合并后才能端到端，目前用 mock 与 showcase 夹具验证。
+
+## 代码托管面板自动识别与设置（Refs #922，包 3，2026-11-13）
+
+做了什么：
+
+- **面板**（`GithubDrawer`）：打开即调 `forge.workspaceRepository` 认出工作空间的仓库并直接显示；顶部是仓库按钮加下拉（`RemoteSwitcher`：各 remote 的名字、仓库、主机、平台、令牌来源，缺令牌橙点，末项「输入远端地址」回到原来的手填）；切换调 `forge.selectWorkspaceRemote` 并记住。认不出时（不是 git 仓库、没有 remote、读不到执行主机）说明原因并保留手填。
+- **找不到令牌**：平台已识别时显示「没找到 <host> 的登录」与重试，下面折叠「手动配置」——Gitea / GitLab 用抽出的 `ForgeConfigForm`（平台、地址预填，只差令牌），GitHub 指去设置。
+- **设置 → 代码托管**：「复用本机登录」开关（`forge.setReuseLocalLogins`）、「已识别」主机表（`forge.hosts`：主机 / 平台 / 来源 / 账号，缺令牌的行带「配置」，点开带主机与平台预填的手动配置）；GitHub 凭据与按主机 / 仓库配置并进最后一个折叠的「手动配置」。旧 core 没有主机表时手动配置直接展开，页面退回原来的样子。
+- **失效**：`invalidateGitQueries`（git 面板的 remote 操作走它）同时让该工作空间的 `forge workspace-repository` 查询失效。
+
+接口假设（按 `docs/armadra/plans/forge-auto-detect.md`）：`forge.workspaceRepository` / `forge.selectWorkspaceRemote`（入参 `workspaceId`、`remote`，答复同形状）、`forge.hosts`、`forge.setReuseLocalLogins`（入参 `{ enabled }`，答复不读）。
+
+没做 / 限制：与真实 core 的端到端要等 core 线合并；showcase 只加了 remote 下拉样本，主机表与找不到登录的后备靠组件测试覆盖。

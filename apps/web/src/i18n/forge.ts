@@ -98,6 +98,7 @@ export const forge: MessageModule = {
     "forge.showcase.gitlab": "GitLab：Merge request 详情",
     "forge.showcase.settings": "代码托管设置：按主机 / 仓库配置",
     "forge.showcase.issue": "Issue 详情：评论时间线",
+    "forge.showcase.remotes": "仓库按钮与 remote 下拉",
     "forge.showcase.reference": "画布徽标悬浮卡与框的检查汇总",
   },
   en: {
@@ -196,6 +197,7 @@ export const forge: MessageModule = {
     "forge.showcase.gitlab": "GitLab: merge request detail",
     "forge.showcase.settings": "Code hosting settings: per host / repository",
     "forge.showcase.issue": "Issue detail: comment timeline",
+    "forge.showcase.remotes": "Repository button and remote menu",
     "forge.showcase.reference": "Canvas badge hover card and frame checks",
   },
 };
