@@ -155,8 +155,10 @@ export const gitLog: MessageModule = {
     "gitLog.table.hash": "Hash",
     "gitLog.table.graph": "Commit graph",
     "gitLog.table.uncommitted": "Uncommitted changes",
-    "gitLog.table.expandMerge": "Show the {count} commits this merge brought in",
-    "gitLog.table.collapseMerge": "Hide the {count} commits this merge brought in",
+    "gitLog.table.expandMerge":
+      "Show the {count} commits this merge brought in",
+    "gitLog.table.collapseMerge":
+      "Hide the {count} commits this merge brought in",
     "gitLog.table.empty": "No commits match.",
     "gitLog.table.more": "Load more…",
     "gitLog.table.truncated":
@@ -186,7 +188,8 @@ export const gitLog: MessageModule = {
     "gitLog.toolbar.showHashColumn": "Show hash column",
     "gitLog.toolbar.collapseMerges": "Collapse branch commits under merges",
     "gitLog.toolbar.repositories": "Filter by repository",
-    "gitLog.toolbar.repositoryToggle": "{name}: click to show or hide, ⌘-click to show only it",
+    "gitLog.toolbar.repositoryToggle":
+      "{name}: click to show or hide, ⌘-click to show only it",
     "gitLog.toolbar.clear": "Clear filters",
 
     "gitLog.details.copyHash": "Copy hash",

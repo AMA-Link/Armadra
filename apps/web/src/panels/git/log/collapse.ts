@@ -55,7 +55,9 @@ export function collapseLog(
   for (const commit of commits) {
     const key = commitKey(commit);
     if (!mainline.has(key) || commit.parents.length < 2) continue;
-    const queue = commit.parents.slice(1).map((parent) => parentKey(commit, parent));
+    const queue = commit.parents
+      .slice(1)
+      .map((parent) => parentKey(commit, parent));
     let count = 0;
     while (queue.length > 0) {
       const next = queue.shift()!;

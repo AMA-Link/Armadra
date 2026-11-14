@@ -416,7 +416,9 @@ export function LogPage({ workspaceId }: LogPageProps) {
           name: repository.name,
           // 仓库色以日志响应里的发现序号为准；被筛掉的仓库不在响应里，
           // 退回它在分支树数据里的位置（同一份发现列表的顺序）。
-          color: repositoryColor(colors.get(repository.repositoryPath) ?? index),
+          color: repositoryColor(
+            colors.get(repository.repositoryPath) ?? index,
+          ),
         }))}
         myEmail={myEmail}
       />

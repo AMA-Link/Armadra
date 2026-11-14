@@ -13,9 +13,9 @@ describe("仓库色块按钮的下一份筛选", () => {
   });
 
   it("再点回来凑齐全部 = 不筛选（空列表）", () => {
-    expect(nextRepositories(ALL, [".", "armadra-cloud"], "Armadra", false)).toEqual(
-      [],
-    );
+    expect(
+      nextRepositories(ALL, [".", "armadra-cloud"], "Armadra", false),
+    ).toEqual([]);
   });
 
   it("最后一个不能隐藏", () => {
@@ -28,9 +28,9 @@ describe("仓库色块按钮的下一份筛选", () => {
     expect(nextRepositories(ALL, [], "armadra-cloud", true)).toEqual([
       "armadra-cloud",
     ]);
-    expect(nextRepositories(ALL, ["armadra-cloud"], "armadra-cloud", true)).toEqual(
-      [],
-    );
+    expect(
+      nextRepositories(ALL, ["armadra-cloud"], "armadra-cloud", true),
+    ).toEqual([]);
   });
 
   it("结果按发现顺序排列，与点击先后无关", () => {

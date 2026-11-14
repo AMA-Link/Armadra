@@ -11,19 +11,9 @@ import { Button } from "../../../ui/button";
 import { Skeleton } from "../../../ui/skeleton";
 import { Spinner } from "../../../ui/spinner";
 import { EmptyState } from "../../../ui/state";
-import {
-  LANE_WIDTH,
-  MAX_LANES,
-  commitGraph,
-  refBadges,
-} from "../CommitGraph";
+import { LANE_WIDTH, MAX_LANES, commitGraph, refBadges } from "../CommitGraph";
 import { collapseLog, mergeLabel } from "./collapse";
-import {
-  branchColor,
-  commitKey,
-  logGraphKeys,
-  repositoryColor,
-} from "./graph";
+import { branchColor, commitKey, logGraphKeys, repositoryColor } from "./graph";
 
 /**
  * 提交图表格（Git 工具窗口设计 §2.2「提交图表格」）。
@@ -77,7 +67,6 @@ export interface LogTableProps {
 }
 
 const NONE: ReadonlySet<string> = new Set();
-
 
 export const UNCOMMITTED_KEY = "uncommitted";
 
@@ -280,12 +269,11 @@ export function LogTable({
                   return null;
                 // 两端都在主线上 = 仓库色；否则用不在主线那一端的车道色，
                 // 一段分支从分出到汇回始终是一个颜色。
-                const sideEnd =
-                  !view.mainline.has(edge.child)
-                    ? edge.from
-                    : edge.to && !view.mainline.has(edge.parent)
-                      ? edge.to
-                      : null;
+                const sideEnd = !view.mainline.has(edge.child)
+                  ? edge.from
+                  : edge.to && !view.mainline.has(edge.parent)
+                    ? edge.to
+                    : null;
                 const color = sideEnd
                   ? branchHue(sideEnd.lane)
                   : repositoryHue(repositoryOf(edge.child));
@@ -339,7 +327,8 @@ export function LogTable({
                 const key = commitKey(commit);
                 const point = graph.points.get(key);
                 if (!point) return null;
-                const merge = commit.parents.length > 1 || view.sideCount.has(key);
+                const merge =
+                  commit.parents.length > 1 || view.sideCount.has(key);
                 const color = pointColor(key, point.lane);
                 return (
                   <g
@@ -646,7 +635,9 @@ function CommitRow({
           data-slot="git-log-merge-toggle"
           aria-expanded={merge.open}
           aria-label={t(
-            merge.open ? "gitLog.table.collapseMerge" : "gitLog.table.expandMerge",
+            merge.open
+              ? "gitLog.table.collapseMerge"
+              : "gitLog.table.expandMerge",
             { count: merge.count },
           )}
           onClick={merge.onToggle}
@@ -655,7 +646,10 @@ function CommitRow({
           {merge.count}
           <ChevronDown
             aria-hidden
-            className={cn("size-3 transition-transform", merge.open && "rotate-180")}
+            className={cn(
+              "size-3 transition-transform",
+              merge.open && "rotate-180",
+            )}
           />
         </Button>
       )}

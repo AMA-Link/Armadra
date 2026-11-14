@@ -52,7 +52,11 @@ describe("collapseLog", () => {
   it("折叠时藏起分支提交，合并只留第一父", () => {
     const head = [page[1]!, ...page.slice(2)];
     const result = collapseLog(head, new Set());
-    expect(result.commits.map((entry) => entry.subject)).toEqual(["m", "n", "b"]);
+    expect(result.commits.map((entry) => entry.subject)).toEqual([
+      "m",
+      "n",
+      "b",
+    ]);
     expect(result.commits[0]!.parents).toEqual([oid("n")]);
   });
 
@@ -67,16 +71,21 @@ describe("collapseLog", () => {
       "b",
     ]);
     expect(result.commits[0]!.parents).toEqual([oid("n"), oid("x")]);
-    expect(result.commits.find((entry) => entry.subject === "n")!.parents).toEqual([
-      oid("b"),
-    ]);
+    expect(
+      result.commits.find((entry) => entry.subject === "n")!.parents,
+    ).toEqual([oid("b")]);
   });
 
   it("还没合并的分支原样保留；主线从仓库最新的提交起算", () => {
     const result = collapseLog(page, new Set());
     // 「全部分支」时最新的是 z：它在第一父链上，于是算进主线。
     expect(result.mainline.has(key("z"))).toBe(true);
-    expect(result.commits.map((entry) => entry.subject)).toEqual(["z", "m", "n", "b"]);
+    expect(result.commits.map((entry) => entry.subject)).toEqual([
+      "z",
+      "m",
+      "n",
+      "b",
+    ]);
   });
 
   it("每个仓库各自一条主线，互不相干", () => {

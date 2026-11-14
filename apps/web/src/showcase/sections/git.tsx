@@ -11,7 +11,10 @@ const noop = () => undefined;
  */
 export default function GitSection() {
   const [expanded, setExpanded] = React.useState<ReadonlySet<string>>(
-    () => new Set([`Armadra:${GIT_LOG_COMMITS.find((c) => c.subject.includes("#919"))!.oid}`]),
+    () =>
+      new Set([
+        `Armadra:${GIT_LOG_COMMITS.find((c) => c.subject.includes("#919"))!.oid}`,
+      ]),
   );
   const [selected, setSelected] = React.useState<string | null>(null);
   const table = (collapse: boolean) => (

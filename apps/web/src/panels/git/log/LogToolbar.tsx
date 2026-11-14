@@ -233,10 +233,7 @@ export function LogToolbar({
         )}
       </Facet>
 
-      <Facet
-        label={t("gitLog.toolbar.path")}
-        count={git.paths.length}
-      >
+      <Facet label={t("gitLog.toolbar.path")} count={git.paths.length}>
         <div className="flex items-center gap-1 p-2">
           <Input
             value={path}
