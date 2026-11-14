@@ -39,7 +39,7 @@ import { LogTable, UNCOMMITTED_KEY } from "./LogTable";
 import { LogToolbar } from "./LogToolbar";
 import { followOperation } from "./follow-operation";
 import { filterKey, logRequestFromPreferences } from "./filters";
-import { commitKey } from "./graph";
+import { commitKey, repositoryColor } from "./graph";
 import { defaultExpanded, refKey, type BranchTreeNode } from "./build-tree";
 import {
   fulfilWorktreeIntent,
@@ -145,6 +145,11 @@ export function LogPage({ workspaceId }: LogPageProps) {
       position: nodeDropPosition("group", { size: WORKTREE_FRAME_SIZE }),
     });
   }, [repositories, t, workspaceRoot]);
+
+  /** 展开的合并（`commitKey`）。只活在这次打开里，不进偏好。 */
+  const [expandedMerges, setExpandedMerges] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
 
   const key = filterKey(git);
   const log = useInfiniteQuery({
@@ -406,9 +411,14 @@ export function LogPage({ workspaceId }: LogPageProps) {
       <LogToolbar
         authors={authors}
         references={references}
-        repositories={repositories.map((repository) => ({
+        repositories={repositories.map((repository, index) => ({
           path: repository.repositoryPath,
           name: repository.name,
+          // 仓库色以日志响应里的发现序号为准；被筛掉的仓库不在响应里，
+          // 退回它在分支树数据里的位置（同一份发现列表的顺序）。
+          color: repositoryColor(
+            colors.get(repository.repositoryPath) ?? index,
+          ),
         }))}
         myEmail={myEmail}
       />
@@ -463,6 +473,16 @@ export function LogPage({ workspaceId }: LogPageProps) {
         showHash={git.showHashColumn}
         narrow={compact}
         myEmail={git.highlightMine ? myEmail : null}
+        collapseMerges={git.collapseMerges}
+        expanded={expandedMerges}
+        onToggleMerge={(rowKey) =>
+          setExpandedMerges((current) => {
+            const next = new Set(current);
+            if (next.has(rowKey)) next.delete(rowKey);
+            else next.add(rowKey);
+            return next;
+          })
+        }
         hasMore={log.hasNextPage}
         loading={log.isFetching}
         onLoadMore={() => void log.fetchNextPage()}

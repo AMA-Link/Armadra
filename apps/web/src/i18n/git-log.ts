@@ -39,6 +39,8 @@ export const gitLog: MessageModule = {
     "gitLog.table.hash": "hash",
     "gitLog.table.graph": "提交图",
     "gitLog.table.uncommitted": "未提交的变更",
+    "gitLog.table.expandMerge": "展开这次合并带进来的 {count} 个提交",
+    "gitLog.table.collapseMerge": "收起这次合并带进来的 {count} 个提交",
     "gitLog.table.empty": "没有匹配的提交。",
     "gitLog.table.more": "继续读取…",
     "gitLog.table.truncated": "仓库过多，只合并了前 32 个。",
@@ -60,12 +62,14 @@ export const gitLog: MessageModule = {
     "gitLog.toolbar.path": "路径",
     "gitLog.toolbar.pathInput": "目录路径",
     "gitLog.toolbar.pathAdd": "添加路径",
-    "gitLog.toolbar.allRepositories": "全部仓库",
     "gitLog.toolbar.settings": "视图设置",
     "gitLog.toolbar.showAllBranches": "显示所有分支",
     "gitLog.toolbar.highlightMine": "高亮我的提交",
     "gitLog.toolbar.compactRows": "紧凑行",
     "gitLog.toolbar.showHashColumn": "显示 hash 列",
+    "gitLog.toolbar.collapseMerges": "按合并折叠分支提交",
+    "gitLog.toolbar.repositories": "按仓库筛选",
+    "gitLog.toolbar.repositoryToggle": "{name}：点击显示或隐藏，⌘ 点击只看它",
     "gitLog.toolbar.clear": "清除筛选",
 
     "gitLog.details.copyHash": "复制 hash",
@@ -151,6 +155,10 @@ export const gitLog: MessageModule = {
     "gitLog.table.hash": "Hash",
     "gitLog.table.graph": "Commit graph",
     "gitLog.table.uncommitted": "Uncommitted changes",
+    "gitLog.table.expandMerge":
+      "Show the {count} commits this merge brought in",
+    "gitLog.table.collapseMerge":
+      "Hide the {count} commits this merge brought in",
     "gitLog.table.empty": "No commits match.",
     "gitLog.table.more": "Load more…",
     "gitLog.table.truncated":
@@ -173,12 +181,15 @@ export const gitLog: MessageModule = {
     "gitLog.toolbar.path": "Paths",
     "gitLog.toolbar.pathInput": "Directory path",
     "gitLog.toolbar.pathAdd": "Add path",
-    "gitLog.toolbar.allRepositories": "All repositories",
     "gitLog.toolbar.settings": "View settings",
     "gitLog.toolbar.showAllBranches": "Show all branches",
     "gitLog.toolbar.highlightMine": "Highlight my commits",
     "gitLog.toolbar.compactRows": "Compact rows",
     "gitLog.toolbar.showHashColumn": "Show hash column",
+    "gitLog.toolbar.collapseMerges": "Collapse branch commits under merges",
+    "gitLog.toolbar.repositories": "Filter by repository",
+    "gitLog.toolbar.repositoryToggle":
+      "{name}: click to show or hide, ⌘-click to show only it",
     "gitLog.toolbar.clear": "Clear filters",
 
     "gitLog.details.copyHash": "Copy hash",

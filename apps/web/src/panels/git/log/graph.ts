@@ -43,3 +43,14 @@ export function repositoryColor(index: number): string {
   const size = REPOSITORY_COLORS.length;
   return REPOSITORY_COLORS[((index % size) + size) % size]!;
 }
+
+/**
+ * 分支车道的颜色（#927 B1）：避开仓库色板的前几位——品牌蓝、绿、橙是前三个
+ * 仓库的主线色——分支线与主线一眼能分开。
+ */
+const BRANCH_COLORS = ["#bf5af2", "#6ac4dc", "#ff453a", "#ffd60a", "#5e5ce6"];
+
+export function branchColor(lane: number): string {
+  const size = BRANCH_COLORS.length;
+  return BRANCH_COLORS[((lane % size) + size) % size]!;
+}
