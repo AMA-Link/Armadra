@@ -130,5 +130,7 @@ export function defaultNodeData(
         generation: 0,
         nativeJobId: "",
       };
+    case "git":
+      return { kind: "git" };
   }
 }

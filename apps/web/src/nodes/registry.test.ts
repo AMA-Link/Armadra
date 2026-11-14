@@ -29,6 +29,7 @@ const EXPECTED = {
   browser: { default: [1157, 715], min: [442, 273] },
   automation: { default: [442, 273], min: [273, 169] },
   agentActivity: { default: [442, 273], min: [273, 169] },
+  git: { default: [1157, 715], min: [442, 273] },
 } as const;
 
 describe("node registry", () => {
@@ -101,8 +102,14 @@ describe("node registry", () => {
     const withoutHandles = NODE_TYPES.filter(
       (type) => !NODE_META[type].hasBridgeHandles,
     );
-    // 分组只是画框；两张 Host 侧卡片的内容都在 Host 上，连过去读不到东西。
-    expect(withoutHandles).toEqual(["group", "automation", "agentActivity"]);
+    // 分组只是画框；两张 Host 侧卡片的内容都在 Host 上，连过去读不到东西；
+    // Git 节点是历史视图，内容从仓库现读，也不经连线交出去（#927 B4）。
+    expect(withoutHandles).toEqual([
+      "group",
+      "automation",
+      "agentActivity",
+      "git",
+    ]);
   });
 
   it("defaults to the palette blue, sticky to the palette yellow", () => {

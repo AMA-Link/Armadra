@@ -94,6 +94,7 @@ const zh = {
   "content.browser": "网页",
   "content.automation": "自动化",
   "content.agentActivity": "活动",
+  "content.git": "Git",
 
   /* B5 reference */
   "shape.removeReference": "移除引用",
@@ -321,6 +322,7 @@ const en: Record<keyof typeof zh, string> = {
   "content.browser": "Web page",
   "content.automation": "Automation",
   "content.agentActivity": "Activity",
+  "content.git": "Git",
 
   /* B5 reference */
   "shape.removeReference": "Remove reference",

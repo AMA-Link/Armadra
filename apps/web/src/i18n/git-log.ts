@@ -44,6 +44,10 @@ export const gitLog: MessageModule = {
     "gitLog.table.more": "继续读取…",
     "gitLog.table.truncated": "仓库过多，只合并了前 32 个。",
 
+    "gitLog.dock.canvas": "在画布上打开",
+    "gitLog.dock.panel": "停靠到侧边栏",
+    "gitLog.dock.noWorkspace": "先打开一个工作空间",
+    "gitLog.dock.uncommitted": "Git：未提交的变更",
     "gitLog.toolbar.emphasis": "突出显示",
     "gitLog.toolbar.emphasis.all": "全部",
     "gitLog.toolbar.emphasis.mine": "我的",
@@ -175,6 +179,10 @@ export const gitLog: MessageModule = {
     "gitLog.table.truncated":
       "Too many repositories; only the first 32 merged.",
 
+    "gitLog.dock.canvas": "Open on the canvas",
+    "gitLog.dock.panel": "Dock to the side panel",
+    "gitLog.dock.noWorkspace": "Open a workspace first",
+    "gitLog.dock.uncommitted": "Git: uncommitted changes",
     "gitLog.toolbar.emphasis": "Emphasise",
     "gitLog.toolbar.emphasis.all": "All",
     "gitLog.toolbar.emphasis.mine": "Mine",

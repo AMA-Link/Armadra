@@ -78,6 +78,7 @@ export const CONTENT_TYPE_KEYS: Record<string, string> = {
   browser: "content.browser",
   automation: "content.automation",
   agentActivity: "content.agentActivity",
+  git: "content.git",
 };
 
 /**

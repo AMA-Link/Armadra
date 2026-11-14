@@ -135,6 +135,8 @@ function nodeFacets(node: CanvasNode): { icon: EntryIcon; detail: string } {
       return { icon: "automation", detail: "" };
     case "agentActivity":
       return { icon: "activity", detail: "" };
+    case "git":
+      return { icon: "diff", detail: "" };
   }
 }
 

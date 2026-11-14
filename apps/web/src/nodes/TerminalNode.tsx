@@ -1,6 +1,13 @@
 import { scoped } from "../sources/scope";
 import * as React from "react";
-import { ArrowUpDown, Boxes, RotateCw, Share2 } from "lucide-react";
+import {
+  ArrowUpDown,
+  Boxes,
+  GitCommitHorizontal,
+  RotateCw,
+  Share2,
+} from "lucide-react";
+import { requestGitUncommitted } from "@/panels/git/focus";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "@/ui/toast";
 
@@ -95,6 +102,7 @@ function markNodeRead(nodeId: string): void {
  */
 export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
   const t = useT();
+  const setPanel = useCanvasStore((state) => state.setPanel);
   const data = node.data.kind === "terminal" ? node.data : undefined;
   const agent = data?.agent;
   // SSH 终端（§21）：头部 chip 显示主机名；主机被删掉时退回 id，
@@ -554,6 +562,19 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
         >
           <Share2 />
           {t("handoff.open")}
+        </DropdownMenuItem>
+      )}
+      {/* Git 的唯一入口（#927 B4）：打开历史并选中「未提交的变更」，Agent 改了
+          什么在那里看、在那里提交——节点上不再复制一份 Git 内容。 */}
+      {agent && (
+        <DropdownMenuItem
+          onSelect={() => {
+            setPanel("scm", "bottom");
+            requestGitUncommitted();
+          }}
+        >
+          <GitCommitHorizontal />
+          {t("gitLog.dock.uncommitted")}
         </DropdownMenuItem>
       )}
       {/* 模型选择（Agent 自动化设计 §1、§2.1）。

@@ -1,7 +1,14 @@
 import { sk } from "../../../sources/scope";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Maximize2, Minimize2, RotateCw, X } from "lucide-react";
+import {
+  Maximize2,
+  Minimize2,
+  RotateCw,
+  SquareDashedMousePointer,
+  X,
+} from "lucide-react";
+import { nodeDropPosition } from "@/canvas/placement";
 
 import { useT, usePreferencesStore } from "../../../app/preferences-store";
 import { useCanvasStore } from "../../../store/canvas-store";
@@ -25,6 +32,7 @@ export function GitToolWindow() {
   const t = useT();
   const mode = useCanvasStore((state) => state.panels.scm);
   const setPanel = useCanvasStore((state) => state.setPanel);
+  const addNode = useCanvasStore((state) => state.addNode);
   const workspaceId = useCanvasStore((state) => state.workspace?.id ?? null);
   const git = usePreferencesStore((state) => state.git);
   const set = usePreferencesStore((state) => state.setGitPreference);
@@ -69,6 +77,20 @@ export function GitToolWindow() {
           }}
         >
           <RotateCw />
+        </IconButton>
+        <IconButton
+          label={t("gitLog.dock.canvas")}
+          disabled={!workspaceId}
+          onClick={() => {
+            // 同一个视图换到画布上（#927 B4）：建节点、收起底部窗口。
+            addNode("git", {
+              position: nodeDropPosition("git"),
+              data: { kind: "git" },
+            });
+            close();
+          }}
+        >
+          <SquareDashedMousePointer />
         </IconButton>
         <IconButton
           label={t(maximized ? "gitLog.restore" : "gitLog.maximize")}

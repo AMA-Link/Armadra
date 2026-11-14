@@ -167,6 +167,15 @@ export const NODE_META: Record<CanvasNodeType, NodeMeta> = {
     defaultColor: DEFAULT_NODE_COLOR,
     hasBridgeHandles: false,
   },
+  // Git 节点（#927 B4）：内容是侧边栏同一个历史组件，连线拿不到东西。
+  git: {
+    labelKey: "node.git",
+    icon: GitCompare,
+    defaultSize: defaultNodeSizeOf("git"),
+    minSize: minNodeSizeOf("git"),
+    defaultColor: DEFAULT_NODE_COLOR,
+    hasBridgeHandles: false,
+  },
   agentActivity: {
     labelKey: "node.agentActivity",
     icon: Activity,
@@ -187,6 +196,7 @@ export const NODE_BODY: Record<CanvasNodeType, ComponentType<NodeBodyProps>> = {
   browser: body("BrowserNode", () => import("./browser")),
   automation: body("AutomationNode", () => import("./AutomationNode")),
   agentActivity: body("AgentActivityNode", () => import("./AgentActivityNode")),
+  git: body("GitNode", () => import("./GitNode")),
 };
 
 /**
@@ -205,6 +215,7 @@ export const NODE_SHELL_SELF: ReadonlySet<CanvasNodeType> =
     "browser",
     "automation",
     "agentActivity",
+    "git",
   ]);
 
 export function nodeMeta(type: CanvasNodeType): NodeMeta {
