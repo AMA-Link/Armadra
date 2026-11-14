@@ -497,7 +497,12 @@ async function scenario(ctx) {
       `return [...document.querySelectorAll("[data-sonner-toast]")].map((node) => node.innerText.trim());`,
     );
   const startFetch = async () => {
-    await page.click('[role="tab"]', "日志", { exact: true });
+    // #927 B2 起 Git 窗口只有一页、分支树默认收起：树不在时先用底栏按钮
+    // 展开它，再在仓库节点上右键。
+    const treeShown = await page.evaluate(
+      `return Boolean(document.querySelector('[role="treeitem"]'));`,
+    );
+    if (!treeShown) await page.click("button", "展开分支栏");
     await page.rightClickAt(
       await page.locate('[role="treeitem"]', "project", true),
     );
