@@ -28,7 +28,6 @@ import {
 } from "./remotes";
 import { RemoteSelectionStore } from "./selection";
 import type { ForgeDetection, ForgeService } from "./service";
-import { remoteSegments } from "./service";
 import { SshAliasResolver } from "./ssh-alias";
 import { forgeError } from "./types";
 
@@ -153,12 +152,10 @@ export class WorkspaceRepositoryService {
     workspaceId: string,
   ): Promise<{ url: string; detection: ForgeDetection | null }> {
     const aliased = stripCredentials(await this.ssh.resolve(url));
-    const host = remoteSegments(aliased)?.host;
-    if (host !== undefined) await this.options.forge.warm(host, workspaceId);
     try {
       return {
         url: aliased,
-        detection: this.options.forge.resolve(aliased, workspaceId),
+        detection: await this.options.forge.resolveReady(aliased, workspaceId),
       };
     } catch {
       return { url: aliased, detection: null };

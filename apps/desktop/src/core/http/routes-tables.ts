@@ -73,3 +73,30 @@ export const REMOTE_SERVICE_ROUTES: readonly RouteEntry[] = (
   surface: "runtime",
   implemented: true,
 }));
+
+/**
+ * `/api/forge/*` 里不带仓库的路由，加上带仓库的 {@link FORGE_REPO_ROUTES}（契约
+ * §29、§111）：账号与仓库列表、配置、`resolve`、已识别的主机、「复用本机登录」开关、
+ * 工作空间 → 仓库。`resolve` 是读，登记时声明 `github:read`。
+ */
+export const FORGE_ROUTES: readonly RouteEntry[] = [
+  ...(
+    [
+      ["/api/forge/accounts", ["GET"]],
+      ["/api/forge/accounts/{host}/repos", ["GET"]],
+      ["/api/forge/configs", ["GET"]],
+      ["/api/forge/configs/{host}", ["PUT", "DELETE"]],
+      ["/api/forge/configs/{host}/{owner}/{name}", ["PUT", "DELETE"]],
+      ["/api/forge/resolve", ["POST"]],
+      ["/api/forge/hosts", ["GET"]],
+      ["/api/forge/reuse-local-logins", ["PUT"]],
+      ["/api/forge/workspace-repository", ["POST", "PUT"]],
+    ] as const
+  ).map(([path, methods]): RouteEntry => ({
+    path,
+    methods,
+    surface: "runtime",
+    implemented: true,
+  })),
+  ...FORGE_REPO_ROUTES,
+];

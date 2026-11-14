@@ -39,7 +39,10 @@ import { GithubRepositoryRefSchema } from "../github/schema";
 import type { GithubRepositoryRef } from "../github/types";
 import { create } from "../contract/message";
 import { GiteaForge, giteaApiBase, giteaWebRoot } from "./gitea";
-import { GithubForge } from "./github";
+import { GithubForge, type GithubAccess, hostGithubAccess } from "./github";
+import type { GithubClientOptions } from "../github/client";
+import type { LocalLogins } from "./logins";
+import type { ReuseSwitch } from "./reuse";
 import { GitlabForge, gitlabApiBase, gitlabWebRoot } from "./gitlab";
 import type { ForgeConfigRecord, ForgeStore } from "./store";
 import type { PlatformProbe } from "./probe";
@@ -120,6 +123,26 @@ export interface ForgeServiceOptions {
   readonly newId?: () => string;
   /** 平台探测（契约 §111.3）；不给就只认配置行与 GitHub。 */
   readonly probe?: PlatformProbe;
+  /** 复用本机登录（契约 §111.6）；不给就只用存着的令牌。 */
+  readonly logins?: LocalLogins;
+  /** 「复用本机登录」开关的存储；不给时 {@link ForgeService.setReuseLocalLogins} 不可用。 */
+  readonly reuse?: ReuseSwitch;
+  /** 按主机访问 GitHub 时 client 的传输选项（测试指向本地 mock）。 */
+  readonly githubClient?: Omit<GithubClientOptions, "token" | "apiBase">;
+}
+
+/** `GET /api/forge/hosts` 的一行（契约 §111.6）。 */
+export interface ForgeHostRow {
+  readonly host: string;
+  readonly forge: ForgeKind | null;
+  readonly credentialSource: CredentialSource | null;
+  readonly accountLogin: string | null;
+  readonly credential: boolean;
+}
+
+export interface ForgeHosts {
+  readonly reuseLocalLogins: boolean;
+  readonly hosts: readonly ForgeHostRow[];
 }
 
 export function validHost(host: string): boolean {
@@ -233,9 +256,15 @@ function newSecretId(): string {
   return randomBytes(8).toString("hex");
 }
 
+/** 见过的主机最多记这么多个（内存里，重启即空）。 */
+const SEEN_MAX = 256;
+
 export class ForgeService {
   private readonly now: () => number;
   private readonly newId: () => string;
+  /** 工作空间 remote 与识别里经过的主机：`hosts()` 的来源之一。 */
+  private readonly seen = new Set<string>();
+  private readonly githubAccess = new Map<string, GithubAccess>();
 
   constructor(private readonly options: ForgeServiceOptions) {
     this.now = options.now ?? (() => Date.now());
@@ -318,9 +347,11 @@ export class ForgeService {
       const side = this.githubSide();
       const publicHost = GITHUB_PUBLIC_HOSTS.includes(repo.host);
       const apiBase = publicHost ? PUBLIC_API_BASE : side.base;
-      // 凭据只对它自己那个根有效：配的是企业版时，github.com 的仓库没有令牌。
-      const credential = side.configured && side.base === apiBase;
+      // 存着的凭据只对它自己那个根有效：配的是企业版时，github.com 的仓库没有令牌；
+      // 没有存着的，看本机登录（按主机，github.com 与企业版可以同时可用）。
+      const stored = side.configured && side.base === apiBase;
       const webHost = publicHost ? "github.com" : apiHost(apiBase);
+      const login = stored ? undefined : this.loginPeek(repo.host, "github");
       return {
         repository: repo,
         forge: "github",
@@ -328,9 +359,9 @@ export class ForgeService {
         configKey: null,
         apiBase,
         webUrl: `https://${webHost}/${repo.owner}/${repo.name}`,
-        credential,
-        credentialSource: credential ? side.source : null,
-        accountLogin: credential && side.login !== "" ? side.login : null,
+        credential: stored || login !== undefined,
+        credentialSource: stored ? side.source : (login?.source ?? null),
+        accountLogin: stored && side.login !== "" ? side.login : null,
       };
     }
     const config = this.configFor(repo, workspaceId);
@@ -342,6 +373,8 @@ export class ForgeService {
     if (!usable || config === undefined) {
       return this.automatic(repo, nested);
     }
+    const stored = config.credentialRef !== "";
+    const login = stored ? undefined : this.loginPeek(repo.host, config.forge);
     return {
       repository: repo,
       forge: config.forge,
@@ -349,18 +382,21 @@ export class ForgeService {
       configKey: config.repoKey,
       apiBase: config.apiBase,
       webUrl: `${webRoot(config.forge, config.apiBase)}/${repo.owner}/${repo.name}`,
-      credential: config.credentialRef !== "",
-      credentialSource: config.credentialRef !== "" ? "stored" : null,
+      credential: stored || login !== undefined,
+      credentialSource: stored ? "stored" : (login?.source ?? null),
       accountLogin:
-        config.credentialRef !== "" && config.accountLogin !== ""
-          ? config.accountLogin
-          : null,
+        stored && config.accountLogin !== "" ? config.accountLogin : null,
     };
+  }
+
+  /** 本机登录的缓存结果（不起命令）；没有、关着或还没读过是 `undefined`。 */
+  private loginPeek(host: string, forge: ForgeKind) {
+    return this.options.logins?.peek(host, forge) ?? undefined;
   }
 
   /**
    * 没有配置行时的识别：已知主机或探测过的主机给平台（契约 §111.3）。令牌另说，
-   * 这里 `credential` 为 `false`；多级子组只有 GitLab 有。
+   * `credential` 看本机登录（§111.6）；多级子组只有 GitLab 有。
    */
   private automatic(repo: ForgeRepo, nested: boolean): ForgeDetection {
     const probed = this.options.probe?.peek(repo.host);
@@ -368,6 +404,7 @@ export class ForgeService {
       return unknownDetection(repo);
     }
     if (nested && probed.forge !== "gitlab") return unknownDetection(repo);
+    const login = this.loginPeek(repo.host, probed.forge);
     const root =
       probed.forge === "github"
         ? `https://${repo.host}`
@@ -379,24 +416,87 @@ export class ForgeService {
       configKey: null,
       apiBase: probed.apiBase,
       webUrl: `${root}/${repo.owner}/${repo.name}`,
-      credential: false,
-      credentialSource: null,
+      credential: login !== undefined,
+      credentialSource: login?.source ?? null,
       accountLogin: null,
     };
   }
 
-  /**
-   * 识别之前的一步：这个主机没配置、不是 GitHub 管的，就探一次平台（有缓存）。
-   * 认得出的主机不联网。不会抛。
-   */
-  async warm(host: string, workspaceId = ""): Promise<void> {
-    const probe = this.options.probe;
-    if (probe === undefined) return;
-    if (this.githubHost(host) || this.row(host, workspaceId) !== undefined) {
-      return;
+  /** 这个主机（或仓库，若给了）管它的是哪个平台；还不知道是 `null`。 */
+  private kindOf(
+    host: string,
+    workspaceId: string,
+    repo?: ForgeRepo,
+  ): ForgeKind | null {
+    if (GITHUB_PUBLIC_HOSTS.includes(host) || this.githubHost(host)) {
+      return "github";
     }
-    if (!validHost(host) || loopbackHost(host)) return;
-    await probe.probe(host);
+    const config =
+      repo === undefined
+        ? this.row(host, workspaceId)
+        : this.configFor(repo, workspaceId);
+    if (config !== undefined && config.forge !== "github") return config.forge;
+    return this.options.probe?.peek(host)?.forge ?? null;
+  }
+
+  /**
+   * 识别之前的一步，让后面同步的 {@link detect} 读得到缓存：
+   *
+   *   1. 这个主机没配置、不是 GitHub 管的，就探一次平台（有缓存，已知主机不联网）；
+   *   2. 平台认出来、又没有存着的令牌，就读一次本机登录（§111.6，有缓存，开关关着
+   *      不读）。
+   *
+   * 不会抛。`repo` 给了就按这个仓库的配置行认平台（仓库级配置可能与主机不同）。
+   */
+  async warm(host: string, workspaceId = "", repo?: ForgeRepo): Promise<void> {
+    if (!validHost(host)) return;
+    if (this.seen.size < SEEN_MAX) this.seen.add(host);
+    const probe = this.options.probe;
+    if (
+      probe !== undefined &&
+      !this.githubHost(host) &&
+      this.row(host, workspaceId) === undefined &&
+      !loopbackHost(host)
+    ) {
+      await probe.probe(host);
+    }
+    const logins = this.options.logins;
+    if (logins === undefined || !logins.enabled()) return;
+    const kind = this.kindOf(host, workspaceId, repo);
+    if (kind === null || this.hasStored(host, kind, workspaceId, repo)) return;
+    await logins.resolve(host, kind);
+  }
+
+  /** 这个主机在这个平台上有没有存着的令牌（那就不必读本机登录）。 */
+  private hasStored(
+    host: string,
+    kind: ForgeKind,
+    workspaceId: string,
+    repo?: ForgeRepo,
+  ): boolean {
+    if (kind === "github") {
+      const side = this.githubSide();
+      return (
+        side.configured &&
+        webHostFor(side.base) ===
+          (host === "www.github.com" ? "github.com" : host)
+      );
+    }
+    const config =
+      repo === undefined
+        ? this.row(host, workspaceId)
+        : this.configFor(repo, workspaceId);
+    return config !== undefined && config.credentialRef !== "";
+  }
+
+  /** `resolve` 之前先 {@link warm}：先同步认出仓库（拿到仓库级配置），预热，再认一遍。 */
+  async resolveReady(
+    remoteUrl: string,
+    workspaceId = "",
+  ): Promise<ForgeDetection> {
+    const first = this.resolve(remoteUrl, workspaceId);
+    await this.warm(first.repository.host, workspaceId, first.repository);
+    return this.resolve(remoteUrl, workspaceId);
   }
 
   /**
@@ -470,23 +570,68 @@ export class ForgeService {
       throw forgeError("notConfigured", "NOT_CONFIGURED");
     }
     if (detection.forge === "github") {
-      const service = this.options.github?.();
-      if (service === undefined) throw forgeError("notConfigured", "NO_GITHUB");
-      return new GithubForge(service);
+      const side = this.githubSide();
+      const stored = side.configured && side.base === detection.apiBase;
+      if (stored) {
+        const service = this.options.github?.();
+        if (service === undefined) {
+          throw forgeError("notConfigured", "NO_GITHUB");
+        }
+        return new GithubForge(service);
+      }
+      return new GithubForge(
+        this.githubHostAccess(detection.apiBase as string, repo.host),
+      );
     }
-    const config = this.configFor(repo, workspaceId) as ForgeConfigRecord;
-    if (config.forge === "github") {
+    const config = this.configFor(repo, workspaceId);
+    if (config?.forge === "github") {
       // 表里的 CHECK 允许它，但 `configure` 从不写它：GitHub 只认 §5 的凭据。
       throw forgeError("notConfigured", "FORGE_UNSUPPORTED");
     }
-    return this.client(config.forge, config.apiBase, () =>
-      this.token(config.credentialRef),
+    const forge = detection.forge as ConfigurableForge;
+    if (config !== undefined && config.credentialRef !== "") {
+      return this.client(config.forge, config.apiBase, () =>
+        this.token(config.credentialRef),
+      );
+    }
+    return this.client(
+      forge,
+      (config?.apiBase ?? detection.apiBase) as string,
+      this.loginToken(repo.host, forge),
     );
+  }
+
+  /** 本机登录的令牌来源：每次现取（有短缓存），关了开关就不再给。 */
+  private loginToken(host: string, forge: ForgeKind): () => Promise<string> {
+    return async () => {
+      const login = await this.options.logins?.resolve(host, forge);
+      if (login === null || login === undefined) {
+        throw forgeError("notConfigured", "NO_LOGIN");
+      }
+      return login.token;
+    };
+  }
+
+  /** 一个 GitHub API 根的访问（企业版与 github.com 各一份，保留各自的条件请求缓存）。 */
+  private githubHostAccess(apiBase: string, host: string): GithubAccess {
+    const key = `${apiBase}|${host}`;
+    let access = this.githubAccess.get(key);
+    if (access === undefined) {
+      access = hostGithubAccess(
+        apiBase,
+        this.loginToken(host, "github"),
+        this.options.githubClient ?? {},
+        this.now,
+      );
+      if (this.githubAccess.size >= 32) this.githubAccess.clear();
+      this.githubAccess.set(key, access);
+    }
+    return access;
   }
 
   /** {@link forgeFor} 之前先 {@link warm}：路由与后台读都走这一条。 */
   async forgeForReady(repo: ForgeRepo, workspaceId = ""): Promise<Forge> {
-    await this.warm(repo.host, workspaceId);
+    await this.warm(repo.host, workspaceId, repo);
     return this.forgeFor(repo, workspaceId);
   }
 
@@ -588,6 +733,14 @@ export class ForgeService {
         accountLogin: row.accountLogin === "" ? null : row.accountLogin,
       });
     }
+    // 本机登录（§111.6）：见过的主机里读到了登录的，也是能列仓库的账号。
+    for (const host of [...this.seen].sort()) {
+      if (accounts.some((account) => account.host === host)) continue;
+      const kind = this.kindOf(host, workspaceId);
+      if (kind !== null && this.loginPeek(host, kind) !== undefined) {
+        accounts.push({ host, forge: kind, accountLogin: null });
+      }
+    }
     return accounts;
   }
 
@@ -602,30 +755,113 @@ export class ForgeService {
   ): Promise<ForgePage<ForgeRepository>> {
     const normalized = host.toLowerCase().replace(/\.$/, "");
     if (!validHost(normalized)) throw forgeError("invalid", "HOST_INVALID");
+    await this.warm(normalized, workspaceId);
     if (this.githubHost(normalized)) {
       const side = this.githubSide();
       const publicHost = GITHUB_PUBLIC_HOSTS.includes(normalized);
       const apiBase = publicHost ? PUBLIC_API_BASE : side.base;
       const service = this.options.github?.();
-      if (!side.configured || side.base !== apiBase || service === undefined) {
+      if (side.configured && side.base === apiBase && service !== undefined) {
+        return await new GithubForge(service).repositories(
+          webHostFor(apiBase),
+          options,
+        );
+      }
+      if (this.loginPeek(normalized, "github") === undefined) {
         throw forgeError("notConfigured", "NO_CREDENTIAL");
       }
-      return await new GithubForge(service).repositories(
-        webHostFor(apiBase),
-        options,
-      );
+      return await new GithubForge(
+        this.githubHostAccess(apiBase, webHostFor(apiBase)),
+      ).repositories(webHostFor(apiBase), options);
     }
     const row = this.row(normalized, workspaceId);
     if (
-      row === undefined ||
-      row.credentialRef === "" ||
-      row.forge === "github"
+      row !== undefined &&
+      row.credentialRef !== "" &&
+      row.forge !== "github"
+    ) {
+      return await this.client(row.forge, row.apiBase, () =>
+        this.token(row.credentialRef),
+      ).repositories(normalized, options);
+    }
+    const kind = this.kindOf(normalized, workspaceId);
+    if (
+      kind === null ||
+      kind === "github" ||
+      this.loginPeek(normalized, kind) === undefined
     ) {
       throw forgeError("notConfigured", "NOT_CONFIGURED");
     }
-    return await this.client(row.forge, row.apiBase, () =>
-      this.token(row.credentialRef),
+    const base =
+      row?.apiBase ?? this.options.probe?.peek(normalized)?.apiBase ?? "";
+    if (base === "") throw forgeError("notConfigured", "NOT_CONFIGURED");
+    return await this.client(
+      kind,
+      base,
+      this.loginToken(normalized, kind),
     ).repositories(normalized, options);
+  }
+
+  /* ---------------------------- 已识别的主机 ----------------------------- */
+
+  /** 「复用本机登录」现在开着没有。 */
+  reuseLocalLogins(): boolean {
+    return this.options.logins?.enabled() ?? false;
+  }
+
+  /**
+   * 开或关「复用本机登录」（持久，§111.6）。关掉时缓存的令牌立即丢掉。
+   */
+  setReuseLocalLogins(enabled: boolean): void {
+    const reuse = this.options.reuse;
+    if (reuse === undefined) throw forgeError("unavailable", "NO_REUSE_STORE");
+    reuse.set(enabled);
+    if (!enabled) this.options.logins?.forget();
+  }
+
+  /**
+   * 已识别的主机（§111.6）：工作空间 remote 里见过的、配置表里的、GitHub 凭据的
+   * 并集，各带平台与令牌来源。见过的主机只记在内存里（重启后随工作空间被打开
+   * 再出现）。每个主机先预热一次，所以这里读得到本机登录。
+   */
+  async hosts(workspaceId = ""): Promise<ForgeHosts> {
+    const names = new Set<string>(this.seen);
+    for (const row of this.options.store.list())
+      names.add(row.repoKey.split("/")[0] as string);
+    if (workspaceId !== "") {
+      for (const row of this.options.store.list(workspaceId)) {
+        names.add(row.repoKey.split("/")[0] as string);
+      }
+    }
+    const side = this.githubSide();
+    if (side.configured) names.add(webHostFor(side.base));
+    const hosts: ForgeHostRow[] = [];
+    for (const host of [...names].filter(validHost).sort()) {
+      await this.warm(host, workspaceId);
+      const kind = this.kindOf(host, workspaceId);
+      if (kind === null) {
+        hosts.push({
+          host,
+          forge: null,
+          credentialSource: null,
+          accountLogin: null,
+          credential: false,
+        });
+        continue;
+      }
+      const detection = this.detect(
+        { host, owner: "armadra", name: "probe" },
+        workspaceId,
+      );
+      hosts.push({
+        host,
+        forge: detection.forge ?? kind,
+        credentialSource: detection.credentialSource,
+        accountLogin: detection.accountLogin,
+        credential: detection.credential,
+      });
+    }
+    return { reuseLocalLogins: this.reuseLocalLogins(), hosts };
   }
 
   /* --------------------------------- 配置 --------------------------------- */
