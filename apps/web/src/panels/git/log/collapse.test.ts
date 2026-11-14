@@ -116,4 +116,22 @@ describe("collapseLog", () => {
     expect(result.commits[0]!.parents).toHaveLength(2);
     expect(result.sideCount.get(key("m"))).toBe(2);
   });
+
+  it("叠加分支依次合并：每个合并只算自己带进来的（#932）", () => {
+    // b1 → b2 是 B1 分支；c1 建在 b2 上是 B2 分支。先合 B1（m1），再合 B2（m2）。
+    const stacked = [
+      commit(".", "y", ["x", "c"]), // m2：第二父 c1
+      commit(".", "x", ["o", "e"]), // m1：第二父 b2
+      commit(".", "c", ["e"]), // c1（建在 b2 上）
+      commit(".", "e", ["d"]), // b2
+      commit(".", "d", ["o"]), // b1
+      commit(".", "o", []),
+    ];
+    const result = collapseLog(stacked, new Set());
+    expect(result.sideCount.get(key("y"))).toBe(1);
+    expect(result.sideCount.get(key("x"))).toBe(2);
+    expect(result.mergedBy.get(key("c"))).toBe(key("y"));
+    expect(result.mergedBy.get(key("e"))).toBe(key("x"));
+    expect(result.mergedBy.get(key("d"))).toBe(key("x"));
+  });
 });

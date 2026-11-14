@@ -615,7 +615,8 @@ function CommitRow({
 }) {
   const t = useT();
   const badges = useMemo(() => refBadges(commit.refs), [commit.refs]);
-  const label = merge ? mergeLabel(commit.subject) : null;
+  // 合并按主题文本认（#932），与名下有没有分支提交无关。
+  const label = mergeLabel(commit.subject);
   return (
     <div
       data-selected={selected ? "true" : undefined}
@@ -644,7 +645,9 @@ function CommitRow({
         )}
       >
         <span
-          className="min-w-0 flex-1 truncate"
+          // 标题至少留 6rem：引用徽标多的行（`origin/main`、`origin/HEAD`…）在
+          // 窄窗口里会把它挤成 0 宽，整行只剩徽标（#932）。
+          className="min-w-24 flex-1 truncate"
           title={commit.subject}
           data-side={side ? "true" : undefined}
         >
@@ -665,7 +668,7 @@ function CommitRow({
                   ? "default"
                   : "outline"
             }
-            className="max-w-28 justify-start truncate"
+            className="max-w-28 min-w-0 justify-start truncate"
           >
             {badge.label}
           </Badge>

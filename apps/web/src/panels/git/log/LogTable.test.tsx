@@ -209,7 +209,9 @@ describe("提交图表格", () => {
     it("不开折叠时表格照旧，全部提交都在", () => {
       table({ commits: merged() });
       expect(screen.getByText("commit 2")).toBeTruthy();
-      expect(screen.getByText(/Merge pull request/)).toBeTruthy();
+      // 合并行按主题文本换成分支名，开不开折叠都一样（#932）。
+      expect(screen.getByText("chore/minimatch-11")).toBeTruthy();
+      expect(screen.queryByText(/Merge pull request/)).toBeNull();
     });
   });
 
@@ -271,5 +273,16 @@ describe("提交图表格", () => {
         container.querySelector('[data-slot="git-log-author"]')!.textContent,
       ).toContain("Ada");
     });
+  });
+
+  it("名下没有分支提交的合并也显示分支名与 PR 号（#932）", () => {
+    const merge: GitLogCommit = {
+      ...commit(1),
+      parents: [oid(0), "f".repeat(40)],
+      subject: "Merge pull request #930 from AMA-Link/feat/git-history-agents",
+    };
+    table({ commits: [merge, commit(0)], collapseMerges: true });
+    expect(screen.getByText("feat/git-history-agents")).toBeTruthy();
+    expect(screen.getByText("#930")).toBeTruthy();
   });
 });
