@@ -22,6 +22,9 @@ import { ReadError } from "../forms";
 import { GitLoadable } from "../git-loading";
 import { refBadges } from "../CommitGraph";
 import { buildFileRows } from "./file-tree";
+import { agentName } from "./CommitAuthor";
+import { commitAgents } from "./people";
+import { AgentAvatar } from "../../../ui/agent-avatar";
 import { cn } from "../../../lib/cn";
 import { sideBySideRows } from "../../../lib/side-by-side";
 import { PatchBody, SideBySideBody } from "../../../nodes/DiffNode";
@@ -90,6 +93,7 @@ export function CommitDetails({
     retry: false,
   });
   const badges = useMemo(() => refBadges(commit.refs), [commit.refs]);
+  const agents = useMemo(() => commitAgents(commit), [commit]);
   const rows = useMemo(
     () => buildFileRows(detail.data?.files ?? [], flat),
     [detail.data, flat],
@@ -184,6 +188,24 @@ export function CommitDetails({
               {commit.authorTime}
             </dd>
           </div>
+          {agents.length > 0 && (
+            <div data-slot="git-log-details-agents">
+              <dt className="text-muted-foreground">
+                {t("gitLog.author.agents")}
+              </dt>
+              <dd className="mt-0.5 flex flex-wrap gap-2">
+                {agents.map((mark) => (
+                  <span
+                    key={mark.id ?? mark.label}
+                    className="inline-flex items-center gap-1"
+                  >
+                    {mark.id && <AgentAvatar agentId={mark.id} size={20} />}
+                    {agentName(mark)}
+                  </span>
+                ))}
+              </dd>
+            </div>
+          )}
           <div>
             <dt className="text-muted-foreground">
               {t("gitLog.details.committer")}

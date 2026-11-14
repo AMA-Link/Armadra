@@ -13,6 +13,8 @@ import { Spinner } from "../../../ui/spinner";
 import { EmptyState } from "../../../ui/state";
 import { LANE_WIDTH, MAX_LANES, commitGraph, refBadges } from "../CommitGraph";
 import { collapseLog, mergeLabel } from "./collapse";
+import { CommitAuthor } from "./CommitAuthor";
+import { commitAgents } from "./people";
 import { branchColor, commitKey, logGraphKeys, repositoryColor } from "./graph";
 
 /**
@@ -66,12 +68,24 @@ export interface LogTableProps {
    * `HEAD -> …` 的那一行上，不另开分支面板。
    */
   sync?: ReadonlyMap<string, { ahead: number; behind: number }>;
+  /** GitHub 账号 id → 头像 data URL（#927 B3）。 */
+  avatars?: ReadonlyMap<number, string>;
+  /** 仓库路径 → 名字，悬停卡里用；单仓库时不传。 */
+  repositoryNames?: ReadonlyMap<string, string>;
+  /**
+   * 突出哪一类提交（#927 B3）：其余的行降透明度，**不删行**——删行会让图断
+   * 线，分支提交也会失去上下文。合并行看它名下的分支提交。
+   */
+  emphasis?: "all" | "mine" | "agent";
+  /** 「我的」看的邮箱（`git config user.email`）；与是否加粗高亮无关。 */
+  identityEmail?: string | null;
   /** 展开的合并（`commitKey`）。 */
   expanded?: ReadonlySet<string>;
   onToggleMerge?: (key: string) => void;
 }
 
 const NONE: ReadonlySet<string> = new Set();
+const NO_AVATARS: ReadonlyMap<number, string> = new Map();
 
 export const UNCOMMITTED_KEY = "uncommitted";
 
@@ -122,6 +136,10 @@ export function LogTable({
   renderRowMenu,
   collapseMerges = false,
   sync,
+  avatars = NO_AVATARS,
+  repositoryNames,
+  emphasis = "all",
+  identityEmail: identity = null,
   expanded = NONE,
   onToggleMerge,
 }: LogTableProps) {
@@ -136,6 +154,30 @@ export function LogTable({
     [commits, expanded, collapseMerges],
   );
   const shown = view.commits;
+
+  /** 带 Agent 的提交，以及名下有这种提交的合并：「Agent 协作」突出它们。 */
+  const withAgent = useMemo(() => {
+    const keys = new Set<string>();
+    for (const commit of commits) {
+      if (commitAgents(commit).length === 0) continue;
+      const key = commitKey(commit);
+      keys.add(key);
+      const owner = view.mergedBy.get(key);
+      if (owner) keys.add(owner);
+    }
+    return keys;
+  }, [commits, view.mergedBy]);
+  const identityEmail = identity?.toLowerCase() ?? null;
+  const isMine = (commit: GitLogCommit) =>
+    myEmail !== null &&
+    commit.authorEmail.toLowerCase() === myEmail.toLowerCase();
+  const dimmed = (commit: GitLogCommit) =>
+    emphasis === "agent"
+      ? !withAgent.has(commitKey(commit))
+      : emphasis === "mine"
+        ? identityEmail !== null &&
+          commit.authorEmail.toLowerCase() !== identityEmail
+        : false;
 
   const rows = useMemo<Row[]>(() => {
     const head: Row[] =
@@ -399,10 +441,17 @@ export function LogTable({
                           )
                         : null
                     }
-                    mine={
-                      myEmail !== null &&
-                      row.commit.authorEmail.toLowerCase() ===
-                        myEmail.toLowerCase()
+                    mine={isMine(row.commit)}
+                    dimmed={dimmed(row.commit)}
+                    author={
+                      <CommitAuthor
+                        commit={row.commit}
+                        avatars={avatars}
+                        repositoryName={
+                          repositoryNames?.get(row.commit.repositoryPath) ??
+                          null
+                        }
+                      />
                     }
                     showHash={showHash && !narrow}
                     narrow={narrow}
@@ -530,6 +579,8 @@ function CommitRow({
   merge,
   toggleSlot,
   sync,
+  dimmed,
+  author,
   gutter,
   height,
   color,
@@ -548,6 +599,10 @@ function CommitRow({
   /** 折叠开着时每行都留出计数那一格，列才对得齐。 */
   toggleSlot: boolean;
   sync: { ahead: number; behind: number } | null;
+  /** 不在当前「突出」范围里的行：降透明度，不删。 */
+  dimmed: boolean;
+  /** 作者列（头像 + 名字 + 悬停卡）。 */
+  author: ReactNode;
   gutter: number;
   height: number;
   color: string | null;
@@ -564,7 +619,8 @@ function CommitRow({
   return (
     <div
       data-selected={selected ? "true" : undefined}
-      className="group/row relative flex h-full w-full min-w-0 items-center hover:bg-muted data-selected:bg-muted"
+      data-dimmed={dimmed ? "true" : undefined}
+      className="group/row relative flex h-full w-full min-w-0 items-center hover:bg-muted data-selected:bg-muted data-dimmed:opacity-40"
     >
       {color && (
         <span
@@ -628,14 +684,7 @@ function CommitRow({
             {sync.behind > 0 && `↓${sync.behind}`}
           </span>
         )}
-        {!narrow && (
-          <span
-            className="w-28 shrink-0 truncate text-muted-foreground"
-            title={`${commit.authorName} <${commit.authorEmail}>`}
-          >
-            {commit.authorName}
-          </span>
-        )}
+        {!narrow && author}
         <span
           data-numeric
           className="w-20 shrink-0 truncate text-right text-muted-foreground"

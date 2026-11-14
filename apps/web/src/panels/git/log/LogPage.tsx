@@ -42,6 +42,7 @@ import { LogToolbar } from "./LogToolbar";
 import { followOperation } from "./follow-operation";
 import { filterKey, logRequestFromPreferences } from "./filters";
 import { commitKey, repositoryColor } from "./graph";
+import { githubAccountId } from "./people";
 import { defaultExpanded, refKey, type BranchTreeNode } from "./build-tree";
 import {
   fulfilWorktreeIntent,
@@ -256,6 +257,48 @@ export function LogPage({ workspaceId, refreshToken = 0 }: LogPageProps) {
     retry: false,
   });
   const myEmail = identity.data?.email ?? null;
+
+  /**
+   * 作者的 GitHub 头像：只有 noreply 邮箱里带账号 id 的才问，一次至多 50 个；
+   * 问不到的（离线、开关关了）画首字母。
+   */
+  const avatarIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const entry of commits) {
+      const id = githubAccountId(entry.authorEmail);
+      if (id !== null) ids.add(id);
+      if (ids.size >= 50) break;
+    }
+    return [...ids].sort((a, b) => a - b);
+  }, [commits]);
+  const avatarQuery = useQuery({
+    queryKey: sk("git-avatars", workspaceId, avatarIds.join(",")),
+    queryFn: ({ signal }) => gitGateway.avatars(at("."), avatarIds, signal),
+    enabled: avatarIds.length > 0,
+    staleTime: 60 * 60 * 1000,
+    retry: false,
+  });
+  const avatars = useMemo(
+    () =>
+      new Map(
+        (avatarQuery.data?.avatars ?? []).flatMap((entry) =>
+          entry.dataUrl ? [[entry.id, entry.dataUrl] as const] : [],
+        ),
+      ),
+    [avatarQuery.data],
+  );
+  const repositoryNames = useMemo(
+    () =>
+      repositories.length > 1
+        ? new Map(
+            repositories.map((repository) => [
+              repository.repositoryPath,
+              repository.name,
+            ]),
+          )
+        : undefined,
+    [repositories],
+  );
 
   const invalidate = () => {
     invalidateGitQueries(client, workspaceId);
@@ -508,6 +551,10 @@ export function LogPage({ workspaceId, refreshToken = 0 }: LogPageProps) {
         myEmail={git.highlightMine ? myEmail : null}
         collapseMerges={git.collapseMerges}
         sync={sync}
+        avatars={avatars}
+        repositoryNames={repositoryNames}
+        emphasis={git.emphasis}
+        identityEmail={myEmail}
         expanded={expandedMerges}
         onToggleMerge={(rowKey) =>
           setExpandedMerges((current) => {
