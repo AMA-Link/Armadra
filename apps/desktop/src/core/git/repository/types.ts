@@ -600,7 +600,11 @@ export interface LogRequest {
   readonly limit: number;
 }
 
-export type LogCommit = CommitRecord & { readonly repositoryPath: string };
+export type LogCommit = CommitRecord & {
+  readonly repositoryPath: string;
+  /** `Co-authored-by:` trailers in message order (#927); `[]` when none. */
+  readonly coAuthors: readonly { name: string; email: string }[];
+};
 
 export interface LogRepository {
   readonly path: string;

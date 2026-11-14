@@ -183,9 +183,19 @@ export const gitLogRequestSchema = z.object({
   limit: z.number().int().min(1).max(200).optional(),
 });
 /** One row of the merged graph: the commit record, plus the checkout it is from. */
+/** One `Co-authored-by:` trailer, split into its name and address. */
+export const gitCoAuthorSchema = z.object({
+  name: z.string(),
+  email: z.string(),
+});
 export const gitLogCommitSchema = gitCommitRecordSchema.extend({
   /** Workspace-relative, `.` for the root. */
   repositoryPath: z.string().min(1),
+  /**
+   * The commit's `Co-authored-by:` trailers, in message order (#927). Absent
+   * from a core older than protocol 1.50; a client reads absence as none.
+   */
+  coAuthors: z.array(gitCoAuthorSchema).optional(),
 });
 export const gitLogRepositorySchema = z.object({
   path: z.string().min(1),
@@ -287,6 +297,20 @@ export const gitRefsSnapshotSchema = z.array(
  * Both fields are null on a machine that has configured no identity, which is
  * a normal machine — the log's "mine" filter simply has nothing to filter by.
  */
+/**
+ * GitHub avatars by numeric account id (#927), fetched and cached by core so a
+ * page never dials an image host itself. `dataUrl` is `null` when the switch
+ * `git.avatars` is off, the host could not be reached, or the answer was not a
+ * small image — the page then draws initials.
+ */
+export const gitAvatarsSchema = z.object({
+  avatars: z.array(
+    z.object({
+      id: z.number().int().positive(),
+      dataUrl: z.string().nullable(),
+    }),
+  ),
+});
 export const gitIdentitySchema = z.object({
   name: z.string().nullable(),
   email: z.string().nullable(),
@@ -827,6 +851,8 @@ export type GitRefsTag = z.infer<typeof gitRefsTagSchema>;
 export type GitRefsWorktree = z.infer<typeof gitRefsWorktreeSchema>;
 export type GitRefsStash = z.infer<typeof gitRefsStashSchema>;
 export type GitIdentity = z.infer<typeof gitIdentitySchema>;
+export type GitCoAuthor = z.infer<typeof gitCoAuthorSchema>;
+export type GitAvatars = z.infer<typeof gitAvatarsSchema>;
 export type GitRefsSnapshot = z.infer<typeof gitRefsSnapshotSchema>;
 /** One repository's row in the branch tree, which is what a tree node draws. */
 export type GitRefsRepository = GitRefsSnapshot[number];

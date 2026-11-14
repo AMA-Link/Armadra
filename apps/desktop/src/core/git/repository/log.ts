@@ -45,6 +45,7 @@ interface SelectedRepository {
 
 interface LoggedCommit {
   readonly record: CommitRecord;
+  readonly coAuthors: { name: string; email: string }[];
   /**
    * `%ct` — seconds since the epoch — rather than the published `%cI` string,
    * because two repositories in one workspace can carry different committer
@@ -191,7 +192,9 @@ async function logCommits(
     // translated on a localized machine.
     "--ignore-missing",
     "-z",
-    "--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%ct%x00%D%x00%s",
+    // The tenth field is every `Co-authored-by:` trailer (key matched without
+    // regard to case), one per line — the Agent marks in the Git window (#927).
+    "--format=%H%x00%P%x00%an%x00%ae%x00%aI%x00%cI%x00%ct%x00%D%x00%s%x00%(trailers:key=Co-authored-by,valueonly,separator=%x0a)",
     `--skip=${skip}`,
     `--max-count=${take}`,
     ...args.options,
@@ -453,21 +456,27 @@ function merge(
     if (best === undefined) break;
     const page = pages[best] as RepositoryPage;
     const entry = page.commits[taken[best] as number] as LoggedCommit;
-    commits.push({ ...entry.record, repositoryPath: page.path });
+    commits.push({
+      ...entry.record,
+      repositoryPath: page.path,
+      coAuthors: entry.coAuthors,
+    });
     taken[best] = (taken[best] as number) + 1;
   }
   return { commits, taken };
 }
 
-/** `git log -z --decorate=full --format=…`: nine fields per record. */
-function parseLog(bytes: Buffer): LoggedCommit[] {
+/** `git log -z --decorate=full --format=…`: ten fields per record. */
+const LOG_FIELDS = 10;
+
+export function parseLog(bytes: Buffer): LoggedCommit[] {
   if (bytes.length === 0) return [];
   const fields = splitNul(bytes);
-  if (fields.length % 9 !== 0) throw malformed();
+  if (fields.length % LOG_FIELDS !== 0) throw malformed();
   const commits: LoggedCommit[] = [];
-  for (let index = 0; index < fields.length; index += 9) {
+  for (let index = 0; index < fields.length; index += LOG_FIELDS) {
     const row = fields
-      .slice(index, index + 9)
+      .slice(index, index + LOG_FIELDS)
       .map((value) => value.toString("utf8"));
     const oid = row[0] as string;
     const parents = (row[1] as string).split(/\s+/).filter((v) => v !== "");
@@ -478,6 +487,7 @@ function parseLog(bytes: Buffer): LoggedCommit[] {
     if (Number.isNaN(committedAt)) throw malformed();
     commits.push({
       committedAt,
+      coAuthors: parseCoAuthors(row[9] as string),
       record: {
         oid,
         parents,
@@ -491,6 +501,26 @@ function parseLog(bytes: Buffer): LoggedCommit[] {
     });
   }
   return commits;
+}
+
+/**
+ * `Co-authored-by:` values, one per line: `Name <address>`. A line without an
+ * address keeps its text as the name — a malformed trailer is still a credit,
+ * and dropping it would hide exactly the Agent mark the window draws.
+ */
+export function parseCoAuthors(
+  value: string,
+): { name: string; email: string }[] {
+  return value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "")
+    .map((line) => {
+      const match = /^(.*?)\s*<([^<>]*)>$/.exec(line);
+      return match
+        ? { name: (match[1] ?? "").trim(), email: (match[2] ?? "").trim() }
+        : { name: line, email: "" };
+    });
 }
 
 /**

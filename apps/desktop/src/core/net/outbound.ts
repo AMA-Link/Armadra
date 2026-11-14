@@ -104,6 +104,16 @@ export const OUTBOUND = {
     defaultOn: false,
     documented: true,
   },
+  githubAvatars: {
+    // 提交作者的头像（#927）：账号 id 来自 GitHub noreply 邮箱，不带令牌；
+    // 结果按 id 缓存一天，失败的也记半小时，同一个 id 不会被反复问。
+    url: "https://avatars.githubusercontent.com/u/",
+    purpose: "Git 窗口里提交作者的 GitHub 头像",
+    cadence: "打开 Git 窗口时按需；每个账号一天至多 1 次",
+    switch: "git.avatars",
+    defaultOn: true,
+    documented: true,
+  },
   githubReleases: {
     // 发布历史与新版本（契约 §64）：公开接口，不带任何令牌。仓库是
     // `updates/service.ts` 的 `RELEASES_REPO`。

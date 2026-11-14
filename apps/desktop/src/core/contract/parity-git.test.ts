@@ -745,7 +745,7 @@ describe("git 域：契约与路由表", () => {
     }
   });
 
-  it("切分边界：路由表里其余的 Git 路径都是仓库级，恰好是 gitRepository（§40.2）那 23 条", () => {
+  it("切分边界：路由表里其余的 Git 路径都是仓库级，恰好是 gitRepository（§40.2）那 24 条", () => {
     const migrated = new Set(
       entries.map(
         (entry) => `${entry.meta.legacy!.method} ${entry.meta.legacy!.path}`,
@@ -759,7 +759,7 @@ describe("git 域：契约与路由表", () => {
     );
     for (const key of rest) {
       expect(key, key).toMatch(
-        /\/git\/(repository\/|repositories$|log$|refs$|identity$)/,
+        /\/git\/(repository\/|repositories$|log$|refs$|identity$|avatars$)/,
       );
     }
     const repository = contractEntries()
@@ -767,7 +767,7 @@ describe("git 域：契约与路由表", () => {
       .map(
         (entry) => `${entry.meta.legacy!.method} ${entry.meta.legacy!.path}`,
       );
-    expect(repository).toHaveLength(23);
+    expect(repository).toHaveLength(24);
     expect([...rest].sort()).toEqual([...repository].sort());
     expect(migrated.size + rest.length).toBe(
       ROUTES.filter((route) => route.path.includes("/git/")).reduce(
