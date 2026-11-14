@@ -4,7 +4,12 @@ import { LOCAL_SOURCE_ID, currentSource, onLocal } from "../../../api/source";
 import { useCanvasStore } from "../../../store/canvas-store";
 import { lk } from "../local-key";
 import * as React from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 import { Badge } from "@/ui/badge";
 import { EmptyState } from "@/ui/state";
@@ -45,7 +50,7 @@ function siteRoot(apiBase: string): string {
   return apiBase.replace(/\/api\/v[14]$/, "");
 }
 
-interface Draft {
+export interface Draft {
   repoKey: string;
   forge: ConfigurableForge;
   apiBase: string;
@@ -54,7 +59,7 @@ interface Draft {
   revision: number;
 }
 
-const EMPTY: Draft = {
+export const EMPTY_DRAFT: Draft = {
   repoKey: "",
   forge: "gitea",
   apiBase: "",
@@ -62,43 +67,29 @@ const EMPTY: Draft = {
   revision: 0,
 };
 
-/**
- * 设置 → Git 托管里 GitHub 以外的平台（契约 §29.3）：按主机或按仓库选 Gitea /
- * GitLab、地址与令牌。
- *
- * 范围（契约 §75）：整台机器，或当前打开的工作空间自己的一份——它在这个工作
- * 空间里盖过整机的配置。工作空间在别的源上时只有整台机器（设置写本机）。
- *
- * 令牌只往外走一次：password 输入框，永远不回填；core 先用它核验再存，成功后
- * 立即从组件状态清掉。答复只说「有没有令牌」与它属于哪个账号。
- */
-export function ForgeConfigs() {
+function refreshForge(client: QueryClient) {
+  void client.invalidateQueries({ queryKey: forgeConfigKeys.all });
+  void client.invalidateQueries({ queryKey: ["forge"] });
+  void client.invalidateQueries({ queryKey: forgeHostsKey });
+}
+
+export const forgeHostsKey = lk("forge", "hosts");
+
+/** 配置表单：平台、地址、令牌；抽屉的「手动配置」与设置页共用。令牌只出去一次。 */
+export function ForgeConfigForm({
+  initial,
+  scope,
+  onSaved,
+  onCancel,
+}: {
+  initial: Draft;
+  scope: string | null;
+  onSaved: () => void;
+  onCancel?: () => void;
+}) {
   const t = useT();
   const client = useQueryClient();
-  const workspace = useCanvasStore((state) => state.workspace);
-  // 设置写本机：别的源上的工作空间在本机库里没有。
-  const localWorkspace =
-    workspace && currentSource().sourceId === LOCAL_SOURCE_ID
-      ? workspace
-      : null;
-  const [scopeChoice, setScopeChoice] = React.useState<"machine" | "workspace">(
-    "machine",
-  );
-  const scope =
-    scopeChoice === "workspace" && localWorkspace ? localWorkspace.id : null;
-  const configs = useQuery({
-    queryKey: forgeConfigKeys.scope(scope),
-    queryFn: () => onLocal(() => forgeConfigs(scope)),
-    retry: false,
-  });
-  const [draft, setDraft] = React.useState<Draft | null>(null);
-
-  const refresh = () => {
-    void client.invalidateQueries({ queryKey: forgeConfigKeys.all });
-    void client.invalidateQueries({ queryKey: ["forge"] });
-  };
-  const fail = (error: unknown) => toast.error(t(forgeFailureKey(error)));
-
+  const [draft, setDraft] = React.useState<Draft>(initial);
   const save = useMutation({
     mutationFn: (input: Draft & { clearToken?: boolean }) =>
       onLocal(() =>
@@ -119,11 +110,166 @@ export function ForgeConfigs() {
       ),
     onSuccess: () => {
       // 令牌在 core 收下的那一刻离开这个组件。
-      setDraft(null);
-      refresh();
+      setDraft({ ...draft, token: "" });
+      refreshForge(client);
+      onSaved();
     },
-    onError: fail,
+    onError: (error: unknown) => toast.error(t(forgeFailureKey(error))),
   });
+
+  const busy = save.isPending;
+
+  return (
+    <form
+      data-slot="forge-config-form"
+      className="flex min-w-0 flex-col gap-3 px-4 py-3"
+      noValidate
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (busy || !draft.repoKey.trim() || !draft.apiBase.trim()) return;
+        save.mutate(draft);
+      }}
+    >
+      <Field label={t("forge.settings.key")}>
+        <Input
+          value={draft.repoKey}
+          disabled={draft.revision > 0}
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={t("forge.settings.keyPlaceholder")}
+          onChange={(event) =>
+            setDraft({ ...draft, repoKey: event.target.value })
+          }
+          className="min-w-0 font-mono"
+        />
+      </Field>
+      <Field label={t("forge.settings.platform")}>
+        <Select
+          value={draft.forge}
+          onValueChange={(next) =>
+            setDraft({
+              ...draft,
+              forge: next as ConfigurableForge,
+            })
+          }
+        >
+          <SelectTrigger className="w-full min-w-0">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {PLATFORMS.map((value) => (
+              <SelectItem key={value} value={value}>
+                {FORGE_NAMES[value]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+      <Field label={t("forge.settings.apiBase")}>
+        <Input
+          type="url"
+          inputMode="url"
+          autoComplete="off"
+          spellCheck={false}
+          value={draft.apiBase}
+          onChange={(event) =>
+            setDraft({ ...draft, apiBase: event.target.value })
+          }
+          className="min-w-0"
+        />
+      </Field>
+      <Field label={t("forge.settings.token")}>
+        <Input
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          data-slot="forge-token"
+          placeholder={
+            draft.revision > 0 ? t("forge.settings.tokenKeep") : undefined
+          }
+          value={draft.token}
+          onChange={(event) =>
+            setDraft({ ...draft, token: event.target.value })
+          }
+          className="min-w-0"
+        />
+      </Field>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="submit"
+          size="sm"
+          disabled={busy || !draft.repoKey.trim() || !draft.apiBase.trim()}
+        >
+          {t("forge.settings.save")}
+        </Button>
+        {draft.revision > 0 && (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={busy}
+            onClick={() => save.mutate({ ...draft, clearToken: true })}
+          >
+            {t("forge.settings.clearToken")}
+          </Button>
+        )}
+        {onCancel && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={busy}
+            onClick={onCancel}
+          >
+            {t("forge.cancel")}
+          </Button>
+        )}
+      </div>
+    </form>
+  );
+}
+
+/**
+ * 设置 → Git 托管里 GitHub 以外的平台（契约 §29.3）：按主机或按仓库选 Gitea /
+ * GitLab、地址与令牌。
+ *
+ * 范围（契约 §75）：整台机器，或当前打开的工作空间自己的一份——它在这个工作
+ * 空间里盖过整机的配置。工作空间在别的源上时只有整台机器（设置写本机）。
+ *
+ * 令牌只往外走一次：password 输入框，永远不回填；core 先用它核验再存，成功后
+ * 立即从组件状态清掉。答复只说「有没有令牌」与它属于哪个账号。
+ */
+export function ForgeConfigs({
+  prefill = null,
+}: {
+  /** 「已识别」表里点「配置」：带着主机与平台打开新建表单（`nonce` 变一次打开一次）。 */
+  prefill?: { nonce: number; draft: Draft } | null;
+}) {
+  const t = useT();
+  const client = useQueryClient();
+  const workspace = useCanvasStore((state) => state.workspace);
+  // 设置写本机：别的源上的工作空间在本机库里没有。
+  const localWorkspace =
+    workspace && currentSource().sourceId === LOCAL_SOURCE_ID
+      ? workspace
+      : null;
+  const [scopeChoice, setScopeChoice] = React.useState<"machine" | "workspace">(
+    "machine",
+  );
+  const scope =
+    scopeChoice === "workspace" && localWorkspace ? localWorkspace.id : null;
+  const configs = useQuery({
+    queryKey: forgeConfigKeys.scope(scope),
+    queryFn: () => onLocal(() => forgeConfigs(scope)),
+    retry: false,
+  });
+  const [draft, setDraft] = React.useState<Draft | null>(null);
+  React.useEffect(() => {
+    if (prefill) setDraft(prefill.draft);
+  }, [prefill]);
+
+  const refresh = () => refreshForge(client);
+  const fail = (error: unknown) => toast.error(t(forgeFailureKey(error)));
 
   const remove = useMutation({
     mutationFn: (config: ForgeConfig) =>
@@ -134,7 +280,7 @@ export function ForgeConfigs() {
     onError: fail,
   });
 
-  const busy = save.isPending || remove.isPending;
+  const busy = remove.isPending;
   const rows = configs.data ?? [];
 
   return (
@@ -240,117 +386,19 @@ export function ForgeConfigs() {
         ))}
       </Loadable>
       {draft ? (
-        <form
-          data-slot="forge-config-form"
-          className="flex min-w-0 flex-col gap-3 px-4 py-3"
-          noValidate
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (busy || !draft.repoKey.trim() || !draft.apiBase.trim()) return;
-            save.mutate(draft);
-          }}
-        >
-          <Field label={t("forge.settings.key")}>
-            <Input
-              value={draft.repoKey}
-              disabled={draft.revision > 0}
-              autoComplete="off"
-              spellCheck={false}
-              placeholder={t("forge.settings.keyPlaceholder")}
-              onChange={(event) =>
-                setDraft({ ...draft, repoKey: event.target.value })
-              }
-              className="min-w-0 font-mono"
-            />
-          </Field>
-          <Field label={t("forge.settings.platform")}>
-            <Select
-              value={draft.forge}
-              onValueChange={(next) =>
-                setDraft({
-                  ...draft,
-                  forge: next as ConfigurableForge,
-                })
-              }
-            >
-              <SelectTrigger className="w-full min-w-0">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PLATFORMS.map((value) => (
-                  <SelectItem key={value} value={value}>
-                    {FORGE_NAMES[value]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label={t("forge.settings.apiBase")}>
-            <Input
-              type="url"
-              inputMode="url"
-              autoComplete="off"
-              spellCheck={false}
-              value={draft.apiBase}
-              onChange={(event) =>
-                setDraft({ ...draft, apiBase: event.target.value })
-              }
-              className="min-w-0"
-            />
-          </Field>
-          <Field label={t("forge.settings.token")}>
-            <Input
-              type="password"
-              autoComplete="off"
-              spellCheck={false}
-              data-slot="forge-token"
-              placeholder={
-                draft.revision > 0 ? t("forge.settings.tokenKeep") : undefined
-              }
-              value={draft.token}
-              onChange={(event) =>
-                setDraft({ ...draft, token: event.target.value })
-              }
-              className="min-w-0"
-            />
-          </Field>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="submit"
-              size="sm"
-              disabled={busy || !draft.repoKey.trim() || !draft.apiBase.trim()}
-            >
-              {t("forge.settings.save")}
-            </Button>
-            {draft.revision > 0 && (
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                disabled={busy}
-                onClick={() => save.mutate({ ...draft, clearToken: true })}
-              >
-                {t("forge.settings.clearToken")}
-              </Button>
-            )}
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              disabled={busy}
-              onClick={() => setDraft(null)}
-            >
-              {t("forge.cancel")}
-            </Button>
-          </div>
-        </form>
+        <ForgeConfigForm
+          initial={draft}
+          scope={scope}
+          onSaved={() => setDraft(null)}
+          onCancel={() => setDraft(null)}
+        />
       ) : (
         <div className="px-4 py-3">
           <Button
             size="sm"
             variant="secondary"
             disabled={busy || !configs.data}
-            onClick={() => setDraft(EMPTY)}
+            onClick={() => setDraft(EMPTY_DRAFT)}
           >
             {t("forge.settings.add")}
           </Button>

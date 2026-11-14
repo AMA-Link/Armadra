@@ -43,6 +43,8 @@ const forgeApi = vi.hoisted(() => ({
   forgeConfigs: vi.fn(),
   putForgeConfig: vi.fn(),
   deleteForgeConfig: vi.fn(),
+  forgeHosts: vi.fn(),
+  setReuseLocalLogins: vi.fn(),
 }));
 
 vi.mock("../../../api/forge", async (original) => ({
@@ -124,6 +126,9 @@ beforeEach(() => {
     revision: input.expectedRevision + 1,
   }));
   forgeApi.deleteForgeConfig.mockResolvedValue(undefined);
+  // 默认：旧 core 没有主机表，手动配置直接展开。
+  forgeApi.forgeHosts.mockRejectedValue(new Error("unsupported"));
+  forgeApi.setReuseLocalLogins.mockResolvedValue(undefined);
   session.connect.mockClear();
   session.state = { status: "idle" };
   session.client = null;
@@ -335,5 +340,65 @@ describe("Gitea / GitLab per host or repository (§29.3)", () => {
         "workspace-1",
       ),
     );
+  });
+});
+
+describe("复用本机登录与已识别主机", () => {
+  const hosts = {
+    reuseLocalLogins: true,
+    hosts: [
+      {
+        host: "github.com",
+        forge: "github" as const,
+        credentialSource: "ghCli" as const,
+        accountLogin: "octocat",
+        credential: true,
+      },
+      {
+        host: "git.example.test",
+        forge: "gitea" as const,
+        credentialSource: null,
+        accountLogin: null,
+        credential: false,
+      },
+    ],
+  };
+
+  it("列出主机、来源与账号；手动配置默认折叠", async () => {
+    forgeApi.forgeHosts.mockResolvedValue(hosts);
+    renderPage(client());
+    expect(await screen.findByText("github.com")).toBeTruthy();
+    expect(screen.getByText("gh")).toBeTruthy();
+    expect(screen.getByText("octocat")).toBeTruthy();
+    expect(document.querySelector("[data-slot='github-status']")).toBeNull();
+    expect(screen.getByText("手动配置")).toBeTruthy();
+  });
+
+  it("开关调 setReuseLocalLogins 并重读主机表", async () => {
+    forgeApi.forgeHosts.mockResolvedValue(hosts);
+    renderPage(client());
+    const toggle = await screen.findByRole("switch", { name: "复用本机登录" });
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(forgeApi.setReuseLocalLogins).toHaveBeenCalledWith(false),
+    );
+    await waitFor(() =>
+      expect(forgeApi.forgeHosts.mock.calls.length).toBeGreaterThan(1),
+    );
+  });
+
+  it("缺令牌的行点「配置」：展开手动配置，主机与平台预填", async () => {
+    forgeApi.forgeHosts.mockResolvedValue(hosts);
+    renderPage(client());
+    await screen.findByText("git.example.test");
+    fireEvent.click(screen.getByRole("button", { name: "配置" }));
+    const key = (await waitFor(() => {
+      const el = document.querySelector(
+        "[data-slot='forge-config-form'] input",
+      ) as HTMLInputElement | null;
+      if (!el) throw new Error("no form");
+      return el;
+    })) as HTMLInputElement;
+    expect(key.value).toBe("git.example.test");
   });
 });
