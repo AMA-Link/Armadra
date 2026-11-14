@@ -2,7 +2,10 @@ import { useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useT, usePreferencesStore } from "@/app/preferences-store";
-import { ForgeHosted, PullBody, forgeKeys } from "@/panels/github/ForgeHosted";
+import { ChecksView } from "@/panels/github/ForgeChecksSummary";
+import { IssueDetail, PullDetail } from "@/panels/github/ForgeDetail";
+import { ForgeHosted, forgeKeys } from "@/panels/github/ForgeHosted";
+import { ForgeItemRow } from "@/panels/github/ForgeItemRow";
 import {
   ForgeConfigs,
   forgeConfigKeys,
@@ -17,6 +20,12 @@ import { integrationKey } from "@/panels/settings/pages/integration/use-integrat
 import { CLI_GROUP, FLEET, idleJob } from "../fixtures/integration";
 import {
   FORGE_CONFIGS,
+  GITEA_ISSUE_COMMENTS,
+  GITEA_ISSUE_DETAIL,
+  GITLAB_CHECKS,
+  GITLAB_COMMENTS,
+  GITLAB_FILES,
+  GITLAB_REPO,
   GITEA_DETECTION,
   GITEA_ISSUES,
   GITEA_PULLS,
@@ -116,6 +125,19 @@ function ForgeSamples() {
       pageParams: [null],
     });
     client.setQueryData(forgeConfigKeys.all, FORGE_CONFIGS);
+    const gitea = GITEA_DETECTION.repository;
+    client.setQueryData(forgeKeys.issue(gitea, 21), GITEA_ISSUE_DETAIL);
+    client.setQueryData(
+      forgeKeys.issueComments(gitea, 21),
+      GITEA_ISSUE_COMMENTS,
+    );
+    client.setQueryData(forgeKeys.pull(GITLAB_REPO, 12), GITLAB_MR);
+    client.setQueryData(forgeKeys.pullChecks(GITLAB_REPO, 12), GITLAB_CHECKS);
+    client.setQueryData(forgeKeys.pullFiles(GITLAB_REPO, 12), GITLAB_FILES);
+    client.setQueryData(
+      forgeKeys.pullComments(GITLAB_REPO, 12),
+      GITLAB_COMMENTS,
+    );
     return true;
   });
   return (
@@ -129,8 +151,31 @@ function ForgeSamples() {
       </div>
       <div className="flex min-w-0 flex-col gap-6">
         <Sample caption={t("forge.showcase.gitlab")}>
-          <div className="min-w-0 space-y-3 rounded-card border border-border p-3">
-            <PullBody pull={GITLAB_MR} locale={locale} />
+          <div className="min-w-0 rounded-card border border-border">
+            <PullDetail
+              repo={GITLAB_REPO}
+              scope={null}
+              number={12}
+              locale={locale}
+              onBack={() => {}}
+            />
+          </div>
+        </Sample>
+        <Sample caption={t("forge.showcase.issue")}>
+          <div className="min-w-0 rounded-card border border-border">
+            <IssueDetail
+              repo={GITEA_DETECTION.repository}
+              scope={null}
+              number={21}
+              locale={locale}
+              onBack={() => {}}
+            />
+          </div>
+        </Sample>
+        <Sample caption={t("forge.showcase.reference")}>
+          <div className="flex min-w-0 flex-col gap-2">
+            <ForgeItemRow kind="pull" item={GITLAB_MR} locale={locale} />
+            <ChecksView checks={GITLAB_CHECKS} compact />
           </div>
         </Sample>
         <Sample caption={t("forge.showcase.settings")}>

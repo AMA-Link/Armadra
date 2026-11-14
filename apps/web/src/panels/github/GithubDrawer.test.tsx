@@ -275,7 +275,7 @@ describe("仓库、issue 与 PR", () => {
     selectTab("Merge requests");
     fireEvent.click(await screen.findByText("Login rework"));
     expect(await screen.findByText("Split the page")).toBeTruthy();
-    expect(screen.getByText("feature/login → main")).toBeTruthy();
+    expect(screen.getByText("main ← feature/login")).toBeTruthy();
     expect(document.querySelector("[data-slot=forge-merge]")).toBeNull();
     expect(screen.queryByText("合并")).toBeNull();
   });
