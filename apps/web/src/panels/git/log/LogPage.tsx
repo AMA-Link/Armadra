@@ -28,12 +28,14 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "../../../ui/resizable";
+import { EmptyState } from "../../../ui/state";
 import { ReadError } from "../forms";
 import { Reflog } from "../Reflog";
 import { RepositoryConfirmDialog } from "../RepositoryConfirmDialog";
 import type { Confirmation } from "../operations";
 import { invalidateGitQueries } from "../queries";
 import { BranchTree } from "./BranchTree";
+import { CommitPage } from "../commit/CommitPage";
 import { CommitDetails } from "./CommitDetails";
 import { LogTable, UNCOMMITTED_KEY } from "./LogTable";
 import { LogToolbar } from "./LogToolbar";
@@ -81,9 +83,11 @@ import {
 
 export interface LogPageProps {
   workspaceId: string;
+  /** 窗口壳的刷新按钮每按一次换一个值，交给右栏的提交台（见 `CommitPage`）。 */
+  refreshToken?: number;
 }
 
-export function LogPage({ workspaceId }: LogPageProps) {
+export function LogPage({ workspaceId, refreshToken = 0 }: LogPageProps) {
   const t = useT();
   const compact = useCompactLayout();
   const client = useQueryClient();
@@ -146,12 +150,37 @@ export function LogPage({ workspaceId }: LogPageProps) {
     });
   }, [repositories, t, workspaceRoot]);
 
+  /** 每个仓库当前分支的 ↑↓；没有上游（`null`）的不进表。 */
+  const sync = useMemo(() => {
+    const entries = new Map<string, { ahead: number; behind: number }>();
+    for (const repository of repositories) {
+      const current = repository.branches.find((branch) => branch.current);
+      if (current?.ahead == null || current.behind == null) continue;
+      entries.set(repository.repositoryPath, {
+        ahead: current.ahead,
+        behind: current.behind,
+      });
+    }
+    return entries;
+  }, [repositories]);
+
   /** 展开的合并（`commitKey`）。只活在这次打开里，不进偏好。 */
   const [expandedMerges, setExpandedMerges] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
 
-  const key = filterKey(git);
+  /** 没筛仓库时请求哪些：链接 worktree 默认不进时间线（它与主检出共享提交）。 */
+  const defaultRepositories = useMemo(
+    () =>
+      repositories.some((repository) => repository.kind === "worktree")
+        ? repositories
+            .filter((repository) => repository.kind !== "worktree")
+            .map((repository) => repository.repositoryPath)
+        : [],
+    [repositories],
+  );
+
+  const key = `${filterKey(git)}|${defaultRepositories.join("\n")}`;
   const log = useInfiniteQuery({
     queryKey: sk("git-log", workspaceId, key),
     queryFn: ({ pageParam, signal }) =>
@@ -160,11 +189,14 @@ export function LogPage({ workspaceId }: LogPageProps) {
         logRequestFromPreferences(git, {
           now: Date.now(),
           cursor: pageParam,
+          defaultRepositories,
         }),
         signal,
       ),
     initialPageParam: null as string | null,
     getNextPageParam: (page) => page.nextCursor,
+    // 先等仓库列表：否则第一页按「全部仓库」读，worktree 的提交闪一下再消失。
+    enabled: !refs.isPending,
     retry: false,
   });
   const pages = useMemo(() => log.data?.pages ?? [], [log.data?.pages]);
@@ -414,6 +446,7 @@ export function LogPage({ workspaceId }: LogPageProps) {
         repositories={repositories.map((repository, index) => ({
           path: repository.repositoryPath,
           name: repository.name,
+          worktree: repository.kind === "worktree",
           // 仓库色以日志响应里的发现序号为准；被筛掉的仓库不在响应里，
           // 退回它在分支树数据里的位置（同一份发现列表的顺序）。
           color: repositoryColor(
@@ -466,7 +499,7 @@ export function LogPage({ workspaceId }: LogPageProps) {
           setSelected(rowKey);
           setCommit(entry);
           setCompareBase(null);
-          if (compact && rowKey !== UNCOMMITTED_KEY) setStage("details");
+          if (compact) setStage("details");
         }}
         uncommitted={uncommitted}
         compact={git.compactRows}
@@ -474,6 +507,7 @@ export function LogPage({ workspaceId }: LogPageProps) {
         narrow={compact}
         myEmail={git.highlightMine ? myEmail : null}
         collapseMerges={git.collapseMerges}
+        sync={sync}
         expanded={expandedMerges}
         onToggleMerge={(rowKey) =>
           setExpandedMerges((current) => {
@@ -495,7 +529,15 @@ export function LogPage({ workspaceId }: LogPageProps) {
     </div>
   );
 
-  const details = commit ? (
+  const details =
+    selected === UNCOMMITTED_KEY ? (
+      // 「未提交的变更」那一行就是提交台（#927 B2）：不再有单独的提交页签。
+      <CommitPage
+        workspaceId={workspaceId}
+        refreshToken={refreshToken}
+        stacked
+      />
+    ) : commit ? (
     <CommitDetails
       key={commitKey(commit)}
       workspaceId={workspaceId}
@@ -505,7 +547,9 @@ export function LogPage({ workspaceId }: LogPageProps) {
       onBaseChange={setCompareBase}
       onOpenFile={compact ? () => setStage("diff") : undefined}
     />
-  ) : null;
+  ) : (
+    <EmptyState inline title={t("gitLog.details.empty")} />
+  );
 
   const dialogs = (
     <>
@@ -671,7 +715,7 @@ export function LogPage({ workspaceId }: LogPageProps) {
               id="details"
               defaultSize={`${git.detailsWidth}`}
               minSize="15"
-              maxSize="55"
+              maxSize="70"
               className="flex min-w-0 flex-col"
             >
               {details}

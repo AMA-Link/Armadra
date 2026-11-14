@@ -73,6 +73,8 @@ export interface GitPreferences {
   showHashColumn: boolean;
   /** 按第一父折叠合并带进来的分支提交（#927 B1）。 */
   collapseMerges: boolean;
+  /** 详情里的代码差异用并排视图（#927 B2）；否则统一视图。 */
+  diffSplit: boolean;
   /** 详情里的变更文件：树形（false）还是平铺（true）。 */
   flatFiles: boolean;
   /** 提交页变更树的排列方式。 */
@@ -103,6 +105,7 @@ export const GIT_KEYS: Record<keyof GitPreferences, string> = {
   compactRows: KEY("compactRows"),
   showHashColumn: KEY("showHashColumn"),
   collapseMerges: KEY("collapseMerges"),
+  diffSplit: KEY("diffSplit"),
   flatFiles: KEY("flatFiles"),
   // 键名与字段名不一致是故意的：这一项原来住在提交页自己的 `preferences.ts`
   // 里，沿用旧键，已经存过的人搬过来之后仍然停在自己选的那个排列上。
@@ -126,10 +129,12 @@ export function storedGitPreferences(): GitPreferences {
     // 0 是「没拖过」，不是「拖成 0 高」——下限由 `WorkPanelSheet` 兜着。
     windowHeight: storedNumber(GIT_KEYS.windowHeight, 0, 0, 20_000),
     maximized: storedBoolean(GIT_KEYS.maximized, false),
-    treeCollapsed: storedBoolean(GIT_KEYS.treeCollapsed, false),
+    // 分支树默认收起（#927 B2）：仓库筛选在工具栏，分支动作在提交行的右键菜单，
+    // 历史表与右栏要的是宽度。收起状态仍可在底栏一键展开。
+    treeCollapsed: storedBoolean(GIT_KEYS.treeCollapsed, true),
     detailsCollapsed: storedBoolean(GIT_KEYS.detailsCollapsed, false),
     treeWidth: storedNumber(GIT_KEYS.treeWidth, 20, 8, 45),
-    detailsWidth: storedNumber(GIT_KEYS.detailsWidth, 30, 12, 55),
+    detailsWidth: storedNumber(GIT_KEYS.detailsWidth, 45, 12, 70),
     favorites: storedIds(GIT_KEYS.favorites),
     expanded: storedIds(GIT_KEYS.expanded),
     searchText: readStored(GIT_KEYS.searchText) ?? "",
@@ -149,6 +154,7 @@ export function storedGitPreferences(): GitPreferences {
     compactRows: storedBoolean(GIT_KEYS.compactRows, false),
     showHashColumn: storedBoolean(GIT_KEYS.showHashColumn, true),
     collapseMerges: storedBoolean(GIT_KEYS.collapseMerges, true),
+    diffSplit: storedBoolean(GIT_KEYS.diffSplit, false),
     flatFiles: storedBoolean(GIT_KEYS.flatFiles, false),
     changeLayout: storedEnum(GIT_KEYS.changeLayout, GIT_CHANGE_LAYOUTS, "tree"),
   };

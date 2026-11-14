@@ -54,7 +54,16 @@ export function referenceOf(key: string): string {
  */
 export function logRequestFromPreferences(
   git: GitPreferences,
-  options: { now: number; cursor?: string | null; limit?: number } = {
+  options: {
+    now: number;
+    cursor?: string | null;
+    limit?: number;
+    /**
+     * 没筛仓库时实际请求的那一组（#927 B2）：链接 worktree 与主检出共享提交，
+     * 默认不进时间线，否则同一批提交要出现两遍。空 = 全部仓库。
+     */
+    defaultRepositories?: readonly string[];
+  } = {
     now: Date.now(),
   },
 ): GitLogRequest {
@@ -75,7 +84,9 @@ export function logRequestFromPreferences(
     limit: options.limit ?? GIT_LOG_PAGE_SIZE,
     ...(git.repositories.length > 0
       ? { repositories: [...git.repositories] }
-      : {}),
+      : options.defaultRepositories && options.defaultRepositories.length > 0
+        ? { repositories: [...options.defaultRepositories] }
+        : {}),
     ...(git.authors.length > 0 ? { authors: [...git.authors] } : {}),
     ...(since ? { since } : {}),
     ...(until ? { until } : {}),

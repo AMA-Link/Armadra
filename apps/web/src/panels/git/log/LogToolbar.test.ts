@@ -39,4 +39,12 @@ describe("仓库色块按钮的下一份筛选", () => {
       "armadra-cloud",
     ]);
   });
+
+  it("worktree 默认不在：打开它得到一份显式列表，再关掉回到缺省", () => {
+    const all = [".", "pkg", "wt"];
+    const defaults = [".", "pkg"];
+    expect(nextRepositories(all, [], "wt", false, defaults)).toEqual(all);
+    expect(nextRepositories(all, all, "wt", false, defaults)).toEqual([]);
+    expect(nextRepositories(all, [], "pkg", false, defaults)).toEqual(["."]);
+  });
 });
