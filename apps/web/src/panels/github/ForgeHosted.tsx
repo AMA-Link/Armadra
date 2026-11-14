@@ -1,17 +1,13 @@
 import * as React from "react";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { useInfiniteQuery } from "@tanstack/react-query";
 
 import { Loadable } from "@/loading/Loadable";
-import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
-import { IconButton } from "@/ui/icon-button";
 import { Skeleton } from "@/ui/skeleton";
 import { Spinner } from "@/ui/spinner";
 import { EmptyState } from "@/ui/state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
 import { useT } from "@/app/preferences-store";
-import { openExternal } from "@/platform";
 import {
   Select,
   SelectContent,
@@ -22,17 +18,17 @@ import {
 import { Field } from "../git/forms";
 import {
   type ForgeDetection,
-  type ForgeIssue,
   type ForgeListState,
-  type ForgePull,
   type ForgeRepo,
   type ForgeScope,
-  forgeFailureKey,
-  forgeIssue,
   forgeIssues,
-  forgePull,
   forgePulls,
 } from "../../api/forge";
+import { Failure, IssueDetail, OpenRemote, PullDetail } from "./ForgeDetail";
+import { ForgeItemRow } from "./ForgeItemRow";
+import { forgeKeys } from "./forge-keys";
+
+export { OpenRemote, forgeKeys };
 
 /**
  * 代码托管面板的仓库视图（契约 §29.4）：GitHub、Gitea、GitLab 同一面，只读——
@@ -42,57 +38,6 @@ import {
  */
 
 export type ForgeTab = "issues" | "pulls";
-
-/** 仓库加范围：两个工作空间对同一仓库可能用不同的配置（契约 §75）。 */
-function repoKey(repo: ForgeRepo, scope: ForgeScope): string {
-  return `${scope ?? ""}|${repo.host}/${repo.owner}/${repo.name}`;
-}
-
-export const forgeKeys = {
-  all: ["forge"] as const,
-  issues: (repo: ForgeRepo, state: ForgeListState, scope: ForgeScope = null) =>
-    ["forge", "issues", repoKey(repo, scope), state] as const,
-  issue: (repo: ForgeRepo, number: number, scope: ForgeScope = null) =>
-    ["forge", "issue", repoKey(repo, scope), number] as const,
-  pulls: (repo: ForgeRepo, state: ForgeListState, scope: ForgeScope = null) =>
-    ["forge", "pulls", repoKey(repo, scope), state] as const,
-  pull: (repo: ForgeRepo, number: number, scope: ForgeScope = null) =>
-    ["forge", "pull", repoKey(repo, scope), number] as const,
-};
-
-function when(ms: number | null, locale: string): string {
-  if (!ms || ms <= 0) return "";
-  return new Intl.DateTimeFormat(locale, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(ms));
-}
-
-export function OpenRemote({ url }: { url: string }) {
-  const t = useT();
-  if (!url) return null;
-  return (
-    <IconButton
-      label={t("forge.openRemote")}
-      onClick={() => void openExternal(url)}
-    >
-      <ExternalLink />
-    </IconButton>
-  );
-}
-
-function Failure({ error }: { error: unknown }) {
-  const t = useT();
-  return (
-    <p
-      role="status"
-      data-slot="forge-failure"
-      className="px-3 py-2 text-meta text-destructive"
-    >
-      {t(forgeFailureKey(error))}
-    </p>
-  );
-}
 
 export interface ForgeHostedProps {
   detection: ForgeDetection;
@@ -287,13 +232,11 @@ function IssueList({
           <EmptyState inline title={t("forge.empty")} />
         )}
         {items.map((issue) => (
-          <Row
+          <ForgeItemRow
             key={issue.number}
-            slot="forge-issue"
-            number={issue.number}
-            title={issue.title}
-            badges={[t(`forge.state.${issue.state}`)]}
-            meta={[issue.author, when(issue.updatedAtMs, locale)]}
+            kind="issue"
+            item={issue}
+            locale={locale}
             onOpen={() => onOpen(issue.number)}
           />
         ))}
@@ -343,19 +286,11 @@ function PullList({
           <EmptyState inline title={t("forge.empty")} />
         )}
         {items.map((pull) => (
-          <Row
+          <ForgeItemRow
             key={pull.number}
-            slot="forge-pull"
-            number={pull.number}
-            title={pull.title}
-            badges={[
-              t(`forge.state.${pull.state}`),
-              ...(pull.draft ? [t("forge.draft")] : []),
-            ]}
-            meta={[
-              `${pull.headRef} → ${pull.baseRef}`,
-              when(pull.updatedAtMs, locale),
-            ]}
+            kind="pull"
+            item={pull}
+            locale={locale}
             onOpen={() => onOpen(pull.number)}
           />
         ))}
@@ -393,249 +328,5 @@ export function ForgeListSkeleton({ label }: { label: string }) {
         </div>
       ))}
     </div>
-  );
-}
-
-/** 详情页：标题条、徽标行、元信息、四行正文。 */
-function ForgeDetailSkeleton({ label }: { label: string }) {
-  return (
-    <div
-      role="status"
-      aria-busy="true"
-      aria-label={label}
-      className="flex min-w-0 flex-col gap-(--space-block)"
-    >
-      <Skeleton className="h-5 w-3/4" />
-      <Skeleton className="h-5 w-24 rounded-full" />
-      <Skeleton className="h-3 w-1/2" />
-      <div className="flex flex-col gap-2">
-        <Skeleton className="h-3 w-full" />
-        <Skeleton className="h-3 w-5/6" />
-        <Skeleton className="h-3 w-2/3" />
-        <Skeleton className="h-3 w-1/2" />
-      </div>
-    </div>
-  );
-}
-
-function Row({
-  slot,
-  number,
-  title,
-  badges,
-  meta,
-  onOpen,
-}: {
-  slot: string;
-  number: number;
-  title: string;
-  badges: string[];
-  meta: (string | null)[];
-  onOpen: () => void;
-}) {
-  return (
-    <article
-      data-slot={slot}
-      data-number={number}
-      className="min-w-0 rounded-card border border-border"
-    >
-      <Button
-        variant="ghost"
-        className="h-auto w-full min-w-0 flex-col items-stretch gap-1 px-3 py-2 text-left"
-        onClick={onOpen}
-      >
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 tabular-nums text-muted-foreground">
-            #{number}
-          </span>
-          <span className="min-w-0 flex-1 truncate text-body font-medium">
-            {title}
-          </span>
-          {badges.map((badge) => (
-            <Badge key={badge} variant="secondary" size="sm">
-              {badge}
-            </Badge>
-          ))}
-        </span>
-        <span className="min-w-0 truncate text-meta font-normal text-muted-foreground">
-          {meta.filter(Boolean).join(" · ")}
-        </span>
-      </Button>
-    </article>
-  );
-}
-
-/* --------------------------------- 详情 --------------------------------- */
-
-function Back({ onBack, url }: { onBack: () => void; url: string }) {
-  const t = useT();
-  return (
-    <div className="flex min-w-0 items-center gap-1">
-      <IconButton label={t("forge.back")} onClick={onBack}>
-        <ArrowLeft />
-      </IconButton>
-      <div className="flex-1" />
-      <OpenRemote url={url} />
-    </div>
-  );
-}
-
-function Heading({ number, title }: { number: number; title: string }) {
-  return (
-    <h3 className="min-w-0 text-section font-semibold break-words">
-      <span className="mr-2 tabular-nums text-muted-foreground">#{number}</span>
-      {title}
-    </h3>
-  );
-}
-
-function Body({ text }: { text: string }) {
-  if (!text) return null;
-  return (
-    <p className="min-w-0 text-body leading-5 break-words whitespace-pre-wrap select-text">
-      {text}
-    </p>
-  );
-}
-
-function ForgeDetailLoading() {
-  const t = useT();
-  return (
-    <Loadable
-      loading
-      skeleton={<ForgeDetailSkeleton label={t("state.loading")} />}
-    >
-      {null}
-    </Loadable>
-  );
-}
-
-function IssueDetail({
-  repo,
-  scope,
-  number,
-  locale,
-  onBack,
-}: {
-  repo: ForgeRepo;
-  scope: ForgeScope;
-  number: number;
-  locale: string;
-  onBack: () => void;
-}) {
-  const issue = useQuery({
-    queryKey: forgeKeys.issue(repo, number, scope),
-    queryFn: () => forgeIssue(repo, number, scope),
-    retry: false,
-  });
-  return (
-    <div
-      className="flex min-w-0 flex-col gap-(--space-block) p-(--space-page)"
-      data-slot="forge-issue-detail"
-    >
-      <Back onBack={onBack} url={issue.data?.url ?? ""} />
-      {issue.isError && <Failure error={issue.error} />}
-      {issue.isLoading && <ForgeDetailLoading />}
-      {issue.data && <IssueBody issue={issue.data} locale={locale} />}
-    </div>
-  );
-}
-
-function IssueBody({ issue, locale }: { issue: ForgeIssue; locale: string }) {
-  const t = useT();
-  return (
-    <>
-      <div className="flex min-w-0 flex-col gap-(--space-group)">
-        <Heading number={issue.number} title={issue.title} />
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <Badge variant="secondary" size="sm">
-            {t(`forge.state.${issue.state}`)}
-          </Badge>
-          {issue.labels.map((label) => (
-            <Badge key={label} variant="outline" size="sm">
-              {label}
-            </Badge>
-          ))}
-        </div>
-        <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-meta">
-          <dt className="text-muted-foreground">{t("forge.author")}</dt>
-          <dd className="min-w-0 truncate">{issue.author}</dd>
-          <dt className="text-muted-foreground">{t("forge.updatedAt")}</dt>
-          <dd className="min-w-0 truncate">
-            {when(issue.updatedAtMs, locale)}
-          </dd>
-        </dl>
-      </div>
-      <Body text={issue.body} />
-    </>
-  );
-}
-
-function PullDetail({
-  repo,
-  scope,
-  number,
-  locale,
-  onBack,
-}: {
-  repo: ForgeRepo;
-  scope: ForgeScope;
-  number: number;
-  locale: string;
-  onBack: () => void;
-}) {
-  const pull = useQuery({
-    queryKey: forgeKeys.pull(repo, number, scope),
-    queryFn: () => forgePull(repo, number, scope),
-    retry: false,
-  });
-  return (
-    <div
-      className="flex min-w-0 flex-col gap-(--space-block) p-(--space-page)"
-      data-slot="forge-pull-detail"
-    >
-      <Back onBack={onBack} url={pull.data?.url ?? ""} />
-      {pull.isError && <Failure error={pull.error} />}
-      {pull.isLoading && <ForgeDetailLoading />}
-      {pull.data && <PullBody pull={pull.data} locale={locale} />}
-    </div>
-  );
-}
-
-export function PullBody({
-  pull,
-  locale,
-}: {
-  pull: ForgePull;
-  locale: string;
-}) {
-  const t = useT();
-  return (
-    <>
-      <div className="flex min-w-0 flex-col gap-(--space-group)">
-        <Heading number={pull.number} title={pull.title} />
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <Badge variant="secondary" size="sm">
-            {t(`forge.state.${pull.state}`)}
-          </Badge>
-          {pull.draft && (
-            <Badge variant="outline" size="sm">
-              {t("forge.draft")}
-            </Badge>
-          )}
-        </div>
-        <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-meta">
-          <dt className="text-muted-foreground">{t("forge.pull.branches")}</dt>
-          <dd className="min-w-0 truncate font-mono">
-            {pull.headRef} → {pull.baseRef}
-          </dd>
-          <dt className="text-muted-foreground">{t("forge.author")}</dt>
-          <dd className="min-w-0 truncate">{pull.author}</dd>
-          <dt className="text-muted-foreground">{t("forge.updatedAt")}</dt>
-          <dd className="min-w-0 truncate">{when(pull.updatedAtMs, locale)}</dd>
-        </dl>
-      </div>
-      <Body text={pull.body} />
-    </>
   );
 }

@@ -87,7 +87,7 @@ export function GroupNode({
           data-slot="github-frame-references"
           className="canvas-group-badges absolute -top-[22px] right-1 flex gap-1"
         >
-          <GithubReferenceBadge nodeId={node.id} />
+          <GithubReferenceBadge nodeId={node.id} checks />
         </div>
         {/* 绑定徽章（G03）在 Frame 内左上角：它有「重新创建 / 解绑」按钮，
             所以要自己收回指针事件，别被当成 Frame 的拖动。 */}

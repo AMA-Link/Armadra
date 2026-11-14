@@ -1,5 +1,8 @@
 import type {
+  ForgeChecks,
   ForgeConfig,
+  ForgeConversationItem,
+  ForgeFile,
   ForgeDetection,
   ForgeIssue,
   ForgePull,
@@ -87,8 +90,109 @@ export const GITEA_PULLS: ForgePull[] = [
 ];
 
 export const GITLAB_MR: ForgePull = pull(12, "Login rework", {
-  body: "Split the login page into two steps.",
+  body: "Split the login page into two steps.\n\n- keep the session\n- add a **back** link\n\nCloses #21",
 });
+
+export const GITLAB_REPO = {
+  host: "gitlab.example.test",
+  owner: "acme",
+  name: "app",
+};
+
+export const GITLAB_CHECKS: ForgeChecks = {
+  headSha: SHA,
+  rollup: "failure",
+  checks: [
+    { name: "lint", state: "success", url: "https://ci.example.test/1" },
+    { name: "test", state: "success", url: "https://ci.example.test/2" },
+    { name: "build", state: "pending", url: null },
+    { name: "e2e", state: "failure", url: "https://ci.example.test/4" },
+  ],
+};
+
+export const GITLAB_FILES: ForgeFile[] = [
+  {
+    path: "src/login.ts",
+    previousPath: null,
+    status: "added",
+    additions: 48,
+    deletions: 0,
+    patch: null,
+  },
+  {
+    path: "src/session.ts",
+    previousPath: null,
+    status: "modified",
+    additions: 12,
+    deletions: 5,
+    patch: null,
+  },
+  {
+    path: "src/legacy-login.ts",
+    previousPath: null,
+    status: "removed",
+    additions: 0,
+    deletions: 31,
+    patch: null,
+  },
+];
+
+export const GITLAB_COMMENTS: ForgeConversationItem[] = [
+  {
+    id: "r1",
+    kind: "review",
+    author: "bob",
+    body: "Looks good, one nit on naming.",
+    state: "approved",
+    url: "",
+    createdAtMs: AT,
+  },
+  {
+    id: "r2",
+    kind: "review",
+    author: "carol",
+    body: "The back link loses the form state.",
+    state: "changes_requested",
+    url: "",
+    createdAtMs: AT,
+  },
+  {
+    id: "c1",
+    kind: "comment",
+    author: "alice",
+    body: "Fixed in the next push.",
+    state: null,
+    url: "",
+    createdAtMs: AT,
+  },
+];
+
+export const GITEA_ISSUE_DETAIL: ForgeIssue = issue(21, "登录后跳回原页面", {
+  labels: ["bug"],
+  commentCount: 2,
+  body: "登录成功后应该回到之前的页面。\n\n1. 打开 `/settings`\n2. 登录\n3. 落在首页",
+});
+
+export const GITEA_ISSUE_COMMENTS: ForgeConversationItem[] = [
+  {
+    id: "i1",
+    kind: "comment",
+    author: "bob",
+    body: "Reproduced on 0.17.3.",
+    state: null,
+    url: "",
+    createdAtMs: AT,
+  },
+  {
+    id: "i2",
+    kind: "comment",
+    author: "alice",
+    body: "Fix is in #14.",
+    state: null,
+    url: "",
+    createdAtMs: AT,
+  },
+];
 
 export const FORGE_CONFIGS: ForgeConfig[] = [
   {
