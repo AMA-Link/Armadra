@@ -13,7 +13,7 @@
 //   pnpm --filter @armadra/desktop build
 //   node tools/probes/git-tool-window.mjs [输出目录]
 //
-// 产物：<输出目录>/log-desktop.png、log-maximized.png、commit-desktop.png、
+// 产物：<输出目录>/log-desktop.png、details-desktop.png、log-maximized.png、commit-desktop.png、
 // mobile-branches.png、mobile-commits.png、mobile-details.png、
 // mobile-commit.png，以及 result.json。
 import { execFileSync, spawn } from "node:child_process";
@@ -443,6 +443,16 @@ createRoot(document.getElementById("root")!).render(
   await viewport(1440, 900);
   await load();
   await capture("log-desktop");
+  // 选中一个有文件改动的提交：右栏上半是信息与文件，下半是全高的代码差异。
+  await evaluate(`
+    const row = [...document.querySelectorAll("button[data-commit]")]
+      .find((node) => (node.textContent ?? "").includes("feat: ours"));
+    if (!row) return "missing";
+    row.click();
+    return "clicked";
+  `);
+  await sleep(2500);
+  await capture("details-desktop");
 
   // 最大化：同一个窗口铺满整块画布区。
   await evaluate(`
@@ -455,13 +465,14 @@ createRoot(document.getElementById("root")!).render(
   await sleep(1500);
   await capture("log-maximized");
 
-  /* ------------------------------ 桌面：提交页 --------------------------- */
+  /* ---------------------- 桌面：选中「未提交」即提交台 ---------------------- */
 
+  // #927 B2 起没有「提交」页签：表格最上面那条「未提交的变更」就是入口。
   await load();
-  await clickText('[role="tab"]', "提交");
+  await clickText("button", "未提交的变更");
   await sleep(2500);
   await capture("commit-desktop");
-  // 最大化的提交页：变更树、冲突组与差异一屏放得下。
+  // 最大化：右栏的变更树、冲突组与差异一屏放得下。
   await clickText('button[aria-label="最大化"]', "");
   await sleep(2000);
   await capture("commit-maximized");
@@ -493,7 +504,10 @@ createRoot(document.getElementById("root")!).render(
   `);
   await sleep(2500);
   await capture("mobile-diff");
-  await clickText('[role="tab"]', "提交");
+  // 退回提交列表，点「未提交的变更」进提交台。
+  await clickText("button", "返回");
+  await clickText("button", "返回");
+  await clickText("button", "未提交的变更");
   await sleep(3000);
   await capture("mobile-commit");
 
