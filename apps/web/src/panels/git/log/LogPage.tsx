@@ -538,18 +538,18 @@ export function LogPage({ workspaceId, refreshToken = 0 }: LogPageProps) {
         stacked
       />
     ) : commit ? (
-    <CommitDetails
-      key={commitKey(commit)}
-      workspaceId={workspaceId}
-      target={at(commit.repositoryPath)}
-      commit={commit}
-      base={compareBase}
-      onBaseChange={setCompareBase}
-      onOpenFile={compact ? () => setStage("diff") : undefined}
-    />
-  ) : (
-    <EmptyState inline title={t("gitLog.details.empty")} />
-  );
+      <CommitDetails
+        key={commitKey(commit)}
+        workspaceId={workspaceId}
+        target={at(commit.repositoryPath)}
+        commit={commit}
+        base={compareBase}
+        onBaseChange={setCompareBase}
+        onOpenFile={compact ? () => setStage("diff") : undefined}
+      />
+    ) : (
+      <EmptyState inline title={t("gitLog.details.empty")} />
+    );
 
   const dialogs = (
     <>

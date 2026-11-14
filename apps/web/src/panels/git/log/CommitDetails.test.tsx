@@ -116,7 +116,9 @@ describe("提交详情", () => {
   it("桌面上自动打开第一个文件的差异，占满下半（#927 B2）", async () => {
     const { container } = view();
     await waitFor(() => expect(commitFile).toHaveBeenCalled());
-    expect(container.querySelector('[data-slot="git-log-diff"]')).not.toBeNull();
+    expect(
+      container.querySelector('[data-slot="git-log-diff"]'),
+    ).not.toBeNull();
     expect((await screen.findByLabelText("File diff")).textContent).toContain(
       "+new",
     );

@@ -214,7 +214,10 @@ describe("提交图表格", () => {
   });
 
   it("仓库 HEAD 那一行标出领先 / 落后上游（#927 B2）", () => {
-    const head: GitLogCommit = { ...commit(2), refs: ["HEAD -> refs/heads/main"] };
+    const head: GitLogCommit = {
+      ...commit(2),
+      refs: ["HEAD -> refs/heads/main"],
+    };
     const { container } = table({
       commits: [head, commit(1), commit(0)],
       sync: new Map([[".", { ahead: 1, behind: 2 }]]),

@@ -99,7 +99,11 @@ export function CommitDetails({
     [rows],
   );
   const file =
-    picked === undefined ? (onOpenFile ? null : (filePaths[0] ?? null)) : picked;
+    picked === undefined
+      ? onOpenFile
+        ? null
+        : (filePaths[0] ?? null)
+      : picked;
   const fileIndex = file === null ? -1 : filePaths.indexOf(file);
   const patch = useQuery({
     queryKey: sk(
@@ -133,152 +137,158 @@ export function CommitDetails({
           file !== null ? "max-h-[45%] shrink-0" : "min-h-0 flex-1",
         )}
       >
-      <div className="flex min-w-0 items-center gap-1">
-        <span className="min-w-0 flex-1 truncate font-mono">{commit.oid}</span>
-        <Button
-          size="icon-xs"
-          variant="ghost"
-          aria-label={t("gitLog.details.copyHash")}
-          onClick={() => {
-            writeClipboard(commit.oid);
-            setCopied(true);
-          }}
-        >
-          {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
-        </Button>
-      </div>
-      {badges.length > 0 && (
-        <div className="mt-1 flex flex-wrap gap-1">
-          {badges.map((badge) => (
-            <Badge
-              key={`${badge.kind}:${badge.label}`}
-              size="sm"
-              variant={
-                badge.kind === "tag"
-                  ? "brand"
-                  : badge.kind === "head"
-                    ? "default"
-                    : "outline"
-              }
-            >
-              {badge.label}
-            </Badge>
-          ))}
-        </div>
-      )}
-      <dl className="mt-2 space-y-1">
-        <div>
-          <dt className="text-muted-foreground">{t("gitRepo.author")}</dt>
-          <dd className="break-words">
-            {commit.authorName} &lt;{commit.authorEmail}&gt; ·{" "}
-            {commit.authorTime}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-muted-foreground">
-            {t("gitLog.details.committer")}
-          </dt>
-          <dd className="break-words">{commit.committerTime}</dd>
-        </div>
-      </dl>
-      <p className="mt-2 whitespace-pre-wrap break-words">{commit.subject}</p>
-
-      {merge && (
-        <div className="mt-2 flex flex-wrap items-center gap-1">
-          <span className="text-muted-foreground">
-            {t("gitLog.details.parent")}
+        <div className="flex min-w-0 items-center gap-1">
+          <span className="min-w-0 flex-1 truncate font-mono">
+            {commit.oid}
           </span>
-          {commit.parents.map((oid, index) => (
-            <Button
-              key={oid}
-              size="xs"
-              variant="ghost"
-              aria-pressed={base === oid || (base === null && index === 0)}
-              className="font-mono aria-pressed:bg-muted"
-              onClick={() => {
-                onBaseChange(index === 0 ? null : oid);
-                setFile(undefined);
-              }}
-            >
-              {t("gitLog.details.parentIndex", { index: String(index + 1) })}
-            </Button>
-          ))}
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            aria-label={t("gitLog.details.copyHash")}
+            onClick={() => {
+              writeClipboard(commit.oid);
+              setCopied(true);
+            }}
+          >
+            {copied ? (
+              <Check className="size-3" />
+            ) : (
+              <Copy className="size-3" />
+            )}
+          </Button>
         </div>
-      )}
-
-      <div className="mt-3 flex items-center gap-1 border-t border-border pt-2">
-        <h3 className="min-w-0 flex-1 truncate font-medium">
-          {t("gitLog.details.files")}
-        </h3>
-        <Button
-          size="icon-xs"
-          variant="ghost"
-          aria-pressed={flat}
-          aria-label={t(flat ? "gitLog.details.tree" : "gitLog.details.flat")}
-          onClick={() => setPreference("flatFiles", !flat)}
-        >
-          <Folder className="size-3" />
-        </Button>
-      </div>
-      <GitLoadable loading={detail.isPending} size={4} />
-      {detail.error && (
-        <ReadError error={detail.error} retry={() => void detail.refetch()} />
-      )}
-      {detail.data?.truncated && (
-        <p className="text-muted-foreground">{t("gitRepo.filesTruncated")}</p>
-      )}
-      {detail.data && detail.data.files.length === 0 && (
-        <EmptyState inline title={t("gitRepo.noChangedFiles")} />
-      )}
-      <ul className="min-w-0">
-        {rows.map((row) =>
-          row.kind === "directory" ? (
-            <li
-              key={`dir:${row.path}`}
-              className="flex min-w-0 items-center gap-1 py-0.5 text-muted-foreground"
-              style={{ paddingLeft: `${row.depth * 12}px` }}
-            >
-              <span className="min-w-0 flex-1 truncate">{row.label}</span>
-              <span data-numeric className="shrink-0">
-                {row.count}
-              </span>
-            </li>
-          ) : (
-            <li key={`file:${row.path}`} className="min-w-0">
-              <Button
-                type="button"
-                variant="ghost"
-                aria-pressed={file === row.path}
-                onClick={() => {
-                  setFile(row.path);
-                  onOpenFile?.(row.path);
-                }}
-                style={{ paddingLeft: `${row.depth * 12}px` }}
-                className="h-auto w-full min-w-0 justify-start gap-2 rounded-tight border-0 py-0.5 pr-1 text-left font-normal hover:bg-muted aria-pressed:bg-muted"
+        {badges.length > 0 && (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {badges.map((badge) => (
+              <Badge
+                key={`${badge.kind}:${badge.label}`}
+                size="sm"
+                variant={
+                  badge.kind === "tag"
+                    ? "brand"
+                    : badge.kind === "head"
+                      ? "default"
+                      : "outline"
+                }
               >
-                <span className="w-3 shrink-0 font-mono">
-                  {row.file?.status.slice(0, 1)}
-                </span>
-                <span className="min-w-0 flex-1 truncate" title={row.path}>
-                  {row.label}
-                  {row.renamedFrom && (
-                    <span className="text-muted-foreground">
-                      {" ← "}
-                      {row.renamedFrom}
-                    </span>
-                  )}
-                </span>
-                <span className="shrink-0 font-mono text-caption text-muted-foreground">
-                  {row.file?.additions === null || row.file?.deletions === null
-                    ? t("gitRepo.binaryFile")
-                    : `+${row.file?.additions} −${row.file?.deletions}`}
-                </span>
-              </Button>
-            </li>
-          ),
+                {badge.label}
+              </Badge>
+            ))}
+          </div>
         )}
-      </ul>
+        <dl className="mt-2 space-y-1">
+          <div>
+            <dt className="text-muted-foreground">{t("gitRepo.author")}</dt>
+            <dd className="break-words">
+              {commit.authorName} &lt;{commit.authorEmail}&gt; ·{" "}
+              {commit.authorTime}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">
+              {t("gitLog.details.committer")}
+            </dt>
+            <dd className="break-words">{commit.committerTime}</dd>
+          </div>
+        </dl>
+        <p className="mt-2 whitespace-pre-wrap break-words">{commit.subject}</p>
 
+        {merge && (
+          <div className="mt-2 flex flex-wrap items-center gap-1">
+            <span className="text-muted-foreground">
+              {t("gitLog.details.parent")}
+            </span>
+            {commit.parents.map((oid, index) => (
+              <Button
+                key={oid}
+                size="xs"
+                variant="ghost"
+                aria-pressed={base === oid || (base === null && index === 0)}
+                className="font-mono aria-pressed:bg-muted"
+                onClick={() => {
+                  onBaseChange(index === 0 ? null : oid);
+                  setFile(undefined);
+                }}
+              >
+                {t("gitLog.details.parentIndex", { index: String(index + 1) })}
+              </Button>
+            ))}
+          </div>
+        )}
+
+        <div className="mt-3 flex items-center gap-1 border-t border-border pt-2">
+          <h3 className="min-w-0 flex-1 truncate font-medium">
+            {t("gitLog.details.files")}
+          </h3>
+          <Button
+            size="icon-xs"
+            variant="ghost"
+            aria-pressed={flat}
+            aria-label={t(flat ? "gitLog.details.tree" : "gitLog.details.flat")}
+            onClick={() => setPreference("flatFiles", !flat)}
+          >
+            <Folder className="size-3" />
+          </Button>
+        </div>
+        <GitLoadable loading={detail.isPending} size={4} />
+        {detail.error && (
+          <ReadError error={detail.error} retry={() => void detail.refetch()} />
+        )}
+        {detail.data?.truncated && (
+          <p className="text-muted-foreground">{t("gitRepo.filesTruncated")}</p>
+        )}
+        {detail.data && detail.data.files.length === 0 && (
+          <EmptyState inline title={t("gitRepo.noChangedFiles")} />
+        )}
+        <ul className="min-w-0">
+          {rows.map((row) =>
+            row.kind === "directory" ? (
+              <li
+                key={`dir:${row.path}`}
+                className="flex min-w-0 items-center gap-1 py-0.5 text-muted-foreground"
+                style={{ paddingLeft: `${row.depth * 12}px` }}
+              >
+                <span className="min-w-0 flex-1 truncate">{row.label}</span>
+                <span data-numeric className="shrink-0">
+                  {row.count}
+                </span>
+              </li>
+            ) : (
+              <li key={`file:${row.path}`} className="min-w-0">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  aria-pressed={file === row.path}
+                  onClick={() => {
+                    setFile(row.path);
+                    onOpenFile?.(row.path);
+                  }}
+                  style={{ paddingLeft: `${row.depth * 12}px` }}
+                  className="h-auto w-full min-w-0 justify-start gap-2 rounded-tight border-0 py-0.5 pr-1 text-left font-normal hover:bg-muted aria-pressed:bg-muted"
+                >
+                  <span className="w-3 shrink-0 font-mono">
+                    {row.file?.status.slice(0, 1)}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate" title={row.path}>
+                    {row.label}
+                    {row.renamedFrom && (
+                      <span className="text-muted-foreground">
+                        {" ← "}
+                        {row.renamedFrom}
+                      </span>
+                    )}
+                  </span>
+                  <span className="shrink-0 font-mono text-caption text-muted-foreground">
+                    {row.file?.additions === null ||
+                    row.file?.deletions === null
+                      ? t("gitRepo.binaryFile")
+                      : `+${row.file?.additions} −${row.file?.deletions}`}
+                  </span>
+                </Button>
+              </li>
+            ),
+          )}
+        </ul>
       </div>
 
       {file !== null && (
