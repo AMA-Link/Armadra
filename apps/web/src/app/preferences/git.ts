@@ -34,6 +34,10 @@ export type GitLogDateRange = (typeof GIT_LOG_DATE_RANGES)[number];
  * 联合，赋值本来就通得过。
  */
 export const GIT_CHANGE_LAYOUTS = ["tree", "flat"] as const;
+
+/** 表格突出哪一类提交（#927 B3）。 */
+export const GIT_LOG_EMPHASES = ["all", "mine", "agent"] as const;
+export type GitLogEmphasis = (typeof GIT_LOG_EMPHASES)[number];
 export type GitChangeLayout = (typeof GIT_CHANGE_LAYOUTS)[number];
 
 export interface GitPreferences {
@@ -75,6 +79,8 @@ export interface GitPreferences {
   collapseMerges: boolean;
   /** 详情里的代码差异用并排视图（#927 B2）；否则统一视图。 */
   diffSplit: boolean;
+  /** 表格突出哪一类提交（#927 B3）：全部、我的、Agent 协作。 */
+  emphasis: GitLogEmphasis;
   /** 详情里的变更文件：树形（false）还是平铺（true）。 */
   flatFiles: boolean;
   /** 提交页变更树的排列方式。 */
@@ -106,6 +112,7 @@ export const GIT_KEYS: Record<keyof GitPreferences, string> = {
   showHashColumn: KEY("showHashColumn"),
   collapseMerges: KEY("collapseMerges"),
   diffSplit: KEY("diffSplit"),
+  emphasis: KEY("emphasis"),
   flatFiles: KEY("flatFiles"),
   // 键名与字段名不一致是故意的：这一项原来住在提交页自己的 `preferences.ts`
   // 里，沿用旧键，已经存过的人搬过来之后仍然停在自己选的那个排列上。
@@ -155,6 +162,7 @@ export function storedGitPreferences(): GitPreferences {
     showHashColumn: storedBoolean(GIT_KEYS.showHashColumn, true),
     collapseMerges: storedBoolean(GIT_KEYS.collapseMerges, true),
     diffSplit: storedBoolean(GIT_KEYS.diffSplit, false),
+    emphasis: storedEnum(GIT_KEYS.emphasis, GIT_LOG_EMPHASES, "all"),
     flatFiles: storedBoolean(GIT_KEYS.flatFiles, false),
     changeLayout: storedEnum(GIT_KEYS.changeLayout, GIT_CHANGE_LAYOUTS, "tree"),
   };

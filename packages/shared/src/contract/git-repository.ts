@@ -8,6 +8,7 @@ import {
   gitBranchSnapshotSchema,
   gitCommitDetailSchema,
   gitCommitFileDiffSchema,
+  gitAvatarsSchema,
   gitHistoryPageSchema,
   gitIdentitySchema,
   gitLogPageSchema,
@@ -193,6 +194,26 @@ export const gitRepository = {
         ...inWorkspace,
         scope: "git:read",
         legacy: getAt(`${WORKSPACE}/refs`),
+      }),
+    ),
+  /**
+   * 提交作者的 GitHub 头像（#927）：页面从 noreply 邮箱里认出账号 id，core 代取
+   * 并缓存，答 data URL——页面不直连图片主机，CSP 也不用放开。一次至多 50 个。
+   */
+  avatars: oc
+    .input(
+      workspaceRef.extend({
+        ids: z.array(z.number().int().positive()).max(50),
+      }),
+    )
+    .output(gitAvatarsSchema)
+    .errors(read)
+    .meta(
+      meta({
+        ...inWorkspace,
+        since: "1.50",
+        scope: "git:read",
+        legacy: postAt(`${WORKSPACE}/avatars`),
       }),
     ),
   /** 这个检出的提交会署谁的名：`git config` 自己的答案，没配时两项都是 `null`。 */

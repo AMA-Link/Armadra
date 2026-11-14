@@ -100,3 +100,16 @@ export const FORGE_ROUTES: readonly RouteEntry[] = [
   })),
   ...FORGE_REPO_ROUTES,
 ];
+
+/**
+ * 提交作者的 GitHub 头像（契约 §40.2，#927）：只读，体是 `{ ids }` 所以用
+ * `POST`；`route-scopes.ts` 把它与 `git/log` 一样按读授权。
+ */
+export const GIT_AVATAR_ROUTES: readonly RouteEntry[] = [
+  {
+    path: "/api/workspaces/{workspaceId}/git/avatars",
+    methods: ["POST"],
+    surface: "runtime",
+    implemented: true,
+  },
+];

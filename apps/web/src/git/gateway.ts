@@ -261,6 +261,14 @@ export const gitGateway = {
    * 出来的那个人——那是**上一个在这里写过东西的人**，未必是坐在这里的人；
    * 刚克隆下来的仓库更是一条 reflog 都没有。没配置就是两个 `null`。
    */
+  /**
+   * 提交作者的 GitHub 头像（#927 B3）。与检出无关，只绑工作空间：core 代取并
+   * 缓存，页面不直连图片主机。
+   */
+  avatars(target: GitTarget, ids: readonly number[], signal?: AbortSignal) {
+    return runtimeApi.gitAvatars(target.workspaceId, ids, signal);
+  },
+
   identity(target: GitTarget, signal?: AbortSignal) {
     return runtimeApi.gitIdentity(target.workspaceId, signal, at(target));
   },

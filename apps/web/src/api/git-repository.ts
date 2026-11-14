@@ -7,6 +7,7 @@ import {
   gitExpectedStateSchema,
   gitHistoryPageSchema,
   gitIntegrationSnapshotSchema,
+  gitAvatarsSchema,
   gitIdentitySchema,
   gitLogPageSchema,
   gitRefsSnapshotSchema,
@@ -149,6 +150,18 @@ export const gitRepositoryApiFor = (rpc: () => ArmadraClient) => ({
    * own answer, not one inferred from the reflog. Both fields are null when
    * nothing is configured.
    */
+  /** GitHub 头像（#927）：core 代取，答 data URL；一次至多 50 个 id。 */
+  gitAvatars: async (
+    workspaceId: string,
+    ids: readonly number[],
+    signal?: AbortSignal,
+  ) =>
+    gitAvatarsSchema.parse(
+      await rpc().gitRepository.avatars(
+        { workspaceId, ids: [...ids] },
+        withSignal(signal),
+      ),
+    ),
   gitIdentity: async (workspaceId: string, signal?: AbortSignal, path = ".") =>
     gitIdentitySchema.parse(
       await rpc().gitRepository.identity(

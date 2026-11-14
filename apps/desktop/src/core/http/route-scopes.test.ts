@@ -61,7 +61,11 @@ describe("路由要求的 scope", () => {
       routeScope("POST", "/api/workspaces/{workspaceId}/git/commit"),
     ).toEqual({ permission: "git:write", workspaceId: "" });
     // 只读、旧路径却是 POST 的两条按读算；同族的批量状态仍是写。
-    for (const path of ["git/log", "git/repository/worktree-binding"]) {
+    for (const path of [
+      "git/log",
+      "git/avatars",
+      "git/repository/worktree-binding",
+    ]) {
       expect(
         routeScope("POST", `/api/workspaces/{workspaceId}/${path}`)?.permission,
         path,

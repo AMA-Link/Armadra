@@ -111,6 +111,13 @@ const DEFAULT_POWER_POLICY = "manual";
 const DEFAULT_KEEP_AWAKE_WHILE_WORKING = true;
 
 /**
+ * `git.avatars`——Git 窗口里提交作者的 GitHub 头像（#927）。开着时 core 按
+ * noreply 邮箱里的账号 id 去 `avatars.githubusercontent.com` 取图并缓存；关掉之后
+ * 一个请求都不发，页面画首字母。
+ */
+const DEFAULT_GIT_AVATARS = true;
+
+/**
  * 对话索引扫多大一片。
  *
  * `workspaces` 只索引本应用的工作空间根目录下跑过的那些会话，`all` 是整个
@@ -206,6 +213,7 @@ export function normalize(raw: JsonValue): JsonObject {
   normalizeTraffic(document);
   normalizeUpdates(document);
   normalizePower(document);
+  normalizeGit(document);
   normalizeConversations(document);
   normalizeResources(document);
   normalizeBrowser(document);
@@ -751,6 +759,12 @@ function normalizeUpdates(document: JsonObject): void {
     asBool(updates.autoDownload) ?? DEFAULT_UPDATE_AUTO_DOWNLOAD;
   updates.notify = asBool(updates.notify) ?? DEFAULT_UPDATE_NOTIFY;
   document.updates = updates;
+}
+
+function normalizeGit(document: JsonObject): void {
+  const git = section(document, "git");
+  git.avatars = asBool(git.avatars) ?? DEFAULT_GIT_AVATARS;
+  document.git = git;
 }
 
 function normalizePower(document: JsonObject): void {

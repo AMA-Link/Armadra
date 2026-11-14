@@ -232,6 +232,14 @@ describe("normalize", () => {
     expect(at(normalize({ power: { policy: "never" } }), "power.policy")).toBe(
       "never",
     );
+    // Git 窗口的 GitHub 头像默认开；只认布尔值（#927）。
+    expect(at(normalize({}), "git.avatars")).toBe(true);
+    expect(at(normalize({ git: { avatars: false } }), "git.avatars")).toBe(
+      false,
+    );
+    expect(at(normalize({ git: { avatars: "off" } }), "git.avatars")).toBe(
+      true,
+    );
     // 工作时防休眠默认开；只认布尔值，别的写法回到默认。
     expect(at(normalize({}), "power.keepAwakeWhileWorking")).toBe(true);
     expect(

@@ -826,7 +826,7 @@ describe("gitRepository 域：入参形状错只比码与状态", () => {
 
 describe("gitRepository 域：契约与路由表", () => {
   it("meta.scope 与路由表给旧路径的要求一致；旧路径都在路由表里", () => {
-    expect(entries.length).toBe(23);
+    expect(entries.length).toBe(24);
     for (const entry of entries) {
       const legacyRoute = entry.meta.legacy!;
       expect(
@@ -855,7 +855,9 @@ describe("gitRepository 域：契约与路由表", () => {
     for (const key of routes) {
       expect(owner.get(key), key).toBeDefined();
       if (
-        /\/git\/(repository\/|repositories$|log$|refs$|identity$)/.test(key)
+        /\/git\/(repository\/|repositories$|log$|refs$|identity$|avatars$)/.test(
+          key,
+        )
       ) {
         expect(owner.get(key), key).toBe("gitRepository");
       } else {

@@ -19,6 +19,7 @@ import {
 import { homeDir } from "../history/home";
 import { executeOn, isRemote } from "../remote/execute";
 import { remoteGitOperations } from "../remote/git-operations";
+import { avatars } from "./avatars";
 import { cancelClone, cloneStatus, startClone } from "./clone";
 import { defaultCloneParent } from "./clone-sources";
 import type { DiffScope } from "./diff";
@@ -849,6 +850,11 @@ export function installRoutes(deps: GitRouteDeps): void {
     log: (input: Input) => repository.log(input.workspaceId, given(input)),
     refs: (input: Input) => repository.refs(input.workspaceId),
     identity: checkoutRead("git.identity"),
+    // 头像与仓库无关：授权仍绑在工作空间上（读得了这份历史才看得到作者）。
+    avatars: (input: Input) => {
+      workspaceById(deps, input.workspaceId);
+      return avatars(Array.isArray(input.ids) ? (input.ids as number[]) : []);
+    },
     branches: checkoutRead("git.branches"),
     tags: checkoutRead("git.tags"),
     remotes: checkoutRead("git.remotes"),
@@ -914,6 +920,16 @@ export function installRoutes(deps: GitRouteDeps): void {
 
   handle("GET", "/api/workspaces/{workspaceId}/git/refs", async (match) =>
     ok(await repository.refs(at(match))),
+  );
+
+  handle(
+    "POST",
+    "/api/workspaces/{workspaceId}/git/avatars",
+    async (match, request) => {
+      workspaceById(deps, at(match));
+      const ids = jsonObject(request.body).ids;
+      return ok(await avatars(Array.isArray(ids) ? (ids as number[]) : []));
+    },
   );
 
   /* ---------------------------- repository reads -------------------------- */

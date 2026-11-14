@@ -240,12 +240,48 @@ describe("the Git routes", () => {
     });
     expect(log.status).toBe(200);
     expect((log.body as { commits: unknown[] }).commits).toHaveLength(1);
+    expect(
+      (log.body as { commits: { coAuthors: unknown[] }[] }).commits[0]!
+        .coAuthors,
+    ).toEqual([]);
 
     const refs = await core.call("GET", `/api/workspaces/${id}/git/refs`);
     expect(refs.status).toBe(200);
     expect((refs.body as unknown[])[0]).toMatchObject({
       repositoryPath: ".",
     });
+  });
+
+  it("splits Co-authored-by trailers into coAuthors (#927)", async () => {
+    const repo = repository("routes-log-coauthors");
+    repo.write("b.txt", "b\n");
+    repo.git("add", "-A");
+    repo.git(
+      "commit",
+      "-q",
+      "-m",
+      "feat: 两个人写的",
+      "-m",
+      "Co-authored-by: Claude <noreply@anthropic.com>\nco-authored-by: Bob <bob@example.invalid>\nCo-authored-by: no address",
+    );
+    const id = workspace(repo.path);
+    const log = await core.call("POST", `/api/workspaces/${id}/git/log`, {
+      refs: { kind: "head" },
+      limit: 10,
+    });
+    expect(log.status).toBe(200);
+    const commits = (
+      log.body as {
+        commits: { subject: string; coAuthors: unknown[] }[];
+      }
+    ).commits;
+    expect(commits).toHaveLength(2);
+    expect(commits[0]!.coAuthors).toEqual([
+      { name: "Claude", email: "noreply@anthropic.com" },
+      { name: "Bob", email: "bob@example.invalid" },
+      { name: "no address", email: "" },
+    ]);
+    expect(commits[1]!.coAuthors).toEqual([]);
   });
 
   it("runs an operation, scopes it to its workspace and cancels it", async () => {

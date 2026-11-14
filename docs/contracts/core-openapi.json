@@ -58431,6 +58431,21 @@
                           "repositoryPath": {
                             "type": "string",
                             "minLength": 1
+                          },
+                          "coAuthors": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "email": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": ["name", "email"]
+                            }
                           }
                         },
                         "required": [
@@ -58849,6 +58864,118 @@
           "legacy": {
             "method": "GET",
             "path": "/api/workspaces/{workspaceId}/git/refs"
+          }
+        }
+      }
+    },
+    "/api/rpc/gitRepository/avatars": {
+      "post": {
+        "operationId": "gitRepository.avatars",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "workspaceId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "ids": {
+                    "type": "array",
+                    "maxItems": 50,
+                    "items": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "exclusiveMinimum": 0
+                    }
+                  }
+                },
+                "required": ["workspaceId", "ids"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "avatars": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991,
+                            "exclusiveMinimum": 0
+                          },
+                          "dataUrl": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": ["id", "dataUrl"]
+                      }
+                    }
+                  },
+                  "required": ["avatars"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "400",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "403",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "404",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreError"
+                }
+              }
+            }
+          }
+        },
+        "x-armadra": {
+          "contract": "§40.2",
+          "scope": "git:read",
+          "since": "1.50",
+          "workspaceKey": "workspaceId",
+          "legacy": {
+            "method": "POST",
+            "path": "/api/workspaces/{workspaceId}/git/avatars"
           }
         }
       }

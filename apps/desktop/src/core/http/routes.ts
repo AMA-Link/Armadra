@@ -16,6 +16,7 @@ import { IDENTITY_ROUTES } from "./routes-identity";
 import { E2E_ROUTES } from "./routes-e2e";
 import {
   FORGE_ROUTES,
+  GIT_AVATAR_ROUTES,
   REMOTE_SERVICE_ROUTES,
   WORKFLOW_ROUTES,
 } from "./routes-tables";
@@ -85,6 +86,7 @@ export const ROUTES: readonly RouteEntry[] = [
     surface: "runtime",
     implemented: true,
   },
+  ...GIT_AVATAR_ROUTES,
   {
     path: "/api/workspaces/{workspaceId}/git/identity",
     methods: ["GET"],

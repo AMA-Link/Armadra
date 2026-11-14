@@ -226,4 +226,50 @@ describe("提交图表格", () => {
     expect(marks).toHaveLength(1);
     expect(marks[0]!.textContent).toBe("↑1 ↓2");
   });
+
+  describe("Agent 协作（#927 B3）", () => {
+    const withAgent: GitLogCommit = {
+      ...commit(2),
+      coAuthors: [{ name: "Claude", email: "noreply@anthropic.com" }],
+    };
+
+    it("有 Agent 的提交头像上多一颗 Agent 色点", () => {
+      const { container } = table({ commits: [withAgent, commit(1)] });
+      const dots = container.querySelectorAll(
+        '[data-slot="git-log-agent-dot"]',
+      );
+      expect(dots).toHaveLength(1);
+      expect(dots[0]!.getAttribute("data-agent")).toBe("claude");
+    });
+
+    it("突出 Agent 协作：其余行降透明度，但不删", () => {
+      const { container } = table({
+        commits: [withAgent, commit(1), commit(0)],
+        emphasis: "agent",
+      });
+      expect(container.querySelectorAll("[data-dimmed]")).toHaveLength(2);
+      expect(screen.getByText("commit 1")).toBeTruthy();
+    });
+
+    it("突出我的：按 identityEmail 比，与加粗高亮无关", () => {
+      const { container } = table({
+        commits: [commit(1), { ...commit(0), authorEmail: "me@x.invalid" }],
+        emphasis: "mine",
+        identityEmail: "ME@x.invalid",
+      });
+      expect(container.querySelectorAll("[data-dimmed]")).toHaveLength(1);
+    });
+
+    it("noreply 邮箱有头像时用图，没有画首字母", () => {
+      const { container } = table({
+        commits: [
+          { ...commit(1), authorEmail: "42+ada@users.noreply.github.com" },
+        ],
+        avatars: new Map([[42, "data:image/png;base64,AA=="]]),
+      });
+      expect(
+        container.querySelector('[data-slot="git-log-author"]')!.textContent,
+      ).toContain("Ada");
+    });
+  });
 });

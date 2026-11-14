@@ -4,6 +4,7 @@ import { Regex, Settings2, X } from "lucide-react";
 import { useT, usePreferencesStore } from "../../../app/preferences-store";
 import { cn } from "../../../lib/cn";
 import { Button } from "../../../ui/button";
+import { ToggleGroup, ToggleGroupItem } from "../../../ui/toggle-group";
 import { Input } from "../../../ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../ui/tooltip";
 import {
@@ -284,6 +285,31 @@ export function LogToolbar({
           </DropdownMenuItem>
         ))}
       </Facet>
+
+      <ToggleGroup
+        type="single"
+        size="sm"
+        variant="outline"
+        spacing={0}
+        aria-label={t("gitLog.toolbar.emphasis")}
+        data-slot="git-log-emphasis"
+        value={git.emphasis}
+        onValueChange={(next) =>
+          next && set("emphasis", next as typeof git.emphasis)
+        }
+      >
+        <ToggleGroupItem value="all">
+          {t("gitLog.toolbar.emphasis.all")}
+        </ToggleGroupItem>
+        {myEmail && (
+          <ToggleGroupItem value="mine">
+            {t("gitLog.toolbar.emphasis.mine")}
+          </ToggleGroupItem>
+        )}
+        <ToggleGroupItem value="agent">
+          {t("gitLog.toolbar.emphasis.agent")}
+        </ToggleGroupItem>
+      </ToggleGroup>
 
       {repositories.length > 1 && (
         <div
