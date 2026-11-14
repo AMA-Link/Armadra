@@ -52,7 +52,10 @@ export function collapseLog(
 
   const mergedBy = new Map<string, string>();
   const sideCount = new Map<string, number>();
-  for (const commit of commits) {
+  // 从最老的合并往新走（#932）：一条分支建在另一条还没合并的分支上时，较老的
+  // 合并先认领它自己带进来的提交，较新的合并只剩真正由它带进来的那些——即
+  // 「第二父可达、第一父不可达」。从新往老走会让新合并把老合并的提交一起领走。
+  for (const commit of [...commits].reverse()) {
     const key = commitKey(commit);
     if (!mainline.has(key) || commit.parents.length < 2) continue;
     const queue = commit.parents
