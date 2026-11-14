@@ -61,6 +61,11 @@ export interface LogTableProps {
    * 缺省关：只有日志页按偏好打开，其它用到这张表的地方保持原样。
    */
   collapseMerges?: boolean;
+  /**
+   * 仓库 → 当前分支相对上游的领先 / 落后（#927 B2）。标在这个仓库带
+   * `HEAD -> …` 的那一行上，不另开分支面板。
+   */
+  sync?: ReadonlyMap<string, { ahead: number; behind: number }>;
   /** 展开的合并（`commitKey`）。 */
   expanded?: ReadonlySet<string>;
   onToggleMerge?: (key: string) => void;
@@ -116,6 +121,7 @@ export function LogTable({
   onLoadMore,
   renderRowMenu,
   collapseMerges = false,
+  sync,
   expanded = NONE,
   onToggleMerge,
 }: LogTableProps) {
@@ -379,6 +385,11 @@ export function LogTable({
                         : null
                     }
                     toggleSlot={collapseMerges}
+                    sync={
+                      row.commit.refs.some((ref) => ref.startsWith("HEAD -> "))
+                        ? (sync?.get(row.commit.repositoryPath) ?? null)
+                        : null
+                    }
                     gutter={gutter}
                     height={rowHeight}
                     color={
@@ -518,6 +529,7 @@ function CommitRow({
   side,
   merge,
   toggleSlot,
+  sync,
   gutter,
   height,
   color,
@@ -535,6 +547,7 @@ function CommitRow({
   merge: { count: number; open: boolean; onToggle: () => void } | null;
   /** 折叠开着时每行都留出计数那一格，列才对得齐。 */
   toggleSlot: boolean;
+  sync: { ahead: number; behind: number } | null;
   gutter: number;
   height: number;
   color: string | null;
@@ -601,6 +614,20 @@ function CommitRow({
             {badge.label}
           </Badge>
         ))}
+        {sync && (sync.ahead > 0 || sync.behind > 0) && (
+          <span
+            data-slot="git-log-sync"
+            className="shrink-0 text-caption text-muted-foreground tabular-nums"
+            title={t("gitLog.table.sync", {
+              ahead: sync.ahead,
+              behind: sync.behind,
+            })}
+          >
+            {sync.ahead > 0 && `↑${sync.ahead}`}
+            {sync.ahead > 0 && sync.behind > 0 && " "}
+            {sync.behind > 0 && `↓${sync.behind}`}
+          </span>
+        )}
         {!narrow && (
           <span
             className="w-28 shrink-0 truncate text-muted-foreground"

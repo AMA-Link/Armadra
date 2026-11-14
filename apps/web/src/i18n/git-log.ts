@@ -10,8 +10,6 @@ import type { MessageModule } from "./index";
 export const gitLog: MessageModule = {
   "zh-CN": {
     "gitLog.title": "Git",
-    "gitLog.tab.log": "日志",
-    "gitLog.tab.commit": "提交",
     "gitLog.maximize": "最大化",
     "gitLog.restore": "还原",
     "gitLog.close": "关闭",
@@ -39,6 +37,7 @@ export const gitLog: MessageModule = {
     "gitLog.table.hash": "hash",
     "gitLog.table.graph": "提交图",
     "gitLog.table.uncommitted": "未提交的变更",
+    "gitLog.table.sync": "领先上游 {ahead} 个提交，落后 {behind} 个",
     "gitLog.table.expandMerge": "展开这次合并带进来的 {count} 个提交",
     "gitLog.table.collapseMerge": "收起这次合并带进来的 {count} 个提交",
     "gitLog.table.empty": "没有匹配的提交。",
@@ -80,6 +79,9 @@ export const gitLog: MessageModule = {
     "gitLog.details.parent": "与哪个父比",
     "gitLog.details.parentIndex": "父 {index}",
     "gitLog.details.closeDiff": "收起差异",
+    "gitLog.details.previousFile": "上一个文件",
+    "gitLog.details.empty": "选一个提交",
+    "gitLog.details.nextFile": "下一个文件",
     "gitLog.details.collapse": "收起详情栏",
     "gitLog.details.expand": "展开详情栏",
 
@@ -126,8 +128,6 @@ export const gitLog: MessageModule = {
   },
   en: {
     "gitLog.title": "Git",
-    "gitLog.tab.log": "Log",
-    "gitLog.tab.commit": "Commit",
     "gitLog.maximize": "Maximize",
     "gitLog.restore": "Restore",
     "gitLog.close": "Close",
@@ -155,6 +155,7 @@ export const gitLog: MessageModule = {
     "gitLog.table.hash": "Hash",
     "gitLog.table.graph": "Commit graph",
     "gitLog.table.uncommitted": "Uncommitted changes",
+    "gitLog.table.sync": "{ahead} ahead of and {behind} behind upstream",
     "gitLog.table.expandMerge":
       "Show the {count} commits this merge brought in",
     "gitLog.table.collapseMerge":
@@ -200,6 +201,9 @@ export const gitLog: MessageModule = {
     "gitLog.details.parent": "Compare against",
     "gitLog.details.parentIndex": "Parent {index}",
     "gitLog.details.closeDiff": "Hide the diff",
+    "gitLog.details.previousFile": "Previous file",
+    "gitLog.details.empty": "Select a commit",
+    "gitLog.details.nextFile": "Next file",
     "gitLog.details.collapse": "Collapse the details pane",
     "gitLog.details.expand": "Expand the details pane",
 

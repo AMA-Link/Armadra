@@ -33,7 +33,13 @@ export interface LogToolbarProps {
   /** 可选的分支（左栏树里的引用键）。 */
   references: readonly { key: string; label: string }[];
   /** 已发现的仓库：路径、名字与仓库色（与表格行首色块同色）。 */
-  repositories: readonly { path: string; name: string; color: string }[];
+  repositories: readonly {
+    path: string;
+    name: string;
+    color: string;
+    /** 链接 worktree：没筛仓库时默认不显示（与主检出共享提交）。 */
+    worktree: boolean;
+  }[];
   /** `git config user.email`；读不到时「我的」这一项不出现。 */
   myEmail: string | null;
 }
@@ -47,18 +53,20 @@ type ViewToggle =
   | "collapseMerges";
 
 /**
- * 仓库色块按钮的下一份筛选（#927 B1）。`selected` 空 = 全部仓库。
+ * 仓库色块按钮的下一份筛选（#927 B1）。`selected` 空 = 缺省那一组
+ * （`defaults`：除链接 worktree 之外的全部仓库；不传就是全部）。
  *
- * - 普通点击：显示 / 隐藏这一个；至少留一个，全选回到空列表（= 不筛选）。
- * - ⌘ 点击：只看这一个；已经只看它时再点一次回到全部。
+ * - 普通点击：显示 / 隐藏这一个；至少留一个，凑回缺省那一组就是空列表。
+ * - ⌘ 点击：只看这一个；已经只看它时再点一次回到缺省。
  */
 export function nextRepositories(
   all: readonly string[],
   selected: readonly string[],
   path: string,
   solo: boolean,
+  defaults: readonly string[] = all,
 ): string[] {
-  const current = selected.length === 0 ? [...all] : [...selected];
+  const current = selected.length === 0 ? [...defaults] : [...selected];
   if (solo) {
     return current.length === 1 && current[0] === path ? [] : [path];
   }
@@ -66,9 +74,10 @@ export function nextRepositories(
     ? current.filter((entry) => entry !== path)
     : [...current, path];
   if (next.length === 0) return [...selected];
-  return all.every((entry) => next.includes(entry))
-    ? []
-    : all.filter((entry) => next.includes(entry));
+  const same =
+    next.length === defaults.length &&
+    defaults.every((entry) => next.includes(entry));
+  return same ? [] : all.filter((entry) => next.includes(entry));
 }
 
 function toggle(list: readonly string[], value: string): string[] {
@@ -285,8 +294,9 @@ export function LogToolbar({
         >
           {repositories.map((repository) => {
             const on =
-              git.repositories.length === 0 ||
-              git.repositories.includes(repository.path);
+              git.repositories.length === 0
+                ? !repository.worktree
+                : git.repositories.includes(repository.path);
             return (
               <Button
                 key={repository.path}
@@ -305,6 +315,9 @@ export function LogToolbar({
                       git.repositories,
                       repository.path,
                       event.metaKey || event.ctrlKey,
+                      repositories
+                        .filter((entry) => !entry.worktree)
+                        .map((entry) => entry.path),
                     ),
                   )
                 }

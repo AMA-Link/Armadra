@@ -6,12 +6,10 @@ import { Maximize2, Minimize2, RotateCw, X } from "lucide-react";
 import { useT, usePreferencesStore } from "../../../app/preferences-store";
 import { useCanvasStore } from "../../../store/canvas-store";
 import { IconButton } from "../../../ui/icon-button";
-import { Tabs, TabsList, TabsTrigger } from "../../../ui/tabs";
 import { WorkPanelSheet } from "../../WorkPanelSheet";
 import { ExecutionHostBadge } from "../../ExecutionHostBadge";
 import { invalidateGitQueries } from "../queries";
 import { LogPage } from "../log/LogPage";
-import { CommitPage } from "../commit/CommitPage";
 
 /**
  * Git 工具窗口（Git 工具窗口设计 §2.1）。
@@ -31,7 +29,6 @@ export function GitToolWindow() {
   const git = usePreferencesStore((state) => state.git);
   const set = usePreferencesStore((state) => state.setGitPreference);
   const client = useQueryClient();
-  const [tab, setTab] = useState<"log" | "commit">("log");
   // 刷新是「重读」，不是「重挂」：换一个值让提交页把上一次提交的逐仓库结论清
   // 掉，同时留住还没提交的信息草稿与当前选中的文件。
   const [refreshToken, setRefreshToken] = useState(0);
@@ -53,20 +50,9 @@ export function GitToolWindow() {
       maximized={maximized}
     >
       <div className="flex shrink-0 items-center gap-1 border-b border-border px-2 py-1">
-        <Tabs
-          value={tab}
-          onValueChange={(value) => setTab(value as "log" | "commit")}
-          className="min-w-0 gap-0"
-        >
-          <TabsList variant="line">
-            <TabsTrigger value="log" className="text-meta">
-              {t("gitLog.tab.log")}
-            </TabsTrigger>
-            <TabsTrigger value="commit" className="text-meta">
-              {t("gitLog.tab.commit")}
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <h2 className="min-w-0 truncate px-1 text-meta font-medium">
+          {t("gitLog.title")}
+        </h2>
         <div className="flex-1" />
         <ExecutionHostBadge />
         <IconButton
@@ -101,10 +87,10 @@ export function GitToolWindow() {
           的父级：`SheetContent` 只有 `flex flex-col`，缺 `min-h-0` 的话里面那些
           `overflow-auto` 撑不住，长列表会把整块面板顶出视口。 */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {workspaceId && tab === "log" && <LogPage workspaceId={workspaceId} />}
-        {workspaceId && tab === "commit" && (
-          // 换工作空间就是换一份提交信息历史与一棵变更树，重挂比逐个同步干净。
-          <CommitPage
+        {workspaceId && (
+          // 一张表、两种右栏（#927 B2）：选中「未提交的变更」那一行，右栏就是
+          // 提交台；换工作空间就是换一份历史与一棵变更树，重挂比逐个同步干净。
+          <LogPage
             key={workspaceId}
             workspaceId={workspaceId}
             refreshToken={refreshToken}

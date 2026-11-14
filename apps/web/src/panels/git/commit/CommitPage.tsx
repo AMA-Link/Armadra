@@ -61,8 +61,14 @@ const stagedCount = (group: RepositoryChangeGroup) =>
 export function CommitPage({
   workspaceId,
   refreshToken = 0,
+  stacked = false,
 }: {
   workspaceId: string;
+  /**
+   * 挂在日志页右栏里（#927 B2）：宽度只有一栏，变更树与差异改成上下排，
+   * 而不是左右各分一半。
+   */
+  stacked?: boolean;
   /**
    * 窗口壳每按一次刷新就换一个值。刷新按钮只在壳上有一个（设计 §2.1），而
    * 「重读」还要顺带清掉上一次提交的逐仓库结论——那些结论说的是刷新之前的那份
@@ -416,6 +422,13 @@ export function CommitPage({
       {compact ? (
         <div className="flex min-h-32 min-w-0 flex-1 flex-col">
           {drilled ? diff : tree}
+        </div>
+      ) : stacked ? (
+        <div className="flex min-h-32 min-w-0 flex-1 flex-col">
+          <div className="flex max-h-[40%] min-h-24 shrink-0 flex-col border-b border-border">
+            {tree}
+          </div>
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">{diff}</div>
         </div>
       ) : (
         <div className="flex min-h-32 min-w-0 flex-1">

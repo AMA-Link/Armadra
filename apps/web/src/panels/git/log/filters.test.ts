@@ -14,6 +14,23 @@ function preferences(overrides: Partial<GitPreferences> = {}): GitPreferences {
 }
 
 describe("工具栏筛选 → 请求", () => {
+  it("没筛仓库时用缺省那一组（链接 worktree 不在里面），筛了就以筛选为准", () => {
+    const defaults = { now: NOW, defaultRepositories: [".", "pkg"] };
+    expect(
+      logRequestFromPreferences(preferences(), defaults).repositories,
+    ).toEqual([".", "pkg"]);
+    expect(
+      logRequestFromPreferences(preferences({ repositories: ["wt"] }), defaults)
+        .repositories,
+    ).toEqual(["wt"]);
+    expect(
+      logRequestFromPreferences(preferences(), {
+        now: NOW,
+        defaultRepositories: [],
+      }).repositories,
+    ).toBeUndefined();
+  });
+
   it("什么都没选时默认整张图（所有分支）与页大小，别的一项都不发", () => {
     const request = logRequestFromPreferences(preferences(), { now: NOW });
     expect(request).toEqual({ refs: { kind: "all" }, limit: 100 });
