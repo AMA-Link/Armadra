@@ -65,6 +65,7 @@
     "0063_pr_threads.sql": "6a7306dd2178ada9f3030b51378845a74f0ed186b620ebdcfe2742eafbeca657",
     "0064_router_intake.sql": "8140b4cce5edd66731b16e35c9659380b04254660d5b9c87b251ccacd78ce4f7",
     "0065_handoff_created_target.sql": "ea104f19844953e3096492569bb3edfed19780b0302c5822947dc1f8aa7275e4",
-    "0066_forge_workspace_remote.sql": "e112c9f6322beb90a0c10f47af4b35bb5f76e88c4d2f0bd6391717510fe773b7"
+    "0066_forge_workspace_remote.sql": "e112c9f6322beb90a0c10f47af4b35bb5f76e88c4d2f0bd6391717510fe773b7",
+    "0067_forge_reuse_local_logins.sql": "ad0e55338850318df88db9b2a7491ff3abe9542aa2850efbb711d178904b2ffd"
   }
 }
