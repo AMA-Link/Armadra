@@ -69,6 +69,7 @@ describe("document validation", () => {
         sourceNodeId: "3f0d6a4e-6f3d-4c9a-9f2b-1c0f5a7d8e21",
         source: "subagent",
       },
+      { kind: "git" },
     ];
     expect(payloads).toHaveLength(NODE_TYPES.length);
     const nodes = payloads.map((data) => withData(data.kind as string, data));
@@ -252,6 +253,7 @@ describe("document validation", () => {
         kind: "agentActivity",
         sourceNodeId: "3f0d6a4e-6f3d-4c9a-9f2b-1c0f5a7d8e21",
       },
+      git: { kind: "git" },
     };
     for (const type of NODE_TYPES) {
       expect(

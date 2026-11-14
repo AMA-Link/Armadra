@@ -468,6 +468,9 @@ function readableContent(kind: string): string {
       return "不可读（计划状态由 Host 提供）";
     case "agentActivity":
       return "不可读（原生循环观察卡片）";
+    // Git 节点是工作空间的提交历史视图，内容从仓库现读，不经连线交出去。
+    case "git":
+      return "不可读（Git 历史视图）";
     default:
       return "不可读";
   }
