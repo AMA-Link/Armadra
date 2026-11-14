@@ -1,6 +1,15 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Check, Copy, FileDiff, Folder } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Columns2,
+  Copy,
+  FileDiff,
+  Folder,
+  Rows3,
+} from "lucide-react";
 import type { GitLogCommit } from "@armadra/shared";
 
 import { useT, usePreferencesStore } from "../../../app/preferences-store";
@@ -13,6 +22,10 @@ import { ReadError } from "../forms";
 import { GitLoadable } from "../git-loading";
 import { refBadges } from "../CommitGraph";
 import { buildFileRows } from "./file-tree";
+import { cn } from "../../../lib/cn";
+import { sideBySideRows } from "../../../lib/side-by-side";
+import { PatchBody, SideBySideBody } from "../../../nodes/DiffNode";
+import { IconButton } from "../../../ui/icon-button";
 import { sk } from "../../../sources/scope";
 
 /**
@@ -54,7 +67,13 @@ export function CommitDetails({
   const flat = usePreferencesStore((state) => state.git.flatFiles);
   const setPreference = usePreferencesStore((state) => state.setGitPreference);
   const [copied, setCopied] = useState(false);
-  const [file, setFile] = useState<string | null>(null);
+  const split = usePreferencesStore((state) => state.git.diffSplit);
+  /**
+   * 选中的文件。`undefined` = 还没点过：桌面上自动看第一个文件（差异占满
+   * 右栏下半，空着等人点反而多一步）；手机上文件差异是单独一级，由外面驱动，
+   * 不自动打开。`null` = 用户把差异关了。
+   */
+  const [picked, setFile] = useState<string | null | undefined>(undefined);
   const merge = commit.parents.length > 1;
   const repositoryKey = `${target.repositoryPath}:${commit.repositoryPath}`;
 
@@ -70,6 +89,18 @@ export function CommitDetails({
       gitGateway.commitDetail(target, commit.oid, base, signal),
     retry: false,
   });
+  const badges = useMemo(() => refBadges(commit.refs), [commit.refs]);
+  const rows = useMemo(
+    () => buildFileRows(detail.data?.files ?? [], flat),
+    [detail.data, flat],
+  );
+  const filePaths = useMemo(
+    () => rows.flatMap((row) => (row.kind === "file" ? [row.path] : [])),
+    [rows],
+  );
+  const file =
+    picked === undefined ? (onOpenFile ? null : (filePaths[0] ?? null)) : picked;
+  const fileIndex = file === null ? -1 : filePaths.indexOf(file);
   const patch = useQuery({
     queryKey: sk(
       "git-log-commit-file",
@@ -85,17 +116,23 @@ export function CommitDetails({
     retry: false,
   });
 
-  const badges = useMemo(() => refBadges(commit.refs), [commit.refs]);
-  const rows = useMemo(
-    () => buildFileRows(detail.data?.files ?? [], flat),
-    [detail.data, flat],
+  const splitRows = useMemo(
+    () => (split && patch.data ? sideBySideRows(patch.data.patch) : []),
+    [split, patch.data],
   );
 
   return (
     <div
       data-slot="git-log-details"
-      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto p-2 text-meta"
+      className="flex min-h-0 min-w-0 flex-1 flex-col text-meta"
     >
+      {/* 上半：提交信息与文件；有差异时限高可滚，差异占满下半（#927 B2）。 */}
+      <div
+        className={cn(
+          "min-w-0 overflow-auto p-2",
+          file !== null ? "max-h-[45%] shrink-0" : "min-h-0 flex-1",
+        )}
+      >
       <div className="flex min-w-0 items-center gap-1">
         <span className="min-w-0 flex-1 truncate font-mono">{commit.oid}</span>
         <Button
@@ -160,7 +197,7 @@ export function CommitDetails({
               className="font-mono aria-pressed:bg-muted"
               onClick={() => {
                 onBaseChange(index === 0 ? null : oid);
-                setFile(null);
+                setFile(undefined);
               }}
             >
               {t("gitLog.details.parentIndex", { index: String(index + 1) })}
@@ -242,34 +279,68 @@ export function CommitDetails({
         )}
       </ul>
 
+      </div>
+
       {file !== null && (
-        <section className="mt-2 min-w-0 border-t border-border pt-2">
-          <div className="flex items-center gap-1">
+        <section
+          data-slot="git-log-diff"
+          className="flex min-h-0 min-w-0 flex-1 flex-col border-t border-border"
+        >
+          <div className="flex shrink-0 items-center gap-1 px-2 py-1">
             <FileDiff aria-hidden className="size-3 shrink-0" />
-            <span className="min-w-0 flex-1 truncate font-mono">{file}</span>
+            <span className="min-w-0 flex-1 truncate font-mono" title={file}>
+              {file}
+            </span>
+            <IconButton
+              label={t(split ? "diff.unified" : "diff.sideBySide")}
+              active={split}
+              onClick={() => setPreference("diffSplit", !split)}
+            >
+              {split ? <Rows3 /> : <Columns2 />}
+            </IconButton>
+            <IconButton
+              label={t("gitLog.details.previousFile")}
+              disabled={fileIndex <= 0}
+              onClick={() => setFile(filePaths[fileIndex - 1]!)}
+            >
+              <ChevronUp />
+            </IconButton>
+            <IconButton
+              label={t("gitLog.details.nextFile")}
+              disabled={fileIndex < 0 || fileIndex >= filePaths.length - 1}
+              onClick={() => setFile(filePaths[fileIndex + 1]!)}
+            >
+              <ChevronDown />
+            </IconButton>
             <Button size="xs" variant="ghost" onClick={() => setFile(null)}>
               {t("gitLog.details.closeDiff")}
             </Button>
           </div>
-          <GitLoadable loading={patch.isPending} kind="code" size={6} />
-          {patch.error && (
-            <ReadError error={patch.error} retry={() => void patch.refetch()} />
-          )}
-          {patch.data && (
-            <>
-              {patch.data.truncated && (
-                <p className="text-muted-foreground">
-                  {t("gitRepo.patchTruncated")}
-                </p>
-              )}
-              <pre
-                aria-label={t("gitRepo.filePatch")}
-                className="max-h-72 overflow-auto rounded-control bg-sunken p-2 font-mono text-caption leading-4"
-              >
-                {patch.data.patch}
-              </pre>
-            </>
-          )}
+          <div className="min-h-0 flex-1 overflow-auto px-1 pb-2">
+            <GitLoadable loading={patch.isPending} kind="code" size={6} />
+            {patch.error && (
+              <ReadError
+                error={patch.error}
+                retry={() => void patch.refetch()}
+              />
+            )}
+            {patch.data && (
+              <>
+                {patch.data.truncated && (
+                  <p className="px-1 text-muted-foreground">
+                    {t("gitRepo.patchTruncated")}
+                  </p>
+                )}
+                <div aria-label={t("gitRepo.filePatch")} role="region">
+                  {split ? (
+                    <SideBySideBody rows={splitRows} />
+                  ) : (
+                    <PatchBody patch={patch.data.patch} />
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </section>
       )}
     </div>

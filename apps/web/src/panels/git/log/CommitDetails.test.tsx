@@ -108,8 +108,33 @@ describe("提交详情", () => {
     view();
     await screen.findByText("web/src");
     usePreferencesStore.getState().setGitPreference("flatFiles", true);
-    await screen.findByText("apps/web/src/a.ts");
+    // 一行在文件列表里，一行是自动打开的差异标题。
+    expect(await screen.findAllByText("apps/web/src/a.ts")).toHaveLength(2);
     expect(screen.queryByText("web/src")).toBeNull();
+  });
+
+  it("桌面上自动打开第一个文件的差异，占满下半（#927 B2）", async () => {
+    const { container } = view();
+    await waitFor(() => expect(commitFile).toHaveBeenCalled());
+    expect(container.querySelector('[data-slot="git-log-diff"]')).not.toBeNull();
+    expect((await screen.findByLabelText("File diff")).textContent).toContain(
+      "+new",
+    );
+  });
+
+  it("并排开关进偏好，换成左右两列", async () => {
+    view();
+    await screen.findByLabelText("File diff");
+    fireEvent.click(screen.getByRole("button", { name: "Side by side" }));
+    expect(usePreferencesStore.getState().git.diffSplit).toBe(true);
+    usePreferencesStore.getState().setGitPreference("diffSplit", false);
+  });
+
+  it("关掉差异后上半回到整栏", async () => {
+    const { container } = view();
+    await screen.findByLabelText("File diff");
+    fireEvent.click(screen.getByRole("button", { name: "Hide the diff" }));
+    expect(container.querySelector('[data-slot="git-log-diff"]')).toBeNull();
   });
 
   it("点一个文件在同一栏里展开差异", async () => {

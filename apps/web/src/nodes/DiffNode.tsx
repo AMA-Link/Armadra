@@ -285,12 +285,12 @@ export function PatchBody({
  * 并排视图。左右两列都来自同一份 Git patch（见 `lib/side-by-side`），
  * 这里只负责排版和着色，不重新计算差异，也不猜没有对应行的那一侧。
  */
-function SideBySideBody({
+export function SideBySideBody({
   rows,
-  search,
+  search = "",
 }: {
   rows: readonly SideBySideRow[];
-  search: string;
+  search?: string;
 }) {
   const needle = search.trim().toLowerCase();
   return (
