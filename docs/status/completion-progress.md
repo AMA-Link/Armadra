@@ -4403,3 +4403,16 @@ nightly 在 `b8353492`（运行 37338174906）之后连续失败。逐个作业�
 验证：`pnpm check` 通过；全量测试 desktop 6436、web 6520、shared 634、server 112、mobile 32、push-relay 9 全过（web 的 `console-host.test.ts` 一例在全量并发下超时一次，单跑与重跑全过，与本改动无关）。新用例：`hook/runner-done.test.ts`（3）、`task-watch.test.ts` 新增 3、`runners.test.ts` 新增 3。变异检查 14 个（ingest 不验令牌 / 不看 provider / 不发事件、round 不校验、`releaseWait` 不顾挂着的 `wait`、不认协调者、不放标记、不订阅、间隔回到 5 秒、适配器不做特性探测 / 不用 `start` 时的键 / 不过滤 runner / 不注销 / `start` 不记键）全部被抓到。
 
 没做 / 限制：没有对真 ama 与真 CLI 成员跑端到端；`completed` 那一轮行已由 `wait` 落下，事件只对中断、停止、`wait` 放弃等情况起作用。
+
+## 代码托管详情与共用组件（Refs #922，包 4，2026-11-13）
+
+做了什么：
+
+- **共用组件**（`apps/web/src/panels/github/`，面板与画布同一份）：`ForgeItemRow`（状态图标、`#n`、标题、状态胶囊、作者、时间、标签）、`ForgeStateBadge`（开启 / 已关闭 / 已合并 / 草稿）、`ForgeChecksSummary`（「检查 3 / 4 通过」加圆点，可展开每项，链接只收 http(s)；`compact` 是画布框头部用的圆点加 `通过/总数`）。列表行改用 `ForgeItemRow`，查询键与 `when` 移到 `forge-keys.ts`。
+- **详情**（`ForgeDetail.tsx`）：Issue 有状态、标签、作者、评论数、Markdown 正文与评论时间线；PR 有 `base ← head`、`Closes #n`，概览（检查汇总、改动文件卡片 A/M/D 与增删行、描述、带结论的评审意见）、文件、动态三页。正文复用 `CommentBody`（`react-markdown`，不渲染 HTML，链接新窗口且只放行 http(s)）。面板只读，没有写操作。
+- **画布**：`GithubReferenceBadge` 悬停弹出同一个 `ForgeItemRow`（悬停才取条目，缓存与面板详情共用），点击仍打开面板详情；`GroupNode` 里绑定 PR 的徽标旁显示紧凑的检查汇总。
+- **showcase**：`integration` 分区的 GitLab MR 样本换成完整 PR 详情，另加 Issue 详情与徽标卡 / 检查汇总样本。
+
+接口（按 `docs/armadra/plans/forge-auto-detect.md` 的形状，web 侧 zod 在 `apps/web/src/api/forge.ts`）：`forge.issueComments` / `forge.pullComments`（`{ items: ForgeConversationItem[] }`）；`forge.workspaceRepository`、`forge.selectWorkspaceRemote`、`forge.hosts`、`forge.setReuseLocalLogins` 的形状先写好，包 3 使用。契约类型随 core 线落进 `@armadra/shared` 之前，页面经窄接口调用。
+
+没做 / 限制：评审意见没有 `文件:行号`（`ForgeConversationItem` 没有这两个字段）；真实 core 的讨论路由要等 core 线合并后才能端到端，目前用 mock 与 showcase 夹具验证。
