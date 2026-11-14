@@ -49,6 +49,8 @@ const forgeApi = vi.hoisted(() => ({
   forgeIssue: vi.fn(),
   forgePulls: vi.fn(),
   forgePull: vi.fn(),
+  forgeWorkspaceRepository: vi.fn(),
+  selectWorkspaceRemote: vi.fn(),
 }));
 
 vi.mock("../../api/forge", async (original) => ({
@@ -58,6 +60,7 @@ vi.mock("../../api/forge", async (original) => ({
 
 import { RuntimeRequestError } from "@/api/request";
 import { usePreferencesStore } from "@/app/preferences-store";
+import { chooseOption } from "../../app/test-harness";
 import type { ForgeIssue, ForgePull } from "../../api/forge";
 import { GithubDrawer } from "./GithubDrawer";
 import { openGithubPanel, useGithubFocus } from "./open";
@@ -135,7 +138,12 @@ function renderDrawer() {
 }
 
 async function resolveRemote(url: string) {
-  const input = document.querySelector("input") as HTMLInputElement;
+  // 先自动识别；识别不出才轮到手填那一栏。
+  const input = await waitFor(() => {
+    const found = document.querySelector("input") as HTMLInputElement | null;
+    if (!found) throw new Error("no input yet");
+    return found;
+  });
   fireEvent.change(input, { target: { value: url } });
   fireEvent.click(screen.getByText("解析仓库"));
 }
@@ -170,6 +178,8 @@ beforeEach(() => {
   for (const fn of Object.values(forgeApi)) fn.mockReset();
   forgeApi.forgeIssues.mockResolvedValue({ items: [], nextCursor: null });
   forgeApi.forgePulls.mockResolvedValue({ items: [], nextCursor: null });
+  // 缺省：自动识别不可用，回到手填远端地址（下面「自动识别」一组单独给结果）。
+  forgeApi.forgeWorkspaceRepository.mockRejectedValue(new Error("unsupported"));
 });
 afterEach(cleanup);
 
@@ -193,8 +203,9 @@ describe("可用性", () => {
     );
     renderDrawer();
     await resolveRemote("https://github.com/acme/app.git");
-    expect(await screen.findByText("还没有这个平台的令牌")).toBeTruthy();
-    fireEvent.click(screen.getByText("前往设置 → 代码托管"));
+    expect(await screen.findByText("没找到 github.com 的登录")).toBeTruthy();
+    fireEvent.click(screen.getByText("手动配置"));
+    fireEvent.click(await screen.findByText("前往设置 → 代码托管"));
     expect(usePreferencesStore.getState().lastSettingsSection).toBe("forge");
     expect(forgeApi.forgeIssues).not.toHaveBeenCalled();
   });
@@ -367,5 +378,140 @@ describe("画布上的连接徽标", () => {
     expect(forgeApi.resolveForge).not.toHaveBeenCalled();
     expect(forgeApi.forgePull).toHaveBeenCalledWith(nested, 31, "workspace-1");
     expect(forgeApi.forgePulls).not.toHaveBeenCalled();
+  });
+});
+
+describe("自动识别", () => {
+  const remote = (
+    name: string,
+    host: string,
+    overrides: Record<string, unknown> = {},
+  ) => ({
+    name,
+    url: `https://${host}/acme/app.git`,
+    detection: {
+      ...detection("gitea", { host }),
+      credentialSource: "ghCli",
+      ...overrides,
+    },
+  });
+  const repository = (overrides: Record<string, unknown> = {}) => ({
+    reason: "ok",
+    selected: "upstream",
+    selectedBy: "upstream",
+    remotes: [
+      remote("origin", "git.example.test"),
+      remote("upstream", "git.example.test"),
+    ],
+    ...overrides,
+  });
+
+  it("打开即显示识别出的仓库，不用手填", async () => {
+    ready();
+    forgeApi.forgeWorkspaceRepository.mockResolvedValue(repository());
+    renderDrawer();
+    expect(
+      await screen.findByTestId("forge-hosted").catch(() => null),
+    ).toBeNull();
+    await waitFor(() =>
+      expect(document.querySelector("[data-slot=forge-hosted]")).not.toBeNull(),
+    );
+    expect(forgeApi.forgeWorkspaceRepository).toHaveBeenCalledWith(
+      "workspace-1",
+    );
+    expect(screen.queryByText("解析仓库")).toBeNull();
+    expect(forgeApi.resolveForge).not.toHaveBeenCalled();
+  });
+
+  it("下拉列出各 remote，缺令牌带橙点；切换调 selectWorkspaceRemote", async () => {
+    ready();
+    forgeApi.forgeWorkspaceRepository.mockResolvedValue(
+      repository({
+        remotes: [
+          remote("origin", "git.example.test"),
+          remote("upstream", "git.example.test", { credential: false }),
+        ],
+      }),
+    );
+    forgeApi.selectWorkspaceRemote.mockResolvedValue(
+      repository({ selected: "origin", selectedBy: "user" }),
+    );
+    renderDrawer();
+    const trigger = await screen.findByRole("combobox");
+    // 选中的 upstream 缺令牌：触发器里就有橙点。
+    expect(
+      trigger.querySelector("[data-slot=forge-remote-no-token]"),
+    ).not.toBeNull();
+    await chooseOption(trigger, /origin/);
+    await waitFor(() =>
+      expect(forgeApi.selectWorkspaceRemote).toHaveBeenCalledWith(
+        "workspace-1",
+        "origin",
+      ),
+    );
+  });
+
+  it("「输入远端地址」展开原来的手填", async () => {
+    ready();
+    forgeApi.forgeWorkspaceRepository.mockResolvedValue(repository());
+    renderDrawer();
+    const switcher = await waitFor(() => {
+      const el = document.querySelector(
+        "[data-slot=forge-remote-switcher] [role=combobox]",
+      ) as HTMLElement | null;
+      if (!el) throw new Error("no switcher");
+      return el;
+    });
+    await chooseOption(switcher, "输入远端地址");
+    expect(await screen.findByText("解析仓库")).toBeTruthy();
+  });
+
+  it("找不到令牌：显示没找到登录与重试，手动配置预填平台与地址", async () => {
+    ready();
+    forgeApi.forgeWorkspaceRepository.mockResolvedValue(
+      repository({
+        selected: "origin",
+        remotes: [
+          remote("origin", "git.example.test", {
+            credential: false,
+            credentialSource: null,
+            accountLogin: null,
+          }),
+        ],
+      }),
+    );
+    renderDrawer();
+    expect(
+      await screen.findByText("没找到 git.example.test 的登录"),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByText("手动配置"));
+    const key = await waitFor(() => {
+      const el = document.querySelector(
+        "[data-slot=forge-config-form] input",
+      ) as HTMLInputElement | null;
+      if (!el) throw new Error("no form");
+      return el;
+    });
+    expect(key.value).toBe("git.example.test");
+    const calls = forgeApi.forgeWorkspaceRepository.mock.calls.length;
+    fireEvent.click(screen.getByText("重试"));
+    await waitFor(() =>
+      expect(
+        forgeApi.forgeWorkspaceRepository.mock.calls.length,
+      ).toBeGreaterThan(calls),
+    );
+  });
+
+  it("不是 git 仓库：说明原因并保留手填", async () => {
+    ready();
+    forgeApi.forgeWorkspaceRepository.mockResolvedValue({
+      reason: "notGit",
+      selected: null,
+      selectedBy: null,
+      remotes: [],
+    });
+    renderDrawer();
+    expect(await screen.findByText("这个工作空间不是 git 仓库")).toBeTruthy();
+    expect(await screen.findByText("解析仓库")).toBeTruthy();
   });
 });

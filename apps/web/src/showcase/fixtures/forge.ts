@@ -1,4 +1,5 @@
 import type {
+  WorkspaceRepository,
   ForgeChecks,
   ForgeConfig,
   ForgeConversationItem,
@@ -218,3 +219,28 @@ export const FORGE_CONFIGS: ForgeConfig[] = [
     updatedAtMs: AT,
   },
 ];
+
+/** fork 工作空间：upstream 是默认，origin 缺令牌。 */
+export const WORKSPACE_REPOSITORY: WorkspaceRepository = {
+  reason: "ok",
+  selected: "upstream",
+  selectedBy: "upstream",
+  remotes: [
+    {
+      name: "origin",
+      url: "https://git.example.test/alice/app.git",
+      detection: {
+        ...GITEA_DETECTION,
+        repository: { host: "git.example.test", owner: "alice", name: "app" },
+        credential: false,
+        accountLogin: null,
+        credentialSource: null,
+      },
+    },
+    {
+      name: "upstream",
+      url: "https://git.example.test/acme/app.git",
+      detection: { ...GITEA_DETECTION, credentialSource: "stored" },
+    },
+  ],
+};

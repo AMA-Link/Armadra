@@ -6,6 +6,7 @@ import { ChecksView } from "@/panels/github/ForgeChecksSummary";
 import { IssueDetail, PullDetail } from "@/panels/github/ForgeDetail";
 import { ForgeHosted, forgeKeys } from "@/panels/github/ForgeHosted";
 import { ForgeItemRow } from "@/panels/github/ForgeItemRow";
+import { RemoteSwitcher } from "@/panels/github/RemoteSwitcher";
 import {
   ForgeConfigs,
   forgeConfigKeys,
@@ -26,6 +27,7 @@ import {
   GITLAB_COMMENTS,
   GITLAB_FILES,
   GITLAB_REPO,
+  WORKSPACE_REPOSITORY,
   GITEA_DETECTION,
   GITEA_ISSUES,
   GITEA_PULLS,
@@ -169,6 +171,15 @@ function ForgeSamples() {
               number={21}
               locale={locale}
               onBack={() => {}}
+            />
+          </div>
+        </Sample>
+        <Sample caption={t("forge.showcase.remotes")}>
+          <div className="min-w-0 rounded-card border border-border">
+            <RemoteSwitcher
+              repository={WORKSPACE_REPOSITORY}
+              value="upstream"
+              onChange={() => {}}
             />
           </div>
         </Sample>
