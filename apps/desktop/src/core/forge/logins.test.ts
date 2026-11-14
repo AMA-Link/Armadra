@@ -4,10 +4,15 @@
  * glab / git，也不读真 HOME。
  */
 
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import type { CommandOptions, CommandRunner } from "./exec";
 import { LocalLogins, parseTeaLogins } from "./logins";
+
+/** 拼法与实现一致：Windows 上是反斜杠。 */
+const TEA_PATH = join("/home/test", ".config", "tea", "config.yml");
 
 const TOKEN = "ghp_ExampleTokenValue0123456789";
 
@@ -109,7 +114,7 @@ describe("tea：只读配置文件", () => {
   });
 
   it("按主机匹配（忽略端口），位置是 ~/.config/tea/config.yml，不起命令", async () => {
-    const path = "/home/test/.config/tea/config.yml";
+    const path = TEA_PATH;
     const { logins, calls, reads } = rig(() => ({ ok: false }), {
       files: { [path]: TEA },
     });
@@ -131,7 +136,7 @@ describe("tea：只读配置文件", () => {
                 "protocol=https\nhost=other.test\nusername=u\npassword=fromGitHelper1\n",
             }
           : { ok: false },
-      { files: { "/home/test/.config/tea/config.yml": TEA } },
+      { files: { [TEA_PATH]: TEA } },
     );
     expect(await logins.resolve("other.test", "gitea")).toEqual({
       token: "fromGitHelper1",
