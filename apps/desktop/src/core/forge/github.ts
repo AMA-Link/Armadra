@@ -5,7 +5,11 @@
  * `/api/github/*` 本身一行不改：这里是它旁边的第二个调用方，不是替身。
  */
 
-import type { GithubClient } from "../github/client";
+import { GithubClient, type GithubClientOptions } from "../github/client";
+import { create } from "../contract/message";
+import { GithubRepositoryRefSchema } from "../github/schema";
+import { githubError } from "../github/errors";
+import { validName, webHostFor } from "../github/remote";
 import * as api from "../github/endpoints";
 import { codeOf, GithubError } from "../github/errors";
 import { isPullRecord, toIssue, toPull } from "../github/decode";
@@ -284,10 +288,54 @@ function perPage(limit: number): string {
   return String(limit > 0 && limit <= MAX_LIMIT ? limit : DEFAULT_LIMIT);
 }
 
+/**
+ * {@link GithubForge} 要用的那一小块：一个配好的 client、核过的仓库引用、时钟，与
+ * 「这次请求成没成」的记录。`GithubService`（§5 的那一份凭据）天然满足；按主机
+ * 复用本机登录时（契约 §111.6）用 {@link hostGithubAccess} 造一个。
+ */
+export type GithubAccess = Pick<
+  GithubService,
+  "client" | "repository" | "now"
+> & {
+  readonly credentials: Pick<
+    GithubService["credentials"],
+    "noteSuccess" | "noteFailure"
+  >;
+};
+
+/**
+ * 一个 API 根上的 GitHub 访问，令牌每次现取（本机登录）。引用里的 API 根永远是
+ * 这一个，不由请求决定；没有「设置页的失败记录」可写，记录是空操作。
+ */
+export function hostGithubAccess(
+  apiBase: string,
+  token: () => Promise<string>,
+  options: Omit<GithubClientOptions, "token" | "apiBase"> = {},
+  now: () => number = () => Date.now(),
+): GithubAccess {
+  const client = new GithubClient({ ...options, apiBase, token });
+  return {
+    client: () => client,
+    now,
+    repository(ref) {
+      if (ref === undefined || !validName(ref.owner) || !validName(ref.name)) {
+        throw githubError("invalid");
+      }
+      return create(GithubRepositoryRefSchema, {
+        owner: ref.owner,
+        name: ref.name,
+        apiBase: client.apiBase(),
+        host: webHostFor(client.apiBase()),
+      });
+    },
+    credentials: { noteSuccess: () => undefined, noteFailure: () => undefined },
+  };
+}
+
 export class GithubForge implements Forge {
   readonly kind = "github" as const;
 
-  constructor(private readonly service: GithubService) {}
+  constructor(private readonly service: GithubAccess) {}
 
   /** 配好的 client 与核过的仓库引用；API 根永远来自这台机器的 GitHub 配置。 */
   private target(repo: ForgeRepo): {

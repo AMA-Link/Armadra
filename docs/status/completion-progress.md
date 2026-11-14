@@ -4417,6 +4417,34 @@ nightly 在 `b8353492`（运行 37338174906）之后连续失败。逐个作业�
 
 没做 / 限制：评审意见没有 `文件:行号`（`ForgeConversationItem` 没有这两个字段）；真实 core 的讨论路由要等 core 线合并后才能端到端，目前用 mock 与 showcase 夹具验证。
 
+## 代码托管全自动识别：工作空间仓库与平台探测（包 1，Refs #922，2026-11-13）
+
+做了什么：
+
+- **仓库解析**（`core/forge/workspace.ts`、`remotes.ts`、`selection.ts`）：对工作空间根跑 `git rev-parse --show-toplevel` 与 `git remote -v`（只取 fetch），主 remote 顺序「用户选择 → `remote.<name>.gh-resolved` → upstream → origin → 名字排序首个」；用户选择按工作空间存进迁移 0066 的 `forge_workspace_remote`（仓库里没有工作空间级设置存储，所以新增；主键 `workspace_id`，随工作空间外键删除）。地址里的凭据在进答复前剥掉。远程执行主机的工作空间：现有执行主机通道没有读 remote 的操作，答 `remoteHostUnavailable`，不回退读控制端磁盘。
+- **SSH 别名**（`ssh-alias.ts`）：scp 与 `ssh://` 写法先 `ssh -G` 取 `HostName`（3 秒超时、最小环境、按别名缓存 5 分钟，失败用原值）。
+- **平台探测**（`probe.ts`，外呼登记 `OUTBOUND.forgeProbe`）：已知主机直接认；用户 remote 里的其他主机 HTTPS 问 `/api/v3/meta`、`/api/v1/version`、`/api/v4/version`（401 也算 GitLab），按主机缓存；结果只在没有配置行时用，`credential` 仍按实际。
+- **路由与 procedure**：`POST|PUT /api/forge/workspace-repository`（`forge.workspaceRepository` / `forge.selectWorkspaceRemote`）、`GET …/issues/{n}/comments`、`…/pulls/{n}/comments`（`forge.issueComments` / `forge.pullComments`，现有 `Forge.conversation` 的 `items`）；`ForgeDetection` 加 `credentialSource`（包 1 只给 `ghCli` / `stored`）。契约 §111，§29.1、§29.2 补引用，协议 1.56。
+- **PR 绑定**（`collab/control/pr-bind.ts`）：按编号认仓库改用选中的 remote，不再写死 `origin`；`intake` 读正文先预热（`forgeForReady`）。
+
+实测：新增用例 `remotes.test.ts`、`ssh-alias.test.ts`、`probe.test.ts`、`workspace-repository.test.ts`（含真 git 临时仓库）与 `forge.test.ts` 的讨论路由；`pnpm contract:check` 通过。
+
+没做 / 限制：远程执行主机上的 remote 读取（需要给 Worker 加操作，另议）；web 的面板自动识别与 remote 下拉在 web 线；令牌复用（gh / glab / tea / git credential）在包 2。
+
+## 代码托管全自动识别：复用本机登录与已识别的主机（包 2，Refs #922，2026-11-13）
+
+做了什么：
+
+- **凭据复用**（`core/forge/logins.ts`）：GitHub `gh auth token --hostname <主机>`（每主机分开，github.com 与企业版同时可用）、GitLab `glab config get token --host <主机>`、Gitea / Forgejo 读 tea 的配置文件（只读，不引 YAML 库），最后一档 `git credential fill`（只限 https，`GIT_TERMINAL_PROMPT=0`、`GCM_INTERACTIVE=never`，答的主机必须是问的主机）。按需读、认到的缓存 60 秒（没认到 10 秒）、关开关即清；令牌只在内存，不落库、不进日志与响应。外部命令与文件读取经 `CommandRunner` / `FileReader` 注入。
+- **识别与取数**（`core/forge/service.ts`）：`warm` 在识别前预热（探平台、读本机登录），`detect` 同步读缓存；存着的令牌永远优先；`credentialSource` 补齐 `glab` / `tea` / `gitCredential`；GitHub 没有存着凭据时按主机造 client（`github.ts` 的 `GithubAccess` / `hostGithubAccess`，保留各自的条件请求缓存）。列仓库（`accounts` / `repositories`）也认本机登录。
+- **开关**（`forge/reuse.ts`，迁移 0067 `forge_reuse_local_logins` 单例）：桌面壳缺省开，服务器壳缺省关，环境变量 `ARMADRA_FORGE_REUSE_LOGINS=1` 才开（写进开发指南的环境变量表）；用户切换过一次就以库里那一行为准。
+- **路由**：`GET /api/forge/hosts`（`forge.hosts`，主机并集：remote 里见过的、配置表里的、GitHub 凭据的）、`PUT /api/forge/reuse-local-logins`（`forge.setReuseLocalLogins`，`settings:write`）。契约 §111.6。
+- GitHub 按主机：没有新增 `github_config` 的迁移，按主机的复用走本机登录，旧的单行配置照旧可用，不迁移旧数据。
+
+实测：新增 `logins.test.ts`（四档来源与顺序、缓存、开关、不合格输出，全 mock）、`credential-reuse.test.ts`（github.com 与企业版同时可用且令牌只发往各自主机、来源字段、存着的优先、服务器壳缺省关且不起命令、PUT 持久与立即清、主机并集、响应 / 日志 / 每张表都没有令牌、列仓库）；`pnpm contract:check` 通过。
+
+没做 / 限制：复用来的账号 `accountLogin` 恒为 `null`（不为一个登录名多花远端请求）；「见过的主机」只在内存里，重启后随工作空间被打开再出现；没有对真 gh / glab / tea / git 助手做端到端（按规矩只用 mock）。
+
 ## 代码托管面板自动识别与设置（Refs #922，包 3，2026-11-13）
 
 做了什么：

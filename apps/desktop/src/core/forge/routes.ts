@@ -21,6 +21,7 @@ import type { CoreRequest, HandlerResult, RouteMatch } from "../http/router";
 import type { CoreServer } from "../http/server";
 import type { ForgeService } from "./service";
 import { configKey, forgeRepo } from "./service";
+import type { WorkspaceRepositoryService } from "./workspace";
 import {
   ForgeError,
   type ForgeMergeMethod,
@@ -52,6 +53,11 @@ export const FORGE_ROUTES = {
   mergeOptions: `${REPO}/merge-options`,
   pullAutoMerge: `${REPO}/pulls/{number}/auto-merge`,
   pullBranch: `${REPO}/pulls/{number}/branch`,
+  workspaceRepository: "/api/forge/workspace-repository",
+  hosts: "/api/forge/hosts",
+  reuseLocalLogins: "/api/forge/reuse-local-logins",
+  issueComments: `${REPO}/issues/{number}/comments`,
+  pullComments: `${REPO}/pulls/{number}/comments`,
 } as const;
 
 const MERGE_METHODS: readonly ForgeMergeMethod[] = [
@@ -253,7 +259,22 @@ function withoutBodies<T extends { body: string }>(page: {
 }
 
 /** 每个动作的实现；旧 handler 与 procedure 都调它。 */
-function operations(service: ForgeService) {
+function operations(
+  service: ForgeService,
+  workspaces: WorkspaceRepositoryService | undefined,
+) {
+  /** 识别前的预热（探平台），再给这个仓库的平台实现。 */
+  const ready = (repo: ForgeRepo, args: Args) =>
+    service.forgeForReady(repo, workspaceOf(args));
+  const workspaceIdOf = (args: Args): string => {
+    const id = workspaceOf(args);
+    if (id === "") bad("workspaceId 不能为空");
+    return id;
+  };
+  const known = (): WorkspaceRepositoryService => {
+    if (workspaces === undefined) bad("工作空间仓库解析没有装配");
+    return workspaces as WorkspaceRepositoryService;
+  };
   return {
     configs: (args: Args) => ({ configs: service.configs(workspaceOf(args)) }),
 
@@ -291,15 +312,61 @@ function operations(service: ForgeService) {
     },
 
     // 读：地址在请求体里而不在查询串里，远端地址可能带着凭据。
-    resolve(args: Args) {
+    async resolve(args: Args) {
       const remoteUrl = stringField(args, "remoteUrl", {
         required: true,
         max: 2048,
       });
-      return service.resolve(remoteUrl, workspaceOf(args));
+      return await service.resolveReady(remoteUrl, workspaceOf(args));
     },
 
-    detect: (args: Args) => service.detect(repoOf(args), workspaceOf(args)),
+    async detect(args: Args) {
+      const repo = repoOf(args);
+      await service.warm(repo.host, workspaceOf(args), repo);
+      return service.detect(repo, workspaceOf(args));
+    },
+
+    // 已识别的主机与「复用本机登录」开关（§111.6）。
+    hosts: (args: Args) => service.hosts(workspaceOf(args)),
+
+    setReuseLocalLogins(args: Args) {
+      if (typeof args.enabled !== "boolean") bad("enabled 要是布尔值");
+      service.setReuseLocalLogins(args.enabled as boolean);
+      return { reuseLocalLogins: service.reuseLocalLogins() };
+    },
+
+    // 工作空间 → 仓库（§111.1）：读 git remote、挑主 remote、识别每个 remote。
+    workspaceRepository: (args: Args) =>
+      known().repository(workspaceIdOf(args)),
+
+    selectWorkspaceRemote(args: Args) {
+      const remote = args.remote;
+      if (remote !== null && typeof remote !== "string") {
+        bad("remote 要是字符串或 null");
+      }
+      return known().select(
+        workspaceIdOf(args),
+        remote === "" ? null : (remote as string | null),
+      );
+    },
+
+    async issueComments(args: Args) {
+      const repo = repoOf(args);
+      const number = numberOf(args);
+      const { items } = await (
+        await ready(repo, args)
+      ).conversation(repo, number, "issue");
+      return { items };
+    },
+
+    async pullComments(args: Args) {
+      const repo = repoOf(args);
+      const number = numberOf(args);
+      const { items } = await (
+        await ready(repo, args)
+      ).conversation(repo, number, "pull");
+      return { items };
+    },
 
     // 列仓库（§29.7）：新建工作空间从这里挑一个克隆。
     accounts: (args: Args) => ({
@@ -317,18 +384,14 @@ function operations(service: ForgeService) {
       const repo = repoOf(args);
       const options = listOptions(args);
       return withoutBodies(
-        await service
-          .forgeFor(repo, workspaceOf(args))
-          .listIssues(repo, options),
+        await (await ready(repo, args)).listIssues(repo, options),
       );
     },
 
     async issue(args: Args) {
       const repo = repoOf(args);
       const number = numberOf(args);
-      return await service
-        .forgeFor(repo, workspaceOf(args))
-        .getIssue(repo, number);
+      return await (await ready(repo, args)).getIssue(repo, number);
     },
 
     async setIssueState(args: Args) {
@@ -337,18 +400,16 @@ function operations(service: ForgeService) {
       const state = args.state;
       if (state !== "open" && state !== "closed")
         bad("state 只能是 open 或 closed");
-      return await service
-        .forgeFor(repo, workspaceOf(args))
-        .setIssueState(repo, number, state as "open" | "closed");
+      return await (
+        await ready(repo, args)
+      ).setIssueState(repo, number, state as "open" | "closed");
     },
 
     async pulls(args: Args) {
       const repo = repoOf(args);
       const options = listOptions(args);
       return withoutBodies(
-        await service
-          .forgeFor(repo, workspaceOf(args))
-          .listPulls(repo, options),
+        await (await ready(repo, args)).listPulls(repo, options),
       );
     },
 
@@ -357,7 +418,9 @@ function operations(service: ForgeService) {
       const draft = args.draft;
       if (draft !== undefined && typeof draft !== "boolean")
         bad("draft 要是布尔值");
-      return await service.forgeFor(repo, workspaceOf(args)).createPull(repo, {
+      return await (
+        await ready(repo, args)
+      ).createPull(repo, {
         title: stringField(args, "title", { required: true, max: MAX_TITLE }),
         body: stringField(args, "body", { required: false, max: MAX_BODY }),
         head: stringField(args, "head", { required: true, max: 255 }),
@@ -369,27 +432,21 @@ function operations(service: ForgeService) {
     async pull(args: Args) {
       const repo = repoOf(args);
       const number = numberOf(args);
-      return await service
-        .forgeFor(repo, workspaceOf(args))
-        .getPull(repo, number);
+      return await (await ready(repo, args)).getPull(repo, number);
     },
 
     async pullFiles(args: Args) {
       const repo = repoOf(args);
       const number = numberOf(args);
       return {
-        files: await service
-          .forgeFor(repo, workspaceOf(args))
-          .pullFiles(repo, number),
+        files: await (await ready(repo, args)).pullFiles(repo, number),
       };
     },
 
     async pullChecks(args: Args) {
       const repo = repoOf(args);
       const number = numberOf(args);
-      return await service
-        .forgeFor(repo, workspaceOf(args))
-        .checks(repo, number);
+      return await (await ready(repo, args)).checks(repo, number);
     },
 
     // 流水线 / 检查通过后合并（GitLab、Gitea，§29.6）：没有这个能力的平台答 400。
@@ -397,7 +454,7 @@ function operations(service: ForgeService) {
       const repo = repoOf(args);
       const number = numberOf(args);
       const input = mergeInput(args);
-      const forge = service.forgeFor(repo, workspaceOf(args));
+      const forge = await ready(repo, args);
       if (forge.autoMerge === undefined) bad("这个平台没有流水线通过后合并");
       return await forge.autoMerge(repo, number, input);
     },
@@ -405,7 +462,7 @@ function operations(service: ForgeService) {
     async cancelAutoMerge(args: Args) {
       const repo = repoOf(args);
       const number = numberOf(args);
-      const forge = service.forgeFor(repo, workspaceOf(args));
+      const forge = await ready(repo, args);
       if (forge.cancelAutoMerge === undefined) {
         bad("这个平台没有流水线通过后合并");
       }
@@ -419,22 +476,22 @@ function operations(service: ForgeService) {
       const number = numberOf(args);
       const headSha = args.headSha === undefined ? "" : text(args, "headSha");
       if (headSha === "") bad("headSha 不能为空");
-      const forge = service.forgeFor(repo, workspaceOf(args));
+      const forge = await ready(repo, args);
       if (forge.deleteBranch === undefined) bad("这个平台在这里不删分支");
       return await forge.deleteBranch(repo, number, headSha);
     },
 
     async mergeOptions(args: Args) {
       const repo = repoOf(args);
-      return await service.forgeFor(repo, workspaceOf(args)).mergeOptions(repo);
+      return await (await ready(repo, args)).mergeOptions(repo);
     },
 
     async merge(args: Args) {
       const repo = repoOf(args);
       const number = numberOf(args);
-      return await service
-        .forgeFor(repo, workspaceOf(args))
-        .merge(repo, number, mergeInput(args));
+      return await (
+        await ready(repo, args)
+      ).merge(repo, number, mergeInput(args));
     },
   };
 }
@@ -480,15 +537,19 @@ function guarded(work: Work): Work {
   };
 }
 
-export function installRoutes(server: CoreServer, service: ForgeService): void {
+export function installRoutes(
+  server: CoreServer,
+  service: ForgeService,
+  workspaces?: WorkspaceRepositoryService,
+): void {
   const { router } = server;
-  const run = operations(service);
+  const run = operations(service, workspaces);
   const route = (
     method: string,
     path: string,
     options: { body?: boolean; query?: boolean; status?: number },
     work: (args: Args) => unknown,
-    scope?: { scope: "github:read" },
+    scope?: { scope: "github:read" | "settings:write" },
   ) =>
     router.handle(
       method,
@@ -539,6 +600,31 @@ export function installRoutes(server: CoreServer, service: ForgeService): void {
   route("DELETE", FORGE_ROUTES.pullBranch, { query: true }, run.deleteBranch);
   route("GET", FORGE_ROUTES.mergeOptions, { query: true }, run.mergeOptions);
   route("POST", FORGE_ROUTES.pullMerge, { body: true }, run.merge);
+  route("GET", FORGE_ROUTES.issueComments, { query: true }, run.issueComments);
+  route("GET", FORGE_ROUTES.pullComments, { query: true }, run.pullComments);
+  route("GET", FORGE_ROUTES.hosts, { query: true }, run.hosts);
+  route(
+    "PUT",
+    FORGE_ROUTES.reuseLocalLogins,
+    { body: true },
+    run.setReuseLocalLogins,
+    { scope: "settings:write" },
+  );
+  // 读 POST（体里带工作空间），切主 remote 是 PUT 写。
+  route(
+    "POST",
+    FORGE_ROUTES.workspaceRepository,
+    { body: true },
+    run.workspaceRepository,
+    { scope: "github:read" },
+  );
+  route(
+    "PUT",
+    FORGE_ROUTES.workspaceRepository,
+    { body: true },
+    run.selectWorkspaceRemote,
+    { scope: "github:read" },
+  );
 
   // procedure：入参已由门面按契约解析，拒绝抛 `CoreFailure`，答案原样交回。
   const procedure =
@@ -573,5 +659,11 @@ export function installRoutes(server: CoreServer, service: ForgeService): void {
     autoMerge: procedure(run.autoMerge),
     cancelAutoMerge: procedure(run.cancelAutoMerge),
     deleteBranch: procedure(run.deleteBranch),
+    issueComments: procedure(run.issueComments),
+    pullComments: procedure(run.pullComments),
+    workspaceRepository: procedure(run.workspaceRepository),
+    selectWorkspaceRemote: procedure(run.selectWorkspaceRemote),
+    hosts: procedure(run.hosts),
+    setReuseLocalLogins: procedure(run.setReuseLocalLogins),
   });
 }

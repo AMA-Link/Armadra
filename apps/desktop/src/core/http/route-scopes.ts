@@ -326,6 +326,20 @@ export const ROUTE_SCOPE_RULES: readonly RouteScopeRule[] = [
     read: "github:read",
     write: "github:read",
   },
+  // 工作空间 → 仓库（契约 §111.1）：POST 是读（体里带工作空间），PUT 只改「这个
+  // 工作空间默认认哪个 remote」，不碰远端，也按读算。
+  {
+    pattern: /^\/api\/forge\/workspace-repository$/,
+    read: "github:read",
+    write: "github:read",
+  },
+  // 「复用本机登录」决定 core 是否去读这台机器上的 gh / glab / tea / git 凭据
+  // （契约 §111.6）：是机器设置，按设置写档，不是托管平台的读写。
+  {
+    pattern: /^\/api\/forge\/reuse-local-logins$/,
+    read: "settings:write",
+    write: "settings:write",
+  },
   // 托管平台（契约 §29）与 GitHub 同一档：forge 是把 GitHub 面推广到别的
   // 平台，读写的是同一类东西（issue、PR、检查）。
   {

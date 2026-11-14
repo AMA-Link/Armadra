@@ -51,7 +51,7 @@ let issueDelayMs = 0;
 const original = intakeDeps.current;
 
 const stubForge = {
-  forgeFor: () => ({
+  forgeForReady: async () => ({
     getIssue: async (): Promise<ForgeIssue> => {
       if (issueDelayMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, issueDelayMs));

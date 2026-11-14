@@ -15,7 +15,7 @@
 import { IDENTITY_ROUTES } from "./routes-identity";
 import { E2E_ROUTES } from "./routes-e2e";
 import {
-  FORGE_REPO_ROUTES,
+  FORGE_ROUTES,
   REMOTE_SERVICE_ROUTES,
   WORKFLOW_ROUTES,
 } from "./routes-tables";
@@ -1450,39 +1450,6 @@ export const ROUTES: readonly RouteEntry[] = [
     surface: "runtime",
     implemented: true,
   },
-  // 托管平台（契约 §29）：与 GitHub 同一档权限（`route-scopes.ts`）；
-  // `resolve` 是读，登记时声明 `github:read`。
-  ...["/api/forge/accounts", "/api/forge/accounts/{host}/repos"].map(
-    (path): RouteEntry => ({
-      path,
-      methods: ["GET"],
-      surface: "runtime",
-      implemented: true,
-    }),
-  ),
-  {
-    path: "/api/forge/configs",
-    methods: ["GET"],
-    surface: "runtime",
-    implemented: true,
-  },
-  {
-    path: "/api/forge/configs/{host}",
-    methods: ["PUT", "DELETE"],
-    surface: "runtime",
-    implemented: true,
-  },
-  {
-    path: "/api/forge/configs/{host}/{owner}/{name}",
-    methods: ["PUT", "DELETE"],
-    surface: "runtime",
-    implemented: true,
-  },
-  {
-    path: "/api/forge/resolve",
-    methods: ["POST"],
-    surface: "runtime",
-    implemented: true,
-  },
-  ...FORGE_REPO_ROUTES,
+  // 托管平台（契约 §29、§111）：与 GitHub 同一档权限（`route-scopes.ts`）。
+  ...FORGE_ROUTES,
 ];

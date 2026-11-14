@@ -24,6 +24,17 @@ export const forgeRepoSchema = z.object({
 });
 export type ForgeRepo = z.infer<typeof forgeRepoSchema>;
 
+/** Where a token came from (§111.2); `null` when there is none. */
+export const FORGE_CREDENTIAL_SOURCES = [
+  "ghCli",
+  "glab",
+  "tea",
+  "gitCredential",
+  "stored",
+] as const;
+export const forgeCredentialSourceSchema = z.enum(FORGE_CREDENTIAL_SOURCES);
+export type ForgeCredentialSource = z.infer<typeof forgeCredentialSourceSchema>;
+
 /** `GET /api/forge/repos/{host}/{owner}/{name}`, `POST /api/forge/resolve` (§29.2). */
 export const forgeDetectionSchema = z.object({
   repository: forgeRepoSchema,
@@ -33,9 +44,75 @@ export const forgeDetectionSchema = z.object({
   apiBase: z.string().nullable(),
   webUrl: z.string().nullable(),
   credential: z.boolean(),
+  /** Where the token comes from (§111.2). Older cores omit it (and `workspaceRepository` / hosts always give it). */
+  credentialSource: forgeCredentialSourceSchema.nullable().optional(),
   accountLogin: z.string().nullable(),
 });
 export type ForgeDetection = z.infer<typeof forgeDetectionSchema>;
+
+/** Which rule picked the workspace's main remote (§111.1). */
+export const FORGE_REMOTE_SELECTED_BY = [
+  "user",
+  "ghResolved",
+  "upstream",
+  "origin",
+  "first",
+] as const;
+
+/** `POST|PUT /api/forge/workspace-repository` (§111.1). */
+export const workspaceRepositorySchema = z.object({
+  reason: z.enum(["ok", "notGit", "noRemote", "remoteHostUnavailable"]),
+  selected: z.string().nullable(),
+  selectedBy: z.enum(FORGE_REMOTE_SELECTED_BY).nullable(),
+  remotes: z.array(
+    z.object({
+      name: z.string(),
+      /** Credentials in the address are stripped. */
+      url: z.string(),
+      detection: forgeDetectionSchema.nullable(),
+    }),
+  ),
+});
+export type WorkspaceRepository = z.infer<typeof workspaceRepositorySchema>;
+
+/** `GET /api/forge/hosts` (§111.6): hosts the core has recognised. */
+export const forgeHostsSchema = z.object({
+  /** Whether the core reads this machine's gh / glab / tea / git logins. */
+  reuseLocalLogins: z.boolean(),
+  hosts: z.array(
+    z.object({
+      host: z.string(),
+      forge: forgeKindSchema.nullable(),
+      credentialSource: forgeCredentialSourceSchema.nullable(),
+      accountLogin: z.string().nullable(),
+      credential: z.boolean(),
+    }),
+  ),
+});
+export type ForgeHosts = z.infer<typeof forgeHostsSchema>;
+
+/** `PUT /api/forge/reuse-local-logins` (§111.6). */
+export const forgeReuseLocalLoginsSchema = z.object({
+  reuseLocalLogins: z.boolean(),
+});
+
+/** One comment or review of an issue / pull request (§111.4). */
+export const forgeConversationItemSchema = z.object({
+  id: z.string(),
+  kind: z.enum(["comment", "review"]),
+  author: z.string().nullable(),
+  body: z.string(),
+  state: z.string().nullable(),
+  url: z.string(),
+  createdAtMs: z.number(),
+});
+export type ForgeConversationItem = z.infer<typeof forgeConversationItemSchema>;
+
+/** `GET .../issues/{n}/comments`, `GET .../pulls/{n}/comments` (§111.4). */
+export const forgeConversationSchema = z.object({
+  items: z.array(forgeConversationItemSchema),
+});
+export type ForgeConversationPage = z.infer<typeof forgeConversationSchema>;
 
 /** One row of `GET /api/forge/configs` (§29.3). */
 export const forgeConfigSchema = z.object({

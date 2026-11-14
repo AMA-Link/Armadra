@@ -13,10 +13,14 @@ import type { EventBus } from "../bus";
 import type { CoreContext } from "../main";
 import { githubDomain } from "../github";
 import { secretsFor } from "../secrets";
-import { setForgeService } from "./registry";
+import { setForgeService, setWorkspaceRepository } from "./registry";
 import { installRoutes } from "./routes";
 import { ForgeService } from "./service";
+import { LocalLogins } from "./logins";
+import { PlatformProbe } from "./probe";
+import { ReuseSwitch, reuseDefault } from "./reuse";
 import { ForgeStore } from "./store";
+import { WorkspaceRepositoryService } from "./workspace";
 
 export { FORGE_ROUTES, forgeFailure } from "./routes";
 export {
@@ -27,7 +31,12 @@ export {
   type PublicForgeConfig,
 } from "./service";
 export { ForgeStore } from "./store";
-export { forgeService, setForgeService } from "./registry";
+export {
+  forgeService,
+  setForgeService,
+  setWorkspaceRepository,
+  workspaceRepository,
+} from "./registry";
 export { GiteaForge, giteaApiBase, giteaWebRoot, splitDiff } from "./gitea";
 export {
   GITLAB_SCOPE_ERRORS,
@@ -73,12 +82,24 @@ export function install(context: CoreContext): ForgeService | undefined {
     context.log.info("托管平台域未装配：统一库迁移尚未应用");
     return undefined;
   }
+  // 复用本机登录：桌面壳缺省开，服务器壳缺省关（ARMADRA_FORGE_REUSE_LOGINS=1 才开）。
+  const reuse = new ReuseSwitch(
+    context.db.database,
+    reuseDefault(context.platform.shell),
+  );
   const service = new ForgeService({
     store: new ForgeStore(context.db.database),
     secrets: () => secretsFor(context).backend,
     github: () => githubDomain()?.service,
+    probe: new PlatformProbe(),
+    logins: new LocalLogins({ enabled: () => reuse.get() }),
+    reuse,
   });
-  installRoutes(context.server, service);
+  const workspaces = new WorkspaceRepositoryService({
+    database: context.db.database,
+    forge: service,
+  });
+  installRoutes(context.server, service, workspaces);
   watchWorkspaceRemoval(context.bus, service);
   // GitHub 域的外部连接经这里核对 Gitea / GitLab 仓库（`ExternalReference.forge`）。
   const github = githubDomain()?.service;
@@ -87,7 +108,11 @@ export function install(context: CoreContext): ForgeService | undefined {
       service.referenceRepository(forge, ref, workspaceId);
   }
   setForgeService(service);
-  context.onStop?.(() => setForgeService(undefined));
+  setWorkspaceRepository(workspaces);
+  context.onStop?.(() => {
+    setForgeService(undefined);
+    setWorkspaceRepository(undefined);
+  });
   context.log.info("托管平台域已装配");
   return service;
 }

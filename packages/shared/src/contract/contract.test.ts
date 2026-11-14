@@ -121,7 +121,7 @@ describe("契约树", () => {
       expect(entry.meta.since, entry.name).toMatch(/^\d+\.\d+$/);
       // §31–§33 预分配给平台设计（云登录、隧道、源表），§34 起是工程规范化各域。
       expect(entry.meta.contract, entry.name).toMatch(
-        /^§(3[1-9]|[4-9]\d)\.\d+$/,
+        /^§(3[1-9]|[4-9]\d|1\d\d)\.\d+$/,
       );
     }
   });
