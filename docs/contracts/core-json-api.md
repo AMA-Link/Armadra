@@ -5728,7 +5728,7 @@ Copilot 的 ACP 入口只接受 http / sse 的 MCP 服务器，`session/new.mcpS
 
 ## 111. 代码托管全自动识别：工作空间仓库、平台探测、凭据来源与讨论路由（`#922`）
 
-> 状态：实施契约。打开工作空间即认出仓库、平台与令牌，用户不必填任何东西；手动配置（§29.3）只作后备。包 1（本节 111.1–111.5）认仓库与平台，包 2（111.6 起）复用本机登录。实现在 `core/forge/`（`workspace.ts`、`remotes.ts`、`ssh-alias.ts`、`probe.ts`、`selection.ts`）。协议自 1.56。
+> 状态：实施契约。打开工作空间即认出仓库、平台与令牌，用户不必填任何东西；手动配置（§29.3）只作后备。包 1（111.1–111.5）认仓库与平台，包 2（111.6）复用本机登录。实现在 `core/forge/`（`workspace.ts`、`remotes.ts`、`ssh-alias.ts`、`probe.ts`、`selection.ts`）。协议自 1.56。
 
 ### 111.1 工作空间 → 仓库
 
@@ -5771,7 +5771,7 @@ Copilot 的 ACP 入口只接受 http / sse 的 MCP 服务器，`session/new.mcpS
 
 ### 111.2 令牌来源 `credentialSource`
 
-- §29.2 的识别结果多一个字段 `credentialSource`：`ghCli` | `glab` | `tea` | `gitCredential` | `stored` | `null`（没有令牌）。包 1 只给现有来源：GitHub 凭据（§5）配的是 `gh` 登录 → `ghCli`，粘贴令牌与 Gitea / GitLab 配置的令牌 → `stored`。`glab`、`tea`、`gitCredential` 由复用本机登录（111.6）补齐。
+- §29.2 的识别结果多一个字段 `credentialSource`：`ghCli` | `glab` | `tea` | `gitCredential` | `stored` | `null`（没有令牌）。包 1 只给现有来源：GitHub 凭据（§5）配的是 `gh` 登录 → `ghCli`，粘贴令牌与 Gitea / GitLab 配置的令牌 → `stored`。`glab`、`tea`、`gitCredential` 是复用本机登录（111.6）读到的来源；存着的令牌永远优先于本机登录。
 - 老 core 不给这个字段，页面的 zod 当 `null`。
 
 ### 111.3 平台探测
@@ -5798,3 +5798,23 @@ Copilot 的 ACP 入口只接受 http / sse 的 MCP 服务器，`session/new.mcpS
 
 - 迁移 `0066_forge_workspace_remote.sql`：`forge_workspace_remote(workspace_id PK → workspaces ON DELETE CASCADE, remote, updated_at_ms)`。
 - `report --pr` 与 `items --bind-pr`（§103.1）按编号认仓库时，用 111.1 选中的主 remote（ssh 别名已换成真实主机、凭据已剥掉），不再写死 `origin`：fork 上默认查 `upstream`，用户切换后跟着变。工作空间在远程执行主机上、不是 git 仓库或没有 remote 时仍认不出，提示改给 PR 的网页地址。
+
+### 111.6 复用本机登录与已识别的主机
+
+<!-- rpc:begin contract=§111.6 -->
+
+| procedure                   | kind     | input                      | output                                                                                                                                                                                                                                               | errors        | scope            | 自   | 原路径                              |
+| --------------------------- | -------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | ---------------- | ---- | ----------------------------------- |
+| `forge.hosts`               | query    | `{ workspaceId?: string }` | `{ reuseLocalLogins: boolean, hosts: ({ host: string, forge: "github" \| "gitea" \| "gitlab" \| null, credentialSource: "ghCli" \| "glab" \| "tea" \| "gitCredential" \| "stored" \| null, accountLogin: string \| null, credential: boolean })[] }` | —             | `github:read`    | 1.56 | `GET /api/forge/hosts`              |
+| `forge.setReuseLocalLogins` | mutation | `{ enabled: boolean }`     | `{ reuseLocalLogins: boolean }`                                                                                                                                                                                                                      | `bad_request` | `settings:write` | 1.56 | `PUT /api/forge/reuse-local-logins` |
+
+<!-- rpc:end -->
+
+- **来源与顺序**：按需读用户这台机器上已有的登录，不要用户再填一遍。同一个主机依平台先试专用来源，再试最后一档：GitHub `gh auth token --hostname <主机>`（每个主机分开，github.com 与企业版同时可用，各用各的令牌、只发往各自主机）；GitLab `glab config get token --host <主机>`；Gitea / Forgejo 读 tea 的配置文件（`$XDG_CONFIG_HOME/tea/config.yml`、`~/.config/tea/config.yml`、macOS 的 `~/Library/Application Support/tea/config.yml`、Windows 的 `%APPDATA%\tea\config.yml`；只读，`logins:` 里 `url` 的主机相同的那一项的 `token`）；最后 `git credential fill`（只限 https；环境 `GIT_TERMINAL_PROMPT=0`、`GCM_INTERACTIVE=never`，不弹任何对话框；助手答的主机必须就是问的主机；令牌只用于同一个主机）。来源写进识别结果与主机表的 `credentialSource`：`ghCli` | `glab` | `tea` | `gitCredential`。
+- **不外露**：令牌只在内存里，命中缓存 60 秒（没读到的 10 秒）；关掉开关、`forget` 立即清；不落库、不进日志、不进任何响应（响应里只有来源与「有没有」）。外部命令走最小环境（不继承 core 的整个环境）、有超时与输出上限；输出不是单个无空白的可见 ASCII 串就不算令牌。
+- **存着的优先**：配置行存着令牌（§29.3，来源 `stored`）、GitHub 凭据（§5）的根就是这个主机时，不读本机登录。配置行没有令牌的主机（「平台识别了、只缺令牌」）读本机登录；手动配置保存后立即以存着的为准。
+- **GitHub 按主机**：没有存着的 GitHub 凭据时，github.com 与探测出的企业版主机各按主机读 `gh`；`/api/github/*`（§5）仍是单一凭据，不变。不迁移旧数据：旧的单行 GitHub 配置照旧可用，不改写。
+- **开关**：`GET /api/forge/hosts` 的 `reuseLocalLogins` 与 `PUT /api/forge/reuse-local-logins`（`forge.setReuseLocalLogins`，体 `{ enabled: boolean }`，答 `{ reuseLocalLogins }`）。**桌面壳缺省开，服务器壳缺省关**（服务器上的 `gh` / git 登录属于机器而不是登录的人）；服务器壳用环境变量 `ARMADRA_FORGE_REUSE_LOGINS=1` 把缺省改成开（环境变量表见开发指南）。用户切换过一次就写进迁移 `0067_forge_reuse_local_logins.sql` 的单例行 `forge_reuse_local_logins`，之后以它为准。写这个开关要 `settings:write`（旧路径的路由门同），不是 `github:write`。
+- **已识别的主机**：`GET /api/forge/hosts`（`forge.hosts`，`github:read`）答 `{ reuseLocalLogins, hosts: [{ host, forge, credentialSource, accountLogin, credential }] }`，是三处的并集：工作空间 remote 与识别里经过的主机（只记在内存，重启后随工作空间被打开再出现）、配置表里的主机（含工作空间自己的）、GitHub 凭据（§5）的主机；按主机名排序。`forge` 认不出是 `null`；读本机登录得到的 `accountLogin` 为 `null`（不为拿一个登录名多花一次远端请求）。每个主机先预热一次，所以这里读得到本机登录。
+- **列仓库**（§29.7）：`GET /api/forge/accounts` 也含见过的、读到了本机登录的主机；`GET /api/forge/accounts/{host}/repos` 用同一份按主机的登录。
+- 外部命令只在这条链路里起，且只起 `gh`、`glab`、`git credential fill` 三个；tea 只读文件。测试全部注入 mock，不碰真的 gh / glab / git 与用户的家目录。

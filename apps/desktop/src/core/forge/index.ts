@@ -16,7 +16,9 @@ import { secretsFor } from "../secrets";
 import { setForgeService, setWorkspaceRepository } from "./registry";
 import { installRoutes } from "./routes";
 import { ForgeService } from "./service";
+import { LocalLogins } from "./logins";
 import { PlatformProbe } from "./probe";
+import { ReuseSwitch, reuseDefault } from "./reuse";
 import { ForgeStore } from "./store";
 import { WorkspaceRepositoryService } from "./workspace";
 
@@ -80,11 +82,18 @@ export function install(context: CoreContext): ForgeService | undefined {
     context.log.info("托管平台域未装配：统一库迁移尚未应用");
     return undefined;
   }
+  // 复用本机登录：桌面壳缺省开，服务器壳缺省关（ARMADRA_FORGE_REUSE_LOGINS=1 才开）。
+  const reuse = new ReuseSwitch(
+    context.db.database,
+    reuseDefault(context.platform.shell),
+  );
   const service = new ForgeService({
     store: new ForgeStore(context.db.database),
     secrets: () => secretsFor(context).backend,
     github: () => githubDomain()?.service,
     probe: new PlatformProbe(),
+    logins: new LocalLogins({ enabled: () => reuse.get() }),
+    reuse,
   });
   const workspaces = new WorkspaceRepositoryService({
     database: context.db.database,

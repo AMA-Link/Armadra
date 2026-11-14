@@ -75,6 +75,27 @@ export const workspaceRepositorySchema = z.object({
 });
 export type WorkspaceRepository = z.infer<typeof workspaceRepositorySchema>;
 
+/** `GET /api/forge/hosts` (§111.6): hosts the core has recognised. */
+export const forgeHostsSchema = z.object({
+  /** Whether the core reads this machine's gh / glab / tea / git logins. */
+  reuseLocalLogins: z.boolean(),
+  hosts: z.array(
+    z.object({
+      host: z.string(),
+      forge: forgeKindSchema.nullable(),
+      credentialSource: forgeCredentialSourceSchema.nullable(),
+      accountLogin: z.string().nullable(),
+      credential: z.boolean(),
+    }),
+  ),
+});
+export type ForgeHosts = z.infer<typeof forgeHostsSchema>;
+
+/** `PUT /api/forge/reuse-local-logins` (§111.6). */
+export const forgeReuseLocalLoginsSchema = z.object({
+  reuseLocalLogins: z.boolean(),
+});
+
 /** One comment or review of an issue / pull request (§111.4). */
 export const forgeConversationItemSchema = z.object({
   id: z.string(),

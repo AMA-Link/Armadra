@@ -20,7 +20,7 @@ import { registerProcedures } from "../http/rpc";
 import type { CoreRequest, HandlerResult, RouteMatch } from "../http/router";
 import type { CoreServer } from "../http/server";
 import type { ForgeService } from "./service";
-import { configKey, forgeRepo, remoteSegments } from "./service";
+import { configKey, forgeRepo } from "./service";
 import type { WorkspaceRepositoryService } from "./workspace";
 import {
   ForgeError,
@@ -54,6 +54,8 @@ export const FORGE_ROUTES = {
   pullAutoMerge: `${REPO}/pulls/{number}/auto-merge`,
   pullBranch: `${REPO}/pulls/{number}/branch`,
   workspaceRepository: "/api/forge/workspace-repository",
+  hosts: "/api/forge/hosts",
+  reuseLocalLogins: "/api/forge/reuse-local-logins",
   issueComments: `${REPO}/issues/{number}/comments`,
   pullComments: `${REPO}/pulls/{number}/comments`,
 } as const;
@@ -262,10 +264,8 @@ function operations(
   workspaces: WorkspaceRepositoryService | undefined,
 ) {
   /** 识别前的预热（探平台），再给这个仓库的平台实现。 */
-  const ready = async (repo: ForgeRepo, args: Args) => {
-    await service.warm(repo.host, workspaceOf(args));
-    return service.forgeFor(repo, workspaceOf(args));
-  };
+  const ready = (repo: ForgeRepo, args: Args) =>
+    service.forgeForReady(repo, workspaceOf(args));
   const workspaceIdOf = (args: Args): string => {
     const id = workspaceOf(args);
     if (id === "") bad("workspaceId 不能为空");
@@ -317,15 +317,22 @@ function operations(
         required: true,
         max: 2048,
       });
-      const host = remoteSegments(remoteUrl)?.host;
-      if (host !== undefined) await service.warm(host, workspaceOf(args));
-      return service.resolve(remoteUrl, workspaceOf(args));
+      return await service.resolveReady(remoteUrl, workspaceOf(args));
     },
 
     async detect(args: Args) {
       const repo = repoOf(args);
-      await service.warm(repo.host, workspaceOf(args));
+      await service.warm(repo.host, workspaceOf(args), repo);
       return service.detect(repo, workspaceOf(args));
+    },
+
+    // 已识别的主机与「复用本机登录」开关（§111.6）。
+    hosts: (args: Args) => service.hosts(workspaceOf(args)),
+
+    setReuseLocalLogins(args: Args) {
+      if (typeof args.enabled !== "boolean") bad("enabled 要是布尔值");
+      service.setReuseLocalLogins(args.enabled as boolean);
+      return { reuseLocalLogins: service.reuseLocalLogins() };
     },
 
     // 工作空间 → 仓库（§111.1）：读 git remote、挑主 remote、识别每个 remote。
@@ -542,7 +549,7 @@ export function installRoutes(
     path: string,
     options: { body?: boolean; query?: boolean; status?: number },
     work: (args: Args) => unknown,
-    scope?: { scope: "github:read" },
+    scope?: { scope: "github:read" | "settings:write" },
   ) =>
     router.handle(
       method,
@@ -595,6 +602,14 @@ export function installRoutes(
   route("POST", FORGE_ROUTES.pullMerge, { body: true }, run.merge);
   route("GET", FORGE_ROUTES.issueComments, { query: true }, run.issueComments);
   route("GET", FORGE_ROUTES.pullComments, { query: true }, run.pullComments);
+  route("GET", FORGE_ROUTES.hosts, { query: true }, run.hosts);
+  route(
+    "PUT",
+    FORGE_ROUTES.reuseLocalLogins,
+    { body: true },
+    run.setReuseLocalLogins,
+    { scope: "settings:write" },
+  );
   // 读 POST（体里带工作空间），切主 remote 是 PUT 写。
   route(
     "POST",
@@ -648,5 +663,7 @@ export function installRoutes(
     pullComments: procedure(run.pullComments),
     workspaceRepository: procedure(run.workspaceRepository),
     selectWorkspaceRemote: procedure(run.selectWorkspaceRemote),
+    hosts: procedure(run.hosts),
+    setReuseLocalLogins: procedure(run.setReuseLocalLogins),
   });
 }

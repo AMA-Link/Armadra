@@ -10,6 +10,7 @@ import {
   forgeConversationSchema,
   forgeDetectionSchema,
   forgeFilesSchema,
+  forgeHostsSchema,
   forgeIssuePageSchema,
   forgeIssueSchema,
   forgeMergeOptionsSchema,
@@ -17,6 +18,7 @@ import {
   forgePullPageSchema,
   forgePullSchema,
   forgeRepositoryPageSchema,
+  forgeReuseLocalLoginsSchema,
   workspaceRepositorySchema,
 } from "../api/forge.js";
 import { errors } from "./errors.js";
@@ -239,6 +241,33 @@ export const forge = {
         scope: "github:read",
         workspaceKey: "workspaceId",
         legacy: { method: "PUT", path: "/api/forge/workspace-repository" },
+      }),
+    ),
+
+  /* ------------------- 已识别的主机与本机登录（§111.6） ------------------- */
+  /** 已识别的主机：remote 里见过的、配置表里的、GitHub 凭据的，各带平台与令牌来源。 */
+  hosts: oc
+    .input(z.object(scoped))
+    .output(forgeHostsSchema)
+    .meta(
+      meta({
+        since: "1.56",
+        contract: "§111.6",
+        scope: "github:read",
+        legacy: { method: "GET", path: "/api/forge/hosts" },
+      }),
+    ),
+  /** 开或关「复用本机登录」；关掉时缓存的令牌立即丢掉。机器设置，按设置写档。 */
+  setReuseLocalLogins: oc
+    .input(z.object({ enabled: z.boolean() }))
+    .output(forgeReuseLocalLoginsSchema)
+    .errors(errors.pick("bad_request"))
+    .meta(
+      meta({
+        since: "1.56",
+        contract: "§111.6",
+        scope: "settings:write",
+        legacy: { method: "PUT", path: "/api/forge/reuse-local-logins" },
       }),
     ),
 
