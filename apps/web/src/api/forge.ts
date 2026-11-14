@@ -15,6 +15,7 @@ import {
   forgeConfigSchema,
   forgeDetectionSchema,
   forgeFilesSchema,
+  forgeKindSchema,
   forgeIssuePageSchema,
   forgeAutoMergeSchema,
   forgeBranchDeletionSchema,
@@ -363,6 +364,127 @@ export async function deleteForgeBranch(
   return forgeBranchDeletionSchema.parse(
     await rpc().deleteBranch({ ...repo, number, headSha }),
   );
+}
+
+/* ------------------- 讨论与工作空间仓库（#922，形状见 plans/forge-auto-detect） ------------------- */
+
+export const forgeCredentialSourceSchema = z
+  .enum(["ghCli", "glab", "tea", "gitCredential", "stored"])
+  .nullable();
+export type ForgeCredentialSource = z.infer<typeof forgeCredentialSourceSchema>;
+
+/** 现有识别结果加令牌来源；旧 core 不给来源时为 `null`。 */
+export const forgeDetectionExtSchema = forgeDetectionSchema.extend({
+  credentialSource: forgeCredentialSourceSchema.default(null),
+});
+export type ForgeDetectionExt = z.infer<typeof forgeDetectionExtSchema>;
+
+export const forgeConversationItemSchema = z.object({
+  id: z.string(),
+  kind: z.enum(["comment", "review"]),
+  author: z.string().nullable(),
+  body: z.string(),
+  /** 评审结论（`approved` / `changes_requested` / `commented`）；评论 `null`。 */
+  state: z.string().nullable(),
+  url: z.string(),
+  createdAtMs: z.number().int(),
+});
+export type ForgeConversationItem = z.infer<typeof forgeConversationItemSchema>;
+const forgeConversationSchema = z.object({
+  items: z.array(forgeConversationItemSchema),
+});
+
+export const workspaceRepositorySchema = z.object({
+  reason: z.enum(["ok", "notGit", "noRemote", "remoteHostUnavailable"]),
+  selected: z.string().nullable(),
+  selectedBy: z
+    .enum(["user", "ghResolved", "upstream", "origin", "first"])
+    .nullable(),
+  remotes: z.array(
+    z.object({
+      name: z.string(),
+      url: z.string(),
+      detection: forgeDetectionExtSchema.nullable(),
+    }),
+  ),
+});
+export type WorkspaceRepository = z.infer<typeof workspaceRepositorySchema>;
+export type WorkspaceRemote = WorkspaceRepository["remotes"][number];
+
+export const forgeHostsSchema = z.object({
+  reuseLocalLogins: z.boolean(),
+  hosts: z.array(
+    z.object({
+      host: z.string(),
+      forge: forgeKindSchema.nullable(),
+      credentialSource: forgeCredentialSourceSchema,
+      accountLogin: z.string().nullable(),
+      credential: z.boolean(),
+    }),
+  ),
+});
+export type ForgeHosts = z.infer<typeof forgeHostsSchema>;
+
+/**
+ * 这些 procedure 由 core 一条线新增（讨论路由、工作空间仓库、主机表）；契约类型
+ * 随它们落进 `@armadra/shared` 之前，页面用这层窄接口调，答案仍过上面的 schema。
+ */
+interface ForgeAutoRpc {
+  issueComments(input: unknown): Promise<unknown>;
+  pullComments(input: unknown): Promise<unknown>;
+  workspaceRepository(input: unknown): Promise<unknown>;
+  selectWorkspaceRemote(input: unknown): Promise<unknown>;
+  hosts(input: unknown): Promise<unknown>;
+  setReuseLocalLogins(input: unknown): Promise<unknown>;
+}
+const autoRpc = () => rpc() as unknown as ForgeAutoRpc;
+
+export async function forgeIssueComments(
+  repo: ForgeRepo,
+  number: number,
+  workspaceId: ForgeScope = null,
+): Promise<ForgeConversationItem[]> {
+  return forgeConversationSchema.parse(
+    await autoRpc().issueComments({ ...repo, number, ...scoped(workspaceId) }),
+  ).items;
+}
+
+export async function forgePullComments(
+  repo: ForgeRepo,
+  number: number,
+  workspaceId: ForgeScope = null,
+): Promise<ForgeConversationItem[]> {
+  return forgeConversationSchema.parse(
+    await autoRpc().pullComments({ ...repo, number, ...scoped(workspaceId) }),
+  ).items;
+}
+
+/** 工作空间的仓库：各 remote 与选中的那个（打开面板即识别）。 */
+export async function forgeWorkspaceRepository(
+  workspaceId: string,
+): Promise<WorkspaceRepository> {
+  return workspaceRepositorySchema.parse(
+    await autoRpc().workspaceRepository({ workspaceId }),
+  );
+}
+
+/** 切换主 remote；`null` 清掉用户的选择。 */
+export async function selectWorkspaceRemote(
+  workspaceId: string,
+  remote: string | null,
+): Promise<WorkspaceRepository> {
+  return workspaceRepositorySchema.parse(
+    await autoRpc().selectWorkspaceRemote({ workspaceId, remote }),
+  );
+}
+
+export async function forgeHosts(): Promise<ForgeHosts> {
+  return forgeHostsSchema.parse(await autoRpc().hosts({}));
+}
+
+/** 开关「复用本机登录」；调用方随后重读主机表（答复形状不依赖）。 */
+export async function setReuseLocalLogins(enabled: boolean): Promise<void> {
+  await autoRpc().setReuseLocalLogins({ enabled });
 }
 
 /** 平台显示名：品牌名不翻译。 */
