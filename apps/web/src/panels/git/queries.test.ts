@@ -28,4 +28,35 @@ describe("invalidateGitQueries", () => {
         ?.isInvalidated,
     ).toBe(false);
   });
+
+  it("remote 变了之后代码托管面板认出的仓库也要重读，别的工作空间不动", () => {
+    const client = new QueryClient();
+    client.setQueryData(
+      ["src", "local", "forge", "workspace-repository", "w1"],
+      {},
+    );
+    client.setQueryData(
+      ["src", "local", "forge", "workspace-repository", "w2"],
+      {},
+    );
+    invalidateGitQueries(client, "w1");
+    expect(
+      client.getQueryState([
+        "src",
+        "local",
+        "forge",
+        "workspace-repository",
+        "w1",
+      ])?.isInvalidated,
+    ).toBe(true);
+    expect(
+      client.getQueryState([
+        "src",
+        "local",
+        "forge",
+        "workspace-repository",
+        "w2",
+      ])?.isInvalidated,
+    ).toBe(false);
+  });
 });

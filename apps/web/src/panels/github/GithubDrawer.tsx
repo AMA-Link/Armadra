@@ -1,9 +1,14 @@
 import * as React from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { RotateCw, X } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronRight, RotateCw, X } from "lucide-react";
 
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/ui/collapsible";
 import { IconButton } from "@/ui/icon-button";
 import { Loadable } from "@/loading/Loadable";
 import { ScrollArea } from "@/ui/scroll-area";
@@ -16,22 +21,29 @@ import { useGithubSession } from "@/host/github-session";
 import { useCanvasStore } from "@/store/canvas-store";
 import { sk } from "../../sources/scope";
 import { ForgeHosted, ForgeListSkeleton, OpenRemote } from "./ForgeHosted";
+import { MANUAL_REMOTE, RemoteSwitcher } from "./RemoteSwitcher";
 import { RepositoryPicker } from "./RepositoryPicker";
+import { EMPTY_DRAFT, ForgeConfigForm } from "../settings/pages/ForgeConfigs";
 import { useGithubFocus } from "./open";
 import {
   FORGE_NAMES,
+  type ForgeDetection,
   type ForgeRepo,
   detectForge,
   forgeFailureKey,
+  forgeWorkspaceRepository,
   resolveForge,
+  selectWorkspaceRemote,
 } from "../../api/forge";
 
 /**
  * 右侧工作面板的「代码托管」页（契约 §29）：GitHub、Gitea、GitLab 同一面，
  * 只读——仓库信息、issue 与 PR 的列表和详情（{@link ForgeHosted}）。
  *
- * 远端地址经 `forge.resolve` 认平台与凭据；认不出或没有令牌时停在那里并指去
- * 设置。Host 没连上、没配对时整页只显示原因和去设置的入口。
+ * 打开即由 `forge.workspaceRepository` 认出工作空间的仓库（各 remote 在顶部下拉
+ * 里切换）；认不出时回到手填远端地址，经 `forge.resolve` 认平台与凭据。没有登录时
+ * 显示「没找到登录」与重试，手动配置折叠在下面。Host 没连上、没配对时整页只显示
+ * 原因和去设置的入口。
  */
 export function GithubDrawer() {
   const t = useT();
@@ -73,6 +85,36 @@ export function GithubDrawer() {
       ? state.reason
       : null;
 
+  // 打开即识别工作空间的仓库；选 remote、手填地址是它的两个出口。
+  const [manual, setManual] = React.useState(false);
+  const wsKey = sk("forge", "workspace-repository", workspaceId ?? "");
+  const workspaceRepository = useQuery({
+    queryKey: wsKey,
+    queryFn: () => forgeWorkspaceRepository(workspaceId!),
+    enabled: open && Boolean(sessionClient) && workspaceId !== null,
+    retry: false,
+  });
+  const repositories = workspaceRepository.data;
+  const selectRemote = useMutation({
+    mutationFn: (remote: string) => selectWorkspaceRemote(workspaceId!, remote),
+    onSuccess: (next) => queryClient.setQueryData(wsKey, next),
+  });
+  const onSwitch = (value: string) => {
+    setResolveRepo(null);
+    if (value === MANUAL_REMOTE) {
+      setManual(true);
+      return;
+    }
+    setManual(false);
+    selectRemote.mutate(value);
+  };
+  const autoRemote =
+    repositories?.remotes.find(
+      (remote) => remote.name === repositories.selected,
+    ) ?? null;
+  // 自动识别出了 remote 就不再要手填的那一栏。
+  const auto = !manual && resolveRepo === null && autoRemote !== null;
+
   const detection = useQuery({
     queryKey: resolveRepo
       ? sk(
@@ -91,10 +133,17 @@ export function GithubDrawer() {
     enabled:
       open &&
       Boolean(sessionClient) &&
+      !auto &&
       (resolveRepo !== null || resolveUrl.length > 0),
     retry: false,
   });
-  const found = detection.data;
+  const found: ForgeDetection | undefined = auto
+    ? (autoRemote?.detection ?? undefined)
+    : detection.data;
+  const retry = () => {
+    void queryClient.invalidateQueries({ queryKey: ["forge"] });
+    void queryClient.invalidateQueries({ queryKey: sk("forge") });
+  };
   const ready = found && found.forge !== null && found.credential;
 
   const toSettings = (section: "forge" | "service" | "security") => {
@@ -173,15 +222,37 @@ export function GithubDrawer() {
         </Loadable>
       ) : (
         <ScrollArea className="min-h-0 flex-1">
-          <RepositoryPicker
-            remoteUrl={remoteUrl}
-            onRemoteUrl={setRemoteUrl}
-            onResolve={() => {
-              setResolveRepo(null);
-              setResolveUrl(remoteUrl.trim());
-            }}
-            busy={detection.isFetching}
-          />
+          {repositories && repositories.remotes.length > 0 && (
+            <RemoteSwitcher
+              repository={repositories}
+              value={
+                manual
+                  ? MANUAL_REMOTE
+                  : (repositories.selected ?? MANUAL_REMOTE)
+              }
+              onChange={onSwitch}
+            />
+          )}
+          {repositories && repositories.reason !== "ok" && (
+            <p
+              role="status"
+              data-slot="forge-reason"
+              className="px-3 pt-2 text-meta text-muted-foreground"
+            >
+              {t(`forge.reason.${repositories.reason}`)}
+            </p>
+          )}
+          {!auto && !workspaceRepository.isLoading && (
+            <RepositoryPicker
+              remoteUrl={remoteUrl}
+              onRemoteUrl={setRemoteUrl}
+              onResolve={() => {
+                setResolveRepo(null);
+                setResolveUrl(remoteUrl.trim());
+              }}
+              busy={detection.isFetching}
+            />
+          )}
           {detection.isError && (
             <p role="status" className="px-3 py-2 text-meta text-destructive">
               {t(forgeFailureKey(detection.error))}
@@ -195,11 +266,9 @@ export function GithubDrawer() {
               {null}
             </Loadable>
           )}
-          {found && !ready && (
+          {found && found.forge === null && (
             <EmptyState
-              title={t(
-                found.forge === null ? "forge.unknown" : "forge.noCredential",
-              )}
+              title={t("forge.unknown")}
               className="m-(--space-page) w-auto"
             >
               <Button
@@ -210,6 +279,13 @@ export function GithubDrawer() {
                 {t("forge.configure")}
               </Button>
             </EmptyState>
+          )}
+          {found && found.forge !== null && !found.credential && (
+            <NoLogin
+              detection={found}
+              onRetry={retry}
+              onSettings={() => toSettings("forge")}
+            />
           )}
           {found && ready && (
             <>
@@ -259,6 +335,68 @@ function GithubSkeleton({ label }: { label: string }) {
         <Skeleton className="h-5 w-14 rounded-full" />
       </div>
       <ForgeListSkeleton label={label} />
+    </div>
+  );
+}
+
+/** 平台认出来了、没找到登录：重试，下面折叠「手动配置」（平台与地址预填，只差令牌）。 */
+function NoLogin({
+  detection,
+  onRetry,
+  onSettings,
+}: {
+  detection: ForgeDetection;
+  onRetry: () => void;
+  onSettings: () => void;
+}) {
+  const t = useT();
+  const host = detection.repository.host;
+  const forge = detection.forge === "gitlab" ? "gitlab" : "gitea";
+  let site = `https://${host}`;
+  try {
+    if (detection.webUrl) site = new URL(detection.webUrl).origin;
+  } catch {
+    // 地址写坏了就用主机名。
+  }
+  return (
+    <div
+      data-slot="forge-no-login"
+      className="flex min-w-0 flex-col gap-(--space-block) p-(--space-page)"
+    >
+      <EmptyState title={t("forge.noLogin", { host })} className="w-auto">
+        <Button size="sm" variant="secondary" onClick={onRetry}>
+          {t("forge.retry")}
+        </Button>
+      </EmptyState>
+      <Collapsible className="flex flex-col gap-(--space-group)">
+        <CollapsibleTrigger className="group/manual flex w-fit items-center gap-1 text-body font-medium text-foreground">
+          <ChevronRight
+            aria-hidden
+            className="size-4 transition-transform group-data-[state=open]/manual:rotate-90"
+          />
+          {t("forge.manual")}
+        </CollapsibleTrigger>
+        <CollapsibleContent className="rounded-card border border-border">
+          {detection.forge === "github" ? (
+            <div className="p-3">
+              <Button size="sm" variant="secondary" onClick={onSettings}>
+                {t("forge.configure")}
+              </Button>
+            </div>
+          ) : (
+            <ForgeConfigForm
+              initial={{
+                ...EMPTY_DRAFT,
+                repoKey: host,
+                forge,
+                apiBase: site,
+              }}
+              scope={null}
+              onSaved={onRetry}
+            />
+          )}
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 }

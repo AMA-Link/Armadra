@@ -9,7 +9,6 @@ export const forge: MessageModule = {
   "zh-CN": {
     "forge.title": "代码托管",
     "forge.unknown": "这个远端没有识别出托管平台",
-    "forge.noCredential": "还没有这个平台的令牌",
     "forge.configure": "前往设置 → 代码托管",
     "forge.tab.issues": "Issues",
     "forge.tab.pulls.gitea": "Pull requests",
@@ -104,7 +103,6 @@ export const forge: MessageModule = {
   en: {
     "forge.title": "Code hosting",
     "forge.unknown": "No hosting platform recognized for this remote",
-    "forge.noCredential": "No token for this platform yet",
     "forge.configure": "Go to Settings → Code hosting",
     "forge.tab.issues": "Issues",
     "forge.tab.pulls.gitea": "Pull requests",

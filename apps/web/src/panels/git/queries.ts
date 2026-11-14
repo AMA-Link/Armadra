@@ -39,4 +39,8 @@ export function invalidateGitQueries(
     "git-refs",
   ])
     void client.invalidateQueries({ queryKey: sk(name, workspaceId) });
+  // remote 增删改名后，代码托管面板认出的仓库要重新读。
+  void client.invalidateQueries({
+    queryKey: sk("forge", "workspace-repository", workspaceId),
+  });
 }
