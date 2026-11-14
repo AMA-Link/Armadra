@@ -21,6 +21,7 @@ import CollabSection from "./sections/collab";
 import ComponentsSection from "./sections/components";
 import CoordinatorSection from "./sections/coordinator";
 import GatewaySection from "./sections/gateway";
+import GitSection from "./sections/git";
 import IntegrationSection from "./sections/integration";
 import MobileSection from "./sections/mobile";
 import MotionSection from "./sections/motion";
@@ -50,6 +51,7 @@ export const SHOWCASE_SECTIONS = [
   ["gateway", GatewaySection],
   ["mobile", MobileSection],
   ["updates", UpdatesSection],
+  ["git", GitSection],
   ["integration", IntegrationSection],
   ["motion", MotionSection],
   ["states", StatesSection],
