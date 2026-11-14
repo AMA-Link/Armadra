@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { GitLogCommit } from "@armadra/shared";
 
 import { installDomPolyfills } from "@/app/test-harness";
@@ -143,5 +143,73 @@ describe("提交图表格", () => {
     const onLoadMore = vi.fn();
     table({ hasMore: true, loading: true, onLoadMore });
     expect(onLoadMore).not.toHaveBeenCalled();
+  });
+
+  describe("按合并折叠（#927 B1）", () => {
+    // 主线：merge(3) → 0；merge 的第二父是分支提交 2 → 1 → 0。
+    const merged = () => {
+      const merge: GitLogCommit = {
+        ...commit(3),
+        parents: [oid(0), oid(2)],
+        subject: "Merge pull request #919 from AMA-Link/chore/minimatch-11",
+      };
+      const side2: GitLogCommit = { ...commit(2), parents: [oid(1)] };
+      const side1: GitLogCommit = { ...commit(1), parents: [oid(0)] };
+      return [merge, side2, side1, commit(0)];
+    };
+
+    it("合并只占一行，标题换成分支名与 PR 号，计数说明藏了几个", () => {
+      const { container } = table({ commits: merged(), collapseMerges: true });
+      expect(screen.getByText("chore/minimatch-11")).toBeTruthy();
+      expect(screen.getByText("#919")).toBeTruthy();
+      expect(screen.queryByText("commit 2")).toBeNull();
+      const toggle = container.querySelector(
+        '[data-slot="git-log-merge-toggle"]',
+      )!;
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+      expect(toggle.textContent).toContain("2");
+    });
+
+    it("点计数交给回调，不选中这一行", () => {
+      const onToggleMerge = vi.fn();
+      const onSelect = vi.fn();
+      const { container } = table({
+        commits: merged(),
+        collapseMerges: true,
+        onToggleMerge,
+        onSelect,
+      });
+      fireEvent.click(
+        container.querySelector('[data-slot="git-log-merge-toggle"]')!,
+      );
+      expect(onToggleMerge).toHaveBeenCalledWith(`.:${oid(3)}`);
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it("展开后分支提交回到表里，文字降一级，图上不是主线", () => {
+      const { container } = table({
+        commits: merged(),
+        collapseMerges: true,
+        expanded: new Set([`.:${oid(3)}`]),
+      });
+      const side = screen.getByText("commit 2");
+      expect(side.getAttribute("data-side")).toBe("true");
+      expect(
+        container
+          .querySelector(`g[data-commit="${oid(2)}"]`)!
+          .getAttribute("data-mainline"),
+      ).toBe("false");
+      expect(
+        container
+          .querySelector(`g[data-commit="${oid(3)}"]`)!
+          .getAttribute("data-mainline"),
+      ).toBe("true");
+    });
+
+    it("不开折叠时表格照旧，全部提交都在", () => {
+      table({ commits: merged() });
+      expect(screen.getByText("commit 2")).toBeTruthy();
+      expect(screen.getByText(/Merge pull request/)).toBeTruthy();
+    });
   });
 });

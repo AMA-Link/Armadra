@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
+import { ChevronDown } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { GitLogCommit } from "@armadra/shared";
 
@@ -14,10 +15,15 @@ import {
   LANE_WIDTH,
   MAX_LANES,
   commitGraph,
-  laneColor,
   refBadges,
 } from "../CommitGraph";
-import { commitKey, logGraphKeys, repositoryColor } from "./graph";
+import { collapseLog, mergeLabel } from "./collapse";
+import {
+  branchColor,
+  commitKey,
+  logGraphKeys,
+  repositoryColor,
+} from "./graph";
 
 /**
  * 提交图表格（Git 工具窗口设计 §2.2「提交图表格」）。
@@ -60,7 +66,18 @@ export interface LogTableProps {
   onLoadMore: () => void;
   /** 右键：把这一行交给菜单；合成行不触发。 */
   renderRowMenu?: (commit: GitLogCommit, row: ReactNode) => ReactNode;
+  /**
+   * 按第一父折叠（#927 B1）：合并只占一行，名下的分支提交收进计数里。
+   * 缺省关：只有日志页按偏好打开，其它用到这张表的地方保持原样。
+   */
+  collapseMerges?: boolean;
+  /** 展开的合并（`commitKey`）。 */
+  expanded?: ReadonlySet<string>;
+  onToggleMerge?: (key: string) => void;
 }
+
+const NONE: ReadonlySet<string> = new Set();
+
 
 export const UNCOMMITTED_KEY = "uncommitted";
 
@@ -109,12 +126,21 @@ export function LogTable({
   loading,
   onLoadMore,
   renderRowMenu,
+  collapseMerges = false,
+  expanded = NONE,
+  onToggleMerge,
 }: LogTableProps) {
   const t = useT();
   const locale = usePreferencesStore((state) => state.locale);
   const scroller = useRef<HTMLDivElement | null>(null);
   const rowHeight = compact ? LOG_COMPACT_ROW_HEIGHT : LOG_ROW_HEIGHT;
   const multiRepository = colors.size > 1;
+
+  const view = useMemo(
+    () => collapseLog(commits, expanded, collapseMerges),
+    [commits, expanded, collapseMerges],
+  );
+  const shown = view.commits;
 
   const rows = useMemo<Row[]>(() => {
     const head: Row[] =
@@ -123,19 +149,31 @@ export function LogTable({
         : [];
     return [
       ...head,
-      ...commits.map<Row>((commit) => ({
+      ...shown.map<Row>((commit) => ({
         kind: "commit",
         key: commitKey(commit),
         commit,
       })),
     ];
-  }, [commits, uncommitted.length]);
+  }, [shown, uncommitted.length]);
 
   // 车道按整页算，行号偏移交给渲染：合成行不进图，但它占着第 0 行。
-  const offset = rows.length - commits.length;
-  const graph = useMemo(() => commitGraph(commits, logGraphKeys), [commits]);
+  const offset = rows.length - shown.length;
+  const graph = useMemo(() => commitGraph(shown, logGraphKeys), [shown]);
   const lanes = Math.min(graph.lanes, MAX_LANES);
-  const gutter = lanes * LANE_WIDTH + 12;
+  // 左边 6px 留给仓库色块，图从它右边起。
+  const gutter = lanes * LANE_WIDTH + 18;
+
+  /**
+   * 主线用仓库色（单仓库就是品牌色）；分支车道轮换其余颜色，跳过品牌色，
+   * 免得一条分支和主线撞色。
+   */
+  const repositoryHue = (path: string) =>
+    repositoryColor(colors.get(path) ?? 0);
+  const repositoryOf = (key: string) => key.slice(0, key.lastIndexOf(":"));
+  const branchHue = branchColor;
+  const pointColor = (key: string, lane: number) =>
+    view.mainline.has(key) ? repositoryHue(repositoryOf(key)) : branchHue(lane);
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -158,7 +196,25 @@ export function LogTable({
   const visible = (row: number) =>
     row + offset >= first - 4 && row + offset <= until + 4;
 
-  const x = (lane: number) => Math.min(lane, MAX_LANES - 1) * LANE_WIDTH + 8;
+  const x = (lane: number) => Math.min(lane, MAX_LANES - 1) * LANE_WIDTH + 14;
+
+  /**
+   * 「未提交」挂在哪：第一个有改动的仓库在本页的第一行。那个仓库一行都没有
+   * （被筛掉了）时退回第 0 条车道、不画连线。
+   */
+  const dirtyHead = useMemo(() => {
+    const repository = uncommitted[0];
+    if (repository === undefined) return null;
+    const row = shown.findIndex((entry) => entry.repositoryPath === repository);
+    const point =
+      row < 0 ? undefined : graph.points.get(commitKey(shown[row]!));
+    return {
+      repository,
+      lane: point?.lane ?? 0,
+      row: point ? row : -1,
+      color: repositoryColor(colors.get(repository) ?? 0),
+    };
+  }, [uncommitted, shown, graph, colors]);
   const y = (row: number) => (row + offset) * rowHeight + rowHeight / 2;
 
   return (
@@ -187,6 +243,7 @@ export function LogTable({
             {t("gitLog.table.hash")}
           </span>
         )}
+        {collapseMerges && <span aria-hidden className="w-10 shrink-0" />}
       </div>
       <Loadable
         loading={loading && commits.length === 0}
@@ -221,8 +278,17 @@ export function LogTable({
               {graph.edges.map((edge) => {
                 if (!visible(edge.from.row) && !visible(edge.to?.row ?? -99))
                   return null;
-                const lane = edge.to ? edge.to.lane : edge.from.lane;
-                const color = laneColor(edge.index > 0 ? lane : edge.from.lane);
+                // 两端都在主线上 = 仓库色；否则用不在主线那一端的车道色，
+                // 一段分支从分出到汇回始终是一个颜色。
+                const sideEnd =
+                  !view.mainline.has(edge.child)
+                    ? edge.from
+                    : edge.to && !view.mainline.has(edge.parent)
+                      ? edge.to
+                      : null;
+                const color = sideEnd
+                  ? branchHue(sideEnd.lane)
+                  : repositoryHue(repositoryOf(edge.child));
                 return (
                   <path
                     key={`${edge.child}:${edge.parent}`}
@@ -241,45 +307,62 @@ export function LogTable({
                   />
                 );
               })}
-              {offset > 0 && (
-                // 未提交的变更：一个虚线空心点，接到 HEAD 那一行。
-                <g data-slot="git-log-uncommitted">
+              {offset > 0 && dirtyHead && (
+                // 未提交的变更：一个虚线空心点，落在脏的那个仓库的主线车道上，
+                // 虚线接到这个仓库在表里的第一行（它的 HEAD）。
+                <g
+                  data-slot="git-log-uncommitted"
+                  data-repository={dirtyHead.repository}
+                >
                   <circle
-                    cx={x(0)}
+                    cx={x(dirtyHead.lane)}
                     cy={rowHeight / 2}
                     r={3.5}
                     fill="var(--background)"
-                    stroke="var(--muted-foreground)"
+                    stroke={dirtyHead.color}
                     className="stroke-[1.5]"
                     strokeDasharray="2 2"
                   />
-                  <path
-                    d={`M${x(0)},${rowHeight / 2} v${rowHeight}`}
-                    fill="none"
-                    stroke="var(--muted-foreground)"
-                    className="stroke-[1.5]"
-                    strokeDasharray="3 3"
-                  />
+                  {dirtyHead.row >= 0 && (
+                    <path
+                      d={`M${x(dirtyHead.lane)},${rowHeight / 2 + 4} L${x(dirtyHead.lane)},${y(dirtyHead.row) - 6}`}
+                      fill="none"
+                      stroke={dirtyHead.color}
+                      className="stroke-[1.5]"
+                      strokeDasharray="3 3"
+                    />
+                  )}
                 </g>
               )}
-              {commits.map((commit, row) => {
+              {shown.map((commit, row) => {
                 if (!visible(row)) return null;
-                const point = graph.points.get(commitKey(commit));
+                const key = commitKey(commit);
+                const point = graph.points.get(key);
                 if (!point) return null;
-                const merge = commit.parents.length > 1;
+                const merge = commit.parents.length > 1 || view.sideCount.has(key);
+                const color = pointColor(key, point.lane);
                 return (
-                  <circle
-                    key={commitKey(commit)}
+                  <g
+                    key={key}
                     data-commit={commit.oid}
                     data-repository={commit.repositoryPath}
                     data-merge={merge ? "true" : "false"}
-                    cx={x(point.lane)}
-                    cy={y(point.row)}
-                    r={selected === commitKey(commit) ? 4.5 : 3.5}
-                    fill={merge ? "var(--background)" : laneColor(point.lane)}
-                    stroke={laneColor(point.lane)}
-                    className="stroke-2"
-                  />
+                    data-mainline={view.mainline.has(key) ? "true" : "false"}
+                  >
+                    {/* 一圈底色晕圈：线从点下面穿过时，点仍然是完整的一颗。 */}
+                    <circle
+                      cx={x(point.lane)}
+                      cy={y(point.row)}
+                      r={6.5}
+                      fill={`color-mix(in oklab, ${color} 28%, var(--background))`}
+                    />
+                    <circle
+                      cx={x(point.lane)}
+                      cy={y(point.row)}
+                      r={selected === key ? 4.5 : 3.5}
+                      fill={color}
+                    />
+                  </g>
                 );
               })}
             </svg>
@@ -296,6 +379,17 @@ export function LogTable({
                 ) : (
                   <CommitRow
                     commit={row.commit}
+                    side={collapseMerges && view.mergedBy.has(row.key)}
+                    merge={
+                      collapseMerges && view.sideCount.has(row.key)
+                        ? {
+                            count: view.sideCount.get(row.key)!,
+                            open: expanded.has(row.key),
+                            onToggle: () => onToggleMerge?.(row.key),
+                          }
+                        : null
+                    }
+                    toggleSlot={collapseMerges}
                     gutter={gutter}
                     height={rowHeight}
                     color={
@@ -432,6 +526,9 @@ function UncommittedRow({
 
 function CommitRow({
   commit,
+  side,
+  merge,
+  toggleSlot,
   gutter,
   height,
   color,
@@ -443,6 +540,12 @@ function CommitRow({
   onSelect,
 }: {
   commit: GitLogCommit;
+  /** 合并带进来的分支提交：文字降一级。 */
+  side: boolean;
+  /** 折叠模式下的主线合并：右侧计数，点一下原地展开 / 收起。 */
+  merge: { count: number; open: boolean; onToggle: () => void } | null;
+  /** 折叠开着时每行都留出计数那一格，列才对得齐。 */
+  toggleSlot: boolean;
   gutter: number;
   height: number;
   color: string | null;
@@ -453,68 +556,109 @@ function CommitRow({
   selected: boolean;
   onSelect: () => void;
 }) {
+  const t = useT();
   const badges = useMemo(() => refBadges(commit.refs), [commit.refs]);
+  const label = merge ? mergeLabel(commit.subject) : null;
   return (
-    <Button
-      type="button"
-      variant="ghost"
-      aria-pressed={selected}
-      data-commit={commit.oid}
-      onClick={onSelect}
-      style={{ height, paddingLeft: gutter }}
-      className={cn(
-        "h-auto justify-start rounded-none border-0 font-normal relative w-full min-w-0 gap-2 pr-3 text-left text-meta hover:bg-muted aria-pressed:bg-muted",
-        mine && "font-medium text-foreground",
-      )}
+    <div
+      data-selected={selected ? "true" : undefined}
+      className="group/row relative flex h-full w-full min-w-0 items-center hover:bg-muted data-selected:bg-muted"
     >
       {color && (
         <span
           aria-hidden
           data-slot="git-log-repository-color"
-          className="absolute inset-y-0 left-0 w-[3px]"
+          className="absolute top-1/2 left-0.5 h-4 w-1 -translate-y-1/2 rounded-full"
           style={{ background: color }}
         />
       )}
-      <span className="min-w-0 flex-1 truncate" title={commit.subject}>
-        {commit.subject || commit.oid.slice(0, 12)}
-      </span>
-      {badges.map((badge) => (
-        <Badge
-          key={`${badge.kind}:${badge.label}`}
-          title={badge.label}
-          size="sm"
-          variant={
-            badge.kind === "tag"
-              ? "brand"
-              : badge.kind === "head"
-                ? "default"
-                : "outline"
-          }
-          className="max-w-28 justify-start truncate"
-        >
-          {badge.label}
-        </Badge>
-      ))}
-      {!narrow && (
-        <span
-          className="w-28 shrink-0 truncate text-muted-foreground"
-          title={`${commit.authorName} <${commit.authorEmail}>`}
-        >
-          {commit.authorName}
-        </span>
-      )}
-      <span
-        data-numeric
-        className="w-20 shrink-0 truncate text-right text-muted-foreground"
-        title={commit.committerTime}
+      <Button
+        type="button"
+        variant="ghost"
+        aria-pressed={selected}
+        data-commit={commit.oid}
+        onClick={onSelect}
+        style={{ height, paddingLeft: gutter }}
+        className={cn(
+          "h-auto min-w-0 flex-1 justify-start gap-2 rounded-none border-0 bg-transparent pr-3 text-left text-meta font-normal hover:bg-transparent aria-pressed:bg-transparent",
+          mine && "font-medium text-foreground",
+          side && "text-muted-foreground",
+        )}
       >
-        {when}
-      </span>
-      {showHash && (
-        <span className="w-16 shrink-0 truncate text-right font-mono text-muted-foreground">
-          {commit.oid.slice(0, 7)}
+        <span
+          className="min-w-0 flex-1 truncate"
+          title={commit.subject}
+          data-side={side ? "true" : undefined}
+        >
+          {label ? label.branch : commit.subject || commit.oid.slice(0, 12)}
+          {label?.pr && (
+            <span className="ml-1.5 text-muted-foreground">{label.pr}</span>
+          )}
         </span>
+        {badges.map((badge) => (
+          <Badge
+            key={`${badge.kind}:${badge.label}`}
+            title={badge.label}
+            size="sm"
+            variant={
+              badge.kind === "tag"
+                ? "brand"
+                : badge.kind === "head"
+                  ? "default"
+                  : "outline"
+            }
+            className="max-w-28 justify-start truncate"
+          >
+            {badge.label}
+          </Badge>
+        ))}
+        {!narrow && (
+          <span
+            className="w-28 shrink-0 truncate text-muted-foreground"
+            title={`${commit.authorName} <${commit.authorEmail}>`}
+          >
+            {commit.authorName}
+          </span>
+        )}
+        <span
+          data-numeric
+          className="w-20 shrink-0 truncate text-right text-muted-foreground"
+          title={commit.committerTime}
+        >
+          {when}
+        </span>
+        {showHash && (
+          <span className="w-16 shrink-0 truncate text-right font-mono text-muted-foreground">
+            {commit.oid.slice(0, 7)}
+          </span>
+        )}
+      </Button>
+      {merge === null && toggleSlot && (
+        <span aria-hidden className="mr-2 w-10 shrink-0" />
       )}
-    </Button>
+      {merge && (
+        // 计数放在行尾、整行按钮之外：两个按钮不能嵌套，点计数也不该顺带
+        // 选中这一行。
+        <Button
+          type="button"
+          size="xs"
+          variant="outline"
+          data-slot="git-log-merge-toggle"
+          aria-expanded={merge.open}
+          aria-label={t(
+            merge.open ? "gitLog.table.collapseMerge" : "gitLog.table.expandMerge",
+            { count: merge.count },
+          )}
+          onClick={merge.onToggle}
+          className="mr-2 h-5 w-10 shrink-0 gap-0.5 px-1.5 text-caption tabular-nums"
+        >
+          {merge.count}
+          <ChevronDown
+            aria-hidden
+            className={cn("size-3 transition-transform", merge.open && "rotate-180")}
+          />
+        </Button>
+      )}
+    </div>
   );
 }
