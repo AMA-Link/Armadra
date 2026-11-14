@@ -31,6 +31,7 @@ export const NODE_TYPES = [
   "browser",
   "automation",
   "agentActivity",
+  "git",
 ] as const;
 
 export const EDGE_KINDS = ["link"] as const;
@@ -255,6 +256,9 @@ export function validNodeData(node: CanvasNode): boolean {
         ) &&
         optionalBoundedString(data, "timezone", 64)
       );
+    // The Git node holds nothing but its kind (#927): history is read live.
+    case "git":
+      return true;
     // A read-only observation card. Identity is the observed session's, so a
     // title collision can never merge two different native jobs.
     case "agentActivity":

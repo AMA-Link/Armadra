@@ -203,6 +203,8 @@ export const runtimeSettingsSchema = z.looseObject({
       notify: z.boolean().optional(),
     })
     .optional(),
+  /** Git 窗口（#927）：`avatars` = 由 core 代取提交作者的 GitHub 头像；默认开。 */
+  git: z.looseObject({ avatars: z.boolean().optional() }).optional(),
   /** 防休眠策略（T02，终端宿主设计 §9）；哪些来源的租约可以生效。 */
   power: z
     .looseObject({
@@ -317,6 +319,8 @@ export interface RuntimeSettingsPatch {
       { path?: string | null; args?: string[]; enabled?: boolean }
     >;
   };
+  /** Git 窗口的 GitHub 头像（#927）。 */
+  git?: { avatars?: boolean };
   /** 防休眠策略（T02）。 */
   power?: { policy?: PowerPolicy; keepAwakeWhileWorking?: boolean };
   /** 会话索引的范围。 */

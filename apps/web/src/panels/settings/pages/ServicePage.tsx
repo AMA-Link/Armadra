@@ -682,6 +682,18 @@ function DataGroup() {
             </SelectContent>
           </Select>
         </SettingsRow>
+        {/* Git 窗口的作者头像（#927）：关掉之后 core 不再向 GitHub 取图，
+            页面一律画首字母。出站登记见 core `net/outbound.ts`。 */}
+        <SettingsRow label={t("settings.gitAvatars")}>
+          <Switch
+            checked={settings.data?.git?.avatars ?? true}
+            disabled={!settings.data}
+            aria-label={t("settings.gitAvatars")}
+            onCheckedChange={(checked) =>
+              save.mutate({ git: { avatars: checked } })
+            }
+          />
+        </SettingsRow>
       </SettingsLoadable>
     </SettingsGroup>
   );

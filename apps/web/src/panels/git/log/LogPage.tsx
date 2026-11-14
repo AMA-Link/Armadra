@@ -43,6 +43,7 @@ import { followOperation } from "./follow-operation";
 import { filterKey, logRequestFromPreferences } from "./filters";
 import { commitKey, repositoryColor } from "./graph";
 import { githubAccountId } from "./people";
+import { useGitUncommittedRequest } from "../focus";
 import { defaultExpanded, refKey, type BranchTreeNode } from "./build-tree";
 import {
   fulfilWorktreeIntent,
@@ -150,6 +151,14 @@ export function LogPage({ workspaceId, refreshToken = 0 }: LogPageProps) {
       position: nodeDropPosition("group", { size: WORKTREE_FRAME_SIZE }),
     });
   }, [repositories, t, workspaceRoot]);
+
+  // Agent 节点菜单里的「Git：未提交的变更」：打开窗口之后选中那一行（#927 B4）。
+  const focusUncommitted = useCallback(() => {
+    setSelected(UNCOMMITTED_KEY);
+    setCommit(null);
+    if (compact) setStage("details");
+  }, [compact]);
+  useGitUncommittedRequest(focusUncommitted);
 
   /** 每个仓库当前分支的 ↑↓；没有上游（`null`）的不进表。 */
   const sync = useMemo(() => {

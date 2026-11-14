@@ -189,6 +189,18 @@ describe("设置 → 本机服务", () => {
     expect(screen.queryByRole("button", { name: "重建" })).toBeNull();
   });
 
+  it("Git 头像开关默认开，关掉写 git.avatars = false（#927）", async () => {
+    draw();
+    const toggle = screen.getByRole("switch", {
+      name: "Git 窗口显示 GitHub 头像",
+    });
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(toggle);
+    expect(settingsState.mutate).toHaveBeenCalledWith({
+      git: { avatars: false },
+    });
+  });
+
   it("远端主机：路径照常显示，不给打开（那是别的机器上的路径）", async () => {
     access.remote = true;
     draw();

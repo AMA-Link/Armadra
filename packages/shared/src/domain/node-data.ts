@@ -364,6 +364,15 @@ export const nativeRecurrenceSchema = z.object({
   timezone: z.string().max(64).default(""),
 });
 
+/**
+ * 画布上的 Git 节点（#927 B4）：内容就是侧边栏那个历史组件，节点只记它是什么，
+ * 不存任何提交、差异或文件正文——每次都从仓库读。
+ */
+export const gitNodeDataSchema = z.object({
+  kind: z.literal("git"),
+  ...addressable,
+});
+
 export const agentActivityNodeDataSchema = z.object({
   kind: z.literal("agentActivity"),
   ...addressable,
@@ -401,6 +410,7 @@ export const canvasNodeDataSchema = z.discriminatedUnion("kind", [
   browserNodeDataSchema,
   automationNodeDataSchema,
   agentActivityNodeDataSchema,
+  gitNodeDataSchema,
 ]);
 
 export type DiffScope = (typeof DIFF_SCOPES)[number];
@@ -422,6 +432,7 @@ export type FilesNodeData = z.infer<typeof filesNodeDataSchema>;
 export type BrowserNodeData = z.infer<typeof browserNodeDataSchema>;
 export type AutomationNodeData = z.infer<typeof automationNodeDataSchema>;
 export type AgentActivityNodeData = z.infer<typeof agentActivityNodeDataSchema>;
+export type GitNodeData = z.infer<typeof gitNodeDataSchema>;
 export type AutomationScheduleKind = (typeof AUTOMATION_SCHEDULE_KINDS)[number];
 export type AgentActivitySource = (typeof AGENT_ACTIVITY_SOURCES)[number];
 export type NativeRecurrence = z.infer<typeof nativeRecurrenceSchema>;

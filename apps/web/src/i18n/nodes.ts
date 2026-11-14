@@ -19,6 +19,7 @@ const zh = {
   "node.browser": "浏览器",
   "node.automation": "定时计划",
   "node.agentActivity": "原生活动",
+  "node.git": "Git 历史",
 
   /* 外壳动作 */
   "node.collapse": "折叠",
@@ -144,6 +145,7 @@ const en: Record<keyof typeof zh, string> = {
   "node.browser": "Browser",
   "node.automation": "Scheduled plan",
   "node.agentActivity": "Native activity",
+  "node.git": "Git history",
 
   "node.collapse": "Collapse",
   "node.expand": "Expand",

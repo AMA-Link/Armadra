@@ -123,6 +123,8 @@ const NODE_SIZE_SPEC: Readonly<Record<CanvasNodeType, NodeSizeSpec>> = {
   browser: { orientation: "landscape", default: [89, 55], min: [34, 21] },
   automation: { orientation: "landscape", default: [34, 21], min: [21, 13] },
   agentActivity: { orientation: "landscape", default: [34, 21], min: [21, 13] },
+  // Git 节点就是侧边栏的历史组件（#927）：表格加右栏，要宽屏。
+  git: { orientation: "landscape", default: [89, 55], min: [34, 21] },
 };
 
 /** 新建这种节点时的尺寸。 */

@@ -10,6 +10,7 @@ export const NODE_TYPES = [
   "browser",
   "automation",
   "agentActivity",
+  "git",
 ] as const;
 
 /** Only one edge kind is persisted; rope/subagent edges are derived per frame. */

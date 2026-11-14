@@ -13,7 +13,7 @@
 //   pnpm --filter @armadra/desktop build
 //   node tools/probes/git-tool-window.mjs [输出目录]
 //
-// 产物：<输出目录>/log-desktop.png、details-desktop.png、log-maximized.png、commit-desktop.png、
+// 产物：<输出目录>/log-desktop.png、details-desktop.png、git-node.png、log-maximized.png、commit-desktop.png、
 // mobile-branches.png、mobile-commits.png、mobile-details.png、
 // mobile-commit.png，以及 result.json。
 import { execFileSync, spawn } from "node:child_process";
@@ -237,6 +237,7 @@ import { runtimeApi } from "./api/client";
 import { TooltipProvider } from "./ui/tooltip";
 import { useCanvasStore } from "./store/canvas-store";
 import { GitToolWindow } from "./panels/git/window/GitToolWindow";
+import { GitNode } from "./nodes/GitNode";
 
 const [summary] = await runtimeApi.listWorkspaces();
 const workspace = await runtimeApi.openWorkspace(summary!.id);
@@ -253,9 +254,37 @@ createRoot(document.getElementById("root")!).render(
     client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
   >
     <TooltipProvider delayDuration={0}>
-      <div className="h-screen bg-background text-foreground">
-        <GitToolWindow />
-      </div>
+      {(window as unknown as { __armadraScmMode?: string }).__armadraScmMode ===
+      "node" ? (
+        // 画布 Git 节点（#927 B4）：按节点默认尺寸摆出来，内容是同一个历史组件。
+        <div className="h-screen bg-background p-6 text-foreground">
+          <div style={{ width: 1157, height: 715 }}>
+            <GitNode
+              id="probe-git-node"
+              node={{
+                id: "probe-git-node",
+                boardId: "probe",
+                type: "git",
+                title: "Git",
+                color: "#0a84ff",
+                position: { x: 0, y: 0 },
+                labels: [],
+                note: "",
+                data: { kind: "git" },
+                createdAt: "2026-11-14T00:00:00.000Z",
+                updatedAt: "2026-11-14T00:00:00.000Z",
+              } as never}
+              selected={false}
+              collapsed={false}
+              focused={false}
+            />
+          </div>
+        </div>
+      ) : (
+        <div className="h-screen bg-background text-foreground">
+          <GitToolWindow />
+        </div>
+      )}
     </TooltipProvider>
   </QueryClientProvider>,
 );
@@ -476,6 +505,12 @@ createRoot(document.getElementById("root")!).render(
   await clickText('button[aria-label="最大化"]', "");
   await sleep(2000);
   await capture("commit-maximized");
+
+  /* --------------------------- 画布：Git 节点 --------------------------- */
+
+  await viewport(1440, 900);
+  await load("node");
+  await capture("git-node");
 
   /* -------------------------------- 手机四级 ----------------------------- */
 
