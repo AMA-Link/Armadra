@@ -4416,3 +4416,17 @@ nightly 在 `b8353492`（运行 37338174906）之后连续失败。逐个作业�
 接口（按 `docs/armadra/plans/forge-auto-detect.md` 的形状，web 侧 zod 在 `apps/web/src/api/forge.ts`）：`forge.issueComments` / `forge.pullComments`（`{ items: ForgeConversationItem[] }`）；`forge.workspaceRepository`、`forge.selectWorkspaceRemote`、`forge.hosts`、`forge.setReuseLocalLogins` 的形状先写好，包 3 使用。契约类型随 core 线落进 `@armadra/shared` 之前，页面经窄接口调用。
 
 没做 / 限制：评审意见没有 `文件:行号`（`ForgeConversationItem` 没有这两个字段）；真实 core 的讨论路由要等 core 线合并后才能端到端，目前用 mock 与 showcase 夹具验证。
+
+## 代码托管全自动识别：工作空间仓库与平台探测（包 1，Refs #922，2026-11-13）
+
+做了什么：
+
+- **仓库解析**（`core/forge/workspace.ts`、`remotes.ts`、`selection.ts`）：对工作空间根跑 `git rev-parse --show-toplevel` 与 `git remote -v`（只取 fetch），主 remote 顺序「用户选择 → `remote.<name>.gh-resolved` → upstream → origin → 名字排序首个」；用户选择按工作空间存进迁移 0066 的 `forge_workspace_remote`（仓库里没有工作空间级设置存储，所以新增；主键 `workspace_id`，随工作空间外键删除）。地址里的凭据在进答复前剥掉。远程执行主机的工作空间：现有执行主机通道没有读 remote 的操作，答 `remoteHostUnavailable`，不回退读控制端磁盘。
+- **SSH 别名**（`ssh-alias.ts`）：scp 与 `ssh://` 写法先 `ssh -G` 取 `HostName`（3 秒超时、最小环境、按别名缓存 5 分钟，失败用原值）。
+- **平台探测**（`probe.ts`，外呼登记 `OUTBOUND.forgeProbe`）：已知主机直接认；用户 remote 里的其他主机 HTTPS 问 `/api/v3/meta`、`/api/v1/version`、`/api/v4/version`（401 也算 GitLab），按主机缓存；结果只在没有配置行时用，`credential` 仍按实际。
+- **路由与 procedure**：`POST|PUT /api/forge/workspace-repository`（`forge.workspaceRepository` / `forge.selectWorkspaceRemote`）、`GET …/issues/{n}/comments`、`…/pulls/{n}/comments`（`forge.issueComments` / `forge.pullComments`，现有 `Forge.conversation` 的 `items`）；`ForgeDetection` 加 `credentialSource`（包 1 只给 `ghCli` / `stored`）。契约 §111，§29.1、§29.2 补引用，协议 1.56。
+- **PR 绑定**（`collab/control/pr-bind.ts`）：按编号认仓库改用选中的 remote，不再写死 `origin`；`intake` 读正文先预热（`forgeForReady`）。
+
+实测：新增用例 `remotes.test.ts`、`ssh-alias.test.ts`、`probe.test.ts`、`workspace-repository.test.ts`（含真 git 临时仓库）与 `forge.test.ts` 的讨论路由；`pnpm contract:check` 通过。
+
+没做 / 限制：远程执行主机上的 remote 读取（需要给 Worker 加操作，另议）；web 的面板自动识别与 remote 下拉在 web 线；令牌复用（gh / glab / tea / git credential）在包 2。

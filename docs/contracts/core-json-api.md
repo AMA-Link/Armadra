@@ -2055,6 +2055,8 @@ CSV 按 RFC 4180：`\r\n` 换行，首行表头 `id,time,principalId,deviceId,ac
 3. 配置表里只写主机的一行 `<host>`。
 4. 都没有：`forge: null`，页面不显示「托管」区。
 
+第 4 条之前还有一档自动认（§111.3）：已知主机（`gitlab.com`、`gitea.com`、`codeberg.org`）与探测过的主机（只限用户 remote 里出现的，HTTPS 问公开版本端点）给出平台，`source` 与 `configKey` 为 `null`，`credential` 仍按实际。工作空间怎么得到仓库、SSH 别名与主 remote 的选择见 §111.1。
+
 配置在迁移 `0038_forge.sql` 的 `forge_config(repo_key, forge, api_base, credential_ref, account_login, revision, …)`；同一迁移给 `github_references` 加了 `forge` 列（缺省 `github`）。
 
 ### 29.2 `GET /api/forge/repos/{host}/{owner}/{name}`、`POST /api/forge/resolve`
@@ -2070,11 +2072,12 @@ CSV 按 RFC 4180：`\r\n` 换行，首行表头 `id,time,principalId,deviceId,ac
   "apiBase": "https://git.example.com/api/v1",
   "webUrl": "https://git.example.com/acme/app",
   "credential": true,
+  "credentialSource": "stored",
   "accountLogin": "bot"
 }
 ```
 
-`forge` 是 `github` | `gitea` | `gitlab` | `null`；`source` 是 `github` | `config` | `null`；`credential` 只看存着没有、不花远端配额（GitHub 远端：§5 配了凭据且凭据的根就是这个远端的根）。不认识的仓库其余字段都是 `null`、`credential: false`。
+`forge` 是 `github` | `gitea` | `gitlab` | `null`；`source` 是 `github` | `config` | `null`（`null` 而 `forge` 有值，是 §111.3 自动认出的）；`credential` 只看存着没有、不花远端配额（GitHub 远端：§5 配了凭据且凭据的根就是这个远端的根）；`credentialSource`（协议 1.56 起，§111.2）是令牌的来源，没有令牌 `null`。不认识的仓库其余字段都是 `null`、`credential: false`。
 
 ### 29.3 配置：`/api/forge/configs*`
 
@@ -3273,8 +3276,8 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 | `forge.removeHostConfig` | mutation | `{ host: string, expectedRevision?: number \| string, workspaceId?: string }`                                                                       | `{ removed: boolean }`                                                                                                                                                                                                                                                                                                                                                                                               | `bad_request`、`not_found`、`conflict`                                                                                                                                                                  | `github:write` | 1.11 | `DELETE /api/forge/configs/{host}`                                        |
 | `forge.putRepoConfig`    | mutation | `{ workspaceId?: string, forge?: string, apiBase?: string, token?: string, expectedRevision?: integer, host: string, owner: string, name: string }` | `{ workspaceId?: string \| null, repoKey: string, forge: "github" \| "gitea" \| "gitlab", apiBase: string, credential: boolean, accountLogin: string \| null, revision: integer, createdAtMs: integer, updatedAtMs: integer }`                                                                                                                                                                                       | `bad_request`、`not_found`、`conflict`                                                                                                                                                                  | `github:write` | 1.11 | `PUT /api/forge/configs/{host}/{owner}/{name}`                            |
 | `forge.removeRepoConfig` | mutation | `{ host: string, owner: string, name: string, workspaceId?: string, expectedRevision: number \| string }`                                           | `{ removed: boolean }`                                                                                                                                                                                                                                                                                                                                                                                               | `bad_request`、`not_found`、`conflict`                                                                                                                                                                  | `github:write` | 1.11 | `DELETE /api/forge/configs/{host}/{owner}/{name}`                         |
-| `forge.resolve`          | mutation | `{ remoteUrl?: string, workspaceId?: string }`                                                                                                      | `{ repository: { host: string, owner: string, name: string }, forge: "github" \| "gitea" \| "gitlab" \| null, source: "github" \| "config" \| null, configKey: string \| null, apiBase: string \| null, webUrl: string \| null, credential: boolean, accountLogin: string \| null }`                                                                                                                                 | `bad_request`                                                                                                                                                                                           | `github:read`  | 1.11 | `POST /api/forge/resolve`                                                 |
-| `forge.detect`           | query    | `{ host: string, owner: string, name: string, workspaceId?: string }`                                                                               | `{ repository: { host: string, owner: string, name: string }, forge: "github" \| "gitea" \| "gitlab" \| null, source: "github" \| "config" \| null, configKey: string \| null, apiBase: string \| null, webUrl: string \| null, credential: boolean, accountLogin: string \| null }`                                                                                                                                 | `bad_request`                                                                                                                                                                                           | `github:read`  | 1.11 | `GET /api/forge/repos/{host}/{owner}/{name}`                              |
+| `forge.resolve`          | mutation | `{ remoteUrl?: string, workspaceId?: string }`                                                                                                      | `{ repository: { host: string, owner: string, name: string }, forge: "github" \| "gitea" \| "gitlab" \| null, source: "github" \| "config" \| null, configKey: string \| null, apiBase: string \| null, webUrl: string \| null, credential: boolean, credentialSource?: "ghCli" \| "glab" \| "tea" \| "gitCredential" \| "stored" \| null, accountLogin: string \| null }`                                           | `bad_request`                                                                                                                                                                                           | `github:read`  | 1.11 | `POST /api/forge/resolve`                                                 |
+| `forge.detect`           | query    | `{ host: string, owner: string, name: string, workspaceId?: string }`                                                                               | `{ repository: { host: string, owner: string, name: string }, forge: "github" \| "gitea" \| "gitlab" \| null, source: "github" \| "config" \| null, configKey: string \| null, apiBase: string \| null, webUrl: string \| null, credential: boolean, credentialSource?: "ghCli" \| "glab" \| "tea" \| "gitCredential" \| "stored" \| null, accountLogin: string \| null }`                                           | `bad_request`                                                                                                                                                                                           | `github:read`  | 1.11 | `GET /api/forge/repos/{host}/{owner}/{name}`                              |
 | `forge.accounts`         | query    | `{ workspaceId?: string }`                                                                                                                          | `{ accounts: ({ host: string, forge: "github" \| "gitea" \| "gitlab", accountLogin: string \| null })[] }`                                                                                                                                                                                                                                                                                                           | —                                                                                                                                                                                                       | `github:read`  | 1.38 | `GET /api/forge/accounts`                                                 |
 | `forge.repositories`     | query    | `{ host: string, cursor?: string, limit?: number \| string, workspaceId?: string }`                                                                 | `{ items: ({ host: string, owner: string, name: string, forge: "github" \| "gitea" \| "gitlab", description: string, private: boolean, fork: boolean, archived: boolean, defaultBranch: string, cloneUrl: string, sshUrl: string, webUrl: string, updatedAtMs: integer })[], nextCursor: string \| null }`                                                                                                           | `bad_request`、`not_found`、`forge_not_configured`、`forge_credential_rejected`、`forge_forbidden`、`forge_scope`、`rate_limited`、`forge_unavailable`                                                  | `github:read`  | 1.38 | `GET /api/forge/accounts/{host}/repos`                                    |
 | `forge.issues`           | query    | `{ host: string, owner: string, name: string, workspaceId?: string, state?: string, cursor?: string, limit?: number \| string }`                    | `{ items: ({ number: integer, title: string, body: string, state: "open" \| "closed", author: string \| null, labels: string[], commentCount: integer, url: string, createdAtMs: integer, updatedAtMs: integer, closedAtMs: integer \| null })[], nextCursor: string \| null }`                                                                                                                                      | `bad_request`、`not_found`、`forge_not_configured`、`forge_credential_rejected`、`forge_forbidden`、`forge_scope`、`rate_limited`、`forge_unavailable`                                                  | `github:read`  | 1.11 | `GET /api/forge/repos/{host}/{owner}/{name}/issues`                       |
@@ -5722,3 +5725,76 @@ Copilot 的 ACP 入口只接受 http / sse 的 MCP 服务器，`session/new.mcpS
 - 工具的 `execute` 起 `armadra-hook tool <name>` 子进程：参数 JSON 走标准输入，成功时 stdout 是运行时的原文、退出码 0；被拒或连不上时 stderr 是拒绝的原文、退出码 1。子进程继承终端环境（节点 id、端点文件、会话绑定）。
 - 子命令内部就是 `armadra-hook mcp` 的 `tools/call`（同一个 `callTool`），所以 core 收到的请求与 shell 里的 `armadra-hook canvas ...` 完全一样，不多给任何权限。
 - 实测（omp 18.16.0，`--approval-mode=write`，场景 6）：`canvas_list` 未询问即返回画布节点；同一轮里的 `echo` 被拒。
+
+## 111. 代码托管全自动识别：工作空间仓库、平台探测、凭据来源与讨论路由（`#922`）
+
+> 状态：实施契约。打开工作空间即认出仓库、平台与令牌，用户不必填任何东西；手动配置（§29.3）只作后备。包 1（本节 111.1–111.5）认仓库与平台，包 2（111.6 起）复用本机登录。实现在 `core/forge/`（`workspace.ts`、`remotes.ts`、`ssh-alias.ts`、`probe.ts`、`selection.ts`）。协议自 1.56。
+
+### 111.1 工作空间 → 仓库
+
+<!-- rpc:begin contract=§111.1 -->
+
+| procedure                     | kind     | input                                             | output                                                                                                                                                                                                                                                 | errors                     | scope         | 自   | 原路径                                 |
+| ----------------------------- | -------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------- | ------------- | ---- | -------------------------------------- |
+| `forge.workspaceRepository`   | mutation | `{ workspaceId: string }`                         | `{ reason: "ok" \| "notGit" \| "noRemote" \| "remoteHostUnavailable", selected: string \| null, selectedBy: "user" \| "ghResolved" \| "upstream" \| "origin" \| "first" \| null, remotes: ({ name: string, url: string, detection: {…} \| null })[] }` | `bad_request`、`not_found` | `github:read` | 1.56 | `POST /api/forge/workspace-repository` |
+| `forge.selectWorkspaceRemote` | mutation | `{ workspaceId: string, remote: string \| null }` | `{ reason: "ok" \| "notGit" \| "noRemote" \| "remoteHostUnavailable", selected: string \| null, selectedBy: "user" \| "ghResolved" \| "upstream" \| "origin" \| "first" \| null, remotes: ({ name: string, url: string, detection: {…} \| null })[] }` | `bad_request`、`not_found` | `github:read` | 1.56 | `PUT /api/forge/workspace-repository`  |
+
+<!-- rpc:end -->
+
+- `POST /api/forge/workspace-repository`，体 `{ workspaceId }`（`forge.workspaceRepository`）；`PUT` 同一路径，体 `{ workspaceId, remote: string | null }`（`forge.selectWorkspaceRemote`），`null` 清掉用户选择。两者答同一个形状：
+
+```json
+{
+  "reason": "ok",
+  "selected": "upstream",
+  "selectedBy": "upstream",
+  "remotes": [
+    {
+      "name": "origin",
+      "url": "git@github.com:me/app.git",
+      "detection": {
+        "repository": { "host": "github.com", "owner": "me", "name": "app" },
+        "forge": "github",
+        "…": "…"
+      }
+    }
+  ]
+}
+```
+
+- `reason`：`ok` | `notGit`（根目录不是 git 仓库、或已不存在）| `noRemote`（没有任何 remote）| `remoteHostUnavailable`（工作空间在远程执行主机上：现有执行主机通道没有读 remote 的操作，不回退去读控制端磁盘上同名的路径）。非 `ok` 时 `selected`、`selectedBy` 为 `null`、`remotes` 为空，页面保留手填。
+- 读法：对工作空间根跑 `git rev-parse --show-toplevel` 确认是仓库，`git remote -v` 取每个 remote 的 **fetch** 地址（最多 32 个，按名字排序）；`git config --get-regexp '^remote\..*\.gh-resolved$'` 取用户用 `gh repo set-default` 选过的 remote。
+- 主 remote 顺序（`selectedBy`）：`user`（用户选择）→ `ghResolved` → `upstream` → `origin` → `first`（名字排序首个）。用户选的名字已不在 remote 里时当作没选。用户选择按工作空间存进 `forge_workspace_remote`（迁移 `0066`，主键 `workspace_id`，随工作空间外键删除），只存名字；PUT 选不存在的 remote 答 `400 bad_request`，不存在的工作空间 `404 not_found`。
+- `remotes[].url` 是用户的 remote 原样，**已剥掉凭据**：http(s) 去掉整段 userinfo，其余协议只去密码。`remotes[].detection` 是 §29.2 的识别结果，地址写法不是托管仓库时 `null`；每个 remote 都经同一套识别，所以不是主 remote 的也带平台与令牌状态。
+- SSH 别名：scp / `ssh://` 写法的 remote，主机若不是已知主机，先跑 `ssh -G <别名>` 取 `HostName`（3 秒超时、最小环境、不交互、按别名缓存 5 分钟），把地址里的主机换成真实主机再识别（`git@github-work:org/repo` 识别为 `github.com`）；ssh 不可用或没配则用原值。`url` 字段不受影响，仍是用户写的别名。
+- 权限：两条都按 `github:read`，且绑在 `workspaceId` 那个工作空间上；`PUT` 只改「这个工作空间默认认哪个 remote」，不碰远端，所以也按读算。旧路径的路由门对这条路径一律 `github:read`。
+
+### 111.2 令牌来源 `credentialSource`
+
+- §29.2 的识别结果多一个字段 `credentialSource`：`ghCli` | `glab` | `tea` | `gitCredential` | `stored` | `null`（没有令牌）。包 1 只给现有来源：GitHub 凭据（§5）配的是 `gh` 登录 → `ghCli`，粘贴令牌与 Gitea / GitLab 配置的令牌 → `stored`。`glab`、`tea`、`gitCredential` 由复用本机登录（111.6）补齐。
+- 老 core 不给这个字段，页面的 zod 当 `null`。
+
+### 111.3 平台探测
+
+- 已知主机直接认：`github.com`、`gitlab.com`、`gitea.com`、`codeberg.org`。
+- 其他主机**只限出现在用户 remote 里的**，用 HTTPS（不带凭据、不跟重定向、5 秒超时、读不超过 64 KB）按序问三个公开端点：`/api/v3/meta`（200 且是 JSON 对象 → GitHub 企业版）、`/api/v1/version`（200 且有 `version` → Gitea / Forgejo）、`/api/v4/version`（200 有 `version`，**或 401** → GitLab）。结果按主机缓存：认出的 10 分钟，认不出或连不上的 2 分钟；同一主机并发只探一次。外呼登记为 `OUTBOUND.forgeProbe`（`core/net/outbound.ts`）。回环主机不探。
+- 探测得到的平台只在**没有配置行**时作识别结果（§29.1）：`forge` 有值、`source` 与 `configKey` 为 `null`、`apiBase` 是 `https://<主机>/api/v3`（GitHub 企业版）、`…/api/v1`（Gitea）或 `…/api/v4`（GitLab）、`credential` 仍按实际（包 1 里这类主机是 `false`）。配置行永远盖过探测。
+
+### 111.4 issue 与 PR 的讨论
+
+<!-- rpc:begin contract=§111.4 -->
+
+| procedure             | kind  | input                                                                                           | output                                                                                                                                                      | errors                                                                                                                                                 | scope         | 自   | 原路径                                                                |
+| --------------------- | ----- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------- | ---- | --------------------------------------------------------------------- |
+| `forge.issueComments` | query | `{ host: string, owner: string, name: string, workspaceId?: string, number: number \| string }` | `{ items: ({ id: string, kind: "comment" \| "review", author: string \| null, body: string, state: string \| null, url: string, createdAtMs: number })[] }` | `bad_request`、`not_found`、`forge_not_configured`、`forge_credential_rejected`、`forge_forbidden`、`forge_scope`、`rate_limited`、`forge_unavailable` | `github:read` | 1.56 | `GET /api/forge/repos/{host}/{owner}/{name}/issues/{number}/comments` |
+| `forge.pullComments`  | query | `{ host: string, owner: string, name: string, workspaceId?: string, number: number \| string }` | `{ items: ({ id: string, kind: "comment" \| "review", author: string \| null, body: string, state: string \| null, url: string, createdAtMs: number })[] }` | `bad_request`、`not_found`、`forge_not_configured`、`forge_credential_rejected`、`forge_forbidden`、`forge_scope`、`rate_limited`、`forge_unavailable` | `github:read` | 1.56 | `GET /api/forge/repos/{host}/{owner}/{name}/pulls/{number}/comments`  |
+
+<!-- rpc:end -->
+
+- `GET /api/forge/repos/{host}/{owner}/{name}/issues/{number}/comments`（`forge.issueComments`）与 `…/pulls/{number}/comments`（`forge.pullComments`），`github:read`。答 `{ items: [{ id, kind, author, body, state, url, createdAtMs }] }`：就是各平台 `Forge.conversation` 的 `items`（§103.2；评论、行内评论、评审合并成一条时间线，评审草稿与系统备注不算），时间正序；issue 只有评论。`kind` 是 `comment` | `review`，评审的 `state` 是 `approved` | `changes_requested` | `commented`，评论 `null`。`pollIntervalMs` 不在这里。
+- 正文是**别人写的材料**：页面当文本或 Markdown 渲染，从不当指令。令牌与远端原话不出现在答复里。
+
+### 111.5 迁移与 PR 绑定
+
+- 迁移 `0066_forge_workspace_remote.sql`：`forge_workspace_remote(workspace_id PK → workspaces ON DELETE CASCADE, remote, updated_at_ms)`。
+- `report --pr` 与 `items --bind-pr`（§103.1）按编号认仓库时，用 111.1 选中的主 remote（ssh 别名已换成真实主机、凭据已剥掉），不再写死 `origin`：fork 上默认查 `upstream`，用户切换后跟着变。工作空间在远程执行主机上、不是 git 仓库或没有 remote 时仍认不出，提示改给 PR 的网页地址。
