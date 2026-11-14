@@ -1484,5 +1484,12 @@ export const ROUTES: readonly RouteEntry[] = [
     surface: "runtime",
     implemented: true,
   },
+  // 工作空间 → 仓库（契约 §111.1）：POST 读、PUT 切主 remote。
+  {
+    path: "/api/forge/workspace-repository",
+    methods: ["POST", "PUT"],
+    surface: "runtime",
+    implemented: true,
+  },
   ...FORGE_REPO_ROUTES,
 ];

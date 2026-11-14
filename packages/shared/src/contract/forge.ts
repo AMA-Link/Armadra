@@ -7,6 +7,7 @@ import {
   forgeChecksSchema,
   forgeConfigListSchema,
   forgeConfigSchema,
+  forgeConversationSchema,
   forgeDetectionSchema,
   forgeFilesSchema,
   forgeIssuePageSchema,
@@ -16,6 +17,7 @@ import {
   forgePullPageSchema,
   forgePullSchema,
   forgeRepositoryPageSchema,
+  workspaceRepositorySchema,
 } from "../api/forge.js";
 import { errors } from "./errors.js";
 import { meta, oc } from "./meta.js";
@@ -209,6 +211,37 @@ export const forge = {
       }),
     ),
 
+  /* ----------------------- 工作空间 → 仓库（§111） ----------------------- */
+  /** 读工作空间的 git remote、挑主 remote、识别每个 remote；读不到说原因。 */
+  workspaceRepository: oc
+    .input(z.object({ workspaceId: z.string() }))
+    .output(workspaceRepositorySchema)
+    .errors(errors.pick("bad_request", "not_found"))
+    .meta(
+      meta({
+        since: "1.56",
+        contract: "§111.1",
+        scope: "github:read",
+        workspaceKey: "workspaceId",
+        legacy: { method: "POST", path: "/api/forge/workspace-repository" },
+      }),
+    ),
+  /** 切工作空间的主 remote；`null` 回到默认顺序。答案同 `workspaceRepository`。 */
+  selectWorkspaceRemote: oc
+    .input(z.object({ workspaceId: z.string(), remote: z.string().nullable() }))
+    .output(workspaceRepositorySchema)
+    .errors(errors.pick("bad_request", "not_found"))
+    .meta(
+      meta({
+        since: "1.56",
+        contract: "§111.1",
+        // 只改这个工作空间默认认哪个 remote，不碰远端：按读算。
+        scope: "github:read",
+        workspaceKey: "workspaceId",
+        legacy: { method: "PUT", path: "/api/forge/workspace-repository" },
+      }),
+    ),
+
   /* ------------------------------ 列仓库 -------------------------------- */
   /** 能列仓库的账号：配了凭据的 GitHub 与带令牌的主机级配置（§29.7）。 */
   accounts: oc
@@ -341,6 +374,32 @@ export const forge = {
         ...base,
         scope: "github:read",
         legacy: { method: "GET", path: `${REPO}/pulls/{number}/checks` },
+      }),
+    ),
+  /** issue 的评论（时间正序）；正文是别人写的材料。 */
+  issueComments: oc
+    .input(numbered)
+    .output(forgeConversationSchema)
+    .errors(read)
+    .meta(
+      meta({
+        since: "1.56",
+        contract: "§111.4",
+        scope: "github:read",
+        legacy: { method: "GET", path: `${REPO}/issues/{number}/comments` },
+      }),
+    ),
+  /** PR 的评论、行内评论与评审（时间正序）。 */
+  pullComments: oc
+    .input(numbered)
+    .output(forgeConversationSchema)
+    .errors(read)
+    .meta(
+      meta({
+        since: "1.56",
+        contract: "§111.4",
+        scope: "github:read",
+        legacy: { method: "GET", path: `${REPO}/pulls/{number}/comments` },
       }),
     ),
   /** 这个仓库现在能用的合并方式与自动合并（GitLab 按项目设置）。 */

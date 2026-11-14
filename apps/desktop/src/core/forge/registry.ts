@@ -13,3 +13,18 @@ export function setForgeService(service: ForgeService | undefined): void {
 export function forgeService(): ForgeService | undefined {
   return current;
 }
+
+import type { WorkspaceRepositoryService } from "./workspace";
+
+let currentWorkspaces: WorkspaceRepositoryService | undefined;
+
+/** 工作空间 → 仓库解析（契约 §111.1）；PR 绑定经它认「选中的 remote」。 */
+export function setWorkspaceRepository(
+  service: WorkspaceRepositoryService | undefined,
+): void {
+  currentWorkspaces = service;
+}
+
+export function workspaceRepository(): WorkspaceRepositoryService | undefined {
+  return currentWorkspaces;
+}
