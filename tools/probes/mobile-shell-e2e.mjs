@@ -526,7 +526,13 @@ async function android(mint, port, assetUrl) {
   try {
     await androidRun(mint, port, assetUrl, watch);
   } finally {
-    await watch.stop();
+    const { gone, signal } = await watch.stop();
+    // 结构化的判定给夜间工作流用（#921）：只有这一种失败才重启模拟器重跑一次，
+    // 用例断言失败照常判红（android-host-watch.mjs archive）。
+    if (gone) {
+      report.emulatorCrashed = true;
+      report.emulatorSignal = signal;
+    }
   }
 }
 
@@ -577,7 +583,8 @@ async function androidRun(mint, port, assetUrl, watch) {
       },
     );
     // 超时是卡住，不是进程被杀：重跑只会再卡一轮，直接带着现场失败。
-    if (code === 0 || code === TIMED_OUT) break;
+    // 模拟器自己没了（#485）：这台设备上重跑没有意义，交给工作流重启模拟器。
+    if (code === 0 || code === TIMED_OUT || watch.sample()) break;
     const crashed = readFileSync(join(output, `${name}.log`), "utf8").includes(
       "Process crashed",
     );
