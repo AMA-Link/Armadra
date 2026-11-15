@@ -390,6 +390,10 @@ async function probes(files) {
 }
 
 async function main(argv, input) {
+  // git 给钩子设的 GIT_DIR、GIT_INDEX_FILE 等会被子进程继承：测试在临时目录里起的 git
+  // 会找错仓库（「must be run in a work tree」）。和 CI 一样干净，全部去掉。
+  for (const name of Object.keys(process.env))
+    if (name.startsWith("GIT_")) delete process.env[name];
   const skip = parseSkip(process.env.ARMADRA_SKIP_PREPUSH);
   if (skip.all) return 0;
   const remote = argv[0] && !argv[0].includes("/") ? argv[0] : "origin";
