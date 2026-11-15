@@ -638,6 +638,130 @@ describe("远程执行主机上的工作空间", () => {
   });
 });
 
+describe("远程执行主机的边界（#948 审查）", () => {
+  const unavailable = async (error: Error): Promise<string> => {
+    const h = await harness({
+      repo: { remotes: FORK },
+      remoteHost: async () => {
+        throw error;
+      },
+    });
+    return (await h.service.repository(WS)).reason;
+  };
+
+  it("只有「不是 git 仓库 / 不是目录」的 400 是 notGit；409、403、remote 过多都按主机连不上", async () => {
+    expect(
+      await unavailable(
+        new DomainError(
+          409,
+          "instance_mismatch",
+          "The request was addressed to another worker session",
+        ),
+      ),
+    ).toBe("remoteHostUnavailable");
+    expect(
+      await unavailable(
+        new DomainError(
+          403,
+          "forbidden",
+          "Git repository is outside the authorized workspace",
+        ),
+      ),
+    ).toBe("remoteHostUnavailable");
+    expect(
+      await unavailable(
+        new DomainError(
+          400,
+          "bad_request",
+          "This repository has more remotes than this view supports",
+        ),
+      ),
+    ).toBe("remoteHostUnavailable");
+    expect(await unavailable(new Error("socket hang up"))).toBe(
+      "remoteHostUnavailable",
+    );
+    expect(
+      await unavailable(
+        new DomainError(
+          400,
+          "bad_request",
+          "Path is not a working Git repository",
+        ),
+      ),
+    ).toBe("notGit");
+    expect(
+      await unavailable(
+        new DomainError(400, "bad_request", "Git path must be a directory"),
+      ),
+    ).toBe("notGit");
+  });
+
+  it("远端不答：超过时限答 remoteHostUnavailable，selectedRemoteUrl 也不挂住", async () => {
+    const h = await harness({
+      repo: { remotes: FORK },
+      remoteHost: async () => await new Promise<unknown>(() => undefined),
+      warmDeadlineMs: 50,
+    });
+    const started = Date.now();
+    expect((await h.service.repository(WS)).reason).toBe(
+      "remoteHostUnavailable",
+    );
+    expect(await h.service.selectedRemoteUrl(WS)).toBeUndefined();
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
+  it("超时后才失败的远端请求不成为未处理的拒绝", async () => {
+    let reject: (error: Error) => void = () => undefined;
+    const h = await harness({
+      repo: { remotes: FORK },
+      remoteHost: async () =>
+        await new Promise<unknown>((_resolve, fail) => {
+          reject = fail;
+        }),
+      warmDeadlineMs: 20,
+    });
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      expect((await h.service.repository(WS)).reason).toBe(
+        "remoteHostUnavailable",
+      );
+      reject(new DomainError(503, "unavailable", "连接断开了"));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
+  it("远端脱敏的 ssh://[redacted]@ 整段去掉：展示与 PR 绑定都不带 [redacted]", async () => {
+    const h = await harness({
+      repo: { remotes: "" },
+      remoteHost: async () => [
+        {
+          name: "origin",
+          // ssh://git@github.com/me/app.git 经远端脱敏后的样子
+          fetchUrl: "ssh://[redacted]@github.com/me/app.git",
+          pushUrl: "ssh://[redacted]@github.com/me/app.git",
+          redacted: true,
+        },
+      ],
+    });
+    const answer = await h.service.repository(WS);
+    expect(answer.remotes[0]?.url).toBe("ssh://github.com/me/app.git");
+    expect(answer.remotes[0]?.detection?.repository).toEqual({
+      host: "github.com",
+      owner: "me",
+      name: "app",
+    });
+    expect(await h.service.selectedRemoteUrl(WS)).toBe(
+      "ssh://github.com/me/app.git",
+    );
+    expect(JSON.stringify(answer)).not.toContain("redacted");
+  });
+});
+
 describe("预热整体限时", () => {
   it("不可达主机的探测不拖住其余 remote，超时的先按未知给出", async () => {
     const h = await harness({
