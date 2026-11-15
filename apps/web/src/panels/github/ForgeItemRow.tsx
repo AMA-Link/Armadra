@@ -1,5 +1,10 @@
+import { Check, Clock, MessageSquare, X } from "lucide-react";
+
+import { cn } from "@/lib/cn";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
+import { useT } from "@/app/preferences-store";
+import type { ForgeChecksRollup, ForgeReviewDecision } from "../../api/forge";
 import { when } from "./forge-keys";
 import {
   ForgeStateBadge,
@@ -16,6 +21,74 @@ export interface ForgeItemRowItem {
   author: string | null;
   updatedAtMs: number;
   labels?: readonly string[];
+  /** 列表的新字段（#934）：旧 core 不给时这一列不画。 */
+  commentCount?: number;
+  checks?: ForgeChecksRollup | null;
+  reviewDecision?: ForgeReviewDecision;
+}
+
+const CI_TONE = {
+  success: "text-success-text",
+  failure: "text-danger-text",
+  pending: "text-warn-text",
+  neutral: "text-muted-foreground",
+  none: "text-muted-foreground",
+} as const;
+
+/** 列表行右侧的 CI：图标加 `通过/总数`，没有检查就不画。 */
+export function ForgeCiMark({ checks }: { checks: ForgeChecksRollup | null }) {
+  const t = useT();
+  if (!checks || checks.total === 0) return null;
+  const Icon =
+    checks.rollup === "success"
+      ? Check
+      : checks.rollup === "failure"
+        ? X
+        : Clock;
+  return (
+    <span
+      data-slot="forge-row-ci"
+      data-rollup={checks.rollup}
+      title={t("forge.checks.summary", {
+        passed: checks.passed,
+        total: checks.total,
+      })}
+      className={cn(
+        "inline-flex items-center gap-1 text-caption tabular-nums",
+        CI_TONE[checks.rollup],
+      )}
+    >
+      <Icon aria-hidden className="size-3.5" />
+      {checks.passed}/{checks.total}
+    </span>
+  );
+}
+
+const REVIEW_DOT = {
+  approved: "bg-success",
+  changesRequested: "bg-warn",
+  reviewRequired: "bg-warn",
+} as const;
+
+/** 审查结论圆点：已批准绿、要修改 / 待审查橙，没有结论不画（占位保持列对齐）。 */
+export function ForgeReviewDot({
+  decision,
+}: {
+  decision: ForgeReviewDecision | undefined;
+}) {
+  const t = useT();
+  return (
+    <span
+      data-slot="forge-row-review"
+      data-decision={decision ?? "none"}
+      title={decision ? t(`forge.review.decision.${decision}`) : undefined}
+      aria-label={decision ? t(`forge.review.decision.${decision}`) : undefined}
+      className={cn(
+        "inline-block size-2 shrink-0 rounded-full",
+        decision ? REVIEW_DOT[decision] : "bg-transparent",
+      )}
+    />
+  );
 }
 
 /**
@@ -27,11 +100,14 @@ export function ForgeItemRow({
   item,
   locale,
   onOpen,
+  columns = true,
 }: {
   kind: ForgeItemKind;
   item: ForgeItemRowItem;
   locale: string;
   onOpen?: () => void;
+  /** 右侧的 CI、审查与评论列；看板与悬浮卡里可以关掉。 */
+  columns?: boolean;
 }) {
   const meta = [item.author, when(item.updatedAtMs, locale)]
     .filter(Boolean)
@@ -55,6 +131,23 @@ export function ForgeItemRow({
             <span className="truncate">{label}</span>
           </Badge>
         ))}
+        {columns && (
+          <span className="ml-auto flex shrink-0 items-center gap-2">
+            {kind === "pull" && <ForgeCiMark checks={item.checks ?? null} />}
+            {kind === "pull" && (
+              <ForgeReviewDot decision={item.reviewDecision} />
+            )}
+            {item.commentCount !== undefined && (
+              <span
+                data-slot="forge-row-comments"
+                className="inline-flex w-8 items-center gap-1 text-caption tabular-nums"
+              >
+                <MessageSquare aria-hidden className="size-3.5" />
+                {item.commentCount}
+              </span>
+            )}
+          </span>
+        )}
       </span>
     </>
   );
