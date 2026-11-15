@@ -244,7 +244,7 @@ describe("forge：经 RPC", () => {
     expect(forgeFailure(missing)).toBe("unsupported");
   });
 
-  it("搜索、排序与页码随列表入参发；空串不发，第 1 页不发 page", async () => {
+  it("搜索、排序与页码随列表入参发；空串不发，第 1 页的 page 也发（core 靠它走富查询拿计数）", async () => {
     ok({ items: [], nextCursor: null });
     await forgeIssues(REPO, "open", null, null, {
       q: "  label:core sync ",
@@ -263,7 +263,7 @@ describe("forge：经 RPC", () => {
     calls = [];
     ok({ items: [], nextCursor: null });
     await forgePulls(REPO, "open", null, null, { q: " ", page: 1 });
-    expect(sent()).toEqual({ ...REPO, state: "open" });
+    expect(sent()).toEqual({ ...REPO, state: "open", page: 1 });
   });
 
   it("旧 core 不给新字段：列表与计数带缺省，新 core 给了照收", async () => {

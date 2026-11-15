@@ -447,7 +447,8 @@ function listOptions(options: ForgeListOptions): Record<string, unknown> {
     ...(q ? { q } : {}),
     ...(options.sort ? { sort: options.sort } : {}),
     ...(options.direction ? { direction: options.direction } : {}),
-    ...(options.page && options.page > 1 ? { page: options.page } : {}),
+    // core 只有入参带了 q / sort / direction / page 之一才走富查询并返回计数：页码一律带上。
+    ...(options.page ? { page: options.page } : {}),
   };
 }
 
