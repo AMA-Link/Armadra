@@ -818,7 +818,7 @@ describe("契约与路由表", () => {
     const entries = contractEntries().filter(
       (entry) => entry.path[0] === "forge",
     );
-    expect(entries).toHaveLength(28);
+    expect(entries).toHaveLength(31);
     for (const entry of entries) {
       const legacyRoute = entry.meta.legacy!;
       expect(

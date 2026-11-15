@@ -5,6 +5,7 @@ import { type AgentFixture, agentFixture } from "../agent/fixture";
 import type { ForgeService } from "../forge/service";
 import {
   ForgeError,
+  PULL_EXTRAS,
   type Forge,
   type ForgeConversationItem,
   type ForgeIssue,
@@ -54,6 +55,9 @@ function issue(
     createdAtMs,
     updatedAtMs: createdAtMs,
     closedAtMs: null,
+    assignees: [],
+    milestone: null,
+    linkedPulls: 0,
     ...extra,
   };
 }
@@ -80,6 +84,7 @@ function pull(
     mergedAtMs: null,
     autoMerge: false,
     fromFork: false,
+    ...PULL_EXTRAS,
     ...extra,
   };
 }

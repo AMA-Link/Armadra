@@ -45,6 +45,11 @@ export interface ForgeIssue {
   readonly createdAtMs: number;
   readonly updatedAtMs: number;
   readonly closedAtMs: number | null;
+  /** 指派给谁（登录名）；平台不给时 `[]`（契约 §112）。 */
+  readonly assignees: readonly string[];
+  readonly milestone: string | null;
+  /** 关联的 PR 数；平台不给时 0。 */
+  readonly linkedPulls: number;
 }
 
 export interface ForgePull {
@@ -69,7 +74,88 @@ export interface ForgePull {
   readonly autoMerge: boolean;
   /** head 分支在别人的仓库里：本地检出不沿用它的名字，合并后也不删它。 */
   readonly fromFork: boolean;
+  /* 以下是契约 §112 新增：平台或这条路径不给的，取括号里的缺省。 */
+  readonly labels: readonly string[];
+  readonly assignees: readonly string[];
+  readonly milestone: string | null;
+  readonly commentCount: number;
+  readonly reviewDecision: ForgeReviewDecision | null;
+  readonly checks: ForgeChecksSummary | null;
+  readonly additions: number | null;
+  readonly deletions: number | null;
+  readonly changedFiles: number | null;
+  readonly commitCount: number | null;
+  /** 这个 PR 会关闭的 issue 编号（`Closes #n`）。 */
+  readonly linkedIssues: readonly number[];
+  /** 作者与仓库的关系（`member` / `contributor` / `firstTimeContributor`…）。 */
+  readonly authorAssociation: string | null;
 }
+
+export type ForgeReviewDecision =
+  "approved" | "changesRequested" | "reviewRequired";
+
+/** 列表行上的检查汇总：结论加「通过数 / 总数」。 */
+export interface ForgeChecksSummary {
+  readonly rollup: ForgeRollup;
+  readonly passed: number;
+  readonly total: number;
+}
+
+/** 缺省的 §112 条目字段；各平台的转换函数先铺它，再盖上自己读到的。 */
+export const PULL_EXTRAS: Pick<
+  ForgePull,
+  | "labels"
+  | "assignees"
+  | "milestone"
+  | "commentCount"
+  | "reviewDecision"
+  | "checks"
+  | "additions"
+  | "deletions"
+  | "changedFiles"
+  | "commitCount"
+  | "linkedIssues"
+  | "authorAssociation"
+> = {
+  labels: [],
+  assignees: [],
+  milestone: null,
+  commentCount: 0,
+  reviewDecision: null,
+  checks: null,
+  additions: null,
+  deletions: null,
+  changedFiles: null,
+  commitCount: null,
+  linkedIssues: [],
+  authorAssociation: null,
+};
+
+/** 一个 PR 的一位审查者（契约 §112.3）。 */
+export interface ForgeReviewer {
+  readonly login: string;
+  readonly state:
+    "approved" | "changesRequested" | "commented" | "pending" | "dismissed";
+  readonly submittedAtMs: number | null;
+}
+
+export interface ForgeCommit {
+  readonly sha: string;
+  readonly title: string;
+  readonly author: string | null;
+  readonly authoredAtMs: number;
+  readonly url: string;
+}
+
+/** 筛选下拉的候选（契约 §112.3）。 */
+export interface ForgeFacets {
+  readonly labels: readonly { name: string; color: string | null }[];
+  readonly milestones: readonly { title: string; open: boolean }[];
+  readonly assignees: readonly string[];
+}
+
+export const MAX_COMMITS = 250;
+export const MAX_FACETS = 200;
 
 export interface ForgeFile {
   readonly path: string;
@@ -169,6 +255,13 @@ export interface ForgePage<T> {
   readonly nextCursor: string | null;
   /** 服务端要求的最小轮询间隔（`x-poll-interval`，毫秒）；没给就没有这个字段。 */
   readonly pollIntervalMs?: number;
+  /* 以下只在富查询（{@link ListOptions.rich}）时给（契约 §112.1）。 */
+  readonly totalCount?: number | null;
+  readonly openCount?: number | null;
+  readonly closedCount?: number | null;
+  readonly page?: number | null;
+  readonly pageCount?: number | null;
+  readonly unsupported?: readonly string[];
 }
 
 /** 响应头里的 `x-poll-interval`（秒）→ 列表页的 `pollIntervalMs`。 */
@@ -179,10 +272,23 @@ export function pagePollInterval(response: {
   return seconds > 0 ? { pollIntervalMs: seconds * 1000 } : {};
 }
 
+export type ListSort = "updated" | "created" | "comments";
+export type ListDirection = "asc" | "desc";
+
+/** 搜索 / 排序 / 页码（契约 §112.1）；调用方给了其中任一项才有，没给走旧路径。 */
+export interface ListRich {
+  /** 用户输入的限定词串，原样。 */
+  readonly query: string;
+  /** 没给时缺省 `updated` / `desc`（词串里的 `sort:` 次之）。 */
+  readonly sort?: ListSort;
+  readonly direction?: ListDirection;
+}
+
 export interface ListOptions {
   readonly state: "open" | "closed" | "all";
   readonly page: number;
   readonly limit: number;
+  readonly rich?: ListRich;
 }
 
 /**
@@ -269,6 +375,15 @@ export interface Forge {
     number: number,
     kind?: ForgeThreadKind,
   ): Promise<ForgeConversation>;
+  /** PR 的审查者与各自结论（契约 §112.3）。 */
+  pullReviewers(
+    repo: ForgeRepo,
+    number: number,
+  ): Promise<readonly ForgeReviewer[]>;
+  /** PR 的提交，按时间从早到晚，最多 {@link MAX_COMMITS} 个。 */
+  pullCommits(repo: ForgeRepo, number: number): Promise<readonly ForgeCommit[]>;
+  /** 筛选下拉的候选：标签、里程碑、可指派的人。 */
+  facets(repo: ForgeRepo): Promise<ForgeFacets>;
   merge(
     repo: ForgeRepo,
     number: number,
@@ -364,6 +479,19 @@ export function rollupOf(checks: readonly ForgeCheck[]): ForgeRollup {
   if (checks.some((check) => check.state === "pending")) return "pending";
   if (checks.every((check) => check.state === "neutral")) return "neutral";
   return "success";
+}
+
+/** 检查列表 → 列表行的汇总：通过数含中性。 */
+export function summarizeChecks(
+  checks: readonly ForgeCheck[],
+): ForgeChecksSummary {
+  return {
+    rollup: rollupOf(checks),
+    passed: checks.filter(
+      (check) => check.state === "success" || check.state === "neutral",
+    ).length,
+    total: checks.length,
+  };
 }
 
 /** ISO 时间串 → 毫秒；空、坏或零值答 `null`。 */

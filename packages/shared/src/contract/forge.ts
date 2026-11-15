@@ -5,6 +5,9 @@ import {
   forgeAutoMergeSchema,
   forgeBranchDeletionSchema,
   forgeChecksSchema,
+  forgeCommitsSchema,
+  forgeFacetsSchema,
+  forgeReviewersSchema,
   forgeConfigListSchema,
   forgeConfigSchema,
   forgeConversationSchema,
@@ -70,6 +73,11 @@ const listing = repoRef.extend({
   state: z.string().optional(),
   cursor: z.string().optional(),
   limit: z.union([z.number(), z.string()]).optional(),
+  /** §112.1：限定词串、排序与页码；给了其中任一项才答计数与页码。 */
+  q: z.string().optional(),
+  sort: z.string().optional(),
+  direction: z.string().optional(),
+  page: z.union([z.number(), z.string()]).optional(),
 });
 
 const config = z.object({
@@ -429,6 +437,45 @@ export const forge = {
         contract: "§111.4",
         scope: "github:read",
         legacy: { method: "GET", path: `${REPO}/pulls/{number}/comments` },
+      }),
+    ),
+  /** PR 的审查者与各自结论（§112.3）。 */
+  pullReviewers: oc
+    .input(numbered)
+    .output(forgeReviewersSchema)
+    .errors(read)
+    .meta(
+      meta({
+        since: "1.57",
+        contract: "§112.3",
+        scope: "github:read",
+        legacy: { method: "GET", path: `${REPO}/pulls/{number}/reviewers` },
+      }),
+    ),
+  /** PR 的提交，时间正序（§112.3）。 */
+  pullCommits: oc
+    .input(numbered)
+    .output(forgeCommitsSchema)
+    .errors(read)
+    .meta(
+      meta({
+        since: "1.57",
+        contract: "§112.3",
+        scope: "github:read",
+        legacy: { method: "GET", path: `${REPO}/pulls/{number}/commits` },
+      }),
+    ),
+  /** 筛选下拉的候选：标签、里程碑、可指派的人；按仓库短缓存（§112.3）。 */
+  facets: oc
+    .input(repoRef)
+    .output(forgeFacetsSchema)
+    .errors(read)
+    .meta(
+      meta({
+        since: "1.57",
+        contract: "§112.3",
+        scope: "github:read",
+        legacy: { method: "GET", path: `${REPO}/facets` },
       }),
     ),
   /** 这个仓库现在能用的合并方式与自动合并（GitLab 按项目设置）。 */

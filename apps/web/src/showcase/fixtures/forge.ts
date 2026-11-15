@@ -50,6 +50,18 @@ const pull = (
   mergedAtMs: null,
   autoMerge: false,
   fromFork: false,
+  labels: [],
+  assignees: [],
+  milestone: null,
+  commentCount: 0,
+  reviewDecision: null,
+  checks: null,
+  additions: null,
+  deletions: null,
+  changedFiles: null,
+  commitCount: null,
+  linkedIssues: [],
+  authorAssociation: null,
   ...overrides,
 });
 
@@ -69,6 +81,9 @@ const issue = (
   createdAtMs: AT,
   updatedAtMs: AT,
   closedAtMs: null,
+  assignees: [],
+  milestone: null,
+  linkedPulls: 0,
   ...overrides,
 });
 

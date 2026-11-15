@@ -22,6 +22,14 @@ import {
   type ForgeCheckState,
   type ForgeBranchDeletion,
   type ForgeChecks,
+  type ForgeCommit,
+  type ForgeFacets,
+  type ForgeReviewer,
+  type ListSort,
+  MAX_COMMITS,
+  MAX_FACETS,
+  PULL_EXTRAS,
+  summarizeChecks,
   type ForgeConversation,
   type ForgeConversationItem,
   type ForgeThreadKind,
@@ -55,12 +63,29 @@ import {
 } from "./types";
 import {
   ForgeTransport,
+  type Query,
   type TokenSource,
   decodeJson,
   normalizeBase,
 } from "./transport";
 import { validName } from "../github/remote";
-import { count, numbered, text, webUrl } from "./wire";
+import {
+  count,
+  hexColor,
+  names,
+  numbered,
+  pageSize,
+  pool,
+  text,
+  webUrl,
+} from "./wire";
+import {
+  QueryParts,
+  effectiveSort,
+  parseQuery,
+  stateOf,
+  withoutState,
+} from "./query";
 import {
   type WireRepository,
   fromWireRepository,
@@ -69,6 +94,8 @@ import {
 } from "./repositories";
 
 const API_SUFFIX = "/api/v1";
+/** 逐条补检查、取 PR 的并发上限。 */
+const CONCURRENCY = 4;
 
 /**
  * 用户给的地址 → API 根。给站点根（`https://git.example.com`）或 API 根
@@ -100,6 +127,8 @@ interface WireIssue {
   state?: string;
   user?: WireUser | null;
   labels?: WireLabel[] | null;
+  assignees?: WireUser[] | null;
+  milestone?: { title?: string } | null;
   comments?: number;
   html_url?: string;
   created_at?: string;
@@ -131,6 +160,14 @@ interface WirePull {
   merged?: boolean;
   merged_at?: string | null;
   merge_commit_sha?: string | null;
+  labels?: WireLabel[] | null;
+  assignees?: WireUser[] | null;
+  requested_reviewers?: WireUser[] | null;
+  milestone?: { title?: string } | null;
+  comments?: number;
+  additions?: number;
+  deletions?: number;
+  changed_files?: number;
   html_url?: string;
   created_at?: string;
   updated_at?: string;
@@ -181,7 +218,26 @@ function toIssue(value: WireIssue): ForgeIssue {
     createdAtMs: timeMs(value.created_at) ?? 0,
     updatedAtMs: timeMs(value.updated_at) ?? 0,
     closedAtMs: value.state === "closed" ? timeMs(value.closed_at) : null,
+    assignees: logins(value.assignees),
+    milestone: milestoneTitle(value.milestone),
+    linkedPulls: 0,
   };
+}
+
+function logins(values: WireUser[] | null | undefined): string[] {
+  return names(values, (user) => text((user as WireUser)?.login, 128));
+}
+
+function milestoneTitle(value: { title?: string } | null | undefined) {
+  const title = text(value?.title, 256);
+  return title === "" ? null : title;
+}
+
+function labelNames(values: WireLabel[] | null | undefined): string[] {
+  return (values ?? [])
+    .map((label) => text(label?.name, 128))
+    .filter((name) => name !== "")
+    .slice(0, 100);
 }
 
 function toPull(value: WirePull): ForgePull {
@@ -192,7 +248,19 @@ function toPull(value: WirePull): ForgePull {
       ? "closed"
       : "open";
   const title = text(value.title, MAX_TITLE * 4);
+  const hasStat = typeof value.additions === "number";
   return {
+    ...PULL_EXTRAS,
+    labels: labelNames(value.labels),
+    assignees: logins(value.assignees),
+    milestone: milestoneTitle(value.milestone),
+    commentCount: count(value.comments),
+    additions: hasStat ? count(value.additions) : null,
+    deletions: hasStat ? count(value.deletions) : null,
+    changedFiles:
+      typeof value.changed_files === "number"
+        ? count(value.changed_files)
+        : null,
     number: count(value.number),
     title,
     body: text(value.body, MAX_BODY * 4),
@@ -314,6 +382,38 @@ export function splitDiff(diff: string): Map<string, string> {
   return patches;
 }
 
+interface WireReview {
+  user?: WireUser | null;
+  state?: string;
+  dismissed?: boolean;
+  submitted_at?: string;
+}
+interface WireCommit {
+  sha?: string;
+  html_url?: string;
+  author?: WireUser | null;
+  commit?: {
+    message?: string;
+    author?: { name?: string; date?: string } | null;
+  } | null;
+}
+
+/** Gitea 的评审结论 → 审查者状态；草稿与不认识的丢掉。 */
+function giteaReviewerState(
+  value: string | undefined,
+): ForgeReviewer["state"] | undefined {
+  switch ((value ?? "").toUpperCase()) {
+    case "APPROVED":
+      return "approved";
+    case "REQUEST_CHANGES":
+      return "changesRequested";
+    case "COMMENT":
+      return "commented";
+    default:
+      return undefined;
+  }
+}
+
 interface WireNote {
   id?: number;
   user?: WireUser | null;
@@ -382,6 +482,93 @@ function listQuery(options: ListOptions, kind: "issues" | "pulls") {
   return query;
 }
 
+/** 一次富查询拆出来的列表参数（契约 §112.1）。 */
+export interface GiteaFilter {
+  /** 对应 `/issues` 的参数（含 `type`）。 */
+  readonly issueParams: Record<string, string>;
+  /** `/pulls` 要的名字：标签与里程碑在那里按 id，调用方再解析。 */
+  readonly labels: string[];
+  readonly milestone: string;
+  readonly author: string;
+  /** `/pulls` 本身答不了的（指派、全文、提到）：改走 `/issues?type=pulls` 再逐条取 PR。 */
+  readonly needsSearch: boolean;
+  readonly state: "open" | "closed" | "all";
+  readonly sort: ListSort;
+  readonly direction: "asc" | "desc";
+  readonly unsupported: string[];
+}
+
+/** 排序：`/pulls` 的 `sort` 取值（Gitea 没有单独的方向参数）。 */
+export function giteaPullSort(
+  sort: ListSort,
+  direction: "asc" | "desc",
+): string {
+  if (sort === "comments")
+    return direction === "desc" ? "mostcomment" : "leastcomment";
+  if (sort === "created") return direction === "desc" ? "latest" : "oldest";
+  return direction === "desc" ? "recentupdate" : "leastupdate";
+}
+
+/**
+ * 限定词串 → Gitea 的列表参数。能对上的：`is:open|closed`、`label:`、`milestone:`、
+ * `author:`、`assignee:`、`mentions:`、词里的全文；取反、`no:`、审查、状态、分支等
+ * 这边没有对应，原样进 `unsupported`。`is:merged` 当已关闭用（Gitea 的已合并也是
+ * 已关闭），并回报，因为取回的会含没合并的。
+ */
+export function giteaFilter(
+  kind: "issues" | "pulls",
+  options: ListOptions,
+): GiteaFilter {
+  const rich = options.rich;
+  const parsed = parseQuery(rich?.query ?? "");
+  const given = stateOf(parsed);
+  const sorted = effectiveSort(
+    withoutState(parsed),
+    rich?.sort,
+    rich?.direction,
+  );
+  const parts = new QueryParts(sorted.parsed);
+  const unsupported: string[] = [];
+  let state = given ?? options.state;
+  if (state === "merged") {
+    unsupported.push("is:merged");
+    state = "closed";
+  }
+  const issueParams: Record<string, string> = {
+    type: kind === "issues" ? "issues" : "pulls",
+  };
+  const labels = parts.take("label").map((item) => item.value);
+  if (labels.length > 0) issueParams.labels = labels.join(",");
+  const milestone = parts.take("milestone")[0]?.value ?? "";
+  if (milestone !== "") issueParams.milestones = milestone;
+  const author = parts.take("author")[0]?.value ?? "";
+  if (author !== "") issueParams.created_by = author;
+  const assignee = parts.take("assignee")[0]?.value ?? "";
+  if (assignee !== "") issueParams.assigned_by = assignee;
+  const mentions = parts.take("mentions")[0]?.value ?? "";
+  if (mentions !== "") issueParams.mentioned_by = mentions;
+  if (parts.text !== "") issueParams.q = parts.text;
+  unsupported.push(...parts.rest());
+  if (
+    (kind === "issues" && sorted.direction === "asc") ||
+    (kind === "issues" && sorted.sort === "comments")
+  ) {
+    // 议题列表接口没有排序参数，只会按创建时间倒序给（更新时间倒序也近似）。
+    unsupported.push(`sort:${sorted.sort}-${sorted.direction}`);
+  }
+  return {
+    issueParams,
+    labels,
+    milestone,
+    author,
+    needsSearch: assignee !== "" || mentions !== "" || parts.text !== "",
+    state: state as GiteaFilter["state"],
+    sort: sorted.sort,
+    direction: sorted.direction,
+    unsupported,
+  };
+}
+
 export interface GiteaOptions {
   readonly apiBase: string;
   readonly token: TokenSource;
@@ -432,10 +619,80 @@ export class GiteaForge implements Forge {
     };
   }
 
+  /** 一页之外的元信息；总数没给就都留 `null`。 */
+  private pageMeta(
+    response: { totalCount?: number; nextPage: number },
+    page: number,
+    limit: number,
+  ) {
+    const total = response.totalCount ?? null;
+    return {
+      nextCursor: response.nextPage > 1 ? String(response.nextPage) : null,
+      totalCount: total,
+      page,
+      pageCount: total === null ? null : Math.max(1, Math.ceil(total / limit)),
+    };
+  }
+
+  /** 同一个筛选下只数条数：`limit=1` 取总数响应头；数不出来答 `null`。 */
+  private async tally(path: string, params: Query): Promise<number | null> {
+    try {
+      const response = await this.http.get(path, { ...params, limit: "1" });
+      return response.totalCount ?? null;
+    } catch (error) {
+      if (error instanceof ForgeError && error.kind === "unavailable") {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  /** 开启 / 已关闭的数：已知状态那一边直接用主请求的总数，另一边补一次请求。 */
+  private async stateCounts(
+    path: string,
+    params: Query,
+    state: "open" | "closed" | "all",
+    total: number | null,
+  ): Promise<{ openCount: number | null; closedCount: number | null }> {
+    const [openCount, closedCount] = await Promise.all([
+      state === "open" ? total : this.tally(path, { ...params, state: "open" }),
+      state === "closed"
+        ? total
+        : this.tally(path, { ...params, state: "closed" }),
+    ]);
+    return { openCount, closedCount };
+  }
+
+  /** 把分页读到底（有上限）：筛选候选与名字 → id 的解析都用它。 */
+  private async readAll<T>(
+    path: string,
+    query: Query = {},
+    pages = 4,
+  ): Promise<T[]> {
+    const items: T[] = [];
+    let page = 1;
+    for (let read = 0; read < pages && items.length < MAX_FACETS; read += 1) {
+      const response = await this.http.get(path, {
+        ...query,
+        limit: "50",
+        ...(page > 1 ? { page: String(page) } : {}),
+      });
+      const values = decodeJson<T[] | null>(response) ?? [];
+      if (!Array.isArray(values)) {
+        throw forgeError("unavailable", "RESPONSE_MALFORMED");
+      }
+      items.push(...values);
+      if (response.nextPage <= page) break;
+      page = response.nextPage;
+    }
+    return items.slice(0, MAX_FACETS);
+  }
+
   async listIssues(
     repo: ForgeRepo,
     options: ListOptions,
   ): Promise<ForgePage<ForgeIssue>> {
+    if (options.rich !== undefined) return this.richIssues(repo, options);
     const response = await this.http.get(
       repoPath(repo, "/issues"),
       listQuery(options, "issues"),
@@ -447,6 +704,38 @@ export class GiteaForge implements Forge {
     return {
       items: values.filter((value) => value.pull_request == null).map(toIssue),
       nextCursor: response.nextPage > 1 ? String(response.nextPage) : null,
+      ...pagePollInterval(response),
+    };
+  }
+
+  private async richIssues(
+    repo: ForgeRepo,
+    options: ListOptions,
+  ): Promise<ForgePage<ForgeIssue>> {
+    const filter = giteaFilter("issues", options);
+    const limit = pageSize(options.limit, DEFAULT_LIMIT, MAX_LIMIT);
+    const path = repoPath(repo, "/issues");
+    const response = await this.http.get(path, {
+      ...filter.issueParams,
+      state: filter.state,
+      limit: String(limit),
+      ...(options.page > 1 ? { page: String(options.page) } : {}),
+    });
+    const values = decodeJson<WireIssue[]>(response);
+    if (!Array.isArray(values)) {
+      throw forgeError("unavailable", "RESPONSE_MALFORMED");
+    }
+    const meta = this.pageMeta(response, options.page, limit);
+    return {
+      items: values.filter((value) => value.pull_request == null).map(toIssue),
+      ...meta,
+      ...(await this.stateCounts(
+        path,
+        filter.issueParams,
+        filter.state,
+        meta.totalCount,
+      )),
+      unsupported: filter.unsupported,
       ...pagePollInterval(response),
     };
   }
@@ -480,6 +769,7 @@ export class GiteaForge implements Forge {
     repo: ForgeRepo,
     options: ListOptions,
   ): Promise<ForgePage<ForgePull>> {
+    if (options.rich !== undefined) return this.richPulls(repo, options);
     const response = await this.http.get(
       repoPath(repo, "/pulls"),
       listQuery(options, "pulls"),
@@ -492,6 +782,138 @@ export class GiteaForge implements Forge {
       items: values.map(toPull),
       nextCursor: response.nextPage > 1 ? String(response.nextPage) : null,
       ...pagePollInterval(response),
+    };
+  }
+
+  /** `/pulls` 里标签与里程碑按 id：名字先解析；有一个对不上就是没有匹配。 */
+  private async resolveIds(
+    repo: ForgeRepo,
+    filter: GiteaFilter,
+  ): Promise<{ labels: string[]; milestone: string } | undefined> {
+    const labels: string[] = [];
+    if (filter.labels.length > 0) {
+      const known = await this.readAll<{ id?: number; name?: string }>(
+        repoPath(repo, "/labels"),
+      );
+      for (const name of filter.labels) {
+        const found = known.find((label) => label.name === name);
+        if (found === undefined || count(found.id) === 0) return undefined;
+        labels.push(String(found.id));
+      }
+    }
+    let milestone = "";
+    if (filter.milestone !== "") {
+      const known = await this.readAll<{ id?: number; title?: string }>(
+        repoPath(repo, "/milestones"),
+        { state: "all" },
+      );
+      const found = known.find((item) => item.title === filter.milestone);
+      if (found === undefined || count(found.id) === 0) return undefined;
+      milestone = String(found.id);
+    }
+    return { labels, milestone };
+  }
+
+  private async richPulls(
+    repo: ForgeRepo,
+    options: ListOptions,
+  ): Promise<ForgePage<ForgePull>> {
+    const filter = giteaFilter("pulls", options);
+    const limit = pageSize(options.limit, DEFAULT_LIMIT, MAX_LIMIT);
+    const paging: Query = {
+      limit: String(limit),
+      ...(options.page > 1 ? { page: String(options.page) } : {}),
+    };
+    let pulls: ForgePull[];
+    let meta: ReturnType<GiteaForge["pageMeta"]>;
+    let counts: { openCount: number | null; closedCount: number | null };
+    let poll: { pollIntervalMs?: number };
+    const search = filter.needsSearch || filter.author !== "";
+    if (search) {
+      // 指派、全文、提到、作者只有 `/issues?type=pulls` 答得了：先取编号，再逐条取 PR。
+      const path = repoPath(repo, "/issues");
+      const response = await this.http.get(path, {
+        ...filter.issueParams,
+        state: filter.state,
+        ...paging,
+      });
+      const values = decodeJson<WireIssue[]>(response);
+      if (!Array.isArray(values)) {
+        throw forgeError("unavailable", "RESPONSE_MALFORMED");
+      }
+      const fetched = await pool(values, CONCURRENCY, async (value) => {
+        try {
+          return await this.pullOnly(repo, count(value.number));
+        } catch {
+          return undefined;
+        }
+      });
+      pulls = fetched.filter((pull): pull is ForgePull => pull !== undefined);
+      meta = this.pageMeta(response, options.page, limit);
+      counts = await this.stateCounts(
+        path,
+        filter.issueParams,
+        filter.state,
+        meta.totalCount,
+      );
+      poll = pagePollInterval(response);
+    } else {
+      const ids = await this.resolveIds(repo, filter);
+      if (ids === undefined) {
+        return {
+          items: [],
+          nextCursor: null,
+          totalCount: 0,
+          openCount: 0,
+          closedCount: 0,
+          page: options.page,
+          pageCount: 1,
+          unsupported: filter.unsupported,
+        };
+      }
+      const path = repoPath(repo, "/pulls");
+      const params: Query = {
+        ...(ids.labels.length > 0 ? { labels: ids.labels } : {}),
+        ...(ids.milestone === "" ? {} : { milestone: ids.milestone }),
+      };
+      const response = await this.http.get(path, {
+        ...params,
+        state: filter.state,
+        sort: giteaPullSort(filter.sort, filter.direction),
+        ...paging,
+      });
+      const values = decodeJson<WirePull[]>(response);
+      if (!Array.isArray(values)) {
+        throw forgeError("unavailable", "RESPONSE_MALFORMED");
+      }
+      pulls = values.map(toPull);
+      meta = this.pageMeta(response, options.page, limit);
+      counts = await this.stateCounts(
+        path,
+        params,
+        filter.state,
+        meta.totalCount,
+      );
+      poll = pagePollInterval(response);
+    }
+    // 检查只为这一页逐条取，并发有上限；取不到的留 `null`。
+    const items = await pool(pulls, CONCURRENCY, async (pull) => {
+      if (pull.headSha === "") return pull;
+      try {
+        return {
+          ...pull,
+          checks: summarizeChecks(await this.statusList(repo, pull.headSha)),
+        };
+      } catch {
+        return pull;
+      }
+    });
+    return {
+      items,
+      ...meta,
+      ...counts,
+      unsupported: filter.unsupported,
+      ...poll,
     };
   }
 
@@ -593,16 +1015,15 @@ export class GiteaForge implements Forge {
     });
   }
 
-  async checks(repo: ForgeRepo, number: number): Promise<ForgeChecks> {
-    const pull = await this.pullOnly(repo, number);
-    if (pull.headSha === "") {
-      return { headSha: "", rollup: "none", checks: [] };
-    }
+  /** 一个提交上的状态，同一个 context 的多次上报只留最新那条（远端按时间倒序给）。 */
+  private async statusList(
+    repo: ForgeRepo,
+    sha: string,
+  ): Promise<ForgeCheck[]> {
     const response = await this.http.get(
-      repoPath(repo, `/commits/${pull.headSha}/status`),
+      repoPath(repo, `/commits/${sha}/status`),
     );
     const combined = decodeJson<{ statuses?: WireStatus[] | null }>(response);
-    // 同一个 context 的多次上报只留最新那条（远端按时间倒序给）。
     const seen = new Set<string>();
     const checks: ForgeCheck[] = [];
     for (const status of combined.statuses ?? []) {
@@ -616,6 +1037,15 @@ export class GiteaForge implements Forge {
         url: url === "" ? null : url,
       });
     }
+    return checks;
+  }
+
+  async checks(repo: ForgeRepo, number: number): Promise<ForgeChecks> {
+    const pull = await this.pullOnly(repo, number);
+    if (pull.headSha === "") {
+      return { headSha: "", rollup: "none", checks: [] };
+    }
+    const checks = await this.statusList(repo, pull.headSha);
     return { headSha: pull.headSha, rollup: rollupOf(checks), checks };
   }
 
@@ -658,6 +1088,98 @@ export class GiteaForge implements Forge {
     return {
       items,
       pollIntervalMs: intervalSec > 0 ? intervalSec * 1000 : null,
+    };
+  }
+
+  async pullReviewers(
+    repo: ForgeRepo,
+    number: number,
+  ): Promise<readonly ForgeReviewer[]> {
+    const index = numbered(number);
+    const byLogin = new Map<string, ForgeReviewer>();
+    const reviews = await this.readAll<WireReview>(
+      repoPath(repo, `/pulls/${index}/reviews`),
+    );
+    for (const value of reviews) {
+      const login = text(value.user?.login, 128);
+      const state =
+        value.dismissed === true
+          ? "dismissed"
+          : giteaReviewerState(value.state);
+      if (login === "" || state === undefined) continue;
+      const before = byLogin.get(login);
+      if (
+        state === "commented" &&
+        before !== undefined &&
+        before.state !== "commented"
+      ) {
+        continue;
+      }
+      const at = timeMs(value.submitted_at);
+      byLogin.set(login, { login, state, submittedAtMs: at });
+    }
+    const raw = decodeJson<WirePull>(
+      await this.http.get(repoPath(repo, `/pulls/${index}`)),
+    );
+    for (const login of logins(raw.requested_reviewers)) {
+      byLogin.set(login, { login, state: "pending", submittedAtMs: null });
+    }
+    return [...byLogin.values()];
+  }
+
+  async pullCommits(
+    repo: ForgeRepo,
+    number: number,
+  ): Promise<readonly ForgeCommit[]> {
+    const values = await this.readAll<WireCommit>(
+      repoPath(repo, `/pulls/${numbered(number)}/commits`),
+      {},
+      Math.ceil(MAX_COMMITS / 50),
+    );
+    const commits: ForgeCommit[] = [];
+    for (const value of values) {
+      const sha = text(value.sha, 64);
+      if (!validSha(sha)) continue;
+      const author = text(value.author?.login, 128);
+      const name = text(value.commit?.author?.name, 256);
+      commits.push({
+        sha,
+        title:
+          text(value.commit?.message, 4096).split("\n")[0]?.slice(0, 512) ?? "",
+        author: author !== "" ? author : name !== "" ? name : null,
+        authoredAtMs: timeMs(value.commit?.author?.date) ?? 0,
+        url: webUrl(value.html_url),
+      });
+    }
+    return commits.slice(0, MAX_COMMITS);
+  }
+
+  async facets(repo: ForgeRepo): Promise<ForgeFacets> {
+    const [labels, milestones, assignees] = await Promise.all([
+      this.readAll<WireLabel & { color?: string }>(repoPath(repo, "/labels")),
+      this.readAll<{ title?: string; state?: string }>(
+        repoPath(repo, "/milestones"),
+        { state: "all" },
+      ),
+      // 能指派的人只是候选；读不到就空着。
+      this.readAll<WireUser>(repoPath(repo, "/assignees")).catch(
+        () => [] as WireUser[],
+      ),
+    ]);
+    return {
+      labels: labels
+        .filter((label) => text(label?.name, 128) !== "")
+        .map((label) => ({
+          name: text(label.name, 128),
+          color: hexColor(label.color),
+        })),
+      milestones: milestones
+        .filter((item) => text(item?.title, 256) !== "")
+        .map((item) => ({
+          title: text(item.title, 256),
+          open: item.state !== "closed",
+        })),
+      assignees: logins(assignees),
     };
   }
 
