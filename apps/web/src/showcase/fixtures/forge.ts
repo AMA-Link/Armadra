@@ -5,9 +5,13 @@ import type {
   ForgeConversationItem,
   ForgeFile,
   ForgeDetection,
+  ForgeCommit,
+  ForgeFacets,
   ForgeIssue,
-  ForgePull,
+  ForgePullItem,
+  ForgeReviewer,
 } from "../../api/forge";
+import { forgePullExtSchema } from "../../api/forge";
 
 /**
  * `integration` 分区里托管平台那几张样本的假数据（契约 §29）：一个 Gitea 仓库的
@@ -32,26 +36,27 @@ export const GITEA_DETECTION: ForgeDetection = {
 const pull = (
   number: number,
   title: string,
-  overrides: Partial<ForgePull> = {},
-): ForgePull => ({
-  number,
-  title,
-  body: "",
-  state: "open",
-  draft: false,
-  author: "alice",
-  baseRef: "main",
-  headRef: "feature/login",
-  headSha: SHA,
-  mergeable: "mergeable",
-  url: "",
-  createdAtMs: AT,
-  updatedAtMs: AT,
-  mergedAtMs: null,
-  autoMerge: false,
-  fromFork: false,
-  ...overrides,
-});
+  overrides: Partial<ForgePullItem> = {},
+): ForgePullItem =>
+  forgePullExtSchema.parse({
+    number,
+    title,
+    body: "",
+    state: "open",
+    draft: false,
+    author: "alice",
+    baseRef: "main",
+    headRef: "feature/login",
+    headSha: SHA,
+    mergeable: "mergeable",
+    url: "",
+    createdAtMs: AT,
+    updatedAtMs: AT,
+    mergedAtMs: null,
+    autoMerge: false,
+    fromFork: false,
+    ...overrides,
+  });
 
 const issue = (
   number: number,
@@ -77,11 +82,25 @@ export const GITEA_ISSUES: ForgeIssue[] = [
   issue(18, "Dark mode for settings", { author: "bob" }),
 ];
 
-export const GITEA_PULLS: ForgePull[] = [
-  pull(14, "登录页拆成两步", { draft: true }),
+export const GITEA_PULLS: ForgePullItem[] = [
+  pull(14, "登录页拆成两步", {
+    draft: true,
+    commentCount: 3,
+    checks: { rollup: "pending", passed: 3, total: 7 },
+  }),
   pull(13, "Fix header spacing", {
     headRef: "fix/header",
     mergeable: "conflicting",
+    labels: ["web"],
+    commentCount: 1,
+    reviewDecision: "changesRequested",
+    checks: { rollup: "failure", passed: 5, total: 7 },
+  }),
+  pull(10, "Add provider preset", {
+    headRef: "feat/preset",
+    commentCount: 0,
+    reviewDecision: "approved",
+    checks: { rollup: "success", passed: 7, total: 7 },
   }),
   pull(11, "Bump dependencies", {
     headRef: "deps",
@@ -90,7 +109,17 @@ export const GITEA_PULLS: ForgePull[] = [
   }),
 ];
 
-export const GITLAB_MR: ForgePull = pull(12, "Login rework", {
+export const GITLAB_MR: ForgePullItem = pull(12, "Login rework", {
+  labels: ["core", "web"],
+  assignees: ["alice"],
+  milestone: "v0.18.0",
+  reviewDecision: "changesRequested",
+  additions: 842,
+  deletions: 97,
+  changedFiles: 3,
+  commitCount: 2,
+  linkedIssues: [21],
+  authorAssociation: "member",
   body: "Split the login page into two steps.\n\n- keep the session\n- add a **back** link\n\nCloses #21",
 });
 
@@ -243,4 +272,35 @@ export const WORKSPACE_REPOSITORY: WorkspaceRepository = {
       detection: { ...GITEA_DETECTION, credentialSource: "stored" },
     },
   ],
+};
+
+export const GITLAB_REVIEWERS: ForgeReviewer[] = [
+  { login: "bob", state: "approved", submittedAtMs: AT },
+  { login: "carol", state: "changesRequested", submittedAtMs: AT },
+];
+
+export const GITLAB_COMMITS: ForgeCommit[] = [
+  {
+    sha: "a1b2c3d4e5f6a7b8c9d0",
+    title: "feat(login): split into two steps",
+    author: "alice",
+    authoredAtMs: AT,
+    url: "https://gitlab.example.test/acme/app/-/commit/a1b2c3d",
+  },
+  {
+    sha: "0f9e8d7c6b5a4f3e2d1c",
+    title: "fix(session): keep it across steps",
+    author: "alice",
+    authoredAtMs: AT,
+    url: "https://gitlab.example.test/acme/app/-/commit/0f9e8d7",
+  },
+];
+
+export const GITEA_FACETS: ForgeFacets = {
+  labels: [
+    { name: "bug", color: null },
+    { name: "web", color: null },
+  ],
+  milestones: [{ title: "v0.18.0", open: true }],
+  assignees: ["alice", "bob"],
 };

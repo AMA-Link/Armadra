@@ -45,16 +45,28 @@ function safeUrl(url: string | null): string | null {
 export function ChecksView({
   checks,
   compact = false,
+  defaultExpanded = false,
+  className,
 }: {
   checks: ForgeChecks;
   compact?: boolean;
+  defaultExpanded?: boolean;
+  className?: string;
 }) {
   const t = useT();
-  const [expanded, setExpanded] = React.useState(false);
+  const [expanded, setExpanded] = React.useState(defaultExpanded);
   if (checks.checks.length === 0) return null;
   const passed = checks.checks.filter((c) => c.state === "success").length;
   const total = checks.checks.length;
   const label = t("forge.checks.summary", { passed, total });
+  const failed = checks.checks.filter((c) => c.state === "failure").length;
+  const running = checks.checks.filter((c) => c.state === "pending").length;
+  const detail = [
+    failed > 0 ? t("forge.checks.failed", { count: failed }) : null,
+    running > 0 ? t("forge.checks.running", { count: running }) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const rollup = checks.rollup === "none" ? "neutral" : checks.rollup;
 
   if (compact) {
@@ -75,7 +87,7 @@ export function ChecksView({
       open={expanded}
       onOpenChange={setExpanded}
       data-slot="forge-checks"
-      className="min-w-0 rounded-card border border-border"
+      className={cn("min-w-0 rounded-card border border-border", className)}
     >
       <CollapsibleTrigger className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-body">
         <ChevronRight
@@ -85,7 +97,17 @@ export function ChecksView({
             expanded && "rotate-90",
           )}
         />
-        <span className="min-w-0 truncate font-medium">{label}</span>
+        <span className="flex min-w-0 flex-col">
+          <span className="truncate font-medium">{label}</span>
+          {detail && (
+            <span
+              data-slot="forge-checks-detail"
+              className="truncate text-meta text-muted-foreground"
+            >
+              {detail}
+            </span>
+          )}
+        </span>
         <span className="ml-auto flex shrink-0 items-center gap-1">
           {checks.checks.map((check, index) => (
             <Dot key={`${check.name}-${index}`} state={check.state} />
@@ -137,11 +159,15 @@ export function ForgeChecksSummary({
   number,
   compact = false,
   enabled = true,
+  defaultExpanded = false,
+  className,
 }: {
   repo: ForgeRepo;
   number: number;
   compact?: boolean;
   enabled?: boolean;
+  defaultExpanded?: boolean;
+  className?: string;
 }) {
   const checks = useQuery({
     queryKey: forgeKeys.pullChecks(repo, number),
@@ -150,5 +176,12 @@ export function ForgeChecksSummary({
     retry: false,
   });
   if (!checks.data) return null;
-  return <ChecksView checks={checks.data} compact={compact} />;
+  return (
+    <ChecksView
+      checks={checks.data}
+      compact={compact}
+      defaultExpanded={defaultExpanded}
+      className={className}
+    />
+  );
 }

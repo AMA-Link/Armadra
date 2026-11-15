@@ -26,6 +26,9 @@ import {
   GITLAB_CHECKS,
   GITLAB_COMMENTS,
   GITLAB_FILES,
+  GITLAB_COMMITS,
+  GITLAB_REVIEWERS,
+  GITEA_FACETS,
   GITLAB_REPO,
   WORKSPACE_REPOSITORY,
   GITEA_DETECTION,
@@ -118,14 +121,27 @@ function ForgeSamples() {
   const client = useQueryClient();
   useState(() => {
     client.setQueryDefaults(["forge"], { staleTime: Infinity, retry: false });
+    const counts = {
+      nextCursor: null,
+      totalCount: 3,
+      openCount: 3,
+      closedCount: 412,
+      page: 1,
+      pageCount: 21,
+      unsupported: [],
+    };
     client.setQueryData(forgeKeys.issues(GITEA_DETECTION.repository, "open"), {
-      pages: [{ items: GITEA_ISSUES, nextCursor: null }],
-      pageParams: [null],
+      items: GITEA_ISSUES,
+      ...counts,
     });
     client.setQueryData(forgeKeys.pulls(GITEA_DETECTION.repository, "open"), {
-      pages: [{ items: GITEA_PULLS, nextCursor: null }],
-      pageParams: [null],
+      items: GITEA_PULLS,
+      ...counts,
     });
+    client.setQueryData(
+      forgeKeys.facets(GITEA_DETECTION.repository),
+      GITEA_FACETS,
+    );
     client.setQueryData(forgeConfigKeys.all, FORGE_CONFIGS);
     const gitea = GITEA_DETECTION.repository;
     client.setQueryData(forgeKeys.issue(gitea, 21), GITEA_ISSUE_DETAIL);
@@ -136,6 +152,11 @@ function ForgeSamples() {
     client.setQueryData(forgeKeys.pull(GITLAB_REPO, 12), GITLAB_MR);
     client.setQueryData(forgeKeys.pullChecks(GITLAB_REPO, 12), GITLAB_CHECKS);
     client.setQueryData(forgeKeys.pullFiles(GITLAB_REPO, 12), GITLAB_FILES);
+    client.setQueryData(
+      forgeKeys.pullReviewers(GITLAB_REPO, 12),
+      GITLAB_REVIEWERS,
+    );
+    client.setQueryData(forgeKeys.pullCommits(GITLAB_REPO, 12), GITLAB_COMMITS);
     client.setQueryData(
       forgeKeys.pullComments(GITLAB_REPO, 12),
       GITLAB_COMMENTS,

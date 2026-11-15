@@ -14,17 +14,21 @@ import {
   type ForgeConversationItem,
   type ForgeFile,
   type ForgeIssue,
-  type ForgePull,
+  type ForgePullItem,
   type ForgeRepo,
   type ForgeScope,
   forgeFailureKey,
   forgeIssue,
   forgeIssueComments,
   forgePull,
+  forgePullChecks,
+  forgePullCommits,
   forgePullComments,
   forgePullFiles,
+  forgePullReviewers,
 } from "../../api/forge";
 import { ForgeChecksSummary } from "./ForgeChecksSummary";
+import { CommitList, MergeStatus, PullInfo } from "./PullOverview";
 import { ForgeStateBadge } from "./ForgeStateBadge";
 import { forgeKeys, when } from "./forge-keys";
 
@@ -94,7 +98,15 @@ function ForgeDetailLoading() {
   );
 }
 
-function Back({ onBack, url }: { onBack: () => void; url: string }) {
+function Back({
+  onBack,
+  url,
+  actions,
+}: {
+  onBack: () => void;
+  url: string;
+  actions?: React.ReactNode;
+}) {
   const t = useT();
   return (
     <div className="flex min-w-0 items-center gap-1">
@@ -102,6 +114,7 @@ function Back({ onBack, url }: { onBack: () => void; url: string }) {
         <ArrowLeft />
       </IconButton>
       <div className="flex-1" />
+      {actions}
       <OpenRemote url={url} />
     </div>
   );
@@ -323,37 +336,6 @@ function Stat({
   );
 }
 
-/** 改动文件卡片：A / M / D 的个数与总增删行。 */
-function FilesCard({ files }: { files: readonly ForgeFile[] }) {
-  const t = useT();
-  if (files.length === 0) return null;
-  const count = (status: ForgeFile["status"]) =>
-    files.filter((file) => file.status === status).length;
-  const additions = files.reduce((sum, file) => sum + file.additions, 0);
-  const deletions = files.reduce((sum, file) => sum + file.deletions, 0);
-  return (
-    <div
-      data-slot="forge-files-card"
-      className="flex min-w-0 items-center gap-2 rounded-card border border-border px-3 py-2 text-body"
-    >
-      <span className="min-w-0 truncate font-medium">
-        {t("forge.files.count", { count: files.length })}
-      </span>
-      {(["added", "modified", "removed"] as const).map((status) => {
-        const n = count(status);
-        return n > 0 ? (
-          <Badge key={status} variant="secondary" size="sm">
-            {STATUS_LETTER[status]} {n}
-          </Badge>
-        ) : null;
-      })}
-      <span className="ml-auto">
-        <Stat additions={additions} deletions={deletions} />
-      </span>
-    </div>
-  );
-}
-
 function FileList({ files }: { files: readonly ForgeFile[] }) {
   return (
     <ul className="min-w-0 divide-y divide-border rounded-card border border-border">
@@ -389,12 +371,15 @@ export function PullDetail({
   number,
   locale,
   onBack,
+  headerActions,
 }: {
   repo: ForgeRepo;
   scope: ForgeScope;
   number: number;
   locale: string;
   onBack: () => void;
+  /** 头部右侧的额外动作（画布里的「加到画板」）。 */
+  headerActions?: React.ReactNode;
 }) {
   const t = useT();
   const pull = useQuery({
@@ -402,53 +387,102 @@ export function PullDetail({
     queryFn: () => forgePull(repo, number, scope),
     retry: false,
   });
+  const ready = Boolean(pull.data);
   const files = useQuery({
     queryKey: forgeKeys.pullFiles(repo, number),
     queryFn: () => forgePullFiles(repo, number),
-    enabled: Boolean(pull.data),
+    enabled: ready,
     retry: false,
   });
   const comments = useQuery({
     queryKey: forgeKeys.pullComments(repo, number, scope),
     queryFn: () => forgePullComments(repo, number, scope),
-    enabled: Boolean(pull.data),
+    enabled: ready,
     retry: false,
   });
+  // 旧 core 没有这两条路由：失败就当没有，对应的行与页签计数不画。
+  const reviewers = useQuery({
+    queryKey: forgeKeys.pullReviewers(repo, number),
+    queryFn: () => forgePullReviewers(repo, number),
+    enabled: ready,
+    retry: false,
+  });
+  const commits = useQuery({
+    queryKey: forgeKeys.pullCommits(repo, number),
+    queryFn: () => forgePullCommits(repo, number),
+    enabled: ready,
+    retry: false,
+  });
+  const checks = useQuery({
+    queryKey: forgeKeys.pullChecks(repo, number),
+    queryFn: () => forgePullChecks(repo, number),
+    enabled: ready,
+    retry: false,
+  });
+  const people = reviewers.data ?? [];
+  const data = pull.data;
+  const closes = data
+    ? data.linkedIssues.length > 0
+      ? data.linkedIssues
+      : closedIssues(data.body)
+    : [];
+  const count = {
+    commits: data?.commitCount ?? commits.data?.length ?? null,
+    checks: data?.checks?.total ?? checks.data?.checks.length ?? null,
+    files: data?.changedFiles ?? files.data?.length ?? null,
+  };
+  const tab = (value: string, label: string, n: number | null) => (
+    <TabsTrigger value={value} className="min-w-0 text-meta">
+      {label}
+      {n !== null && n > 0 && (
+        <span className="tabular-nums text-muted-foreground">{n}</span>
+      )}
+    </TabsTrigger>
+  );
   return (
     <div
       className="flex min-w-0 flex-col gap-(--space-block) p-(--space-page)"
       data-slot="forge-pull-detail"
     >
-      <Back onBack={onBack} url={pull.data?.url ?? ""} />
+      <Back onBack={onBack} url={data?.url ?? ""} actions={headerActions} />
       {pull.isError && <Failure error={pull.error} />}
       {pull.isLoading && <ForgeDetailLoading />}
-      {pull.data && (
+      {data && (
         <>
-          <PullBody pull={pull.data} locale={locale} />
+          <PullBody pull={data} />
           <Tabs defaultValue="overview" className="min-w-0 gap-(--space-block)">
             <TabsList variant="line" className="w-full">
-              <TabsTrigger value="overview" className="min-w-0 text-meta">
-                {t("forge.pull.overview")}
-              </TabsTrigger>
-              <TabsTrigger value="files" className="min-w-0 text-meta">
-                {t("forge.pull.files")}
-              </TabsTrigger>
-              <TabsTrigger value="activity" className="min-w-0 text-meta">
-                {t("forge.pull.activity")}
-              </TabsTrigger>
+              {tab("overview", t("forge.pull.overview"), null)}
+              {tab("commits", t("forge.pull.commits"), count.commits)}
+              {tab("checks", t("forge.pull.checks"), count.checks)}
+              {tab("files", t("forge.pull.files"), count.files)}
             </TabsList>
             <TabsContent
               value="overview"
               className="flex min-w-0 flex-col gap-(--space-block)"
             >
-              <ForgeChecksSummary repo={repo} number={number} />
-              <FilesCard files={files.data ?? []} />
-              <Body text={pull.data.body} />
-              <ConversationPanel
-                query={comments}
-                locale={locale}
-                only="review"
+              <PullInfo
+                pull={data}
+                reviewers={people}
+                linkedIssues={closes}
+                files={files.data ?? []}
               />
+              <MergeStatus pull={data} repo={repo} reviewers={people} />
+              <Body text={data.body} />
+              <h4 className="text-meta font-medium text-muted-foreground">
+                {t("forge.pull.activity")}
+              </h4>
+              <ConversationPanel query={comments} locale={locale} />
+            </TabsContent>
+            <TabsContent value="commits" className="min-w-0">
+              {commits.isError ? (
+                <Failure error={commits.error} />
+              ) : (
+                <CommitList commits={commits.data ?? []} locale={locale} />
+              )}
+            </TabsContent>
+            <TabsContent value="checks" className="min-w-0">
+              <ForgeChecksSummary repo={repo} number={number} defaultExpanded />
             </TabsContent>
             <TabsContent value="files" className="min-w-0">
               {files.isError ? (
@@ -457,9 +491,6 @@ export function PullDetail({
                 <FileList files={files.data ?? []} />
               )}
             </TabsContent>
-            <TabsContent value="activity" className="min-w-0">
-              <ConversationPanel query={comments} locale={locale} />
-            </TabsContent>
           </Tabs>
         </>
       )}
@@ -467,37 +498,26 @@ export function PullDetail({
   );
 }
 
-/** PR 的头部：标题、状态、`base ← head`、`Closes #n`、作者与时间。 */
-export function PullBody({
-  pull,
-  locale,
-}: {
-  pull: ForgePull;
-  locale: string;
-}) {
+/** PR 的头部：标题、状态、「作者 想把 n 个提交合进 base ← head」。 */
+export function PullBody({ pull }: { pull: ForgePullItem }) {
   const t = useT();
-  const closes = closedIssues(pull.body);
   return (
     <div className="flex min-w-0 flex-col gap-(--space-group)">
       <Heading number={pull.number} title={pull.title} />
-      <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 text-meta">
         <ForgeStateBadge state={pull.state} draft={pull.draft} />
-        {closes.map((n) => (
-          <Badge key={n} variant="outline" size="sm">
-            {t("forge.pull.closes", { number: n })}
-          </Badge>
-        ))}
-      </div>
-      <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-meta">
-        <dt className="text-muted-foreground">{t("forge.pull.branches")}</dt>
-        <dd className="min-w-0 truncate font-mono">
+        <span className="text-muted-foreground">
+          {pull.commitCount !== null
+            ? t("forge.pull.wants", {
+                author: pull.author ?? "",
+                count: pull.commitCount,
+              })
+            : t("forge.pull.wantsAny", { author: pull.author ?? "" })}
+        </span>
+        <span className="min-w-0 truncate font-mono">
           {pull.baseRef} ← {pull.headRef}
-        </dd>
-        <dt className="text-muted-foreground">{t("forge.author")}</dt>
-        <dd className="min-w-0 truncate">{pull.author}</dd>
-        <dt className="text-muted-foreground">{t("forge.updatedAt")}</dt>
-        <dd className="min-w-0 truncate">{when(pull.updatedAtMs, locale)}</dd>
-      </dl>
+        </span>
+      </div>
     </div>
   );
 }
