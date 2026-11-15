@@ -212,6 +212,7 @@ async function main(argv) {
     "lint",
     "typecheck",
     "repo:check",
+    "portability:check",
     "ci:workflows",
     "release:check",
     "notices:check",
