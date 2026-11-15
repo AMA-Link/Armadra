@@ -1,3 +1,6 @@
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+
 import { OUTBOUND } from "../net/outbound";
 import { settingsDomain } from "../settings";
 
@@ -11,8 +14,10 @@ import { settingsDomain } from "../settings";
  *   `img-src` 不用为一个外部域放开；
  * - **能关**：`git.avatars` 关掉之后这里一个请求都不发（出站登记见
  *   `net/outbound.ts` 的 `githubAvatars`）；
- * - **不反复问**：结果按 id 缓存一天，失败也缓存半小时；同时在飞的同一个 id 共用
- *   一次请求。
+ * - **不反复问**：内存里按 id 缓存一天，失败也缓存半小时；同时在飞的同一个 id
+ *   共用一次请求；
+ * - **重启不重问**（#942）：取到的图落盘到 `<数据目录>/cache/avatars/<id>`，七天内
+ *   直接用；过期后重取，取不到（离线）就继续用旧图。
  *
  * 不用 Gravatar：那要把邮箱的哈希交给第三方，而这里只用到邮箱里本来就公开的
  * GitHub 账号 id。
@@ -24,6 +29,49 @@ const MAX_BYTES = 64 * 1024;
 const TIMEOUT_MS = 5_000;
 const SIZE = 64;
 const MAX_ENTRIES = 2_000;
+const DISK_TTL = 7 * 24 * 60 * 60 * 1000;
+const DATA_URL = /^data:image\/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/=]+$/;
+
+/** 落盘目录；没配（测试、未装配）就只用内存。 */
+let directory: string | undefined;
+
+export function configureAvatarCache(path: string | undefined): void {
+  directory = path;
+}
+
+interface DiskEntry {
+  readonly dataUrl: string;
+  readonly fetchedAt: number;
+}
+
+async function readDisk(id: number): Promise<DiskEntry | null> {
+  if (!directory) return null;
+  try {
+    const file = join(directory, String(id));
+    const [text, info] = await Promise.all([
+      readFile(file, "utf8"),
+      stat(file),
+    ]);
+    // 文件被改坏了就当没有：只认我们自己写进去的位图 data URL。
+    if (!DATA_URL.test(text)) return null;
+    return { dataUrl: text, fetchedAt: info.mtimeMs };
+  } catch {
+    return null;
+  }
+}
+
+async function writeDisk(id: number, dataUrl: string): Promise<void> {
+  if (!directory) return;
+  try {
+    await mkdir(directory, { recursive: true });
+    const file = join(directory, String(id));
+    const temporary = `${file}.${process.pid}.tmp`;
+    await writeFile(temporary, dataUrl, "utf8");
+    await rename(temporary, file);
+  } catch {
+    // 缓存写不进去不影响这一次的回答。
+  }
+}
 
 interface Entry {
   readonly dataUrl: string | null;
@@ -87,7 +135,17 @@ export async function avatars(
       if (hit && hit.expires > now()) return { id, dataUrl: hit.dataUrl };
       let pending = inflight.get(id);
       if (!pending) {
-        pending = fetchOne(id, fetcher).finally(() => inflight.delete(id));
+        pending = (async () => {
+          const disk = await readDisk(id);
+          if (disk && now() - disk.fetchedAt < DISK_TTL) return disk.dataUrl;
+          const fresh = await fetchOne(id, fetcher);
+          if (fresh) {
+            await writeDisk(id, fresh);
+            return fresh;
+          }
+          // 取不到（离线、限流）：旧图总比首字母好。
+          return disk?.dataUrl ?? null;
+        })().finally(() => inflight.delete(id));
         inflight.set(id, pending);
       }
       const dataUrl = await pending;
