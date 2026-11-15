@@ -132,5 +132,26 @@ export function defaultNodeData(
       };
     case "git":
       return { kind: "git" };
+    case "forge":
+      return {
+        kind: "forge",
+        repo: null,
+        tab: "issues",
+        query: "",
+        view: "list",
+        open: null,
+      };
+    // 卡片没有「空可用值」：仓库与编号由「加到画板」给，占位不落库。
+    case "forgeItem":
+      return {
+        kind: "forgeItem",
+        repo: {
+          host: PLACEHOLDER_REFERENCE,
+          owner: PLACEHOLDER_REFERENCE,
+          name: PLACEHOLDER_REFERENCE,
+        },
+        itemKind: "issue",
+        number: 1,
+      };
   }
 }

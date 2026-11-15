@@ -10,6 +10,7 @@ import {
   FolderTree,
   GitBranch,
   Frame,
+  GitPullRequest,
   Globe,
   LayoutGrid,
   Maximize,
@@ -291,6 +292,18 @@ export function buildAddMenu(
         create(context, "git", {
           position: nodeDropPosition("git", { anchor: context.position }),
           data: { kind: "git" },
+        });
+      },
+    },
+    {
+      id: "add.forge",
+      label: t("add.forge"),
+      icon: GitPullRequest,
+      group: "content",
+      // 节点内容是侧边面板的列表与详情；仓库留空，按工作空间自动识别（#934）。
+      run: (context) => {
+        create(context, "forge", {
+          position: nodeDropPosition("forge", { anchor: context.position }),
         });
       },
     },

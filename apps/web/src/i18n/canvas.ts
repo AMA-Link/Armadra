@@ -31,6 +31,7 @@ const zh = {
   "add.workflow": "工作流",
   "add.agentActivity": "新建活动卡片",
   "add.git": "Git 历史",
+  "add.forge": "新建代码托管",
   "add.notInstalled": "未安装",
   "add.attachSession": "接管 {name} 的会话…",
   "add.noTerminal": "画布上还没有终端",
@@ -96,6 +97,8 @@ const zh = {
   "content.automation": "自动化",
   "content.agentActivity": "活动",
   "content.git": "Git",
+  "content.forge": "代码托管",
+  "content.forgeItem": "代码托管条目",
 
   /* B5 reference */
   "shape.removeReference": "移除引用",
@@ -265,6 +268,7 @@ const en: Record<keyof typeof zh, string> = {
   "add.workflow": "Workflows",
   "add.agentActivity": "New activity card",
   "add.git": "Git history",
+  "add.forge": "New code hosting",
   "add.notInstalled": "Not installed",
   "add.attachSession": "Attach a {name} session…",
   "add.noTerminal": "No terminal on this canvas",
@@ -325,6 +329,8 @@ const en: Record<keyof typeof zh, string> = {
   "content.automation": "Automation",
   "content.agentActivity": "Activity",
   "content.git": "Git",
+  "content.forge": "Code hosting",
+  "content.forgeItem": "Code hosting item",
 
   /* B5 reference */
   "shape.removeReference": "Remove reference",

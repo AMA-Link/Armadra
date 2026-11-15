@@ -125,6 +125,9 @@ const NODE_SIZE_SPEC: Readonly<Record<CanvasNodeType, NodeSizeSpec>> = {
   agentActivity: { orientation: "landscape", default: [34, 21], min: [21, 13] },
   // Git 节点就是侧边栏的历史组件（#927）：表格加右栏，要宽屏。
   git: { orientation: "landscape", default: [89, 55], min: [34, 21] },
+  // 代码托管节点（#934）是侧边面板的列表与详情，卡片是一条小横卡。
+  forge: { orientation: "landscape", default: [55, 34], min: [34, 21] },
+  forgeItem: { orientation: "landscape", default: [21, 13], min: [13, 8] },
 };
 
 /** 新建这种节点时的尺寸。 */

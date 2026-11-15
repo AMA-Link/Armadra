@@ -471,6 +471,10 @@ function readableContent(kind: string): string {
     // Git 节点是工作空间的提交历史视图，内容从仓库现读，不经连线交出去。
     case "git":
       return "不可读（Git 历史视图）";
+    // 代码托管节点与卡片只记仓库坐标与编号，内容从托管平台现读，不经连线交出去。
+    case "forge":
+    case "forgeItem":
+      return "不可读（代码托管视图）";
     default:
       return "不可读";
   }

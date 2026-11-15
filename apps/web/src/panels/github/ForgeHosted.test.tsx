@@ -26,6 +26,12 @@ vi.mock("../../api/forge", async (original) => ({
   ...forgeApi,
 }));
 
+const canvas = vi.hoisted(() => ({ add: vi.fn(() => "id") }));
+vi.mock("./add-to-canvas", () => ({
+  addForgeItemToCanvas: canvas.add,
+  useCanAddToCanvas: () => true,
+}));
+
 import type { ForgeIssue } from "../../api/forge";
 import { usePreferencesStore } from "../../app/preferences-store";
 import { ForgeHosted } from "./ForgeHosted";
@@ -241,5 +247,14 @@ describe("仓库视图", () => {
     expect(forgeApi.forgeIssues).not.toHaveBeenCalled();
     fireEvent.click(screen.getByLabelText("返回"));
     await waitFor(() => expect(forgeApi.forgeIssues).toHaveBeenCalled());
+  });
+
+  it("详情头部「加到画板」放一张卡片：仓库坐标、种类与编号", async () => {
+    forgeApi.forgeIssue.mockResolvedValue({ ...issue(9, "pinned"), body: "x" });
+    forgeApi.forgeIssues.mockResolvedValue(page([]));
+    canvas.add.mockClear();
+    renderHosted({ tab: "issues", number: 9, reveal: 1 });
+    fireEvent.click(await screen.findByRole("button", { name: "加到画板" }));
+    expect(canvas.add).toHaveBeenCalledWith(REPO, "issue", 9);
   });
 });

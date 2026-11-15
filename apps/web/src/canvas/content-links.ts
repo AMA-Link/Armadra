@@ -79,6 +79,8 @@ export const CONTENT_TYPE_KEYS: Record<string, string> = {
   automation: "content.automation",
   agentActivity: "content.agentActivity",
   git: "content.git",
+  forge: "content.forge",
+  forgeItem: "content.forgeItem",
 };
 
 /**

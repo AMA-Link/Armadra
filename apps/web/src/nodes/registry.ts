@@ -5,7 +5,9 @@ import {
   CalendarClock,
   FileCode2,
   FolderTree,
+  CircleDot,
   GitCompare,
+  GitPullRequest,
   Globe,
   Group,
   StickyNote,
@@ -176,6 +178,23 @@ export const NODE_META: Record<CanvasNodeType, NodeMeta> = {
     defaultColor: DEFAULT_NODE_COLOR,
     hasBridgeHandles: false,
   },
+  // 代码托管节点与单条卡片（#934）：内容从托管平台现读，连线拿不到东西。
+  forge: {
+    labelKey: "node.forge",
+    icon: GitPullRequest,
+    defaultSize: defaultNodeSizeOf("forge"),
+    minSize: minNodeSizeOf("forge"),
+    defaultColor: DEFAULT_NODE_COLOR,
+    hasBridgeHandles: false,
+  },
+  forgeItem: {
+    labelKey: "node.forgeItem",
+    icon: CircleDot,
+    defaultSize: defaultNodeSizeOf("forgeItem"),
+    minSize: minNodeSizeOf("forgeItem"),
+    defaultColor: DEFAULT_NODE_COLOR,
+    hasBridgeHandles: false,
+  },
   agentActivity: {
     labelKey: "node.agentActivity",
     icon: Activity,
@@ -197,6 +216,8 @@ export const NODE_BODY: Record<CanvasNodeType, ComponentType<NodeBodyProps>> = {
   automation: body("AutomationNode", () => import("./AutomationNode")),
   agentActivity: body("AgentActivityNode", () => import("./AgentActivityNode")),
   git: body("GitNode", () => import("./GitNode")),
+  forge: body("ForgeNode", () => import("./ForgeNode")),
+  forgeItem: body("ForgeItemNode", () => import("./ForgeItemNode")),
 };
 
 /**
@@ -216,6 +237,8 @@ export const NODE_SHELL_SELF: ReadonlySet<CanvasNodeType> =
     "automation",
     "agentActivity",
     "git",
+    "forge",
+    "forgeItem",
   ]);
 
 export function nodeMeta(type: CanvasNodeType): NodeMeta {
