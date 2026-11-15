@@ -610,6 +610,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
+      contents: read
       issues: write
     steps:
       # 只要拼正文的脚本（tools/ci/nightly-report.mjs）。
