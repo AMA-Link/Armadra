@@ -167,6 +167,18 @@
   --agent-omp-text: var(--agent-omp);
   --agent-copilot-text: #b78df7;
   --agent-ama-text: var(--agent-ama);
+
+  /* ── 提交图车道色（#942） ─────────────────────────────────────────
+     降饱和的八色：分支线、节点与仓库主线共用一套。不含品牌蓝——第一个仓库的
+     主线是品牌色，分支线不该和它撞色。 */
+  --graph-1: #9a8cf0;
+  --graph-2: #4fb3a9;
+  --graph-3: #d9925f;
+  --graph-4: #c978b8;
+  --graph-5: #a3bf63;
+  --graph-6: #d4b45e;
+  --graph-7: #e07f8b;
+  --graph-8: #6fa8dc;
   /* 实底头像上的字 */
   --on-agent: #1c1c1c;
 
@@ -607,6 +619,16 @@
   --agent-copilot-text: var(--agent-copilot);
   --agent-ama-text: var(--agent-ama);
   --on-agent: #ffffff;
+
+  /* 提交图车道色在浅底上压暗，细线仍看得清。 */
+  --graph-1: #6a58d6;
+  --graph-2: #23857c;
+  --graph-3: #b0662f;
+  --graph-4: #9c4689;
+  --graph-5: #627f22;
+  --graph-6: #8f7121;
+  --graph-7: #b84455;
+  --graph-8: #2f73b5;
 
   --member-1: #0066cc;
   --member-2: #177a2e;

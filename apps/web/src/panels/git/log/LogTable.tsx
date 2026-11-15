@@ -11,7 +11,8 @@ import { Button } from "../../../ui/button";
 import { Skeleton } from "../../../ui/skeleton";
 import { Spinner } from "../../../ui/spinner";
 import { EmptyState } from "../../../ui/state";
-import { LANE_WIDTH, MAX_LANES, commitGraph, refBadges } from "../CommitGraph";
+import { LANE_WIDTH, MAX_LANES, refBadges } from "../CommitGraph";
+import { graphLayout } from "./graph-layout";
 import { collapseLog, mergeLabel } from "./collapse";
 import { CommitAuthor } from "./CommitAuthor";
 import { commitAgents } from "./people";
@@ -241,7 +242,7 @@ export function LogTable({
 
   // 车道按整页算，行号偏移交给渲染：合成行不进图，但它占着第 0 行。
   const offset = rows.length - shown.length;
-  const graph = useMemo(() => commitGraph(shown, logGraphKeys), [shown]);
+  const graph = useMemo(() => graphLayout(shown, logGraphKeys), [shown]);
   const lanes = Math.min(graph.lanes, MAX_LANES);
   // 多仓库时左边是仓库标识列，图从它右边起（#935）。
   // 手机宽度放不下带名字的一列：固定用细色条（规格「窄窗口优先压缩」）。
@@ -253,17 +254,32 @@ export function LogTable({
     : 0;
   const graphLeft = repositoryColumn + 4;
   const gutter = graphLeft + lanes * LANE_WIDTH + 12;
+  /** 标题跟着本行实际占用的车道缩进（#942），车道少的行不留一大截空白。 */
+  const rowGutter = (row: number) =>
+    graphLeft +
+    Math.min(graph.rows[row]?.width ?? lanes, MAX_LANES) * LANE_WIDTH +
+    12;
 
   /**
-   * 主线用仓库色（单仓库就是品牌色）；分支车道轮换其余颜色，跳过品牌色，
-   * 免得一条分支和主线撞色。
+   * 颜色按颜色链（#942）：链上有主线提交 = 仓库色（单仓库就是品牌色）；其余
+   * 分支按链号轮换主题色板，避开本仓库的主线色。
    */
   const repositoryHue = (path: string) =>
     repositoryColor(colors.get(path) ?? 0);
   const repositoryOf = (key: string) => key.slice(0, key.lastIndexOf(":"));
-  const branchHue = branchColor;
-  const pointColor = (key: string, lane: number) =>
-    view.mainline.has(key) ? repositoryHue(repositoryOf(key)) : branchHue(lane);
+  const mainlineChains = useMemo(() => {
+    const chains = new Set<number>();
+    for (const row of graph.rows) {
+      if (view.mainline.has(row.key)) chains.add(row.chain);
+    }
+    return chains;
+  }, [graph, view.mainline]);
+  const chainColor = (chain: number, key: string) => {
+    const repository = repositoryHue(repositoryOf(key));
+    return mainlineChains.has(chain)
+      ? repository
+      : branchColor(chain, repository);
+  };
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -305,8 +321,7 @@ export function LogTable({
     const repository = uncommitted[0];
     if (repository === undefined) return null;
     const row = shown.findIndex((entry) => entry.repositoryPath === repository);
-    const point =
-      row < 0 ? undefined : graph.points.get(commitKey(shown[row]!));
+    const point = row < 0 ? undefined : graph.byKey.get(commitKey(shown[row]!));
     return {
       repository,
       lane: point?.lane ?? 0,
@@ -339,6 +354,35 @@ export function LogTable({
     () => new Map(commits.map((commit) => [commitKey(commit), commit])),
     [commits],
   );
+
+  /** 同一条边的各段连成一条折线；只画可见窗口附近的段。 */
+  const edgePaths = (() => {
+    const paths = new Map<
+      string,
+      { id: string; child: string; parent: string; chain: number; d: string }
+    >();
+    for (const segment of graph.segments) {
+      if (!visible(segment.row) && !visible(segment.row + 1)) continue;
+      const id = `${segment.child}>${segment.parent}`;
+      const step = `${x(segment.to)},${y(segment.row + 1)}`;
+      const entry = paths.get(id);
+      const start = `M${x(segment.from)},${y(segment.row)}`;
+      if (entry && entry.d.endsWith(`${x(segment.from)},${y(segment.row)}`)) {
+        entry.d += ` L${step}`;
+      } else if (entry) {
+        entry.d += ` ${start} L${step}`;
+      } else {
+        paths.set(id, {
+          id,
+          child: segment.child,
+          parent: segment.parent,
+          chain: segment.chain,
+          d: `${start} L${step}`,
+        });
+      }
+    }
+    return [...paths.values()];
+  })();
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -418,37 +462,64 @@ export function LogTable({
               width={gutter}
               height={virtualizer.getTotalSize()}
             >
-              {graph.edges.map((edge) => {
-                if (!visible(edge.from.row) && !visible(edge.to?.row ?? -99))
-                  return null;
-                // 两端都在主线上 = 仓库色；否则用不在主线那一端的车道色，
-                // 一段分支从分出到汇回始终是一个颜色。
-                const sideEnd = !view.mainline.has(edge.child)
-                  ? edge.from
-                  : edge.to && !view.mainline.has(edge.parent)
-                    ? edge.to
-                    : null;
-                const color = sideEnd
-                  ? branchHue(sideEnd.lane)
-                  : repositoryHue(repositoryOf(edge.child));
+              {edgePaths.map((edge) => (
+                // 一条边在每一行都有车道（#942）：同一条边的各段连成一条折线，
+                // 换车道只在相邻两行之间斜一格。
+                <path
+                  key={edge.id}
+                  data-child={edge.child}
+                  data-parent={edge.parent}
+                  fill="none"
+                  stroke={chainColor(edge.chain, edge.child)}
+                  className="stroke-[1.5]"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d={edge.d}
+                />
+              ))}
+              {graph.arrows.map((arrow) => {
+                if (!visible(arrow.row)) return null;
+                // 长边的两端（#942）：↓ 在子提交下方，↑ 在父提交上方，中间不占列。
+                const cx = x(arrow.lane);
+                const cy = y(arrow.row);
+                const reach = rowHeight * 0.55;
+                const head = 3.5;
+                const d =
+                  arrow.dir === "down"
+                    ? `M${cx},${cy} V${cy + reach} M${cx - head},${cy + reach - head} L${cx},${cy + reach} L${cx + head},${cy + reach - head}`
+                    : `M${cx},${cy} V${cy - reach} M${cx - head},${cy - reach + head} L${cx},${cy - reach} L${cx + head},${cy - reach + head}`;
                 return (
                   <path
-                    key={`${edge.child}:${edge.parent}`}
-                    data-child={edge.child}
-                    data-parent={edge.parent}
+                    key={`${arrow.dir}:${arrow.child}:${arrow.parent}`}
+                    data-slot="git-log-edge-arrow"
+                    data-dir={arrow.dir}
+                    data-child={arrow.child}
+                    data-parent={arrow.parent}
                     fill="none"
-                    stroke={color}
+                    stroke={chainColor(arrow.chain, arrow.child)}
                     className="stroke-[1.5]"
                     strokeLinecap="round"
-                    strokeDasharray={edge.to ? undefined : "3 3"}
-                    d={
-                      edge.to
-                        ? `M${x(edge.from.lane)},${y(edge.from.row)} C${x(edge.from.lane)},${y(edge.from.row) + rowHeight * 0.5} ${x(edge.to.lane)},${y(edge.to.row) - rowHeight * 0.5} ${x(edge.to.lane)},${y(edge.to.row)}`
-                        : `M${x(edge.from.lane)},${y(edge.from.row)} v${rowHeight * 0.5}`
-                    }
+                    strokeLinejoin="round"
+                    d={d}
                   />
                 );
               })}
+              {graph.stubs.map((stub) =>
+                visible(stub.row) ? (
+                  // 父提交不在本页：一小段虚线残桩，不猜位置。
+                  <path
+                    key={`stub:${stub.child}:${stub.parent}`}
+                    data-child={stub.child}
+                    data-parent={stub.parent}
+                    fill="none"
+                    stroke={chainColor(stub.chain, stub.child)}
+                    className="stroke-[1.5]"
+                    strokeLinecap="round"
+                    strokeDasharray="3 3"
+                    d={`M${x(stub.lane)},${y(stub.row)} v${rowHeight * 0.5}`}
+                  />
+                ) : null,
+              )}
               {offset > 0 && dirtyHead && (
                 // 未提交的变更：一个虚线空心点，落在脏的那个仓库的主线车道上，
                 // 虚线接到这个仓库在表里的第一行（它的 HEAD）。
@@ -479,11 +550,11 @@ export function LogTable({
               {shown.map((commit, row) => {
                 if (!visible(row)) return null;
                 const key = commitKey(commit);
-                const point = graph.points.get(key);
+                const point = graph.byKey.get(key);
                 if (!point) return null;
                 const merge =
                   commit.parents.length > 1 || view.sideCount.has(key);
-                const color = pointColor(key, point.lane);
+                const color = chainColor(point.chain, key);
                 return (
                   <g
                     key={key}
@@ -492,17 +563,21 @@ export function LogTable({
                     data-merge={merge ? "true" : "false"}
                     data-mainline={view.mainline.has(key) ? "true" : "false"}
                   >
-                    {/* 一圈底色晕圈：线从点下面穿过时，点仍然是完整的一颗。 */}
+                    {selected === key && (
+                      <circle
+                        data-slot="git-log-node-ring"
+                        cx={x(point.lane)}
+                        cy={y(point.row)}
+                        r={6.5}
+                        fill="none"
+                        stroke={color}
+                        className="stroke-[1.5]"
+                      />
+                    )}
                     <circle
                       cx={x(point.lane)}
                       cy={y(point.row)}
-                      r={6.5}
-                      fill={`color-mix(in oklab, ${color} 28%, var(--background))`}
-                    />
-                    <circle
-                      cx={x(point.lane)}
-                      cy={y(point.row)}
-                      r={selected === key ? 4.5 : 3.5}
+                      r={4}
                       fill={color}
                     />
                   </g>
@@ -514,7 +589,7 @@ export function LogTable({
               const body =
                 row.kind === "uncommitted" ? (
                   <UncommittedRow
-                    gutter={gutter}
+                    gutter={rowGutter(0)}
                     height={rowHeight}
                     selected={selected === UNCOMMITTED_KEY}
                     onSelect={() => onSelect(UNCOMMITTED_KEY, null)}
@@ -538,7 +613,7 @@ export function LogTable({
                         ? (sync?.get(row.commit.repositoryPath) ?? null)
                         : null
                     }
-                    gutter={gutter}
+                    gutter={rowGutter(item.index - offset)}
                     height={rowHeight}
                     merged={(original.get(row.key)?.parents.length ?? 0) > 1}
                     mine={isMine(row.commit)}
