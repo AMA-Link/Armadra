@@ -61,7 +61,7 @@ vi.mock("../../api/forge", async (original) => ({
 import { RuntimeRequestError } from "@/api/request";
 import { usePreferencesStore } from "@/app/preferences-store";
 import { chooseOption } from "../../app/test-harness";
-import type { ForgeIssue, ForgePull } from "../../api/forge";
+import { type ForgeIssue, forgePullExtSchema } from "../../api/forge";
 import { GithubDrawer } from "./GithubDrawer";
 import { openGithubPanel, useGithubFocus } from "./open";
 import { referenceTarget } from "./references";
@@ -85,36 +85,25 @@ const forgeIssue = (number: number, title: string): ForgeIssue => ({
   linkedPulls: 0,
 });
 
-const forgePull = (number: number, title: string): ForgePull => ({
-  number,
-  title,
-  body: "",
-  state: "open",
-  draft: false,
-  author: "alice",
-  baseRef: "main",
-  headRef: "feature/login",
-  headSha: "d".repeat(40),
-  mergeable: "mergeable",
-  url: `https://git.example.test/acme/app/pulls/${number}`,
-  createdAtMs: AT,
-  updatedAtMs: AT,
-  mergedAtMs: null,
-  autoMerge: false,
-  fromFork: false,
-  labels: [],
-  assignees: [],
-  milestone: null,
-  commentCount: 0,
-  reviewDecision: null,
-  checks: null,
-  additions: null,
-  deletions: null,
-  changedFiles: null,
-  commitCount: null,
-  linkedIssues: [],
-  authorAssociation: null,
-});
+const forgePull = (number: number, title: string) =>
+  forgePullExtSchema.parse({
+    number,
+    title,
+    body: "",
+    state: "open",
+    draft: false,
+    author: "alice",
+    baseRef: "main",
+    headRef: "feature/login",
+    headSha: "d".repeat(40),
+    mergeable: "mergeable",
+    url: `https://git.example.test/acme/app/pulls/${number}`,
+    createdAtMs: AT,
+    updatedAtMs: AT,
+    mergedAtMs: null,
+    autoMerge: false,
+    fromFork: false,
+  });
 
 /** 一份识别结果（§29.2）。 */
 function detection(
@@ -276,6 +265,7 @@ describe("仓库、issue 与 PR", () => {
       "open",
       null,
       "workspace-1",
+      expect.objectContaining({ q: "", page: 1 }),
     );
     fireEvent.click(screen.getByText("Crash on start"));
     expect(await screen.findByText("Steps to reproduce")).toBeTruthy();
@@ -324,6 +314,7 @@ describe("仓库、issue 与 PR", () => {
         "open",
         null,
         "workspace-1",
+        expect.objectContaining({ q: "" }),
       ),
     );
     expect(

@@ -18,6 +18,7 @@ const forgeApi = vi.hoisted(() => ({
   forgeIssue: vi.fn(),
   forgePulls: vi.fn(),
   forgePull: vi.fn(),
+  forgeFacets: vi.fn(),
 }));
 
 vi.mock("../../api/forge", async (original) => ({
@@ -27,7 +28,6 @@ vi.mock("../../api/forge", async (original) => ({
 
 import type { ForgeIssue } from "../../api/forge";
 import { usePreferencesStore } from "../../app/preferences-store";
-import { chooseOption } from "../../app/test-harness";
 import { ForgeHosted } from "./ForgeHosted";
 
 const REPO = { host: "git.example.test", owner: "acme", name: "app" };
@@ -79,37 +79,153 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+const page = (items: ForgeIssue[], extra: Record<string, unknown> = {}) => ({
+  items,
+  nextCursor: null,
+  ...extra,
+});
+
 describe("仓库视图", () => {
-  it("列表翻页：下一页用上一页的 nextCursor", async () => {
+  beforeEach(() => {
+    forgeApi.forgeFacets.mockRejectedValue(new Error("501"));
+  });
+
+  it("旧 core 只给 nextCursor：下一页用上一页的 nextCursor", async () => {
     forgeApi.forgeIssues
-      .mockResolvedValueOnce({ items: [issue(2, "second")], nextCursor: "2" })
-      .mockResolvedValueOnce({ items: [issue(1, "first")], nextCursor: null });
+      .mockResolvedValueOnce(page([issue(2, "second")], { nextCursor: "2" }))
+      .mockResolvedValueOnce(page([issue(1, "first")]));
     renderHosted(null);
     expect(await screen.findByText("second")).toBeTruthy();
-    fireEvent.click(screen.getByText("加载更多"));
+    fireEvent.click(screen.getByRole("button", { name: "下一页" }));
     expect(await screen.findByText("first")).toBeTruthy();
     expect(forgeApi.forgeIssues).toHaveBeenLastCalledWith(
       REPO,
       "open",
       "2",
       null,
+      expect.objectContaining({ page: 2 }),
     );
-    expect(screen.queryByText("加载更多")).toBeNull();
+    expect(
+      (screen.getByRole("button", { name: "下一页" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
+  it("新 core：开启 / 已关闭计数，页码翻页保留筛选", async () => {
+    forgeApi.forgeIssues.mockResolvedValue(
+      page([issue(2, "second")], {
+        totalCount: 60,
+        openCount: 23,
+        closedCount: 412,
+        page: 1,
+        pageCount: 3,
+      }),
+    );
+    renderHosted(null);
+    expect(await screen.findByText("second")).toBeTruthy();
+    expect(screen.getByText("开启 23")).toBeTruthy();
+    expect(screen.getByText("已关闭 412")).toBeTruthy();
+    fireEvent.change(screen.getByRole("searchbox"), {
+      target: { value: "label:core" },
+    });
+    fireEvent.keyDown(screen.getByRole("searchbox"), { key: "Enter" });
+    await waitFor(() =>
+      expect(forgeApi.forgeIssues).toHaveBeenLastCalledWith(
+        REPO,
+        "open",
+        null,
+        null,
+        expect.objectContaining({ q: "label:core", page: 1 }),
+      ),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "3" }));
+    await waitFor(() =>
+      expect(forgeApi.forgeIssues).toHaveBeenLastCalledWith(
+        REPO,
+        "open",
+        null,
+        null,
+        expect.objectContaining({ q: "label:core", page: 3 }),
+      ),
+    );
   });
 
   it("换状态重新取", async () => {
-    forgeApi.forgeIssues.mockResolvedValue({ items: [], nextCursor: null });
+    forgeApi.forgeIssues.mockResolvedValue(page([]));
     renderHosted(null);
     expect(await screen.findByText("没有条目")).toBeTruthy();
-    await chooseOption(screen.getByRole("combobox"), "已关闭");
+    fireEvent.click(screen.getByRole("radio", { name: /已关闭/ }));
     await waitFor(() =>
       expect(forgeApi.forgeIssues).toHaveBeenCalledWith(
         REPO,
         "closed",
         null,
         null,
+        expect.anything(),
       ),
     );
+  });
+
+  it("空查询不额外发请求；输入后停手才查，内容没变不重复查", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      forgeApi.forgeIssues.mockResolvedValue(page([]));
+      renderHosted(null);
+      await screen.findByText("没有条目");
+      expect(forgeApi.forgeIssues).toHaveBeenCalledTimes(1);
+      const box = screen.getByRole("searchbox");
+      fireEvent.change(box, { target: { value: "   " } });
+      await vi.advanceTimersByTimeAsync(800);
+      expect(forgeApi.forgeIssues).toHaveBeenCalledTimes(1);
+      fireEvent.change(box, { target: { value: "sync" } });
+      await vi.advanceTimersByTimeAsync(800);
+      await waitFor(() =>
+        expect(forgeApi.forgeIssues).toHaveBeenCalledTimes(2),
+      );
+      expect(forgeApi.forgeIssues).toHaveBeenLastCalledWith(
+        REPO,
+        "open",
+        null,
+        null,
+        expect.objectContaining({ q: "sync" }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("筛选下拉与搜索串双向同步", async () => {
+    forgeApi.forgeIssues.mockResolvedValue(
+      page([{ ...issue(2, "second"), labels: ["core", "web"] }]),
+    );
+    renderHosted(null);
+    await screen.findByText("second");
+    const box = screen.getByRole("searchbox") as HTMLInputElement;
+    // 下拉 → 搜索串
+    const label = screen.getByRole("button", { name: "标签" });
+    fireEvent.keyDown(label, { key: "Enter" });
+    fireEvent.click(
+      await screen.findByRole("menuitemcheckbox", { name: "core" }),
+    );
+    await waitFor(() => expect(box.value).toBe("label:core"));
+    // 多选的菜单选完不收起：Esc 关掉
+    fireEvent.keyDown(document.activeElement ?? document.body, {
+      key: "Escape",
+    });
+    // 搜索串 → 下拉
+    fireEvent.change(box, { target: { value: "author:alice" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(
+      await screen.findByRole("button", { name: "作者 · alice" }),
+    ).toBeTruthy();
+  });
+
+  it("平台不支持的限定词有提示", async () => {
+    forgeApi.forgeIssues.mockResolvedValue(
+      page([], { unsupported: ["review:approved"] }),
+    );
+    renderHosted(null);
+    expect(await screen.findByText(/review:approved/)).toBeTruthy();
   });
 
   it("徽标点进来的条目直接是详情，返回后才取列表", async () => {
@@ -118,7 +234,7 @@ describe("仓库视图", () => {
       labels: ["bug"],
       body: "full text",
     });
-    forgeApi.forgeIssues.mockResolvedValue({ items: [], nextCursor: null });
+    forgeApi.forgeIssues.mockResolvedValue(page([]));
     renderHosted({ tab: "issues", number: 9, reveal: 1 });
     expect(await screen.findByText("full text")).toBeTruthy();
     expect(screen.getByText("bug")).toBeTruthy();

@@ -1,34 +1,14 @@
 import * as React from "react";
-import { useInfiniteQuery } from "@tanstack/react-query";
 
-import { Loadable } from "@/loading/Loadable";
-import { Button } from "@/ui/button";
-import { Skeleton } from "@/ui/skeleton";
-import { Spinner } from "@/ui/spinner";
-import { EmptyState } from "@/ui/state";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
 import { useT } from "@/app/preferences-store";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/ui/select";
-import { Field } from "../git/forms";
-import {
-  type ForgeDetection,
-  type ForgeListState,
-  type ForgeRepo,
-  type ForgeScope,
-  forgeIssues,
-  forgePulls,
-} from "../../api/forge";
-import { Failure, IssueDetail, OpenRemote, PullDetail } from "./ForgeDetail";
-import { ForgeItemRow } from "./ForgeItemRow";
+import type { ForgeDetection, ForgeScope } from "../../api/forge";
+import { IssueDetail, OpenRemote, PullDetail } from "./ForgeDetail";
+import { ForgeList, type ForgeRowWrap, type ForgeView } from "./ForgeList";
 import { forgeKeys } from "./forge-keys";
 
 export { OpenRemote, forgeKeys };
+export { ForgeListSkeleton } from "./ForgeListSkeleton";
 
 /**
  * 代码托管面板的仓库视图（契约 §29.4）：GitHub、Gitea、GitLab 同一面，只读——
@@ -38,6 +18,24 @@ export { OpenRemote, forgeKeys };
  */
 
 export type ForgeTab = "issues" | "pulls";
+
+/**
+ * 面板的导航状态：标签页、搜索串、视图、打开的条目。画布节点把它存进自己的数据
+ * （只有这几样，没有令牌、正文与远端数据），面板用本地状态。
+ */
+export interface ForgeNav {
+  tab: ForgeTab;
+  query: string;
+  view: ForgeView;
+  open: { kind: "issue" | "pull"; number: number } | null;
+}
+
+export const DEFAULT_NAV: ForgeNav = {
+  tab: "issues",
+  query: "",
+  view: "list",
+  open: null,
+};
 
 export interface ForgeHostedProps {
   detection: ForgeDetection;
@@ -55,7 +53,14 @@ export interface ForgeHostedProps {
     readonly number: number;
     readonly reveal: number;
   } | null;
+  /** 给了就由调用方持有导航状态（画布节点）；不给用本地状态。 */
+  nav?: ForgeNav;
+  onNav?: (nav: ForgeNav) => void;
+  /** 列表行的外壳（画布里是右键菜单）。 */
+  wrapRow?: ForgeRowWrap;
 }
+
+const kindOf = (tab: ForgeTab) => (tab === "issues" ? "issue" : "pull");
 
 export function ForgeHosted({
   detection,
@@ -63,32 +68,63 @@ export function ForgeHosted({
   workspaceId = null,
   open,
   focus = null,
+  nav,
+  onNav,
+  wrapRow,
 }: ForgeHostedProps) {
   const t = useT();
   const forge = detection.forge ?? "github";
   const repo = detection.repository;
-  const [tab, setTab] = React.useState<ForgeTab>(focus?.tab ?? "issues");
-  const [state, setState] = React.useState<ForgeListState>("open");
-  const [selected, setSelected] = React.useState<number | null>(
-    focus?.number ?? null,
+  const [local, setLocal] = React.useState<ForgeNav>(() =>
+    focus
+      ? {
+          ...DEFAULT_NAV,
+          tab: focus.tab,
+          open: { kind: kindOf(focus.tab), number: focus.number },
+        }
+      : DEFAULT_NAV,
   );
+  const current = nav ?? local;
+  const update = React.useCallback(
+    (patch: Partial<ForgeNav>) => {
+      const next = { ...(nav ?? local), ...patch };
+      if (onNav) onNav(next);
+      if (!nav) setLocal(next);
+    },
+    [nav, local, onNav],
+  );
+  const { tab, query, view } = current;
+  const selected =
+    current.open && current.open.kind === kindOf(tab)
+      ? current.open.number
+      : null;
+  const [counts, setCounts] = React.useState<Record<ForgeTab, number | null>>({
+    issues: null,
+    pulls: null,
+  });
+
   const reveal = focus?.reveal ?? 0;
   const focusTab = focus?.tab;
   const focusNumber = focus?.number;
   React.useEffect(() => {
     if (reveal === 0 || focusTab === undefined || focusNumber === undefined)
       return;
-    setTab(focusTab);
-    setSelected(focusNumber);
+    update({
+      tab: focusTab,
+      open: { kind: kindOf(focusTab), number: focusNumber },
+    });
+    // 只在 reveal 变化时定位，update 随状态变不重复触发。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reveal, focusTab, focusNumber]);
+
+  const openItem = (next: ForgeTab) => (number: number) =>
+    update({ open: { kind: kindOf(next), number } });
+  const close = () => update({ open: null });
 
   return (
     <Tabs
       value={tab}
-      onValueChange={(value) => {
-        setTab(value as ForgeTab);
-        setSelected(null);
-      }}
+      onValueChange={(value) => update({ tab: value as ForgeTab, open: null })}
       className="min-w-0 gap-0"
       data-slot="forge-hosted"
       data-forge={forge}
@@ -99,32 +135,21 @@ export function ForgeHosted({
       >
         <TabsTrigger value="issues" className="min-w-0 text-meta">
           {t("forge.tab.issues")}
+          {counts.issues !== null && (
+            <span className="tabular-nums text-muted-foreground">
+              {counts.issues}
+            </span>
+          )}
         </TabsTrigger>
         <TabsTrigger value="pulls" className="min-w-0 text-meta">
           {t(`forge.tab.pulls.${forge === "gitlab" ? "gitlab" : "gitea"}`)}
+          {counts.pulls !== null && (
+            <span className="tabular-nums text-muted-foreground">
+              {counts.pulls}
+            </span>
+          )}
         </TabsTrigger>
       </TabsList>
-      {selected === null && (
-        <div className="flex min-w-0 items-end gap-2 border-b border-border p-3">
-          <Field label={t("forge.filter.state")}>
-            <Select
-              value={state}
-              onValueChange={(next) => setState(next as ForgeListState)}
-            >
-              <SelectTrigger size="sm" className="w-full min-w-0">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {(["open", "closed", "all"] as const).map((value) => (
-                  <SelectItem key={value} value={value}>
-                    {t(`forge.state.${value}`)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-        </div>
-      )}
       <TabsContent
         value="issues"
         className="mt-0 min-w-0 data-[state=inactive]:hidden"
@@ -135,16 +160,23 @@ export function ForgeHosted({
             scope={workspaceId}
             number={selected}
             locale={locale}
-            onBack={() => setSelected(null)}
+            onBack={close}
           />
         ) : (
-          <IssueList
+          <ForgeList
+            kind="issues"
             repo={repo}
             scope={workspaceId}
-            state={state}
             locale={locale}
             enabled={open && tab === "issues"}
-            onOpen={setSelected}
+            query={query}
+            onQuery={(next) => update({ query: next })}
+            view={view}
+            onOpen={openItem("issues")}
+            wrapRow={wrapRow}
+            onCounts={(count) =>
+              setCounts((previous) => ({ ...previous, issues: count }))
+            }
           />
         )}
       </TabsContent>
@@ -158,175 +190,26 @@ export function ForgeHosted({
             scope={workspaceId}
             number={selected}
             locale={locale}
-            onBack={() => setSelected(null)}
+            onBack={close}
           />
         ) : (
-          <PullList
+          <ForgeList
+            kind="pulls"
             repo={repo}
             scope={workspaceId}
-            state={state}
             locale={locale}
             enabled={open && tab === "pulls"}
-            onOpen={setSelected}
+            query={query}
+            onQuery={(next) => update({ query: next })}
+            view={view}
+            onOpen={openItem("pulls")}
+            wrapRow={wrapRow}
+            onCounts={(count) =>
+              setCounts((previous) => ({ ...previous, pulls: count }))
+            }
           />
         )}
       </TabsContent>
     </Tabs>
-  );
-}
-
-/* --------------------------------- 列表 --------------------------------- */
-
-function More({
-  visible,
-  busy,
-  onMore,
-}: {
-  visible: boolean;
-  busy: boolean;
-  onMore: () => void;
-}) {
-  const t = useT();
-  if (!visible) return null;
-  return (
-    <Button size="sm" variant="ghost" disabled={busy} onClick={onMore}>
-      {busy ? <Spinner data-icon="inline-start" /> : null}
-      {t("forge.more")}
-    </Button>
-  );
-}
-
-function IssueList({
-  repo,
-  scope,
-  state,
-  locale,
-  enabled,
-  onOpen,
-}: {
-  repo: ForgeRepo;
-  scope: ForgeScope;
-  state: ForgeListState;
-  locale: string;
-  enabled: boolean;
-  onOpen: (number: number) => void;
-}) {
-  const t = useT();
-  const issues = useInfiniteQuery({
-    queryKey: forgeKeys.issues(repo, state, scope),
-    queryFn: ({ pageParam }) => forgeIssues(repo, state, pageParam, scope),
-    initialPageParam: null as string | null,
-    getNextPageParam: (page) => page.nextCursor,
-    enabled,
-    retry: false,
-  });
-  if (issues.isError) return <Failure error={issues.error} />;
-  const items = issues.data?.pages.flatMap((page) => page.items) ?? [];
-  return (
-    <Loadable
-      loading={issues.isLoading}
-      skeleton={<ForgeListSkeleton label={t("state.loading")} />}
-    >
-      <div className="min-w-0 space-y-1.5 p-(--space-page)">
-        {issues.data && items.length === 0 && (
-          <EmptyState inline title={t("forge.empty")} />
-        )}
-        {items.map((issue) => (
-          <ForgeItemRow
-            key={issue.number}
-            kind="issue"
-            item={issue}
-            locale={locale}
-            onOpen={() => onOpen(issue.number)}
-          />
-        ))}
-        <More
-          visible={issues.hasNextPage}
-          busy={issues.isFetchingNextPage}
-          onMore={() => void issues.fetchNextPage()}
-        />
-      </div>
-    </Loadable>
-  );
-}
-
-function PullList({
-  repo,
-  scope,
-  state,
-  locale,
-  enabled,
-  onOpen,
-}: {
-  repo: ForgeRepo;
-  scope: ForgeScope;
-  state: ForgeListState;
-  locale: string;
-  enabled: boolean;
-  onOpen: (number: number) => void;
-}) {
-  const t = useT();
-  const pulls = useInfiniteQuery({
-    queryKey: forgeKeys.pulls(repo, state, scope),
-    queryFn: ({ pageParam }) => forgePulls(repo, state, pageParam, scope),
-    initialPageParam: null as string | null,
-    getNextPageParam: (page) => page.nextCursor,
-    enabled,
-    retry: false,
-  });
-  if (pulls.isError) return <Failure error={pulls.error} />;
-  const items = pulls.data?.pages.flatMap((page) => page.items) ?? [];
-  return (
-    <Loadable
-      loading={pulls.isLoading}
-      skeleton={<ForgeListSkeleton label={t("state.loading")} />}
-    >
-      <div className="min-w-0 space-y-1.5 p-(--space-page)">
-        {pulls.data && items.length === 0 && (
-          <EmptyState inline title={t("forge.empty")} />
-        )}
-        {items.map((pull) => (
-          <ForgeItemRow
-            key={pull.number}
-            kind="pull"
-            item={pull}
-            locale={locale}
-            onOpen={() => onOpen(pull.number)}
-          />
-        ))}
-        <More
-          visible={pulls.hasNextPage}
-          busy={pulls.isFetchingNextPage}
-          onMore={() => void pulls.fetchNextPage()}
-        />
-      </div>
-    </Loadable>
-  );
-}
-
-/** 与 `Row` 同样的边框、圆角与内边距：编号条、标题条、徽标，下面一行元信息。 */
-export function ForgeListSkeleton({ label }: { label: string }) {
-  return (
-    <div
-      role="status"
-      aria-busy="true"
-      aria-label={label}
-      data-slot="forge-list-skeleton"
-      className="min-w-0 space-y-1.5 p-(--space-page)"
-    >
-      {[0, 1, 2, 3, 4].map((index) => (
-        <div
-          key={index}
-          className="flex min-h-14 min-w-0 flex-col gap-1 rounded-card border border-border px-3 py-2"
-        >
-          <div className="flex items-center gap-2">
-            <Skeleton className="h-4 w-8 shrink-0" />
-            <Skeleton className="h-4 w-3/4" />
-            <Skeleton className="ml-auto h-5 w-12 shrink-0 rounded-full" />
-          </div>
-          <Skeleton className="h-3 w-1/2" />
-        </div>
-      ))}
-    </div>
   );
 }

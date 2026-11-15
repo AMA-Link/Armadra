@@ -8,7 +8,11 @@ import {
   forgeAccounts,
   forgeConfigs,
   forgeFailure,
+  forgeFacets,
   forgeIssues,
+  forgePullCommits,
+  forgePullReviewers,
+  forgePulls,
   mergeForgePull,
   forgeRepositories,
   putForgeConfig,
@@ -238,5 +242,108 @@ describe("forge：经 RPC", () => {
       (error: unknown) => error,
     );
     expect(forgeFailure(missing)).toBe("unsupported");
+  });
+
+  it("搜索、排序与页码随列表入参发；空串不发，第 1 页的 page 也发（core 靠它走富查询拿计数）", async () => {
+    ok({ items: [], nextCursor: null });
+    await forgeIssues(REPO, "open", null, null, {
+      q: "  label:core sync ",
+      sort: "comments",
+      direction: "asc",
+      page: 3,
+    });
+    expect(sent()).toEqual({
+      ...REPO,
+      state: "open",
+      q: "label:core sync",
+      sort: "comments",
+      direction: "asc",
+      page: 3,
+    });
+    calls = [];
+    ok({ items: [], nextCursor: null });
+    await forgePulls(REPO, "open", null, null, { q: " ", page: 1 });
+    expect(sent()).toEqual({ ...REPO, state: "open", page: 1 });
+  });
+
+  it("旧 core 不给新字段：列表与计数带缺省，新 core 给了照收", async () => {
+    const base = {
+      number: 1,
+      title: "t",
+      body: "",
+      state: "open",
+      draft: false,
+      author: "a",
+      baseRef: "main",
+      headRef: "x",
+      headSha: SHA,
+      mergeable: "unknown",
+      url: "",
+      createdAtMs: 1,
+      updatedAtMs: 1,
+      mergedAtMs: null,
+    };
+    ok({ items: [base], nextCursor: null });
+    const old = await forgePulls(REPO, "open");
+    expect(old.totalCount).toBeNull();
+    expect(old.pageCount).toBeNull();
+    expect(old.unsupported).toEqual([]);
+    expect(old.items[0]).toMatchObject({
+      labels: [],
+      assignees: [],
+      commentCount: 0,
+      reviewDecision: null,
+      checks: null,
+      linkedIssues: [],
+    });
+    ok({
+      items: [
+        {
+          ...base,
+          reviewDecision: "changesRequested",
+          checks: { rollup: "failure", passed: 5, total: 7 },
+          commentCount: 2,
+        },
+      ],
+      nextCursor: null,
+      totalCount: 458,
+      openCount: 23,
+      closedCount: 435,
+      page: 2,
+      pageCount: 16,
+      unsupported: ["review:approved"],
+    });
+    const fresh = await forgePulls(REPO, "open");
+    expect(fresh).toMatchObject({
+      openCount: 23,
+      page: 2,
+      pageCount: 16,
+      unsupported: ["review:approved"],
+    });
+    expect(fresh.items[0]?.checks).toEqual({
+      rollup: "failure",
+      passed: 5,
+      total: 7,
+    });
+  });
+
+  it("审查者、提交与筛选候选各一条路由", async () => {
+    ok({ reviewers: [{ login: "o", state: "approved", submittedAtMs: null }] });
+    expect(await forgePullReviewers(REPO, 4)).toHaveLength(1);
+    expect(procedure()).toBe("forge/pullReviewers");
+    expect(sent()).toEqual({ ...REPO, number: 4 });
+    calls = [];
+    ok({ commits: [] });
+    await forgePullCommits(REPO, 4);
+    expect(procedure()).toBe("forge/pullCommits");
+    calls = [];
+    ok({});
+    expect(await forgeFacets(REPO, "ws-1")).toEqual({
+      labels: [],
+      milestones: [],
+      assignees: [],
+    });
+    expect(procedure()).toBe("forge/facets");
+    expect(sent()).toEqual({ ...REPO, workspaceId: "ws-1" });
   });
 });

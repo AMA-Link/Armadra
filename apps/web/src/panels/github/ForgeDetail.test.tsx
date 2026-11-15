@@ -11,6 +11,8 @@ const forgeApi = vi.hoisted(() => ({
   forgePullComments: vi.fn(),
   forgePullFiles: vi.fn(),
   forgePullChecks: vi.fn(),
+  forgePullReviewers: vi.fn(),
+  forgePullCommits: vi.fn(),
 }));
 vi.mock("../../api/forge", async (original) => ({
   ...(await original<typeof import("../../api/forge")>()),
@@ -23,6 +25,7 @@ vi.mock("@/platform", async (original) => ({
 }));
 
 import { usePreferencesStore } from "../../app/preferences-store";
+import { forgePullExtSchema } from "../../api/forge";
 import { ChecksView, ForgeChecksSummary } from "./ForgeChecksSummary";
 import { IssueDetail, PullDetail, closedIssues } from "./ForgeDetail";
 import { ForgeItemRow } from "./ForgeItemRow";
@@ -194,7 +197,9 @@ describe("Issue 详情", () => {
 
 describe("PR 详情", () => {
   beforeEach(() => {
-    forgeApi.forgePull.mockResolvedValue(pull);
+    forgeApi.forgePull.mockResolvedValue(forgePullExtSchema.parse(pull));
+    forgeApi.forgePullReviewers.mockResolvedValue([]);
+    forgeApi.forgePullCommits.mockResolvedValue([]);
     forgeApi.forgePullChecks.mockResolvedValue(checks);
     forgeApi.forgePullComments.mockResolvedValue(comments);
     forgeApi.forgePullFiles.mockResolvedValue([
@@ -230,17 +235,73 @@ describe("PR 详情", () => {
     expect(await screen.findByText("main ← feature/login")).toBeTruthy();
     expect(screen.getAllByText("Closes #21").length).toBeGreaterThan(0);
     expect(await screen.findByText("检查 2 / 4 通过")).toBeTruthy();
-    expect(await screen.findByText("2 个文件")).toBeTruthy();
+    // 旧 core 不给增删行：用改动文件页的合计顶上
+    expect(await screen.findByText(/2 个文件/)).toBeTruthy();
     expect(screen.getByText("+5")).toBeTruthy();
     expect(await screen.findByText("ship it")).toBeTruthy();
     expect(
       screen.getByText("通过", { selector: "[data-slot=forge-review-state]" }),
     ).toBeTruthy();
-    // 评论只在动态页，不在概览
-    expect(screen.queryByText("thanks")).toBeNull();
+    // 动态时间线在概览里
+    expect(await screen.findByText("thanks")).toBeTruthy();
   });
 
-  it("文件页与动态页", async () => {
+  it("概览：作者、审查者、指派、标签、里程碑、关联与合并状态卡", async () => {
+    forgeApi.forgePull.mockResolvedValue(
+      forgePullExtSchema.parse({
+        ...pull,
+        labels: ["core"],
+        assignees: ["dave"],
+        milestone: "v0.18.0",
+        reviewDecision: "changesRequested",
+        additions: 842,
+        deletions: 97,
+        changedFiles: 12,
+        commitCount: 3,
+        linkedIssues: [947],
+        authorAssociation: "member",
+        mergeable: "conflicting",
+      }),
+    );
+    forgeApi.forgePullReviewers.mockResolvedValue([
+      { login: "owlbay", state: "approved", submittedAtMs: AT },
+      { login: "reviewer", state: "changesRequested", submittedAtMs: AT },
+    ]);
+    wrap(
+      <PullDetail
+        repo={REPO}
+        scope={null}
+        number={12}
+        locale="zh-CN"
+        onBack={() => {}}
+      />,
+    );
+    expect(await screen.findByText("成员")).toBeTruthy();
+    expect(await screen.findByText("owlbay")).toBeTruthy();
+    expect(screen.getByText("要求修改")).toBeTruthy();
+    expect(screen.getByText("dave")).toBeTruthy();
+    expect(screen.getByText("v0.18.0")).toBeTruthy();
+    expect(screen.getByText("Closes #947")).toBeTruthy();
+    expect(screen.getByText("+842")).toBeTruthy();
+    expect(screen.getByText("−97")).toBeTruthy();
+    expect(screen.getByText(/想把 3 个提交合进/)).toBeTruthy();
+    const card = document.querySelector("[data-slot=forge-merge-status]");
+    expect(card?.textContent).toContain("需要修改");
+    expect(card?.textContent).toContain("1 位审查者要求修改");
+    expect(card?.textContent).toContain("1 位已批准");
+    expect(card?.textContent).toContain("与 main 有冲突");
+  });
+
+  it("提交页：forge.pullCommits 的列表", async () => {
+    forgeApi.forgePullCommits.mockResolvedValue([
+      {
+        sha: "abcdef1234567",
+        title: "feat: login",
+        author: "alice",
+        authoredAtMs: AT,
+        url: "https://git.example.test/c/abcdef1",
+      },
+    ]);
     wrap(
       <PullDetail
         repo={REPO}
@@ -251,10 +312,40 @@ describe("PR 详情", () => {
       />,
     );
     await screen.findByText("main ← feature/login");
-    fireEvent.mouseDown(screen.getByRole("tab", { name: "文件" }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /^提交/ }));
+    expect(await screen.findByText("feat: login")).toBeTruthy();
+    expect(screen.getByText("abcdef1")).toBeTruthy();
+  });
+
+  it("旧 core 没有审查者与提交路由：概览照常渲染", async () => {
+    forgeApi.forgePullReviewers.mockRejectedValue(new Error("501"));
+    forgeApi.forgePullCommits.mockRejectedValue(new Error("501"));
+    wrap(
+      <PullDetail
+        repo={REPO}
+        scope={null}
+        number={12}
+        locale="zh-CN"
+        onBack={() => {}}
+      />,
+    );
+    expect(await screen.findByText("main ← feature/login")).toBeTruthy();
+    expect(document.querySelector("[data-slot=forge-reviewer]")).toBeNull();
+  });
+
+  it("文件页", async () => {
+    wrap(
+      <PullDetail
+        repo={REPO}
+        scope={null}
+        number={12}
+        locale="zh-CN"
+        onBack={() => {}}
+      />,
+    );
+    await screen.findByText("main ← feature/login");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /^文件/ }));
     expect(await screen.findByText("a.ts")).toBeTruthy();
-    fireEvent.mouseDown(screen.getByRole("tab", { name: "动态" }));
-    expect(await screen.findByText("thanks")).toBeTruthy();
   });
 });
 
