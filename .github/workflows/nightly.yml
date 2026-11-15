@@ -313,7 +313,10 @@ jobs:
     if: ${{ needs.gate.outputs.run == 'true' && inputs.scenario != 'private-channels' && inputs.scenario != 'windows-acceptance' }}
     name: mobile (android emulator)
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # 模拟器崩溃时重启重跑一次（#921），要容得下两轮插桩步骤。
+    timeout-minutes: 90
+    outputs:
+      emulator_crashes: ${{ steps.crashes.outputs.crashes }}
     steps:
       # 构建号是提交数（apps/mobile/scripts/app-version.mjs），浅克隆数不出来。
       - uses: actions/checkout@v4
@@ -395,7 +398,12 @@ jobs:
       # 探针自己给每条 Gradle / adb 命令设了上限并在超时时抓 logcat、截图与线程栈（bounded-run.mjs），
       # 这里的 30 分钟是兜底（模拟器起不来、探针自己卡住）：到点步骤失败而不是作业被取消，
       # 后面的「上传产物」与 report 照常运行。
+      # 模拟器的 qemu 进程在 runner 的嵌套虚拟化里会随机段错误（#485，换镜像、构建、CPU 都避不开），
+      # 所以这一步失败先不判红：result.json 判定为「模拟器进程中途消失」时把这一轮的产物挪进
+      # attempt-1/、重启模拟器重跑一次（#921）；用例断言失败、超时不重试，直接判红。
       - name: 连接 → 配对 → 画布（插桩用例）
+        id: e2e
+        continue-on-error: true
         timeout-minutes: 30
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -404,6 +412,41 @@ jobs:
           arch: x86_64
           disable-animations: true
           script: node tools/probes/mobile-shell-e2e.mjs --platform android target/mobile-shell-e2e/android
+      - name: 模拟器中途崩溃了吗
+        id: crash
+        if: ${{ steps.e2e.outcome == 'failure' }}
+        timeout-minutes: 2
+        shell: bash
+        run: node tools/probes/android-host-watch.mjs archive target/mobile-shell-e2e/android | tee -a "$GITHUB_OUTPUT"
+      - name: 用例失败（不是模拟器崩溃，不重试）
+        if: ${{ steps.e2e.outcome == 'failure' && steps.crash.outputs.crashed != 'true' }}
+        shell: bash
+        run: |
+          echo "::error::插桩步骤失败，result.json 没有判定为模拟器进程中途消失：按用例断言失败或超时处理，看 result.json 与 gradle-connected*.log"
+          exit 1
+      - name: 重启模拟器重跑一次（上一轮模拟器进程段错误）
+        if: ${{ steps.crash.outputs.crashed == 'true' }}
+        timeout-minutes: 30
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: node tools/probes/mobile-shell-e2e.mjs --platform android target/mobile-shell-e2e/android
+      - name: 记模拟器崩溃次数
+        id: crashes
+        if: ${{ !cancelled() }}
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=$(node tools/probes/android-host-watch.mjs tally target/mobile-shell-e2e/android)
+          echo "$out" | tee -a "$GITHUB_OUTPUT"
+          crashes=${out#crashes=}
+          if [ "$crashes" != "0" ]; then
+            echo "模拟器进程中途消失 $crashes 次（qemu 段错误，#485），现场在产物 mobile-android 的 attempt-*/ 与 host-watch*.log" >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: 上传产物
         if: ${{ !cancelled() }}
         timeout-minutes: 10
@@ -414,6 +457,8 @@ jobs:
             target/mobile/*.apk
             target/mobile-shell-e2e/android/result.json
             target/mobile-shell-e2e/android/*.log
+            # 模拟器崩溃后重跑时，崩溃那一轮的 result.json 与日志（#921）。
+            target/mobile-shell-e2e/android/attempt-*/
             apps/mobile/android/armadra-native-core/build/reports/tests/
             # 插桩用例的报告与逐条用例的 logcat（「Process crashed」时栈只在这里）。
             apps/mobile/android/app/build/reports/androidTests/
@@ -567,6 +612,10 @@ jobs:
     permissions:
       issues: write
     steps:
+      # 只要拼正文的脚本（tools/ci/nightly-report.mjs）。
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/ci
       - name: 开 issue 或追加评论
         shell: bash
         env:
@@ -581,13 +630,15 @@ jobs:
           MACOS_FAILED: ${{ needs.macos.outputs.failed }}
           MOBILE_IOS_RESULT: ${{ needs.mobile-ios.result }}
           MOBILE_ANDROID_RESULT: ${{ needs.mobile-android.result }}
+          MOBILE_ANDROID_CRASHES: ${{ needs.mobile-android.outputs.emulator_crashes }}
           WINDOWS_RESULT: ${{ needs.windows-acceptance.result }}
+          WINDOWS_PRIVATE_RESULT: ${{ needs.windows-private-channels.result }}
           HYGIENE_RESULT: ${{ needs.hygiene.result }}
         run: |
           set -euo pipefail
           title="夜间 B 档失败"
-          body="$(printf '运行：%s\n\n| 作业 | 结果 | 失败的条目 |\n| --- | --- | --- |\n| linux | %s | %s |\n| linux-arm64 | %s | %s |\n| macos | %s | %s |\n| mobile-ios | %s | mobile-shell-e2e |\n| mobile-android | %s | mobile-shell-e2e |\n| windows-acceptance | %s | 见产物 windows-acceptance/result.json |\n| hygiene | %s | pnpm audit --prod 有 high 及以上漏洞 |\n\n条目为空而结果是 failure 时，失败在打包或 glibc 校验，看运行日志；结果是 cancelled 是作业超时或整次运行被取消。\n' \
-            "$RUN_URL" "$LINUX_RESULT" "${LINUX_FAILED:--}" "$LINUX_ARM64_RESULT" "${LINUX_ARM64_FAILED:--}" "$MACOS_RESULT" "${MACOS_FAILED:--}" "$MOBILE_IOS_RESULT" "$MOBILE_ANDROID_RESULT" "$WINDOWS_RESULT" "$HYGIENE_RESULT")"
+          # 失败的条目只在作业结果是 failure 时写（#921：以前成功的作业也列着写死的条目）。
+          body="$(node tools/ci/nightly-report.mjs)"
           existing="$(gh issue list --state open --search "\"$title\" in:title" --json number,title \
             --jq ".[] | select(.title == \"$title\") | .number" | head -n 1)"
           if [ -n "$existing" ]; then
