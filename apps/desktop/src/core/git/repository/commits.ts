@@ -172,6 +172,8 @@ export async function commitFileDiff(
             file,
           ],
     MAX_PATCH_BYTES + 4,
+    undefined,
+    { literalPathspecs: true },
   );
   const raw = read.stdout;
   const truncated = read.truncated || raw.length > MAX_PATCH_BYTES;
@@ -188,6 +190,19 @@ export async function commitFileDiff(
 }
 
 /**
+ * Renames per compared pair, so clicking through a commit's files runs the
+ * whole-tree `--name-status` once rather than once per file. Both sides are
+ * object IDs, so an entry never goes stale; the bound and the short lifetime
+ * only keep the map small.
+ */
+const RENAME_CACHE_MAX = 32;
+const RENAME_CACHE_TTL_MS = 5 * 60_000;
+const renameCache = new Map<
+  string,
+  { readonly at: number; readonly renames: Promise<Map<string, string>> }
+>();
+
+/**
  * The path `file` was renamed from between `baseOid` and `oid`, read with the
  * same `--name-status` the file list uses so the two agree; `undefined` when it
  * was not renamed.
@@ -199,17 +214,36 @@ async function renameSource(
   oid: string,
   file: string,
 ): Promise<string | undefined> {
-  const names = await service.read(context.repository, [
-    "diff",
-    "--no-ext-diff",
-    "--no-textconv",
-    "--name-status",
-    "-z",
-    baseOid,
-    oid,
-    "--",
-  ]);
-  return parseRenames(names.toString("utf8")).get(file);
+  const key = `${context.repository}\0${baseOid}\0${oid}`;
+  const now = Date.now();
+  let entry = renameCache.get(key);
+  if (entry === undefined || now - entry.at > RENAME_CACHE_TTL_MS) {
+    const renames = service
+      .read(context.repository, [
+        "diff",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--name-status",
+        "-z",
+        baseOid,
+        oid,
+        "--",
+      ])
+      .then((names) => parseRenames(names.toString("utf8")));
+    entry = { at: now, renames };
+    renameCache.delete(key);
+    while (renameCache.size >= RENAME_CACHE_MAX) {
+      const oldest = renameCache.keys().next();
+      if (oldest.done === true) break;
+      renameCache.delete(oldest.value);
+    }
+    renameCache.set(key, entry);
+    // A failed read is not remembered: the next click asks again.
+    renames.catch(() => {
+      if (renameCache.get(key) === entry) renameCache.delete(key);
+    });
+  }
+  return (await entry.renames).get(file);
 }
 
 /** Whether cutting `bytes` at `end` lands between two UTF-8 sequences. */

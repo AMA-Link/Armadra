@@ -393,6 +393,70 @@ describe("commit detail", () => {
     expect(patch.truncated).toBe(false);
   });
 
+  it("reads a path with glob characters literally", async () => {
+    const repo = repository("commit-literal-path");
+    // `[id]` as a glob also matches `i` and `d`: all three change together.
+    for (const dir of ["[id]", "i", "d"]) {
+      repo.write(`app/${dir}/page.tsx`, `${dir} one\n`);
+    }
+    const base = repo.commit("pages");
+    for (const dir of ["[id]", "i", "d"]) {
+      repo.write(`app/${dir}/page.tsx`, `${dir} two\n`);
+    }
+    const oid = repo.commit("edit pages");
+    const patch = await commitFileDiff(
+      service(),
+      repo.path,
+      ".",
+      oid,
+      base,
+      "app/[id]/page.tsx",
+    );
+    expect(patch.patch).toContain("+[id] two");
+    expect(patch.patch).not.toContain("app/i/page.tsx");
+    expect(patch.patch).not.toContain("app/d/page.tsx");
+  });
+
+  it("shows a rename into a path with glob characters, and lists renames once per pair", async () => {
+    const repo = repository("commit-rename-literal");
+    const body = Array.from({ length: 40 }, (_, i) => `row ${i}`).join("\n");
+    repo.write("app/i/page.tsx", "other\n");
+    repo.write("app/old.tsx", `${body}\n`);
+    repo.commit("seed pages");
+    mkdirSync(join(repo.path, "app", "[id]"), { recursive: true });
+    repo.git("mv", "app/old.tsx", "app/[id]/page.tsx");
+    repo.write("app/i/page.tsx", "other changed\n");
+    repo.write("app/other.txt", "x\n");
+    const oid = repo.commit("move page");
+    const repositoryService = service();
+    const names: string[][] = [];
+    const read = repositoryService.read.bind(repositoryService);
+    repositoryService.read = (directory, args, signal) => {
+      if (args.includes("--name-status")) names.push([...args]);
+      return read(directory, args, signal);
+    };
+    const patch = await commitFileDiff(
+      repositoryService,
+      repo.path,
+      ".",
+      oid,
+      undefined,
+      "app/[id]/page.tsx",
+    );
+    expect(patch.patch).toContain("rename from app/old.tsx");
+    expect(patch.patch).toContain("rename to app/[id]/page.tsx");
+    expect(patch.patch).not.toContain("app/i/page.tsx");
+    await commitFileDiff(
+      repositoryService,
+      repo.path,
+      ".",
+      oid,
+      undefined,
+      "app/other.txt",
+    );
+    expect(names).toHaveLength(1);
+  });
+
   it("treats a root commit as all additions", async () => {
     const repo = repository("commit-root");
     const first = run(repo.path, "rev-list", "--max-parents=0", "HEAD").trim();

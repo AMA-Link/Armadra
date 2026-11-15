@@ -297,6 +297,12 @@ export class RepositoryService {
       /** A bounded read: see `RunOptions.truncateStdout` in `../command`. */
       readonly stdoutLimit?: number;
       readonly truncateStdout?: boolean;
+      /**
+       * Paths after `--` are paths, not globs: `app/[id]/page.tsx` must not
+       * also match `app/i/page.tsx`. A global option, so it goes in the prefix
+       * (before the verb `gitArguments` checks).
+       */
+      readonly literalPathspecs?: boolean;
     } = {},
   ): Promise<CommandOutput> {
     if (this.lifecycle.stopping) throw shuttingDown();
@@ -304,7 +310,10 @@ export class RepositoryService {
     const askpass = this.askpass();
     return runGit({
       cwd: directory,
-      prefix: REPOSITORY_PREFIX,
+      prefix:
+        options.literalPathspecs === true
+          ? [...REPOSITORY_PREFIX, "--literal-pathspecs"]
+          : REPOSITORY_PREFIX,
       args: prepared,
       timeoutMs,
       stdoutLimit: options.stdoutLimit ?? REPOSITORY_STDOUT_LIMIT,
@@ -357,13 +366,20 @@ export class RepositoryService {
     args: readonly string[],
     limit: number,
     signal?: AbortSignal,
+    options: { readonly literalPathspecs?: boolean } = {},
   ): Promise<{ stdout: Buffer; truncated: boolean }> {
     const output = await this.output(
       directory,
       args,
       Math.min(this.commandTimeoutMs, 15_000),
       signal,
-      { stdoutLimit: limit, truncateStdout: true },
+      {
+        stdoutLimit: limit,
+        truncateStdout: true,
+        ...(options.literalPathspecs === true
+          ? { literalPathspecs: true }
+          : {}),
+      },
     );
     if (output.truncated === true) {
       return { stdout: output.stdout, truncated: true };
