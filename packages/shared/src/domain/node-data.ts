@@ -386,7 +386,11 @@ export const forgeRepoRefSchema = z.object({
 export const FORGE_TABS = ["issues", "pulls"] as const;
 export const FORGE_VIEWS = ["list", "board"] as const;
 export const FORGE_ITEM_KINDS = ["issue", "pull"] as const;
-export const FORGE_QUERY_MAX = 500;
+/**
+ * 代码托管搜索串的上限（字符）：节点数据、core 的列表路由与搜索栏共用这一个数，
+ * 存得下的就查得了，查得了的也存得下。
+ */
+export const FORGE_QUERY_MAX = 512;
 
 /**
  * 画布上的代码托管节点（#934）：内容是侧边面板那一份列表与详情，节点只记

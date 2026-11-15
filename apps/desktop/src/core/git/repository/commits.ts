@@ -7,7 +7,12 @@ import {
   requireOid,
   validOid,
 } from "../support";
-import { parseHistory, parseNameStatus, parseNumstat } from "./parse";
+import {
+  parseHistory,
+  parseNameStatus,
+  parseNumstat,
+  parseRenames,
+} from "./parse";
 import { RepositoryService, type RepositoryContext } from "./service";
 import type {
   CommitDetail,
@@ -130,6 +135,12 @@ export async function commitFileDiff(
   const context = await service.context(workspaceRoot, requested);
   const commit = await singleCommit(service, context, oid);
   const baseOid = await resolveBase(service, context, commit, base);
+  // The file list names a renamed file by its new path; limited to that path
+  // the patch would read as a whole-file addition, so the old path goes in too.
+  const renamedFrom =
+    baseOid === null
+      ? undefined
+      : await renameSource(service, context, baseOid, oid, file);
   // A single file can be far larger than the repository read budget: read a
   // bounded slice (a few bytes past the cut, so it can land on a character
   // boundary) and report `truncated` rather than failing the request.
@@ -147,7 +158,19 @@ export async function commitFileDiff(
           "--",
           file,
         ]
-      : ["diff", "--no-ext-diff", "--no-textconv", baseOid, oid, "--", file],
+      : renamedFrom === undefined
+        ? ["diff", "--no-ext-diff", "--no-textconv", baseOid, oid, "--", file]
+        : [
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "-M",
+            baseOid,
+            oid,
+            "--",
+            renamedFrom,
+            file,
+          ],
     MAX_PATCH_BYTES + 4,
   );
   const raw = read.stdout;
@@ -162,6 +185,31 @@ export async function commitFileDiff(
     patch = raw.toString("utf8");
   }
   return { oid: commit.oid, baseOid, path: file, patch, truncated };
+}
+
+/**
+ * The path `file` was renamed from between `baseOid` and `oid`, read with the
+ * same `--name-status` the file list uses so the two agree; `undefined` when it
+ * was not renamed.
+ */
+async function renameSource(
+  service: RepositoryService,
+  context: RepositoryContext,
+  baseOid: string,
+  oid: string,
+  file: string,
+): Promise<string | undefined> {
+  const names = await service.read(context.repository, [
+    "diff",
+    "--no-ext-diff",
+    "--no-textconv",
+    "--name-status",
+    "-z",
+    baseOid,
+    oid,
+    "--",
+  ]);
+  return parseRenames(names.toString("utf8")).get(file);
 }
 
 /** Whether cutting `bytes` at `end` lands between two UTF-8 sequences. */

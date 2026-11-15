@@ -222,6 +222,32 @@ export function parseNumstat(
 }
 
 /**
+ * Renames in `--name-status -z` output: destination path → source path. A
+ * patch for the destination alone reads as a whole-file addition; showing the
+ * rename needs both paths in the pathspec.
+ */
+export function parseRenames(output: string): Map<string, string> {
+  const renames = new Map<string, string>();
+  const fields = output.split("\0").filter((field) => field !== "");
+  for (let index = 0; index < fields.length; index += 1) {
+    const code = fields[index] as string;
+    if (validOid(code)) continue;
+    const paired = code.startsWith("R") || code.startsWith("C");
+    const source = fields[index + 1];
+    if (source === undefined) break;
+    index += 1;
+    if (!paired) continue;
+    const destination = fields[index + 1];
+    if (destination === undefined) break;
+    index += 1;
+    if (code.startsWith("R")) {
+      renames.set(destination.replace(/\\/g, "/"), source.replace(/\\/g, "/"));
+    }
+  }
+  return renames;
+}
+
+/**
  * `--name-status -z` → `<code> \0 <path> \0`, with renames emitting
  * `R100 \0 <old> \0 <new> \0`.
  */

@@ -359,6 +359,40 @@ describe("commit detail", () => {
     expect(patch.patch).not.toContain("\uFFFD");
   });
 
+  it("shows a renamed file as a rename, not a whole-file addition", async () => {
+    const repo = repository("commit-rename");
+    const body = Array.from({ length: 40 }, (_, i) => `line ${i}`).join("\n");
+    repo.write("old.txt", `${body}\n`);
+    repo.commit("add old");
+    repo.git("mv", "old.txt", "new.txt");
+    repo.write("new.txt", `${body}\nextra\n`);
+    const oid = repo.commit("rename");
+    const repositoryService = service();
+    const detail = await commitDetail(
+      repositoryService,
+      repo.path,
+      ".",
+      oid,
+      undefined,
+    );
+    expect(detail.files).toEqual([
+      expect.objectContaining({ path: "new.txt", status: "R" }),
+    ]);
+    const patch = await commitFileDiff(
+      repositoryService,
+      repo.path,
+      ".",
+      oid,
+      undefined,
+      "new.txt",
+    );
+    expect(patch.patch).toContain("rename from old.txt");
+    expect(patch.patch).toContain("rename to new.txt");
+    expect(patch.patch).toContain("+extra");
+    expect(patch.patch).not.toContain("new file mode");
+    expect(patch.truncated).toBe(false);
+  });
+
   it("treats a root commit as all additions", async () => {
     const repo = repository("commit-root");
     const first = run(repo.path, "rev-list", "--max-parents=0", "HEAD").trim();
