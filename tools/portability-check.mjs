@@ -11,6 +11,8 @@
  *   平台拼、测试按 `:` 拼，两边对不上（#950）。改成 `[a, b].join(delimiter)`、
  *   `` `${bin}${delimiter}${PATH}` ``（`import { delimiter } from "node:path"`）。
  *
+ * 显式按 POSIX 目标调用的不算：同一个调用里带 `"linux"` / `"darwin"` 实参或
+ * `{ platform: "linux" }`（被测代码按目标平台选分隔符）。
  * 只在 Windows 之外才跑的代码不算：`describe.skipIf(process.platform === "win32")`、
  * `it.runIf(...)` 等门控的回调里，`describeUnix` 这类按 `win32` 选出来的别名，条件里提到
  * `win32` / `isWindows` 的 `if` 与三元，以及前面有 `if (… win32 …) return` 的函数体。
@@ -94,6 +96,23 @@ function isPathTarget(node) {
   return false;
 }
 
+const POSIX_PLATFORMS = new Set(["linux", "darwin", "freebsd", "openbsd"]);
+
+/** `"linux"` 这样的实参，或带 `platform: "linux"` 的对象实参。 */
+function posixTarget(node) {
+  if (ts.isStringLiteral(node)) return POSIX_PLATFORMS.has(node.text);
+  return (
+    ts.isObjectLiteralExpression(node) &&
+    node.properties.some(
+      (property) =>
+        ts.isPropertyAssignment(property) &&
+        propertyName(property.name) === "platform" &&
+        ts.isStringLiteral(property.initializer) &&
+        POSIX_PLATFORMS.has(property.initializer.text),
+    )
+  );
+}
+
 /** 表达式提到了平台：`win32` 字样，或按 `win32` 算出来的变量（`unix`、`describeUnix`）。 */
 function mentionsPlatform(node, source, aliases) {
   if (WINDOWS_WORDS.test(node.getText(source))) return true;
@@ -113,6 +132,14 @@ function gatedOffWindows(node, source, aliases) {
     mentionsPlatform(expression, source, aliases);
   for (let current = node; current.parent; current = current.parent) {
     const parent = current.parent;
+    // 显式按 POSIX 目标调用的：同一个调用里带着 "linux" / "darwin" 实参，或
+    // `{ platform: "linux" }`。被测代码按目标平台选分隔符，`:` 正是对的。
+    if (
+      ts.isCallExpression(parent) &&
+      parent.arguments.includes(current) &&
+      parent.arguments.some(posixTarget)
+    )
+      return true;
     // describe.skipIf(cond)(…) / it.runIf(cond)(…)：回调在外层调用的参数里。
     if (ts.isCallExpression(parent) && parent.arguments.includes(current)) {
       const callee = parent.expression;

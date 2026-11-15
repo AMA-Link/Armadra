@@ -32,6 +32,8 @@ describe("PATH 用 `:` 写死", () => {
       'const f = { PATH: [x, y].join(win ? ";" : ":") };',
       'const g = "PATH=/usr/bin:/bin";',
       'const h = line.split(":");',
+      'findExecutable("bwrap", { PATH: "/a:/b" }, check, "linux");',
+      'probe({ platform: "darwin", env: { PATH: "/a:/b" } });',
     ].join("\n");
     assert.deepEqual(lines(text), []);
   });
