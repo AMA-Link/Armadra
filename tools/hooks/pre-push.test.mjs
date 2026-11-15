@@ -5,11 +5,14 @@ import { dirname, join } from "node:path";
 import { after, describe, it } from "node:test";
 
 import {
+  cleanEnv,
   isDocsOnly,
+  parseStatus,
   parsePushLines,
   parseSkip,
   planChecks,
   refsToCheck,
+  workingTreeReport,
 } from "./pre-push.mjs";
 import { anchorsOf, distinctive, mapProbes } from "./probe-map.mjs";
 
@@ -44,7 +47,55 @@ describe("推送的 ref", () => {
   });
 });
 
+describe("工作区", () => {
+  it("porcelain -z：首行前导空格、带空格的路径与改名都解析对", () => {
+    const text = [
+      " M apps/web/a.ts",
+      "?? tools/new file.mjs",
+      "R  new.ts",
+      "old.ts",
+      "MM b.md",
+      "",
+    ].join("\0");
+    assert.deepEqual(parseStatus(text), [
+      { code: " M", path: "apps/web/a.ts" },
+      { code: "??", path: "tools/new file.mjs" },
+      { code: "R ", path: "new.ts" },
+      { code: "MM", path: "b.md" },
+    ]);
+  });
+
+  it("未跟踪的源码单列（默认拦），范围内外的修改分开", () => {
+    const report = workingTreeReport(
+      parseStatus(
+        ["?? tools/x.mjs", "?? notes.txt", " M a.ts", " M b.ts", ""].join("\0"),
+      ),
+      new Set(["a.ts"]),
+    );
+    assert.deepEqual(report, {
+      untrackedCode: ["tools/x.mjs"],
+      untrackedOther: ["notes.txt"],
+      outside: ["b.ts"],
+      inside: ["a.ts"],
+    });
+  });
+
+  it("子进程环境去掉全部 GIT_*", () => {
+    assert.deepEqual(
+      cleanEnv({ GIT_DIR: "/x", GIT_INDEX_FILE: "/y", HOME: "/h" }),
+      { HOME: "/h" },
+    );
+  });
+});
+
 describe("挑检查", () => {
+  it("改 electron-builder 配置跑 release:test（stage-desktop 的用例读它）", () => {
+    const plan = planChecks(["apps/desktop/electron-builder.yml"], {
+      base: SHA,
+    });
+    assert.ok(ids(plan.statics).includes("release:test"));
+  });
+
   it("只改文档与 CI 的判定一致：契约与第三方声明不算文档", () => {
     assert.equal(isDocsOnly(["docs/guides/a.md", "README.md"]), true);
     assert.equal(isDocsOnly(["docs/contracts/core-json-api.md"]), false);

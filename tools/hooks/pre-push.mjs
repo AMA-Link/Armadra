@@ -72,6 +72,8 @@ const LINT_GLOBAL = [
   /(^|\/)tsconfig[^/]*\.json$/,
 ];
 const LINTABLE = /\.(c|m)?(j|t)sx?$/;
+/** 未跟踪时会被类型检查、lint 或测试读到的源码。 */
+const SOURCE = /\.(tsx?|mjs|js)$/;
 const TEST_SOURCE = /\.(test|spec)\.[cm]?[jt]sx?$|\/test-setup\.ts$/;
 
 /** node:test 组：改了 `when` 里的路径才跑（根 package.json 与锁文件变了全跑）。 */
@@ -82,7 +84,8 @@ export const NODE_SUITES = [
   },
   {
     id: "release:test",
-    when: /^(tools\/(release|ci|dev-stack|probes)\/|tools\/notices|\.github\/workflows\/)/,
+    // stage-desktop.test.mjs 读 apps/desktop/electron-builder.yml。
+    when: /^(tools\/(release|ci|dev-stack|probes)\/|tools\/notices|\.github\/workflows\/|apps\/desktop\/electron-builder)/,
   },
   { id: "plugin:test", when: /^tools\/plugins\// },
   {
@@ -241,9 +244,66 @@ export function parseSkip(value) {
   };
 }
 
+/**
+ * 去掉 GIT_* 的环境。git 给钩子设的 GIT_DIR、GIT_INDEX_FILE 等会被子进程继承：
+ * 测试在临时目录里起的 git 会改到本仓库（曾把 core.bare 写成 true）。
+ */
+export function cleanEnv(env = process.env) {
+  return Object.fromEntries(
+    Object.entries(env).filter(([name]) => !name.startsWith("GIT_")),
+  );
+}
+
+function gitRaw(args) {
+  const result = spawnSync("git", args, {
+    cwd: ROOT,
+    encoding: "utf8",
+    env: cleanEnv(),
+  });
+  return result.status === 0 ? result.stdout : null;
+}
+
 function git(args) {
-  const result = spawnSync("git", args, { cwd: ROOT, encoding: "utf8" });
-  return result.status === 0 ? result.stdout.trim() : null;
+  return gitRaw(args)?.trim() ?? null;
+}
+
+/** `git status --porcelain -z` 的条目：`{ code, path }`；改名只取新路径。 */
+export function parseStatus(text) {
+  const entries = [];
+  const parts = text.split("\0");
+  for (let index = 0; index < parts.length; index += 1) {
+    const part = parts[index];
+    if (part.length < 4) continue;
+    const code = part.slice(0, 2);
+    entries.push({ code, path: part.slice(3) });
+    // 改名、复制的下一段是原路径。
+    if (code[0] === "R" || code[0] === "C") index += 1;
+  }
+  return entries;
+}
+
+/**
+ * 工作区里推送范围之外的东西：未跟踪的源码（`code`，默认拦）、其它未跟踪文件、
+ * 范围外与范围内的未提交修改。检查跑在工作区上，这些都会让结果与 CI 不同。
+ */
+export function workingTreeReport(entries, changed, sourcePattern = SOURCE) {
+  const report = {
+    untrackedCode: [],
+    untrackedOther: [],
+    outside: [],
+    inside: [],
+  };
+  for (const { code, path } of entries) {
+    if (code === "??") {
+      (sourcePattern.test(path)
+        ? report.untrackedCode
+        : report.untrackedOther
+      ).push(path);
+    } else if (code !== "!!") {
+      (changed.has(path) ? report.inside : report.outside).push(path);
+    }
+  }
+  return report;
 }
 
 function hasCommit(sha) {
@@ -259,12 +319,31 @@ function defaultBranch(remote) {
   return null;
 }
 
-/** 一个 ref 的基点：已有的远端分支用远端旧值（强推时取合并基点），新分支用缺省分支的合并基点。 */
+/**
+ * 一个 ref 的基点：远端旧值与本地新值的合并基点、缺省分支与本地新值的合并基点，
+ * 取更靠近本地新值的那个。新分支只有后者；变基后强推时前者落在很早的地方，后者才对。
+ */
 function baseOf(update, remote) {
-  if (!ZERO.test(update.remoteSha) && hasCommit(update.remoteSha))
-    return git(["merge-base", update.remoteSha, update.localSha]);
   const branch = defaultBranch(remote);
-  return branch ? git(["merge-base", branch, update.localSha]) : null;
+  const candidates = [
+    !ZERO.test(update.remoteSha) && hasCommit(update.remoteSha)
+      ? git(["merge-base", update.remoteSha, update.localSha])
+      : null,
+    branch ? git(["merge-base", branch, update.localSha]) : null,
+  ].filter(Boolean);
+  if (candidates.length < 2) return candidates[0] ?? null;
+  const [fromRemote, fromBranch] = candidates;
+  // fromRemote 是 fromBranch 的祖先：fromBranch 更近。
+  return isAncestor(fromRemote, fromBranch) ? fromBranch : fromRemote;
+}
+
+function isAncestor(older, newer) {
+  return (
+    spawnSync("git", ["merge-base", "--is-ancestor", older, newer], {
+      cwd: ROOT,
+      env: cleanEnv(),
+    }).status === 0
+  );
 }
 
 function runStep(step, env) {
@@ -275,7 +354,7 @@ function runStep(step, env) {
     const child = spawn("pnpm", step.args, {
       cwd: join(ROOT, step.cwd ?? "."),
       shell: isWindows,
-      env: { ...process.env, FORCE_COLOR: "0", ...env },
+      env: { ...cleanEnv(), FORCE_COLOR: "0", ...env },
     });
     child.stdout.on("data", (chunk) => chunks.push(chunk));
     child.stderr.on("data", (chunk) => chunks.push(chunk));
@@ -390,8 +469,7 @@ async function probes(files) {
 }
 
 async function main(argv, input) {
-  // git 给钩子设的 GIT_DIR、GIT_INDEX_FILE 等会被子进程继承：测试在临时目录里起的 git
-  // 会找错仓库（「must be run in a work tree」）。和 CI 一样干净，全部去掉。
+  // 子进程一律不带 GIT_*（见 cleanEnv）。
   for (const name of Object.keys(process.env))
     if (name.startsWith("GIT_")) delete process.env[name];
   const skip = parseSkip(process.env.ARMADRA_SKIP_PREPUSH);
@@ -401,6 +479,14 @@ async function main(argv, input) {
   if (refs.length === 0) return 0;
 
   const head = git(["rev-parse", "HEAD"]);
+  const elsewhere = refs.find((ref) => ref.localSha !== head);
+  if (elsewhere) {
+    // 检查只能跑在工作区上；推的不是当前检出，跑了也说明不了推上去的内容。
+    console.log(
+      `pre-push：未检查：推送的提交不是当前检出（${elsewhere.localRef} ${elsewhere.localSha.slice(0, 9)}，HEAD ${head?.slice(0, 9) ?? "无"}）`,
+    );
+    return 0;
+  }
   const files = new Set();
   let base = null;
   let unknownBase = false;
@@ -425,23 +511,34 @@ async function main(argv, input) {
   }
   mkdirSync(LOG_DIR, { recursive: true });
 
-  const plan = planChecks(changed, {
-    base: unknownBase ? null : base,
-    exists: (file) => existsSync(join(ROOT, file)),
-  });
+  const plan = planChecks(
+    unknownBase ? ["package.json", ...changed] : changed,
+    {
+      base: unknownBase ? null : base,
+      exists: (file) => existsSync(join(ROOT, file)),
+    },
+  );
   console.log(
     `pre-push：${unknownBase ? "拿不到基点，按全量" : `相对 ${base.slice(0, 9)} 改了 ${changed.length} 个文件`}${plan.docsOnly ? "（只有文档）" : ""}`,
   );
-  if (refs.some((ref) => ref.localSha !== head))
-    console.log("  注意：推送的提交不是当前检出，检查跑在工作区上");
-  const dirty = (git(["status", "--porcelain"]) ?? "")
-    .split("\n")
-    .map((line) => line.slice(3))
-    .filter((file) => files.has(file));
-  if (dirty.length > 0)
+  const tree = workingTreeReport(
+    parseStatus(
+      gitRaw(["status", "--porcelain", "-z", "--untracked-files=all"]) ?? "",
+    ),
+    files,
+  );
+  const list = (paths) =>
+    `${paths.slice(0, 8).join("、")}${paths.length > 8 ? ` 等 ${paths.length} 个` : ""}`;
+  if (tree.inside.length > 0)
     console.log(
-      `  注意：${dirty.length} 个改动文件还有未提交的修改，检查看的是工作区内容`,
+      `  注意：推送范围内的文件还有未提交的修改：${list(tree.inside)}`,
     );
+  if (!plan.docsOnly && tree.outside.length > 0)
+    console.log(
+      `  注意：范围外有未提交的修改，检查会看到它们：${list(tree.outside)}`,
+    );
+  if (!plan.docsOnly && tree.untrackedOther.length > 0)
+    console.log(`  注意：有未跟踪的文件：${list(tree.untrackedOther)}`);
 
   const keep = (step) => {
     if (!skip.steps.has(step.id)) return true;
@@ -449,7 +546,22 @@ async function main(argv, input) {
     return false;
   };
   const results = [];
-  if (plan.libs && keep(plan.libs)) results.push(await runStep(plan.libs));
+  // 未跟踪的源码会被类型检查、lint、测试读到，CI 上却没有：先拦下。
+  if (
+    !plan.docsOnly &&
+    tree.untrackedCode.length > 0 &&
+    keep({ id: "untracked" })
+  ) {
+    const log = join(LOG_DIR, "untracked.log");
+    writeFileSync(
+      log,
+      `未跟踪的源码（提交、删除或加进 .gitignore）：\n${tree.untrackedCode.join("\n")}\n`,
+    );
+    console.log("  FAIL untracked");
+    results.push({ id: "untracked", ok: false, log });
+  }
+  if (plan.libs && keep(plan.libs) && results.every((result) => result.ok))
+    results.push(await runStep(plan.libs));
   if (results.every((result) => result.ok)) {
     results.push(
       ...(await Promise.all(
