@@ -1,8 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { avatars, resetAvatarCache } from "./avatars";
+import { mkdtempSync, readFileSync, rmSync, utimesSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-afterEach(resetAvatarCache);
+import { avatars, configureAvatarCache, resetAvatarCache } from "./avatars";
+
+afterEach(() => {
+  resetAvatarCache();
+  configureAvatarCache(undefined);
+});
 
 const png = (bytes = 8) =>
   new Response(new Uint8Array(bytes).fill(1), {
@@ -91,5 +98,68 @@ describe("GitHub 头像代理（#927）", () => {
       enabled: () => true,
     });
     expect(result.avatars.map((entry) => entry.id)).toEqual([9]);
+  });
+
+  describe("落盘（#942）", () => {
+    const fresh = () => {
+      const directory = mkdtempSync(join(tmpdir(), "armadra-avatars-"));
+      configureAvatarCache(directory);
+      return directory;
+    };
+
+    it("重启后（内存清空）从磁盘命中，不再请求", async () => {
+      const directory = fresh();
+      const fetcher = vi.fn(async () => png());
+      const deps = {
+        fetch: fetcher as unknown as typeof fetch,
+        enabled: () => true,
+      };
+      const first = await avatars([9], deps);
+      expect(readFileSync(join(directory, "9"), "utf8")).toBe(
+        first.avatars[0]!.dataUrl,
+      );
+      resetAvatarCache();
+      const second = await avatars([9], deps);
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(second.avatars[0]!.dataUrl).toBe(first.avatars[0]!.dataUrl);
+      rmSync(directory, { recursive: true, force: true });
+    });
+
+    it("过期后重取；取不到就继续用旧图", async () => {
+      const directory = fresh();
+      const ok = vi.fn(async () => png());
+      const deps = {
+        fetch: ok as unknown as typeof fetch,
+        enabled: () => true,
+      };
+      const original = (await avatars([11], deps)).avatars[0]!.dataUrl;
+      // 文件改成八天前写的。
+      const old = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+      utimesSync(join(directory, "11"), old, old);
+      resetAvatarCache();
+      const offline = vi.fn(async () => {
+        throw new Error("offline");
+      });
+      const answer = await avatars([11], {
+        fetch: offline as unknown as typeof fetch,
+        enabled: () => true,
+      });
+      expect(offline).toHaveBeenCalledTimes(1);
+      expect(answer.avatars[0]!.dataUrl).toBe(original);
+      rmSync(directory, { recursive: true, force: true });
+    });
+
+    it("磁盘上的文件被改坏了就当没有", async () => {
+      const directory = fresh();
+      const { writeFileSync } = await import("node:fs");
+      writeFileSync(join(directory, "13"), "<script>");
+      const fetcher = vi.fn(async () => png());
+      await avatars([13], {
+        fetch: fetcher as unknown as typeof fetch,
+        enabled: () => true,
+      });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      rmSync(directory, { recursive: true, force: true });
+    });
   });
 });

@@ -7,6 +7,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { sk } from "../../../sources/scope";
+import { useAvatars } from "./use-avatars";
 import {
   ChevronLeft,
   ChevronsDownUp,
@@ -296,34 +297,19 @@ export function LogPage({
   const myEmail = identity.data?.email ?? null;
 
   /**
-   * 作者的 GitHub 头像：只有 noreply 邮箱里带账号 id 的才问，一次至多 50 个；
-   * 问不到的（离线、开关关了）画首字母。
+   * 作者的 GitHub 头像：只有 noreply 邮箱里带账号 id 的才问；按 id 缓存，翻页
+   * 只问新出现的（#942）。问不到的（离线、开关关了）画首字母。
    */
   const avatarIds = useMemo(() => {
     const ids = new Set<number>();
     for (const entry of commits) {
       const id = githubAccountId(entry.authorEmail);
       if (id !== null) ids.add(id);
-      if (ids.size >= 50) break;
     }
     return [...ids].sort((a, b) => a - b);
   }, [commits]);
-  const avatarQuery = useQuery({
-    queryKey: sk("git-avatars", workspaceId, avatarIds.join(",")),
-    queryFn: ({ signal }) => gitGateway.avatars(at("."), avatarIds, signal),
-    enabled: avatarIds.length > 0,
-    staleTime: 60 * 60 * 1000,
-    retry: false,
-  });
-  const avatars = useMemo(
-    () =>
-      new Map(
-        (avatarQuery.data?.avatars ?? []).flatMap((entry) =>
-          entry.dataUrl ? [[entry.id, entry.dataUrl] as const] : [],
-        ),
-      ),
-    [avatarQuery.data],
-  );
+  const avatarTarget = useMemo(() => at("."), [at]);
+  const avatars = useAvatars(avatarTarget, avatarIds);
   /** 折叠归属：定位被折叠的分支提交时，先展开带它进来的合并。 */
   const folded = useMemo(
     () => collapseLog(commits, expandedMerges, git.collapseMerges),

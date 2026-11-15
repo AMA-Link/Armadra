@@ -30,13 +30,13 @@ export const logGraphKeys: GraphKeys<GitLogCommit> = {
  */
 const REPOSITORY_COLORS = [
   "var(--brand)",
-  "#32d74b",
-  "#ff9f0a",
-  "#bf5af2",
-  "#6ac4dc",
-  "#ff453a",
-  "#ffd60a",
-  "#5e5ce6",
+  "var(--graph-2)",
+  "var(--graph-3)",
+  "var(--graph-1)",
+  "var(--graph-5)",
+  "var(--graph-4)",
+  "var(--graph-6)",
+  "var(--graph-7)",
 ];
 
 export function repositoryColor(index: number): string {
@@ -45,12 +45,24 @@ export function repositoryColor(index: number): string {
 }
 
 /**
- * 分支车道的颜色（#927 B1）：避开仓库色板的前几位——品牌蓝、绿、橙是前三个
- * 仓库的主线色——分支线与主线一眼能分开。
+ * 分支的颜色（#942）：按颜色链（一条第一父链）轮换主题色板，不按车道下标——
+ * 分支挪车道时颜色不变。和本仓库主线同色时顺延一位，分支与主线一眼能分开。
  */
-const BRANCH_COLORS = ["#bf5af2", "#6ac4dc", "#ff453a", "#ffd60a", "#5e5ce6"];
+const BRANCH_COLORS = [
+  "var(--graph-1)",
+  "var(--graph-3)",
+  "var(--graph-2)",
+  "var(--graph-4)",
+  "var(--graph-6)",
+  "var(--graph-5)",
+  "var(--graph-7)",
+  "var(--graph-8)",
+];
 
-export function branchColor(lane: number): string {
+export function branchColor(chain: number, avoid?: string): string {
   const size = BRANCH_COLORS.length;
-  return BRANCH_COLORS[((lane % size) + size) % size]!;
+  const pick = (index: number) =>
+    BRANCH_COLORS[((index % size) + size) % size]!;
+  const color = pick(chain);
+  return color === avoid ? pick(chain + 1) : color;
 }

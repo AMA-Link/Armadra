@@ -1,4 +1,7 @@
+import { join } from "node:path";
+
 import type { CoreContext } from "../main";
+import { configureAvatarCache } from "./avatars";
 import { affectsRepositories, invalidate } from "./discovery";
 import { RepositoryService } from "./repository/service";
 import { isTerminal } from "./repository/types";
@@ -47,6 +50,8 @@ export function gitService(): RepositoryService | undefined {
 export function install(context: CoreContext): void {
   const service = new RepositoryService();
   installed = service;
+  // 头像落盘（#942）：重启后不重新向 GitHub 要一遍。
+  configureAvatarCache(join(context.dataDir, "cache", "avatars"));
   // Which workspace started which operation. It stays on this side rather
   // than in the service because it is a controller concept: the queue only
   // knows repositories, and two workspaces can be rooted in one.
