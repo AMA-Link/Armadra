@@ -6,16 +6,18 @@ import type { ForgeListState, ForgeSort } from "../../api/forge";
  * 网页一致，含空格的值加引号。
  */
 
+const QUOTE = String.fromCharCode(34);
+
 export type ForgeQualifier =
   "author" | "label" | "milestone" | "review" | "assignee" | "is";
 
-/** 按空白切词，引号里的空白不切；引号本身保留在词里。 */
+// 按空白切词，引号里的空白不切；引号本身保留在词里。
 export function tokenize(query: string): string[] {
   const tokens: string[] = [];
   let current = "";
   let quoted = false;
   for (const char of query) {
-    if (char === '"') quoted = !quoted;
+    if (char === QUOTE) quoted = !quoted;
     if (!quoted && /\s/.test(char)) {
       if (current) tokens.push(current);
       current = "";
@@ -28,11 +30,14 @@ export function tokenize(query: string): string[] {
 }
 
 function unquote(value: string): string {
-  return value.replace(/^"(.*)"$/, "$1");
+  return value.length >= 2 && value.startsWith(QUOTE) && value.endsWith(QUOTE)
+    ? value.slice(1, -1)
+    : value;
 }
 
 function quote(value: string): string {
-  return /\s|"/.test(value) ? `"${value.replace(/"/g, "")}"` : value;
+  const bare = value.split(QUOTE).join("");
+  return /\s/.test(bare) || bare !== value ? `${QUOTE}${bare}${QUOTE}` : bare;
 }
 
 function split(token: string): { key: string; value: string } | null {
@@ -44,7 +49,7 @@ function split(token: string): { key: string; value: string } | null {
   };
 }
 
-/** 某个限定词的全部值，按出现顺序。 */
+// 某个限定词的全部值，按出现顺序。
 export function qualifierValues(query: string, key: ForgeQualifier): string[] {
   return tokenize(query).flatMap((token) => {
     const parsed = split(token);
@@ -52,7 +57,7 @@ export function qualifierValues(query: string, key: ForgeQualifier): string[] {
   });
 }
 
-/** 把某个限定词整体换成 `values`（空数组即去掉），其余词原样保留。 */
+// 把某个限定词整体换成 `values`（空数组即去掉），其余词原样保留。
 export function setQualifier(
   query: string,
   key: ForgeQualifier,
@@ -64,7 +69,7 @@ export function setQualifier(
     .trim();
 }
 
-/** 多值限定词（标签）里切换一个值。 */
+// 多值限定词（标签）里切换一个值。
 export function toggleQualifier(
   query: string,
   key: ForgeQualifier,
@@ -80,7 +85,7 @@ export function toggleQualifier(
   );
 }
 
-/** 搜索串里 `is:open|closed|merged` 优先于状态切换（计划：core 同样处理）。 */
+// 搜索串里 `is:open|closed|merged` 优先于状态切换（计划：core 同样处理）。
 export function stateFromQuery(query: string): ForgeListState | null {
   const value = qualifierValues(query, "is").find((entry) =>
     ["open", "closed", "merged"].includes(entry),
@@ -90,7 +95,7 @@ export function stateFromQuery(query: string): ForgeListState | null {
   return null;
 }
 
-/** 排序下拉的选项：排序字段加方向。 */
+// 排序下拉的选项：排序字段加方向。
 export const SORT_CHOICES = [
   { id: "updated-desc", sort: "updated", direction: "desc" },
   { id: "updated-asc", sort: "updated", direction: "asc" },
