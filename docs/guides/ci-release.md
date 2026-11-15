@@ -110,11 +110,11 @@ node tools/ci/e2e.mjs --tier b --list     # 只列出清单
   - `linux-arm64`（ubuntu-22.04-arm）：打 arm64 包、断言 glibc 基线，只跑 `deb-install`
     （`--only deb-install`；其余 B 档条目与架构无关）。
   - `macos`（macos-15）：同样打包，跑 `packaged-smoke --no-real-cli`。
-  - `mobile-ios` / `mobile-android`：模拟器里跑 `mobile-shell-e2e.mjs`。Android 这一路的每条 Gradle / adb 命令都有上限（`tools/probes/bounded-run.mjs`：输出边收边写、每分钟一行心跳；插桩超时先抓 logcat、截图、窗口焦点与 Gradle 各 JVM 的线程栈再杀进程组），插桩步骤另有 30 分钟的步级兜底、作业 60 分钟，所以卡住时是步骤失败并带着现场，不再等到作业被取消。模拟器进程在插桩中途消失（logcat 只剩 `waiting for device`）时，`android-host-watch.mjs` 在产物里留三份现场：每 5 秒一行的 `host-watch.log`（宿主 CPU 型号、可用内存、负载、模拟器常驻内存）、进程消失瞬间的 `host-watch-gone.log`（内核日志、崩溃转储目录、占内存最多的进程）与后台取的 `host-watch-coredump.log`（systemd-coredump 的信号与可执行文件，装了 gdb 时还有各线程栈）；`result.json` 里该步骤的说明会注明「模拟器进程中途消失」。夜间 Android 失败的已知原因是 runner 上模拟器的 qemu 进程段错误（#485），不是用例断言。
+  - `mobile-ios` / `mobile-android`：模拟器里跑 `mobile-shell-e2e.mjs`。Android 这一路的每条 Gradle / adb 命令都有上限（`tools/probes/bounded-run.mjs`：输出边收边写、每分钟一行心跳；插桩超时先抓 logcat、截图、窗口焦点与 Gradle 各 JVM 的线程栈再杀进程组），插桩步骤另有 30 分钟的步级兜底、作业 90 分钟（容得下一次重跑），所以卡住时是步骤失败并带着现场，不再等到作业被取消。模拟器进程在插桩中途消失（logcat 只剩 `waiting for device`）时，`android-host-watch.mjs` 在产物里留三份现场：每 5 秒一行的 `host-watch.log`（宿主 CPU 型号、可用内存、负载、模拟器常驻内存）、进程消失瞬间的 `host-watch-gone.log`（内核日志、崩溃转储目录、占内存最多的进程）与后台取的 `host-watch-coredump.log`（systemd-coredump 的信号与可执行文件，装了 gdb 时还有各线程栈）；`result.json` 里该步骤的说明会注明「模拟器进程中途消失」，并写上结构化的 `emulatorCrashed: true` 与转储里的信号名 `emulatorSignal`（通常是 `SEGV`）。夜间 Android 失败的已知原因是 runner 上模拟器的 qemu 进程段错误（#485），不是用例断言，换镜像、模拟器构建与 CPU 型号都避不开，所以插桩步骤失败时先由 `android-host-watch.mjs archive` 看 `result.json`：判定为模拟器崩溃才把这一轮的产物挪进 `attempt-1/`、重启模拟器重跑一次（#921），重跑通过作业就是 success；用例断言失败或超时不重试，直接判红。`android-host-watch.mjs tally` 数出崩溃次数，写进作业摘要与作业输出 `emulator_crashes`，`report` 在 mobile-android 那一行里写出来，所以重跑掩盖不了崩溃率。
   - `report`：任一作业失败、超时（结果 `cancelled`）或整次运行被取消、且在 main 上时，用默认的 `GITHUB_TOKEN`（作业级
     `issues: write`）开一个「夜间 B 档失败」issue，已有开着的同名 issue 就追加评论；
-    正文是运行链接与每条作业失败的条目（`e2e.mjs` 在 `GITHUB_OUTPUT` 里写
-    `failed=<id,…>`）。夜间工作流不读任何 secret。
+    正文由 `tools/ci/nightly-report.mjs` 拼出：运行链接与每个作业的结果和失败的条目（`e2e.mjs` 在 `GITHUB_OUTPUT` 里写
+    `failed=<id,…>`）；条目只在作业结果是 failure 时写，成功、跳过或取消的作业写 `-`（#921 之前 mobile-ios 与 hygiene 的条目是写死的，成功也照列）。夜间工作流不读任何 secret。
   - `hygiene`（ubuntu-latest）：`knip` 报告作为 `knip-report` 产物上传、不判失败；
     `pnpm audit --prod --audit-level=high` 有 high 及以上漏洞时作业失败，同样由 `report` 开 issue。
   - 要打好的包才能跑的新探针只需新增一个 B 档条目并写明
