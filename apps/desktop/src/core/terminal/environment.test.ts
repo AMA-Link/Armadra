@@ -119,14 +119,15 @@ describe("the UTF-8 locale", () => {
 
 describe("the agent PATH", () => {
   it("appends rather than prepends, so a user's own tool still wins", () => {
-    const path = agentPath({ PATH: "/usr/bin:/bin" });
-    expect(path.startsWith("/usr/bin:/bin")).toBe(true);
+    const given = ["/usr/bin", "/bin"].join(delimiter);
+    const path = agentPath({ PATH: given });
+    expect(path.startsWith(given)).toBe(true);
   });
 
   it("adds nothing twice", () => {
-    const path = agentPath({ PATH: "/usr/bin:/usr/bin" });
+    const path = agentPath({ PATH: ["/usr/bin", "/usr/bin"].join(delimiter) });
     const seen = new Set<string>();
-    for (const entry of path.split(":")) {
+    for (const entry of path.split(delimiter)) {
       if (entry === "/usr/bin") continue;
       expect(seen.has(entry)).toBe(false);
       seen.add(entry);
