@@ -8,6 +8,8 @@
 
 import { execFile } from "node:child_process";
 
+import { agentPath } from "../terminal/environment";
+
 export interface CommandResult {
   readonly ok: boolean;
   readonly stdout: string;
@@ -39,14 +41,22 @@ const ENV_NAMES = [
   "LANG",
 ] as const;
 
+/**
+ * 最小环境。`PATH` 用终端域给 Agent CLI 的那一条（{@link agentPath}）：从 Dock
+ * 启动的安装包只有 launchd 的 PATH，Homebrew 装的 `gh` / `glab` 在
+ * `/opt/homebrew/bin`、`/usr/local/bin` 下就找不到。补的目录追加在后，用户自己
+ * PATH 上同名的仍然优先。
+ */
 export function minimalEnv(
   extra: Readonly<Record<string, string>> = {},
+  ambient: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const name of ENV_NAMES) {
-    const value = process.env[name];
+    const value = ambient[name];
     if (value !== undefined) env[name] = value;
   }
+  env.PATH = agentPath(ambient);
   return { ...env, ...extra };
 }
 

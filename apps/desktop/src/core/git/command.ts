@@ -128,6 +128,12 @@ export interface CommandOutput {
   readonly stderr: Buffer;
   /** `null` when the child was killed by a signal rather than exiting. */
   readonly status: number | null;
+  /**
+   * Set only under {@link RunOptions.truncateStdout}: stdout reached its
+   * ceiling, the rest was dropped and the child was stopped. `status` is then
+   * the kill's, not the command's.
+   */
+  readonly truncated?: true;
 }
 
 export interface RunOptions {
@@ -138,6 +144,12 @@ export interface RunOptions {
   readonly environment?: GitEnvironmentOptions;
   readonly stdoutLimit?: number;
   readonly stderrLimit?: number;
+  /**
+   * For read-only commands whose output is shown, not parsed: past
+   * `stdoutLimit` keep what fits, stop the child and answer with
+   * `truncated` instead of failing. Never for anything that mutates.
+   */
+  readonly truncateStdout?: boolean;
   /** Bytes written to the child's stdin; absent closes it immediately. */
   readonly input?: Buffer;
   /** Called with each completed stderr line, for `--progress` counters. */
@@ -223,6 +235,7 @@ function capture(options: RunOptions): Promise<CommandOutput> {
     const stderr: Buffer[] = [];
     let stdoutBytes = 0;
     let stderrBytes = 0;
+    let truncated = false;
     let pending = "";
     let settled = false;
     let exit: { code: number | null } | undefined;
@@ -239,6 +252,7 @@ function capture(options: RunOptions): Promise<CommandOutput> {
           stdout: Buffer.concat(stdout),
           stderr: Buffer.concat(stderr),
           status: exit?.code ?? null,
+          ...(truncated ? { truncated: true as const } : {}),
         });
         return;
       }
@@ -274,8 +288,18 @@ function capture(options: RunOptions): Promise<CommandOutput> {
     options.signal?.addEventListener("abort", onAbort, { once: true });
 
     child.stdout?.on("data", (chunk: Buffer) => {
+      if (truncated) return;
+      const room = stdoutLimit - stdoutBytes;
       stdoutBytes += chunk.byteLength;
       if (stdoutBytes > stdoutLimit) {
+        if (options.truncateStdout === true) {
+          // The caller asked for a bounded view of a read: keep what fits and
+          // stop the child; the exit that follows settles the promise.
+          if (room > 0) stdout.push(chunk.subarray(0, room));
+          truncated = true;
+          child.kill("SIGKILL");
+          return;
+        }
         finish(
           internalError(
             "Git output exceeded its bounded budget; verify repository state before retrying",

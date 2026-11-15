@@ -41,11 +41,12 @@ import { create } from "../contract/message";
 import { GiteaForge, giteaApiBase, giteaWebRoot } from "./gitea";
 import { GithubForge, type GithubAccess, hostGithubAccess } from "./github";
 import type { GithubClientOptions } from "../github/client";
-import type { LocalLogins } from "./logins";
+import { type LocalLogins, loginHost } from "./logins";
 import type { ReuseSwitch } from "./reuse";
 import { GitlabForge, gitlabApiBase, gitlabWebRoot } from "./gitlab";
 import type { ForgeConfigRecord, ForgeStore } from "./store";
 import type { PlatformProbe } from "./probe";
+import { WARM_DEADLINE_MS, settleWithin } from "./deadline";
 import { loopbackHost } from "./transport";
 import {
   CONFIGURABLE_FORGES,
@@ -68,7 +69,13 @@ const MAX_FACET_ENTRIES = 100;
 const HOST_PATTERN =
   /^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?)*$/;
 const TOKEN_PATTERN = /^[\x21-\x7e]{1,512}$/;
-const GITHUB_PUBLIC_HOSTS = ["github.com", "www.github.com", "ssh.github.com"];
+/**
+ * github.com 本身或它的别名（`www.`、`ssh.`）：与本机登录、平台探测共用
+ * {@link loginHost} 这一套归一。
+ */
+function publicGithubHost(host: string): boolean {
+  return loginHost(host) === "github.com";
+}
 
 export type DetectionSource = "github" | "config";
 
@@ -134,6 +141,8 @@ export interface ForgeServiceOptions {
   readonly reuse?: ReuseSwitch;
   /** 按主机访问 GitHub 时 client 的传输选项（测试指向本地 mock）。 */
   readonly githubClient?: Omit<GithubClientOptions, "token" | "apiBase">;
+  /** {@link ForgeService.hosts} 预热所有主机的整体时限（毫秒），缺省 {@link WARM_DEADLINE_MS}。 */
+  readonly warmDeadlineMs?: number;
 }
 
 /** `GET /api/forge/hosts` 的一行（契约 §111.6）。 */
@@ -316,7 +325,7 @@ export class ForgeService {
 
   /** GitHub 管的主机：公有的三个名字，加上凭据里企业版根的主机。 */
   private githubHost(host: string): boolean {
-    if (GITHUB_PUBLIC_HOSTS.includes(host)) return true;
+    if (publicGithubHost(host)) return true;
     const { base } = this.githubSide();
     return base !== PUBLIC_API_BASE && belongsTo(base, host);
   }
@@ -352,10 +361,10 @@ export class ForgeService {
     const nested = nestedOwner(repo.owner);
     if (
       !nested &&
-      (GITHUB_PUBLIC_HOSTS.includes(repo.host) || this.githubHost(repo.host))
+      (publicGithubHost(repo.host) || this.githubHost(repo.host))
     ) {
       const side = this.githubSide();
-      const publicHost = GITHUB_PUBLIC_HOSTS.includes(repo.host);
+      const publicHost = publicGithubHost(repo.host);
       const apiBase = publicHost ? PUBLIC_API_BASE : side.base;
       // 存着的凭据只对它自己那个根有效：配的是企业版时，github.com 的仓库没有令牌；
       // 没有存着的，看本机登录（按主机，github.com 与企业版可以同时可用）。
@@ -438,7 +447,7 @@ export class ForgeService {
     workspaceId: string,
     repo?: ForgeRepo,
   ): ForgeKind | null {
-    if (GITHUB_PUBLIC_HOSTS.includes(host) || this.githubHost(host)) {
+    if (publicGithubHost(host) || this.githubHost(host)) {
       return "github";
     }
     const config =
@@ -486,11 +495,7 @@ export class ForgeService {
   ): boolean {
     if (kind === "github") {
       const side = this.githubSide();
-      return (
-        side.configured &&
-        webHostFor(side.base) ===
-          (host === "www.github.com" ? "github.com" : host)
-      );
+      return side.configured && webHostFor(side.base) === loginHost(host);
     }
     const config =
       repo === undefined
@@ -787,7 +792,7 @@ export class ForgeService {
     await this.warm(normalized, workspaceId);
     if (this.githubHost(normalized)) {
       const side = this.githubSide();
-      const publicHost = GITHUB_PUBLIC_HOSTS.includes(normalized);
+      const publicHost = publicGithubHost(normalized);
       const apiBase = publicHost ? PUBLIC_API_BASE : side.base;
       const service = this.options.github?.();
       if (side.configured && side.base === apiBase && service !== undefined) {
@@ -851,7 +856,8 @@ export class ForgeService {
   /**
    * 已识别的主机（§111.6）：工作空间 remote 里见过的、配置表里的、GitHub 凭据的
    * 并集，各带平台与令牌来源。见过的主机只记在内存里（重启后随工作空间被打开
-   * 再出现）。每个主机先预热一次，所以这里读得到本机登录。
+   * 再出现）。每个主机先并行预热一次（整体限时，见 {@link settleWithin}），所以这里
+   * 读得到本机登录。
    */
   async hosts(workspaceId = ""): Promise<ForgeHosts> {
     const names = new Set<string>(this.seen);
@@ -865,8 +871,14 @@ export class ForgeService {
     const side = this.githubSide();
     if (side.configured) names.add(webHostFor(side.base));
     const hosts: ForgeHostRow[] = [];
-    for (const host of [...names].filter(validHost).sort()) {
-      await this.warm(host, workspaceId);
+    const valid = [...names].filter(validHost).sort();
+    // 并行预热、整体限时：不可达的内网主机不拖住其余主机；没赶上的先按未知
+    // 给出，探测在后台完成后下一次读取即生效。
+    await settleWithin(
+      Promise.all(valid.map((host) => this.warm(host, workspaceId))),
+      this.options.warmDeadlineMs ?? WARM_DEADLINE_MS,
+    );
+    for (const host of valid) {
       const kind = this.kindOf(host, workspaceId);
       if (kind === null) {
         hosts.push({

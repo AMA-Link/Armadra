@@ -39,6 +39,8 @@ interface Rig {
   readonly service: ForgeService;
   readonly reuse: ReuseSwitch;
   readonly commands: string[];
+  /** 平台探测发出的请求（主机 + 路径）。 */
+  readonly probes: string[];
   readonly secrets: Map<string, string>;
   call(
     method: string,
@@ -54,6 +56,7 @@ async function rig(
     env?: NodeJS.ProcessEnv;
     answer?: (file: string, args: readonly string[]) => string | undefined;
     probe?: Record<string, { status: number; body?: unknown }>;
+    now?: () => number;
   } = {},
 ): Promise<Rig> {
   const fixture = await githubFixture();
@@ -89,6 +92,7 @@ async function rig(
     home: () => "/home/test",
     env: {},
     platform: "linux",
+    ...(options.now === undefined ? {} : { now: options.now }),
   });
   const secrets = new Map<string, string>();
   const backend: SecretBackend = {
@@ -103,9 +107,11 @@ async function rig(
       secrets.delete(name);
     },
   };
+  const probes: string[] = [];
   const probe = new PlatformProbe({
     fetch: (async (input: unknown) => {
       const url = new URL(String(input));
+      probes.push(`${url.host}${url.pathname}`);
       const route = options.probe?.[`${url.host}${url.pathname}`];
       return route === undefined
         ? new Response("", { status: 404 })
@@ -156,7 +162,7 @@ async function rig(
       body: any;
     };
   };
-  return { fixture, fake, service, reuse, commands, secrets, call };
+  return { fixture, fake, service, reuse, commands, probes, secrets, call };
 }
 
 describe("按主机的 GitHub", () => {
@@ -224,6 +230,30 @@ describe("按主机的 GitHub", () => {
   });
 });
 
+describe("后台读先预热", () => {
+  it("本机登录缓存过期后同步 forgeFor 报未配置，forgeForReady / resolveReady 重新读到", async () => {
+    let clock = 1_000_000;
+    const h = await rig({ now: () => clock });
+    const repo = { host: "github.com", owner: "octo", name: "repo" };
+    await h.service.forgeForReady(repo);
+    // 缓存 60 秒；过期以后只靠 gh 登录的仓库，同步入口就认不出令牌了。
+    clock += 61_000;
+    expect(() => h.service.forgeFor(repo)).toThrow();
+    expect(
+      h.service.resolve("https://github.com/octo/repo.git").credential,
+    ).toBe(false);
+    const ready = await h.service.resolveReady(
+      "https://github.com/octo/repo.git",
+    );
+    expect(ready.credential).toBe(true);
+    clock += 61_000;
+    await expect(h.service.forgeForReady(repo)).resolves.toBeDefined();
+    expect(
+      h.commands.filter((c) => c === "gh auth token --hostname github.com"),
+    ).toHaveLength(3);
+  });
+});
+
 describe("GitLab 经 glab", () => {
   it("已知或探测过的 GitLab 主机读 glab 的令牌；glab 没有时识别出来但没令牌", async () => {
     const h = await rig({
@@ -242,6 +272,31 @@ describe("GitLab 经 glab", () => {
       remoteUrl: "https://gitlab.com/g/p.git",
     });
     expect(noLogin.body).toMatchObject({ forge: "gitlab", credential: false });
+  });
+
+  it("altssh.gitlab.com 的 remote 经 resolveReady 认成 gitlab.com，读 gitlab.com 的 glab 登录，不探测", async () => {
+    const h = await rig({
+      answer: (file, args) =>
+        file === "glab" && args[4] === "gitlab.com" ? GLAB_TOKEN : undefined,
+    });
+    const detection = await h.service.resolveReady(
+      "ssh://git@altssh.gitlab.com:443/group/project.git",
+    );
+    expect(detection).toMatchObject({
+      forge: "gitlab",
+      apiBase: "https://gitlab.com/api/v4",
+      webUrl: "https://gitlab.com/group/project",
+      credential: true,
+      credentialSource: "glab",
+    });
+    expect(h.commands).toEqual(["glab config get token --host gitlab.com"]);
+    // altssh 的 443 是 SSH：不去探，按主站认。
+    expect(h.probes).toEqual([]);
+    const www = await h.service.resolveReady(
+      "https://www.gitlab.com/group/project.git",
+    );
+    expect(www).toMatchObject({ forge: "gitlab", credential: true });
+    expect(h.probes).toEqual([]);
   });
 });
 

@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type { CommandOptions, CommandRunner } from "./exec";
-import { LocalLogins, parseTeaLogins } from "./logins";
+import { LocalLogins, loginHost, parseTeaLogins } from "./logins";
 
 /** 拼法与实现一致：Windows 上是反斜杠。 */
 const TEA_PATH = join("/home/test", ".config", "tea", "config.yml");
@@ -268,5 +268,40 @@ describe("缓存、开关与不合格的输出", () => {
       readFile: async () => undefined,
     });
     expect(await boom.resolve("github.com", "github")).toBeNull();
+  });
+});
+
+describe("主机名归一", () => {
+  it("loginHost：大小写、末尾的点、端口与公开平台的别名", () => {
+    expect(loginHost("GitHub.com.")).toBe("github.com");
+    expect(loginHost("www.github.com")).toBe("github.com");
+    expect(loginHost("ssh.github.com:443")).toBe("github.com");
+    expect(loginHost("altssh.gitlab.com:443")).toBe("gitlab.com");
+    expect(loginHost("www.codeberg.org")).toBe("codeberg.org");
+    expect(loginHost("git.corp.test:8443")).toBe("git.corp.test");
+    // 自建主机不猜别名。
+    expect(loginHost("www.git.corp.test")).toBe("www.git.corp.test");
+  });
+
+  it("ssh.github.com:443、www.github.com 的 remote 取到 github.com 的 gh 登录，且共用一份缓存", async () => {
+    const { logins, calls } = rig((call) =>
+      call.args[3] === "github.com"
+        ? { ok: true, stdout: "ghp_publicToken0001\n" }
+        : { ok: false, stdout: "" },
+    );
+    for (const host of [
+      "ssh.github.com:443",
+      "www.github.com",
+      "ssh.github.com",
+    ]) {
+      expect(await logins.resolve(host, "github")).toEqual({
+        token: "ghp_publicToken0001",
+        source: "ghCli",
+      });
+    }
+    expect(logins.peek("www.github.com", "github")?.source).toBe("ghCli");
+    expect(calls.map((call) => call.args[3])).toEqual(["github.com"]);
+    logins.forget("ssh.github.com");
+    expect(logins.peek("github.com", "github")).toBeUndefined();
   });
 });

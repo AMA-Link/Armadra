@@ -7,6 +7,7 @@
  *   `/api/v4/version`  200 有 `version`，或 401   → GitLab
  */
 
+import { loginHost } from "./logins";
 import type { ForgeKind } from "./types";
 
 export const KNOWN_FORGE_HOSTS: Readonly<Record<string, ForgeKind>> = {
@@ -62,11 +63,16 @@ export class PlatformProbe {
     this.now = options.now ?? (() => Date.now());
   }
 
-  /** 已知主机或缓存里有的结果，不联网；没探过是 `undefined`。 */
+  /**
+   * 已知主机或缓存里有的结果，不联网；没探过是 `undefined`。已知平台的别名
+   * （`altssh.gitlab.com`、`www.codeberg.org` 等，见 {@link loginHost}）按主站认，
+   * API 根也用主站：别名上的 443 可能是 SSH，探了也认不出。
+   */
   peek(host: string): Probed | null | undefined {
-    const known = KNOWN_FORGE_HOSTS[host];
+    const canonical = loginHost(host);
+    const known = KNOWN_FORGE_HOSTS[canonical];
     if (known !== undefined) {
-      return { forge: known, apiBase: apiBaseFor(host, known) };
+      return { forge: known, apiBase: apiBaseFor(canonical, known) };
     }
     const entry = this.cache.get(host);
     if (entry === undefined || entry.expiresMs <= this.now()) return undefined;

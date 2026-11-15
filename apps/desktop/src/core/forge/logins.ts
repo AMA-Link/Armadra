@@ -38,6 +38,31 @@ const CREDENTIAL_TIMEOUT_MS = 5_000;
 const CACHE_MAX = 128;
 const MAX_FILE_BYTES = 256 << 10;
 
+/**
+ * 同一个平台的别名主机：remote 常写成这些名字（SSH 走 443、网页带 www），本机登录
+ * 却只登记在主机名下。只收公开平台确有的别名，自建主机不猜。
+ */
+const HOST_ALIASES: Readonly<Record<string, string>> = {
+  "www.github.com": "github.com",
+  "ssh.github.com": "github.com",
+  "www.gitlab.com": "gitlab.com",
+  "altssh.gitlab.com": "gitlab.com",
+  "www.gitea.com": "gitea.com",
+  "www.codeberg.org": "codeberg.org",
+};
+
+/**
+ * 查本机登录用的主机名：小写、去掉末尾的点与端口（`ssh.github.com:443`），再把
+ * 公开平台的别名换成登录登记的主机名。
+ */
+export function loginHost(host: string): string {
+  let value = host.trim().toLowerCase();
+  const port = /^([^:[\]]+):\d{1,5}$/.exec(value);
+  if (port !== null) value = port[1] as string;
+  value = value.replace(/\.$/, "");
+  return HOST_ALIASES[value] ?? value;
+}
+
 /** 读一个文本文件；不存在或读不了是 `undefined`。 */
 export type FileReader = (path: string) => Promise<string | undefined>;
 
@@ -137,13 +162,17 @@ export class LocalLogins {
   /** 缓存里有的结果（不起命令）；开关关着、没读过或过期是 `undefined`。 */
   peek(host: string, forge: ForgeKind): LoginToken | null | undefined {
     if (!this.enabled()) return undefined;
-    const entry = this.cache.get(`${forge}:${host}`);
+    const entry = this.cache.get(`${forge}:${loginHost(host)}`);
     if (entry === undefined || entry.expiresMs <= this.now()) return undefined;
     return entry.value;
   }
 
   /** 这个主机的本机登录令牌；没有、关着或读不了是 `null`。不会抛。 */
-  async resolve(host: string, forge: ForgeKind): Promise<LoginToken | null> {
+  async resolve(
+    remoteHost: string,
+    forge: ForgeKind,
+  ): Promise<LoginToken | null> {
+    const host = loginHost(remoteHost);
     if (!this.enabled() || !HOST.test(host)) return null;
     const key = `${forge}:${host}`;
     const cached = this.peek(host, forge);
@@ -171,11 +200,12 @@ export class LocalLogins {
   }
 
   /** 丢掉缓存的令牌：关开关、令牌被远端拒、用户点「重试」时。 */
-  forget(host?: string): void {
-    if (host === undefined) {
+  forget(remoteHost?: string): void {
+    if (remoteHost === undefined) {
       this.cache.clear();
       return;
     }
+    const host = loginHost(remoteHost);
     for (const key of [...this.cache.keys()]) {
       if (key.endsWith(`:${host}`)) this.cache.delete(key);
     }
@@ -253,13 +283,13 @@ export class LocalLogins {
       const text = await this.files(path);
       if (text === undefined) continue;
       for (const login of parseTeaLogins(text)) {
-        let loginHost: string;
+        let teaHost: string;
         try {
-          loginHost = new URL(login.url).hostname.toLowerCase();
+          teaHost = loginHost(new URL(login.url).host);
         } catch {
           continue;
         }
-        if (loginHost === host && TOKEN.test(login.token)) {
+        if (teaHost === host && TOKEN.test(login.token)) {
           return { token: login.token, source: "tea" };
         }
       }
@@ -283,7 +313,7 @@ export class LocalLogins {
       const key = line.slice(0, eq);
       const value = line.slice(eq + 1).replace(/\r$/, "");
       if (key === "password") password = value;
-      if (key === "host") answered = value.toLowerCase();
+      if (key === "host") answered = loginHost(value);
     }
     // 答的主机必须就是问的那个：不把别处的凭据拿来用。
     if (answered !== "" && answered !== host) return null;
