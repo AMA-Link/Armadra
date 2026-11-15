@@ -5767,8 +5767,10 @@ Copilot 的 ACP 入口只接受 http / sse 的 MCP 服务器，`session/new.mcpS
 }
 ```
 
-- `reason`：`ok` | `notGit`（根目录不是 git 仓库、或已不存在）| `noRemote`（没有任何 remote）| `remoteHostUnavailable`（工作空间在远程执行主机上：现有执行主机通道没有读 remote 的操作，不回退去读控制端磁盘上同名的路径）。非 `ok` 时 `selected`、`selectedBy` 为 `null`、`remotes` 为空，页面保留手填。
+- `reason`：`ok` | `notGit`（根目录不是 git 仓库、或已不存在）| `noRemote`（没有任何 remote）| `remoteHostUnavailable`（工作空间在远程执行主机上，而主机断线、没装配远端执行或 Worker 不支持 `git.remotes`；不回退去读控制端磁盘上同名的路径）。非 `ok` 时 `selected`、`selectedBy` 为 `null`、`remotes` 为空，页面保留手填。
 - 读法：对工作空间根跑 `git rev-parse --show-toplevel` 确认是仓库，`git remote -v` 取每个 remote 的 **fetch** 地址（最多 32 个，按名字排序）；`git config --get-regexp '^remote\..*\.gh-resolved$'` 取用户用 `gh repo set-default` 选过的 remote。
+- 远程执行主机上的工作空间（`#947`）：经执行主机通道的只读操作 `git.remotes`（能力 `remote.git.v1`）在主机上读 remote，取每个 remote 的 fetch 地址（远端已脱敏，控制端再剥一次凭据），之后的识别、令牌与托管 API 请求都在控制端。读远端最多等 4 秒（执行主机握手与单个请求的上限远大于此），超时按 `remoteHostUnavailable`，请求在后台跑完、结果丢掉。远端答 `400` 且是「根目录不是 git 仓库 / 不是目录」时为 `notGit`；其他错误（重连窗口里的 `409 instance_mismatch`、`403` 授权根外、remote 过多的 `400`、`501`、`503` 等）一律 `remoteHostUnavailable`；答空列表为 `noRemote`。远端脱敏写成 `<scheme>://[redacted]@` 的整段 userinfo 去掉（`ssh://git@host/…` 答复里是 `ssh://host/…`）。第一版不读 `gh-resolved`（主 remote 从 `upstream` 起按序选），SSH 别名不在控制端跑 `ssh -G`（别名属于远端的 ssh 配置），按地址原样识别、认不出即未知主机。
+- 识别前的预热（§111.3 探测与 §111.6 读本机登录）对所有 remote 并行、整体限时 4 秒：超时的主机这次按缓存里已有的识别（多为 `forge: null`），不拖住其余 remote；探测在后台跑完写进缓存，下一次读取即生效。
 - 主 remote 顺序（`selectedBy`）：`user`（用户选择）→ `ghResolved` → `upstream` → `origin` → `first`（名字排序首个）。用户选的名字已不在 remote 里时当作没选。用户选择按工作空间存进 `forge_workspace_remote`（迁移 `0066`，主键 `workspace_id`，随工作空间外键删除），只存名字；PUT 选不存在的 remote 答 `400 bad_request`，不存在的工作空间 `404 not_found`。
 - `remotes[].url` 是用户的 remote 原样，**已剥掉凭据**：http(s) 去掉整段 userinfo，其余协议只去密码。`remotes[].detection` 是 §29.2 的识别结果，地址写法不是托管仓库时 `null`；每个 remote 都经同一套识别，所以不是主 remote 的也带平台与令牌状态。
 - SSH 别名：scp / `ssh://` 写法的 remote，主机若不是已知主机，先跑 `ssh -G <别名>` 取 `HostName`（3 秒超时、最小环境、不交互、按别名缓存 5 分钟），把地址里的主机换成真实主机再识别（`git@github-work:org/repo` 识别为 `github.com`）；ssh 不可用或没配则用原值。`url` 字段不受影响，仍是用户写的别名。
@@ -5802,7 +5804,7 @@ Copilot 的 ACP 入口只接受 http / sse 的 MCP 服务器，`session/new.mcpS
 ### 111.5 迁移与 PR 绑定
 
 - 迁移 `0066_forge_workspace_remote.sql`：`forge_workspace_remote(workspace_id PK → workspaces ON DELETE CASCADE, remote, updated_at_ms)`。
-- `report --pr` 与 `items --bind-pr`（§103.1）按编号认仓库时，用 111.1 选中的主 remote（ssh 别名已换成真实主机、凭据已剥掉），不再写死 `origin`：fork 上默认查 `upstream`，用户切换后跟着变。工作空间在远程执行主机上、不是 git 仓库或没有 remote 时仍认不出，提示改给 PR 的网页地址。
+- `report --pr` 与 `items --bind-pr`（§103.1）按编号认仓库时，用 111.1 选中的主 remote（本机工作空间的 ssh 别名已换成真实主机；凭据已剥掉），不再写死 `origin`：fork 上默认查 `upstream`，用户切换后跟着变。远程执行主机上的工作空间同样按 111.1 读到的主 remote 认；远程执行主机连不上、不是 git 仓库或没有 remote 时认不出，提示改给 PR 的网页地址。
 
 ### 111.6 复用本机登录与已识别的主机
 
@@ -5820,7 +5822,7 @@ Copilot 的 ACP 入口只接受 http / sse 的 MCP 服务器，`session/new.mcpS
 - **存着的优先**：配置行存着令牌（§29.3，来源 `stored`）、GitHub 凭据（§5）的根就是这个主机时，不读本机登录。配置行没有令牌的主机（「平台识别了、只缺令牌」）读本机登录；手动配置保存后立即以存着的为准。
 - **GitHub 按主机**：没有存着的 GitHub 凭据时，github.com 与探测出的企业版主机各按主机读 `gh`；`/api/github/*`（§5）仍是单一凭据，不变。不迁移旧数据：旧的单行 GitHub 配置照旧可用，不改写。
 - **开关**：`GET /api/forge/hosts` 的 `reuseLocalLogins` 与 `PUT /api/forge/reuse-local-logins`（`forge.setReuseLocalLogins`，体 `{ enabled: boolean }`，答 `{ reuseLocalLogins }`）。**桌面壳缺省开，服务器壳缺省关**（服务器上的 `gh` / git 登录属于机器而不是登录的人）；服务器壳用环境变量 `ARMADRA_FORGE_REUSE_LOGINS=1` 把缺省改成开（环境变量表见开发指南）。用户切换过一次就写进迁移 `0067_forge_reuse_local_logins.sql` 的单例行 `forge_reuse_local_logins`，之后以它为准。写这个开关要 `settings:write`（旧路径的路由门同），不是 `github:write`。
-- **已识别的主机**：`GET /api/forge/hosts`（`forge.hosts`，`github:read`）答 `{ reuseLocalLogins, hosts: [{ host, forge, credentialSource, accountLogin, credential }] }`，是三处的并集：工作空间 remote 与识别里经过的主机（只记在内存，重启后随工作空间被打开再出现）、配置表里的主机（含工作空间自己的）、GitHub 凭据（§5）的主机；按主机名排序。`forge` 认不出是 `null`；读本机登录得到的 `accountLogin` 为 `null`（不为拿一个登录名多花一次远端请求）。每个主机先预热一次，所以这里读得到本机登录。
+- **已识别的主机**：`GET /api/forge/hosts`（`forge.hosts`，`github:read`）答 `{ reuseLocalLogins, hosts: [{ host, forge, credentialSource, accountLogin, credential }] }`，是三处的并集：工作空间 remote 与识别里经过的主机（只记在内存，重启后随工作空间被打开再出现）、配置表里的主机（含工作空间自己的）、GitHub 凭据（§5）的主机；按主机名排序。`forge` 认不出是 `null`；读本机登录得到的 `accountLogin` 为 `null`（不为拿一个登录名多花一次远端请求）。每个主机先预热一次（并行、整体限时 4 秒，没赶上的主机这次 `forge` 为 `null`，不阻塞其余主机），所以这里读得到本机登录。
 - **列仓库**（§29.7）：`GET /api/forge/accounts` 也含见过的、读到了本机登录的主机；`GET /api/forge/accounts/{host}/repos` 用同一份按主机的登录。
 - 外部命令只在这条链路里起，且只起 `gh`、`glab`、`git credential fill` 三个；tea 只读文件。测试全部注入 mock，不碰真的 gh / glab / git 与用户的家目录。
 

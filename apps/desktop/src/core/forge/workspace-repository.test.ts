@@ -24,7 +24,12 @@ import { ForgeService } from "./service";
 import { SshAliasResolver } from "./ssh-alias";
 import { ForgeStore } from "./store";
 import { ForgeError } from "./types";
-import { type GitReader, WorkspaceRepositoryService } from "./workspace";
+import { DomainError } from "../workspaces/support";
+import {
+  type GitReader,
+  type RemoteHostReader,
+  WorkspaceRepositoryService,
+} from "./workspace";
 
 const closing: (() => Promise<void> | void)[] = [];
 afterEach(async () => {
@@ -85,6 +90,11 @@ async function harness(options: {
   repo: FakeRepo;
   ssh?: CommandRunner;
   probeRoutes?: Record<string, { status: number; body?: unknown }>;
+  /** 远程执行主机上的 `git.remotes`；给了就把工作空间挂到执行主机上。 */
+  remoteHost?: RemoteHostReader;
+  /** 这些主机的探测永远不答（模拟不可达的内网主机）。 */
+  hangHosts?: readonly string[];
+  warmDeadlineMs?: number;
 }): Promise<Harness> {
   const fixture = await githubFixture();
   closing.push(() => fixture.close());
@@ -93,6 +103,9 @@ async function harness(options: {
     fetch: (async (input: unknown) => {
       const url = new URL(String(input));
       probeCalls.push(`${url.host}${url.pathname}`);
+      if (options.hangHosts?.includes(url.host)) {
+        return await new Promise<Response>(() => undefined);
+      }
       const route = options.probeRoutes?.[url.pathname];
       return route === undefined
         ? new Response("", { status: 404 })
@@ -119,6 +132,9 @@ async function harness(options: {
     secrets: () => secrets,
     github: () => fixture.service,
     probe,
+    ...(options.warmDeadlineMs === undefined
+      ? {}
+      : { warmDeadlineMs: options.warmDeadlineMs }),
   });
   const insert = fixture.db.database.prepare(
     "INSERT INTO workspaces (id, name, root_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
@@ -126,10 +142,21 @@ async function harness(options: {
   const root = mkdtempSync(join(tmpdir(), "armadra-forge-ws-"));
   closing.push(() => rmSync(root, { recursive: true, force: true }));
   insert.run(WS, WS, root, "2026-11-13T00:00:00Z", "2026-11-13T00:00:00Z");
+  if (options.remoteHost !== undefined) {
+    fixture.db.database
+      .prepare("UPDATE workspaces SET execution_host_id = ? WHERE id = ?")
+      .run("host-remote", WS);
+  }
   const service = new WorkspaceRepositoryService({
     database: fixture.db.database,
     forge,
     git: gitFor(options.repo),
+    ...(options.remoteHost === undefined
+      ? {}
+      : { remoteHost: options.remoteHost }),
+    ...(options.warmDeadlineMs === undefined
+      ? {}
+      : { warmDeadlineMs: options.warmDeadlineMs }),
     ssh: new SshAliasResolver({
       run: options.ssh ?? (async () => ({ ok: false, stdout: "" })),
     }),
@@ -490,5 +517,297 @@ describe("真 git 的临时仓库", () => {
       delete process.env.GIT_CONFIG_GLOBAL;
       delete process.env.GIT_CONFIG_NOSYSTEM;
     }
+  });
+});
+
+describe("远程执行主机上的工作空间", () => {
+  /** 执行主机答的 `git.remotes`（地址在远端已脱敏）。 */
+  const REMOTE_RECORDS = [
+    {
+      name: "origin",
+      fetchUrl: "https://[redacted]@github.com/me/app.git",
+      pushUrl: "https://[redacted]@github.com/me/app.git",
+      redacted: true,
+    },
+    {
+      name: "upstream",
+      fetchUrl: "git@github-work:acme/app.git",
+      pushUrl: "git@github-work:acme/app.git",
+      redacted: false,
+    },
+  ];
+
+  it("经执行主机读 remote：剥凭据、不读控制端磁盘、不跑本机 ssh -G", async () => {
+    const targets: unknown[] = [];
+    const sshCalls: string[] = [];
+    const h = await harness({
+      // 控制端磁盘上同名路径不是 git：答 ok 说明没读它
+      repo: { remotes: "", notGit: true },
+      remoteHost: async (target) => {
+        targets.push(target);
+        return REMOTE_RECORDS;
+      },
+      ssh: async (_command, args) => {
+        sshCalls.push(args.join(" "));
+        return { ok: true, stdout: "hostname github.com\n" };
+      },
+    });
+    const answer = await h.service.repository(WS);
+    expect(answer).toMatchObject({
+      reason: "ok",
+      selected: "upstream",
+      selectedBy: "upstream",
+    });
+    expect(answer.remotes.map((remote) => remote.url)).toEqual([
+      "https://github.com/me/app.git",
+      "git@github-work:acme/app.git",
+    ]);
+    expect(answer.remotes[0]?.detection?.forge).toBe("github");
+    // 别名属于远端的 ssh 配置：按原样识别，认不出平台
+    expect(answer.remotes[1]?.detection?.repository.host).toBe("github-work");
+    expect(answer.remotes[1]?.detection?.forge).toBeNull();
+    expect(sshCalls).toEqual([]);
+    expect(targets[0]).toMatchObject({ executionHostId: "host-remote" });
+    expect(JSON.stringify(answer)).not.toContain("redacted");
+    expect(await h.service.selectedRemoteUrl(WS)).toBe(
+      "git@github-work:acme/app.git",
+    );
+  });
+
+  it("用户选择照常持久化；远程不读 gh-resolved", async () => {
+    const h = await harness({
+      repo: { remotes: "", ghResolved: "remote.origin.gh-resolved base\n" },
+      remoteHost: async () => REMOTE_RECORDS,
+    });
+    expect(await h.service.repository(WS)).toMatchObject({
+      selectedBy: "upstream",
+    });
+    expect(await h.service.select(WS, "origin")).toMatchObject({
+      selected: "origin",
+      selectedBy: "user",
+    });
+    await expect(h.service.select(WS, "ghost")).rejects.toBeInstanceOf(
+      ForgeError,
+    );
+  });
+
+  it("断线 / 不支持答 remoteHostUnavailable，远端不是 git 答 notGit，没有 remote 答 noRemote", async () => {
+    const down = await harness({
+      repo: { remotes: FORK },
+      remoteHost: async () => {
+        throw new DomainError(503, "unavailable", "连接断开了");
+      },
+    });
+    expect((await down.service.repository(WS)).reason).toBe(
+      "remoteHostUnavailable",
+    );
+    expect(await down.service.selectedRemoteUrl(WS)).toBeUndefined();
+
+    const unsupported = await harness({
+      repo: { remotes: FORK },
+      remoteHost: async () => {
+        throw new DomainError(501, "unsupported", "no remote.git.v1");
+      },
+    });
+    expect((await unsupported.service.repository(WS)).reason).toBe(
+      "remoteHostUnavailable",
+    );
+
+    const notGit = await harness({
+      repo: { remotes: FORK },
+      remoteHost: async () => {
+        throw new DomainError(
+          400,
+          "bad_request",
+          "Path is not a Git working repository",
+        );
+      },
+    });
+    expect((await notGit.service.repository(WS)).reason).toBe("notGit");
+
+    const none = await harness({
+      repo: { remotes: FORK },
+      remoteHost: async () => [],
+    });
+    expect(await none.service.repository(WS)).toEqual({
+      reason: "noRemote",
+      selected: null,
+      selectedBy: null,
+      remotes: [],
+    });
+  });
+});
+
+describe("远程执行主机的边界（#948 审查）", () => {
+  const unavailable = async (error: Error): Promise<string> => {
+    const h = await harness({
+      repo: { remotes: FORK },
+      remoteHost: async () => {
+        throw error;
+      },
+    });
+    return (await h.service.repository(WS)).reason;
+  };
+
+  it("只有「不是 git 仓库 / 不是目录」的 400 是 notGit；409、403、remote 过多都按主机连不上", async () => {
+    expect(
+      await unavailable(
+        new DomainError(
+          409,
+          "instance_mismatch",
+          "The request was addressed to another worker session",
+        ),
+      ),
+    ).toBe("remoteHostUnavailable");
+    expect(
+      await unavailable(
+        new DomainError(
+          403,
+          "forbidden",
+          "Git repository is outside the authorized workspace",
+        ),
+      ),
+    ).toBe("remoteHostUnavailable");
+    expect(
+      await unavailable(
+        new DomainError(
+          400,
+          "bad_request",
+          "This repository has more remotes than this view supports",
+        ),
+      ),
+    ).toBe("remoteHostUnavailable");
+    expect(await unavailable(new Error("socket hang up"))).toBe(
+      "remoteHostUnavailable",
+    );
+    expect(
+      await unavailable(
+        new DomainError(
+          400,
+          "bad_request",
+          "Path is not a working Git repository",
+        ),
+      ),
+    ).toBe("notGit");
+    expect(
+      await unavailable(
+        new DomainError(400, "bad_request", "Git path must be a directory"),
+      ),
+    ).toBe("notGit");
+  });
+
+  it("远端不答：超过时限答 remoteHostUnavailable，selectedRemoteUrl 也不挂住", async () => {
+    const h = await harness({
+      repo: { remotes: FORK },
+      remoteHost: async () => await new Promise<unknown>(() => undefined),
+      warmDeadlineMs: 50,
+    });
+    const started = Date.now();
+    expect((await h.service.repository(WS)).reason).toBe(
+      "remoteHostUnavailable",
+    );
+    expect(await h.service.selectedRemoteUrl(WS)).toBeUndefined();
+    expect(Date.now() - started).toBeLessThan(2_000);
+  });
+
+  it("超时后才失败的远端请求不成为未处理的拒绝", async () => {
+    let reject: (error: Error) => void = () => undefined;
+    const h = await harness({
+      repo: { remotes: FORK },
+      remoteHost: async () =>
+        await new Promise<unknown>((_resolve, fail) => {
+          reject = fail;
+        }),
+      warmDeadlineMs: 20,
+    });
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      expect((await h.service.repository(WS)).reason).toBe(
+        "remoteHostUnavailable",
+      );
+      reject(new DomainError(503, "unavailable", "连接断开了"));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
+  it("远端脱敏的 ssh://[redacted]@ 整段去掉：展示与 PR 绑定都不带 [redacted]", async () => {
+    const h = await harness({
+      repo: { remotes: "" },
+      remoteHost: async () => [
+        {
+          name: "origin",
+          // ssh://git@github.com/me/app.git 经远端脱敏后的样子
+          fetchUrl: "ssh://[redacted]@github.com/me/app.git",
+          pushUrl: "ssh://[redacted]@github.com/me/app.git",
+          redacted: true,
+        },
+      ],
+    });
+    const answer = await h.service.repository(WS);
+    expect(answer.remotes[0]?.url).toBe("ssh://github.com/me/app.git");
+    expect(answer.remotes[0]?.detection?.repository).toEqual({
+      host: "github.com",
+      owner: "me",
+      name: "app",
+    });
+    expect(await h.service.selectedRemoteUrl(WS)).toBe(
+      "ssh://github.com/me/app.git",
+    );
+    expect(JSON.stringify(answer)).not.toContain("redacted");
+  });
+});
+
+describe("预热整体限时", () => {
+  it("不可达主机的探测不拖住其余 remote，超时的先按未知给出", async () => {
+    const h = await harness({
+      repo: {
+        remotes: verbose({
+          origin: "https://github.com/me/app.git",
+          intranet: "https://git.intranet.example/team/app.git",
+        }),
+      },
+      hangHosts: ["git.intranet.example"],
+      warmDeadlineMs: 50,
+    });
+    const started = Date.now();
+    const answer = await h.service.repository(WS);
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(answer.reason).toBe("ok");
+    const byName = Object.fromEntries(
+      answer.remotes.map((remote) => [remote.name, remote.detection]),
+    );
+    expect(byName.origin?.forge).toBe("github");
+    expect(byName.intranet?.repository.host).toBe("git.intranet.example");
+    expect(byName.intranet?.forge).toBeNull();
+  });
+
+  it("hosts() 并行预热：一个主机挂起不阻塞其余主机", async () => {
+    const h = await harness({
+      repo: {
+        remotes: verbose({
+          a: "https://git.intranet.example/team/app.git",
+          b: "https://gitea.lan.example/team/app.git",
+        }),
+      },
+      hangHosts: ["git.intranet.example"],
+      probeRoutes: {
+        "/api/v1/version": { status: 200, body: { version: "1" } },
+      },
+      warmDeadlineMs: 50,
+    });
+    await h.service.repository(WS);
+    const started = Date.now();
+    const table = await h.forge.hosts();
+    expect(Date.now() - started).toBeLessThan(2_000);
+    const byHost = Object.fromEntries(
+      table.hosts.map((row) => [row.host, row.forge]),
+    );
+    expect(byHost["git.intranet.example"]).toBeNull();
+    expect(byHost["gitea.lan.example"]).toBe("gitea");
   });
 });
