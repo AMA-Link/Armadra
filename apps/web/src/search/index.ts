@@ -33,6 +33,7 @@ export type EntryIcon =
   | "browser"
   | "automation"
   | "activity"
+  | "forge"
   | "text"
   | "shape"
   | "image";
@@ -137,6 +138,17 @@ function nodeFacets(node: CanvasNode): { icon: EntryIcon; detail: string } {
       return { icon: "activity", detail: "" };
     case "git":
       return { icon: "diff", detail: "" };
+    // 只搜得到仓库坐标与编号（节点本来也只存这些）。
+    case "forge":
+      return {
+        icon: "forge",
+        detail: data.repo ? `${data.repo.owner}/${data.repo.name}` : "",
+      };
+    case "forgeItem":
+      return {
+        icon: "forge",
+        detail: `${data.repo.owner}/${data.repo.name}#${data.number}`,
+      };
   }
 }
 

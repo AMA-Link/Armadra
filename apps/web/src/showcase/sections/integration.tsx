@@ -210,6 +210,17 @@ function ForgeSamples() {
             <ChecksView checks={GITLAB_CHECKS} compact />
           </div>
         </Sample>
+        <Sample caption={t("forge.showcase.board")}>
+          <div className="min-w-0 rounded-card border border-border">
+            <ForgeHosted
+              detection={GITEA_DETECTION}
+              locale={locale}
+              open
+              nav={{ tab: "pulls", query: "", view: "board", open: null }}
+              onNav={() => {}}
+            />
+          </div>
+        </Sample>
         <Sample caption={t("forge.showcase.settings")}>
           <ForgeConfigs />
         </Sample>

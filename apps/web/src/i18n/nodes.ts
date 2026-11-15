@@ -20,6 +20,8 @@ const zh = {
   "node.automation": "定时计划",
   "node.agentActivity": "原生活动",
   "node.git": "Git 历史",
+  "node.forge": "代码托管",
+  "node.forgeItem": "代码托管条目",
 
   /* 外壳动作 */
   "node.collapse": "折叠",
@@ -146,6 +148,8 @@ const en: Record<keyof typeof zh, string> = {
   "node.automation": "Scheduled plan",
   "node.agentActivity": "Native activity",
   "node.git": "Git history",
+  "node.forge": "Code hosting",
+  "node.forgeItem": "Code hosting item",
 
   "node.collapse": "Collapse",
   "node.expand": "Expand",

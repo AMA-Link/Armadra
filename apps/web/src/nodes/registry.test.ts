@@ -30,6 +30,8 @@ const EXPECTED = {
   automation: { default: [442, 273], min: [273, 169] },
   agentActivity: { default: [442, 273], min: [273, 169] },
   git: { default: [1157, 715], min: [442, 273] },
+  forge: { default: [715, 442], min: [442, 273] },
+  forgeItem: { default: [273, 169], min: [169, 104] },
 } as const;
 
 describe("node registry", () => {
@@ -109,6 +111,8 @@ describe("node registry", () => {
       "automation",
       "agentActivity",
       "git",
+      "forge",
+      "forgeItem",
     ]);
   });
 

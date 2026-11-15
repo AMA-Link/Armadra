@@ -364,6 +364,11 @@ describe("buildAddMenu", () => {
     });
   });
 
+  it("代码托管：建一个 forge 节点，仓库留空按工作空间自动识别（#934）", () => {
+    itemById("add.forge").run(ctx);
+    expect(addNode).toHaveBeenCalledWith("forge", { position: centered });
+  });
+
   it("「打开文件…」开的是资源管理器抽屉，不建节点", () => {
     itemById("add.openFile").run(ctx);
     expect(setPanel).toHaveBeenCalledWith("explorer", "drawer");
