@@ -33,7 +33,7 @@ export interface PullBindDeps {
 /**
  * 工作区的仓库地址：选中的那个 remote（用户选择 → gh-resolved → upstream →
  * origin → 名字排序首个，契约 §111.1），ssh 别名已换成真实主机。读不到
- * （不是本机 Git 仓库、没有 remote、远程执行主机）是 `undefined`。
+ * （不是 Git 仓库、没有 remote、远程执行主机连不上）是 `undefined`。
  */
 async function workspaceOrigin(
   _context: CollabContext,
@@ -141,7 +141,7 @@ export async function resolvePullFlag(
     remoteUrl = await deps.originUrl(context, workspaceId);
     if (remoteUrl === undefined) {
       throw bad(
-        "按编号认不出仓库（工作区不是本机 Git 仓库、没有 remote，或在远程执行主机上）；请改给 PR 的网页地址。",
+        "按编号认不出仓库（工作区不是 Git 仓库、没有 remote，或远程执行主机连不上）；请改给 PR 的网页地址。",
       );
     }
   }
