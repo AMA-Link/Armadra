@@ -22,8 +22,13 @@ import type { CoreServer } from "../http/server";
 import type { ForgeService } from "./service";
 import { configKey, forgeRepo } from "./service";
 import type { WorkspaceRepositoryService } from "./workspace";
+import { MAX_QUERY } from "./query";
 import {
   ForgeError,
+  type ForgePage,
+  type ListDirection,
+  type ListOptions,
+  type ListSort,
   type ForgeMergeMethod,
   type ForgeRepo,
   MAX_BODY,
@@ -58,6 +63,9 @@ export const FORGE_ROUTES = {
   reuseLocalLogins: "/api/forge/reuse-local-logins",
   issueComments: `${REPO}/issues/{number}/comments`,
   pullComments: `${REPO}/pulls/{number}/comments`,
+  pullReviewers: `${REPO}/pulls/{number}/reviewers`,
+  pullCommits: `${REPO}/pulls/{number}/commits`,
+  facets: `${REPO}/facets`,
 } as const;
 
 const MERGE_METHODS: readonly ForgeMergeMethod[] = [
@@ -183,12 +191,54 @@ function removalRevision(value: unknown): number {
   return Number(raw);
 }
 
-function listOptions(args: Args) {
+function listOptions(args: Args): ListOptions {
   const state = args.state === undefined ? "open" : text(args, "state");
   if (state !== "open" && state !== "closed" && state !== "all") {
     bad("state 只能是 open、closed 或 all");
   }
-  return { state: state as "open" | "closed" | "all", ...pageOptions(args) };
+  const paging = pageOptions(args);
+  const options = { state: state as "open" | "closed" | "all", ...paging };
+  const asked = ["q", "sort", "direction", "page"].some(
+    (key) => args[key] !== undefined,
+  );
+  if (!asked) return options;
+  const query = args.q === undefined ? "" : text(args, "q");
+  if (args.q !== undefined && typeof args.q !== "string") bad("q 要是字符串");
+  if (query.length > MAX_QUERY) bad("q 太长");
+  // eslint-disable-next-line no-control-regex -- 有意匹配控制字符以拒绝它们
+  if (/[\x00-\x1f\x7f]/.test(query)) bad("q 不对");
+  const sort = args.sort === undefined ? undefined : text(args, "sort");
+  if (
+    sort !== undefined &&
+    !["updated", "created", "comments"].includes(sort)
+  ) {
+    bad("sort 只能是 updated、created 或 comments");
+  }
+  const direction =
+    args.direction === undefined ? undefined : text(args, "direction");
+  if (direction !== undefined && direction !== "asc" && direction !== "desc") {
+    bad("direction 只能是 asc 或 desc");
+  }
+  // 给了页码就按页码翻，忽略 cursor。
+  let page = options.page;
+  if (args.page !== undefined) {
+    const raw =
+      typeof args.page === "number" ? String(args.page) : text(args, "page");
+    if (!/^[0-9]{1,4}$/.test(raw)) bad("page 不对");
+    page = Number(raw);
+    if (page < 1 || page > MAX_PAGE) bad("page 不对");
+  }
+  return {
+    ...options,
+    page,
+    rich: {
+      query,
+      ...(sort === undefined ? {} : { sort: sort as ListSort }),
+      ...(direction === undefined
+        ? {}
+        : { direction: direction as ListDirection }),
+    },
+  };
 }
 
 /** 翻页：`cursor` 是页码串（2–1000），`limit` 1–100。 */
@@ -247,14 +297,13 @@ function configKeyOf(args: Args): string {
   );
 }
 
-/** 列表不带正文：详情请求把整份拿回来。 */
-function withoutBodies<T extends { body: string }>(page: {
-  items: readonly T[];
-  nextCursor: string | null;
-}) {
+/** 列表不带正文：详情请求把整份拿回来；计数与页码（§112.1）原样带上。 */
+function withoutBodies<T extends { body: string }>(
+  page: ForgePage<T>,
+): Omit<ForgePage<T>, "items"> & { items: T[] } {
   return {
+    ...page,
     items: page.items.map((item) => ({ ...item, body: "" })),
-    nextCursor: page.nextCursor,
   };
 }
 
@@ -366,6 +415,27 @@ function operations(
         await ready(repo, args)
       ).conversation(repo, number, "pull");
       return { items };
+    },
+
+    // 审查者、提交与筛选候选（§112.3）。
+    async pullReviewers(args: Args) {
+      const repo = repoOf(args);
+      const number = numberOf(args);
+      return {
+        reviewers: await (await ready(repo, args)).pullReviewers(repo, number),
+      };
+    },
+
+    async pullCommits(args: Args) {
+      const repo = repoOf(args);
+      const number = numberOf(args);
+      return {
+        commits: await (await ready(repo, args)).pullCommits(repo, number),
+      };
+    },
+
+    facets(args: Args) {
+      return service.facets(repoOf(args), workspaceOf(args));
     },
 
     // 列仓库（§29.7）：新建工作空间从这里挑一个克隆。
@@ -602,6 +672,9 @@ export function installRoutes(
   route("POST", FORGE_ROUTES.pullMerge, { body: true }, run.merge);
   route("GET", FORGE_ROUTES.issueComments, { query: true }, run.issueComments);
   route("GET", FORGE_ROUTES.pullComments, { query: true }, run.pullComments);
+  route("GET", FORGE_ROUTES.pullReviewers, { query: true }, run.pullReviewers);
+  route("GET", FORGE_ROUTES.pullCommits, { query: true }, run.pullCommits);
+  route("GET", FORGE_ROUTES.facets, { query: true }, run.facets);
   route("GET", FORGE_ROUTES.hosts, { query: true }, run.hosts);
   route(
     "PUT",
@@ -661,6 +734,9 @@ export function installRoutes(
     deleteBranch: procedure(run.deleteBranch),
     issueComments: procedure(run.issueComments),
     pullComments: procedure(run.pullComments),
+    pullReviewers: procedure(run.pullReviewers),
+    pullCommits: procedure(run.pullCommits),
+    facets: procedure(run.facets),
     workspaceRepository: procedure(run.workspaceRepository),
     selectWorkspaceRemote: procedure(run.selectWorkspaceRemote),
     hosts: procedure(run.hosts),

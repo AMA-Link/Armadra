@@ -80,6 +80,9 @@ const forgeIssue = (number: number, title: string): ForgeIssue => ({
   createdAtMs: AT,
   updatedAtMs: AT,
   closedAtMs: null,
+  assignees: [],
+  milestone: null,
+  linkedPulls: 0,
 });
 
 const forgePull = (number: number, title: string): ForgePull => ({
@@ -99,6 +102,18 @@ const forgePull = (number: number, title: string): ForgePull => ({
   mergedAtMs: null,
   autoMerge: false,
   fromFork: false,
+  labels: [],
+  assignees: [],
+  milestone: null,
+  commentCount: 0,
+  reviewDecision: null,
+  checks: null,
+  additions: null,
+  deletions: null,
+  changedFiles: null,
+  commitCount: null,
+  linkedIssues: [],
+  authorAssociation: null,
 });
 
 /** 一份识别结果（§29.2）。 */

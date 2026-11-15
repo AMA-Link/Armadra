@@ -52,6 +52,7 @@ import {
   type ConfigurableForge,
   type Forge,
   type ForgeAccount,
+  type ForgeFacets,
   type ForgeKind,
   type ForgePage,
   type ForgeRepo,
@@ -59,6 +60,10 @@ import {
   type RepositoryListOptions,
   forgeError,
 } from "./types";
+
+/** 筛选候选的缓存时长与条数上限。 */
+export const FACETS_TTL_MS = 60_000;
+const MAX_FACET_ENTRIES = 100;
 
 const HOST_PATTERN =
   /^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?)*$/;
@@ -261,6 +266,11 @@ const SEEN_MAX = 256;
 
 export class ForgeService {
   private readonly now: () => number;
+  /** 筛选候选的短缓存（契约 §112.3）：按工作空间与仓库，几十秒内不重复问远端。 */
+  private readonly facetCache = new Map<
+    string,
+    { at: number; value: ForgeFacets }
+  >();
   private readonly newId: () => string;
   /** 工作空间 remote 与识别里经过的主机：`hosts()` 的来源之一。 */
   private readonly seen = new Set<string>();
@@ -630,6 +640,25 @@ export class ForgeService {
   }
 
   /** {@link forgeFor} 之前先 {@link warm}：路由与后台读都走这一条。 */
+  /** 筛选下拉的候选，按仓库缓存 {@link FACETS_TTL_MS}；出错不缓存。 */
+  async facets(repo: ForgeRepo, workspaceId = ""): Promise<ForgeFacets> {
+    const key =
+      `${workspaceId}|${repo.host}/${repo.owner}/${repo.name}`.toLowerCase();
+    const at = this.now();
+    const cached = this.facetCache.get(key);
+    if (cached !== undefined && at - cached.at < FACETS_TTL_MS) {
+      return cached.value;
+    }
+    const forge = await this.forgeForReady(repo, workspaceId);
+    const value = await forge.facets(repo);
+    if (this.facetCache.size >= MAX_FACET_ENTRIES) {
+      const oldest = this.facetCache.keys().next();
+      if (!oldest.done) this.facetCache.delete(oldest.value);
+    }
+    this.facetCache.set(key, { at, value });
+    return value;
+  }
+
   async forgeForReady(repo: ForgeRepo, workspaceId = ""): Promise<Forge> {
     await this.warm(repo.host, workspaceId, repo);
     return this.forgeFor(repo, workspaceId);
