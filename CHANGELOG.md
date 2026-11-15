@@ -2,6 +2,41 @@
 
 每个版本一节，按发布倒序。括号里是合入的 PR 编号（github.com/AMA-Link/Armadra，2026-10-11 前为 Owlbay/Armadra，旧编号照常跳转）。兼容范围以 `tools/release/compatibility.json` 为准，发布说明里的 `armadra-compatibility` 围栏由它渲染。桌面、服务器与手机 / 平板 App 共用一条版本线和一个标签 `vX.Y.Z`（规则见 `docs/guides/ci-release.md`「版本规则」）；有手机端改动的版本，在「手机与平板」小节里写，其余写在「桌面 / 服务器」下。2026-10-10 之前手机端曾单独编号（1.0.0、1.1.0），内容并入对应的 0.2.5、0.2.6。
 
+## 0.18.0（2026-11-15）
+
+版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.18.0。随包 `@armadra/agent` 0.18.0 与平台协议包 0.18.0（没有形状变化，协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.18.0。本版是功能版：新的 Git 工作台（提交图、历史视图与画布 Git 节点）、代码托管全自动识别与列表搜索，以及画布上的代码托管节点；随包的 ama 增加参数宽松强转、Anthropic 消息线程与 QuickJS 引擎的代码模式。
+
+Version aligned with armadra-cloud and armadra-agent (all three ship 0.18.0), with `@armadra/agent` 0.18.0 and platform protocol 0.18.0 (no shape changes, still protocol 1.4); matching images `armadra-cloud` / `armadra-relay` 0.18.0. A feature release: a new Git workbench (commit graph, history view and a canvas Git node), automatic code-hosting detection with list search, and code-hosting nodes on the canvas; the bundled ama gains lenient argument coercion, Anthropic message threads and a QuickJS-based code mode.
+
+### Git 历史与 Git 工作台
+
+- Git 历史（#927）：按第一父折叠已合并分支的提交，主线用仓库色，仓库按钮筛选（#928）；去掉「日志 / 提交」页签，未提交的变更即提交台，详情带全高代码差异（统一 / 并排），链接 worktree 默认不进时间线（#929）；日志带 `Co-authored-by` 协作者、GitHub 头像代理与「全部 / 我的 / Agent 协作」突出显示（#930）；画布新增 `git` 节点，与侧边栏 Git 窗口一键互切，Agent 节点菜单加「Git：未提交的变更」（#931）；叠加分支依次合并时折叠不再认领错合并（#933，Closes #932）。
+  Git history (#927): merged branch commits collapse onto the first parent with repository-coloured mainlines and repository filter buttons (#928); the Log / Commit tabs are gone, the uncommitted row is the commit composer and details get a full-height code diff (unified / side-by-side), linked worktrees stay out of the timeline by default (#929); the log carries `Co-authored-by` collaborators, a GitHub avatar proxy and All / Mine / With agents emphasis (#930); a new `git` canvas node switches with the side panel in one click and Agent node menus gain "Git: uncommitted changes" (#931); stacked branches merged in turn no longer credit commits to the wrong merge when collapsing (#933, Closes #932).
+- Git 工作台（#935）：仓库标识列、一行筛选栏与显示设置、画布右键「添加 → Git 历史」（#936）；「日志 / 本地更改」两页、竖向工具栏、右栏上下分栏与对话框里的 Diff 查看器（#940）；两提交比较、文件路径搜索、完整提交信息与提交者（#941，core 的 `commitDetail` 加正文与提交者）。
+  Git workbench (#935): a repository column, a one-line filter bar with display settings and a canvas "Add → Git history" entry (#936); Log / Local changes pages, a vertical tool rail, a split right pane and a dialog diff viewer (#940); two-commit comparison, file path search and full commit message and committer (#941, core `commitDetail` gains the body and committer).
+- 提交图逐行布线：每条边在每一行都有车道、汇入与左移、长边截成箭头，车道色改为主题 token；头像在 core 落盘缓存七天、离线回落旧图（#943，Refs #942）。
+  Row-by-row routed commit graph: a lane per edge on every row with converging and left-shifting lanes, long edges cut into arrows, theme lane tokens; avatars are cached on disk by core for seven days and fall back to the stale image offline (#943, Refs #942).
+
+### 代码托管
+
+- 全自动识别（#922）：打开工作空间即认出托管仓库与平台，支持 SSH 别名与多个 remote（#924）；复用本机的 `gh` / `glab` / `tea` / `git credential` 登录，不用再填令牌，桌面壳缺省开、服务器壳缺省关（`ARMADRA_FORGE_REUSE_LOGINS=1` 才开）（#926）；面板自动识别仓库、令牌，设置页列出已识别的主机（#925）；Issue / PR 详情与画布徽标悬浮卡（#923）。
+  Automatic detection (#922): opening a workspace identifies its hosting repository and platform, including SSH aliases and several remotes (#924); local `gh` / `glab` / `tea` / `git credential` logins are reused so no token has to be entered, on by default in the desktop shell and off in the server shell (`ARMADRA_FORGE_REUSE_LOGINS=1` turns it on) (#926); the panel detects the repository and token and Settings lists detected hosts (#925); Issue / PR details and a hover card on canvas badges (#923).
+- 列表搜索与筛选（#934）：Issue / PR 列表支持限定词搜索、筛选、排序、页码与开启 / 已关闭计数，PR 行带 CI、审查结论与评论数，PR 概览带审查者、指派与合并状态卡；GitHub、Gitea、GitLab 三个平台各自实现（#937、#938）。
+  List search and filters (#934): Issue / PR lists support qualifier search, filters, sorting, page numbers and open / closed counts, PR rows carry CI, review decision and comment counts, and the PR overview shows reviewers, assignees and a merge-status card; implemented per platform for GitHub, Gitea and GitLab (#937, #938).
+- 画布：右键新建「代码托管」节点（列表 / 看板），列表行与详情可「加到画板」成单条卡片；节点只存仓库、标签页、搜索串或编号，不存令牌与远端数据（#939）。
+  Canvas: the context menu creates a code-hosting node (list / board) and rows or details can be added as single cards; nodes persist only the repository, tab, query or number, never tokens or remote data (#939).
+
+### 随包 Agent
+
+- `@armadra/agent` 0.18.0：模型参数宽松强转；Anthropic 消息线程，线程请求被拒后重发去掉 beta 头并按端点关闭，fork 各用自己的线程键；代码模式的名额、`searchTools`、图片校验与被杀恢复；QuickJS 引擎（没有系统沙箱的平台上代码模式缺省开），递归可捕获，强转参数可见。
+  `@armadra/agent` 0.18.0: lenient coercion of model arguments; Anthropic message threads, a rejected thread request is resent without the beta header and switched off per endpoint, forks use their own thread keys; code mode slots, `searchTools`, image validation and recovery after being killed; a QuickJS engine (code mode is on by default on platforms without an OS sandbox) with catchable recursion and visible coerced arguments.
+
+### 部署说明
+
+- 新增两条数据库迁移：`0066_forge_workspace_remote`（按工作空间记选中的 remote）与 `0067_forge_reuse_local_logins`（复用本机登录开关），升级时自动执行；核心库最新为 0067。契约新增 §111（代码托管自动识别）与 §112（代码托管列表搜索），§40.2 补 `commitDetail` 字段；核心 JSON API 协议到 1.57，新字段与新路由都是加法。云端协议仍是 1.4。
+- 新增画布节点类型 `git`、`forge`、`forgeItem`（只记仓库坐标、标签页、搜索串或编号，不存提交、差异、令牌与远端数据）。
+- 配套镜像 `ghcr.io/ama-link/armadra-cloud:0.18.0`、`ghcr.io/ama-link/armadra-relay:0.18.0` 与协议包 0.18.0 同号（cloud 侧只有 `protocol:pack` 按版本核对的脚本修复，没有新迁移；控制台页面取自本版服务器壳镜像）；推送中继镜像 `ghcr.io/ama-link/armadra-push-relay:0.18.0` 与服务器壳镜像同号。发版顺序沿用 0.17.3：先打 Armadra `v0.18.0`，再打 armadra-cloud `v0.18.0`。
+
 ## 0.17.3（2026-11-13）
 
 版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.17.3。随包 `@armadra/agent` 0.17.3（没有改动，只对齐版本）与平台协议包 0.17.3（没有形状变化，协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.17.3。本版是修复版：控制面连接不再按主机版本猜版本门，`source_access_denied` 只表示访问被收回；开发依赖 `minimatch` 换成已修复版本。
