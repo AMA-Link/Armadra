@@ -854,7 +854,7 @@ describe("协调者任务", () => {
 
 describe("来源与候选", () => {
   const fakeForge = {
-    resolve: (remote: string) => {
+    resolveReady: async (remote: string) => {
       const { host, pathname } = new URL(remote);
       const [owner, name] = pathname.split("/").filter(Boolean);
       return { forge: "github", repository: { host, owner, name } };

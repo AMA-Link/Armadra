@@ -147,7 +147,7 @@ export async function resolvePullFlag(
   }
   let detection;
   try {
-    detection = forge.resolve(remoteUrl, workspaceId);
+    detection = await forge.resolveReady(remoteUrl, workspaceId);
   } catch {
     throw bad("认不出这个 PR 所在的仓库；请给 PR 的网页地址。");
   }

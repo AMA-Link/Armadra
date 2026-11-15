@@ -41,7 +41,7 @@ import { create } from "../contract/message";
 import { GiteaForge, giteaApiBase, giteaWebRoot } from "./gitea";
 import { GithubForge, type GithubAccess, hostGithubAccess } from "./github";
 import type { GithubClientOptions } from "../github/client";
-import type { LocalLogins } from "./logins";
+import { type LocalLogins, loginHost } from "./logins";
 import type { ReuseSwitch } from "./reuse";
 import { GitlabForge, gitlabApiBase, gitlabWebRoot } from "./gitlab";
 import type { ForgeConfigRecord, ForgeStore } from "./store";
@@ -68,7 +68,13 @@ const MAX_FACET_ENTRIES = 100;
 const HOST_PATTERN =
   /^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?)*$/;
 const TOKEN_PATTERN = /^[\x21-\x7e]{1,512}$/;
-const GITHUB_PUBLIC_HOSTS = ["github.com", "www.github.com", "ssh.github.com"];
+/**
+ * github.com 本身或它的别名（`www.`、`ssh.`）：与本机登录、平台探测共用
+ * {@link loginHost} 这一套归一。
+ */
+function publicGithubHost(host: string): boolean {
+  return loginHost(host) === "github.com";
+}
 
 export type DetectionSource = "github" | "config";
 
@@ -316,7 +322,7 @@ export class ForgeService {
 
   /** GitHub 管的主机：公有的三个名字，加上凭据里企业版根的主机。 */
   private githubHost(host: string): boolean {
-    if (GITHUB_PUBLIC_HOSTS.includes(host)) return true;
+    if (publicGithubHost(host)) return true;
     const { base } = this.githubSide();
     return base !== PUBLIC_API_BASE && belongsTo(base, host);
   }
@@ -352,10 +358,10 @@ export class ForgeService {
     const nested = nestedOwner(repo.owner);
     if (
       !nested &&
-      (GITHUB_PUBLIC_HOSTS.includes(repo.host) || this.githubHost(repo.host))
+      (publicGithubHost(repo.host) || this.githubHost(repo.host))
     ) {
       const side = this.githubSide();
-      const publicHost = GITHUB_PUBLIC_HOSTS.includes(repo.host);
+      const publicHost = publicGithubHost(repo.host);
       const apiBase = publicHost ? PUBLIC_API_BASE : side.base;
       // 存着的凭据只对它自己那个根有效：配的是企业版时，github.com 的仓库没有令牌；
       // 没有存着的，看本机登录（按主机，github.com 与企业版可以同时可用）。
@@ -438,7 +444,7 @@ export class ForgeService {
     workspaceId: string,
     repo?: ForgeRepo,
   ): ForgeKind | null {
-    if (GITHUB_PUBLIC_HOSTS.includes(host) || this.githubHost(host)) {
+    if (publicGithubHost(host) || this.githubHost(host)) {
       return "github";
     }
     const config =
@@ -486,11 +492,7 @@ export class ForgeService {
   ): boolean {
     if (kind === "github") {
       const side = this.githubSide();
-      return (
-        side.configured &&
-        webHostFor(side.base) ===
-          (host === "www.github.com" ? "github.com" : host)
-      );
+      return side.configured && webHostFor(side.base) === loginHost(host);
     }
     const config =
       repo === undefined
@@ -787,7 +789,7 @@ export class ForgeService {
     await this.warm(normalized, workspaceId);
     if (this.githubHost(normalized)) {
       const side = this.githubSide();
-      const publicHost = GITHUB_PUBLIC_HOSTS.includes(normalized);
+      const publicHost = publicGithubHost(normalized);
       const apiBase = publicHost ? PUBLIC_API_BASE : side.base;
       const service = this.options.github?.();
       if (side.configured && side.base === apiBase && service !== undefined) {

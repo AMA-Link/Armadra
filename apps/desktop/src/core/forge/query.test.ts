@@ -1,8 +1,10 @@
 /** 限定词解析（契约 §112.1）。 */
 
 import { describe, expect, it } from "vitest";
+import { FORGE_QUERY_MAX, forgeNodeDataSchema } from "@armadra/shared";
 
 import {
+  MAX_QUERY,
   QueryParts,
   effectiveSort,
   parseQuery,
@@ -50,6 +52,23 @@ describe("parseQuery", () => {
     ).join(" ");
     expect(parseQuery(many).qualifiers).toHaveLength(40);
     expect(parseQuery("a".repeat(5000)).text.length).toBeLessThanOrEqual(512);
+  });
+
+  it("上限与节点数据共用一个常量：路由收得下的，节点也存得下", () => {
+    expect(MAX_QUERY).toBe(FORGE_QUERY_MAX);
+    const base = { kind: "forge" as const };
+    expect(
+      forgeNodeDataSchema.safeParse({
+        ...base,
+        query: "a".repeat(MAX_QUERY),
+      }).success,
+    ).toBe(true);
+    expect(
+      forgeNodeDataSchema.safeParse({
+        ...base,
+        query: "a".repeat(MAX_QUERY + 1),
+      }).success,
+    ).toBe(false);
   });
 });
 

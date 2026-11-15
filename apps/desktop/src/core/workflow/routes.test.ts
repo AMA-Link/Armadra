@@ -579,9 +579,12 @@ describe("协调者的来源与候选（契约 §104.7）", () => {
   const RULES_TEXT = "接 bug，不接重构";
   let resolved: "ok" | "unknown" | "invalid";
 
-  /** 假托管平台：`resolve` 把远端地址拆成主机 / owner / 名字。 */
+  /**
+   * 假托管平台：`resolveReady` 把远端地址拆成主机 / owner / 名字。只给预热后的
+   * 入口：配置来源不得走同步的 `resolve`（没探过的自建主机认不出平台）。
+   */
   const forge = {
-    resolve: (remote: string) => {
+    resolveReady: async (remote: string) => {
       if (resolved === "invalid") throw new Error("REMOTE_INVALID");
       if (resolved === "unknown") return { forge: null };
       const url = new URL(remote);

@@ -1,5 +1,6 @@
 import * as React from "react";
 import { ChevronDown, Search } from "lucide-react";
+import { FORGE_QUERY_MAX } from "@armadra/shared";
 
 import { Button } from "@/ui/button";
 import {
@@ -168,6 +169,7 @@ export function ForgeSearchBar({
           size="sm"
           type="search"
           value={text}
+          maxLength={FORGE_QUERY_MAX}
           aria-label={t("forge.search")}
           placeholder={t("forge.search.placeholder")}
           className="pl-8"

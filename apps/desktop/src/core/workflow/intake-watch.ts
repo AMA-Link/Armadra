@@ -221,7 +221,8 @@ export class IntakeWatch {
     const rules = readRules(database, source.workspaceId);
     // 本机工作区没有规则文件：跳过且不推游标，补上文件之后不漏这段时间的线程。
     if (!rules.present && !rules.remote) return { written: 0, intervalMs: 0 };
-    const remote = forge.forgeFor(repo, source.workspaceId);
+    // 先预热：只靠本机登录（gh 等）的仓库，缓存过期后同步的 forgeFor 会报未配置。
+    const remote = await forge.forgeForReady(repo, source.workspaceId);
     const floor = source.cursorAt - REWIND_MS;
     const window: Listed[] = [];
     const interval = { ms: 0 };

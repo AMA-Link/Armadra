@@ -6,7 +6,10 @@
  * 这里只做词法：引号包住的值（`label:"good first issue"`）算一个词，`-` 开头是取反。
  */
 
-export const MAX_QUERY = 512;
+import { FORGE_QUERY_MAX } from "@armadra/shared";
+
+/** 与节点数据、搜索栏同一个上限（`FORGE_QUERY_MAX`）。 */
+export const MAX_QUERY = FORGE_QUERY_MAX;
 const MAX_TOKENS = 40;
 
 export interface Qualifier {

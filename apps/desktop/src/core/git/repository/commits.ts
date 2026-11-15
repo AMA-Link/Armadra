@@ -7,7 +7,12 @@ import {
   requireOid,
   validOid,
 } from "../support";
-import { parseHistory, parseNameStatus, parseNumstat } from "./parse";
+import {
+  parseHistory,
+  parseNameStatus,
+  parseNumstat,
+  parseRenames,
+} from "./parse";
 import { RepositoryService, type RepositoryContext } from "./service";
 import type {
   CommitDetail,
@@ -130,7 +135,16 @@ export async function commitFileDiff(
   const context = await service.context(workspaceRoot, requested);
   const commit = await singleCommit(service, context, oid);
   const baseOid = await resolveBase(service, context, commit, base);
-  const raw = await service.read(
+  // The file list names a renamed file by its new path; limited to that path
+  // the patch would read as a whole-file addition, so the old path goes in too.
+  const renamedFrom =
+    baseOid === null
+      ? undefined
+      : await renameSource(service, context, baseOid, oid, file);
+  // A single file can be far larger than the repository read budget: read a
+  // bounded slice (a few bytes past the cut, so it can land on a character
+  // boundary) and report `truncated` rather than failing the request.
+  const read = await service.readBounded(
     context.repository,
     baseOid === null
       ? [
@@ -144,9 +158,25 @@ export async function commitFileDiff(
           "--",
           file,
         ]
-      : ["diff", "--no-ext-diff", "--no-textconv", baseOid, oid, "--", file],
+      : renamedFrom === undefined
+        ? ["diff", "--no-ext-diff", "--no-textconv", baseOid, oid, "--", file]
+        : [
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "-M",
+            baseOid,
+            oid,
+            "--",
+            renamedFrom,
+            file,
+          ],
+    MAX_PATCH_BYTES + 4,
+    undefined,
+    { literalPathspecs: true },
   );
-  const truncated = raw.length > MAX_PATCH_BYTES;
+  const raw = read.stdout;
+  const truncated = read.truncated || raw.length > MAX_PATCH_BYTES;
   let patch: string;
   if (truncated) {
     // The response is JSON, so the cut must land on a character boundary.
@@ -157,6 +187,63 @@ export async function commitFileDiff(
     patch = raw.toString("utf8");
   }
   return { oid: commit.oid, baseOid, path: file, patch, truncated };
+}
+
+/**
+ * Renames per compared pair, so clicking through a commit's files runs the
+ * whole-tree `--name-status` once rather than once per file. Both sides are
+ * object IDs, so an entry never goes stale; the bound and the short lifetime
+ * only keep the map small.
+ */
+const RENAME_CACHE_MAX = 32;
+const RENAME_CACHE_TTL_MS = 5 * 60_000;
+const renameCache = new Map<
+  string,
+  { readonly at: number; readonly renames: Promise<Map<string, string>> }
+>();
+
+/**
+ * The path `file` was renamed from between `baseOid` and `oid`, read with the
+ * same `--name-status` the file list uses so the two agree; `undefined` when it
+ * was not renamed.
+ */
+async function renameSource(
+  service: RepositoryService,
+  context: RepositoryContext,
+  baseOid: string,
+  oid: string,
+  file: string,
+): Promise<string | undefined> {
+  const key = `${context.repository}\0${baseOid}\0${oid}`;
+  const now = Date.now();
+  let entry = renameCache.get(key);
+  if (entry === undefined || now - entry.at > RENAME_CACHE_TTL_MS) {
+    const renames = service
+      .read(context.repository, [
+        "diff",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--name-status",
+        "-z",
+        baseOid,
+        oid,
+        "--",
+      ])
+      .then((names) => parseRenames(names.toString("utf8")));
+    entry = { at: now, renames };
+    renameCache.delete(key);
+    while (renameCache.size >= RENAME_CACHE_MAX) {
+      const oldest = renameCache.keys().next();
+      if (oldest.done === true) break;
+      renameCache.delete(oldest.value);
+    }
+    renameCache.set(key, entry);
+    // A failed read is not remembered: the next click asks again.
+    renames.catch(() => {
+      if (renameCache.get(key) === entry) renameCache.delete(key);
+    });
+  }
+  return (await entry.renames).get(file);
 }
 
 /** Whether cutting `bytes` at `end` lands between two UTF-8 sequences. */

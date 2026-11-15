@@ -188,7 +188,8 @@ export class PrWatch {
     if (workspaceId === undefined) {
       return { delivered: false, intervalMs: this.minInterval };
     }
-    const remote: Forge = forge.forgeFor(repo, workspaceId);
+    // 先预热：只靠本机登录（gh 等）的仓库，缓存过期后同步的 forgeFor 会报未配置。
+    const remote: Forge = await forge.forgeForReady(repo, workspaceId);
     const key = threadKey(thread);
     const nowMs = this.now;
     const eventIds: string[] = [];
