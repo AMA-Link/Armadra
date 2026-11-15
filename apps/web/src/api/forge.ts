@@ -16,13 +16,11 @@ import {
   forgeDetectionSchema,
   forgeFilesSchema,
   forgeKindSchema,
-  forgeIssuePageSchema,
   forgeAutoMergeSchema,
   forgeBranchDeletionSchema,
   forgeIssueSchema,
   forgeMergeOptionsSchema,
   forgeMergedSchema,
-  forgePullPageSchema,
   forgePullSchema,
 } from "@armadra/shared";
 import { z } from "zod";
@@ -236,12 +234,14 @@ export async function forgeIssues(
   state: ForgeListState,
   cursor: string | null = null,
   workspaceId: ForgeScope = null,
+  options: ForgeListOptions = {},
 ) {
-  return forgeIssuePageSchema.parse(
-    await rpc().issues({
+  return forgeIssuePageExtSchema.parse(
+    await searchRpc().issues({
       ...repo,
       state,
       ...(cursor ? { cursor } : {}),
+      ...listOptions(options),
       ...scoped(workspaceId),
     }),
   );
@@ -252,7 +252,7 @@ export async function forgeIssue(
   number: number,
   workspaceId: ForgeScope = null,
 ) {
-  return forgeIssueSchema.parse(
+  return forgeIssueExtSchema.parse(
     await rpc().issue({ ...repo, number, ...scoped(workspaceId) }),
   );
 }
@@ -272,12 +272,14 @@ export async function forgePulls(
   state: ForgeListState,
   cursor: string | null = null,
   workspaceId: ForgeScope = null,
+  options: ForgeListOptions = {},
 ) {
-  return forgePullPageSchema.parse(
-    await rpc().pulls({
+  return forgePullPageExtSchema.parse(
+    await searchRpc().pulls({
       ...repo,
       state,
       ...(cursor ? { cursor } : {}),
+      ...listOptions(options),
       ...scoped(workspaceId),
     }),
   );
@@ -288,7 +290,7 @@ export async function forgePull(
   number: number,
   workspaceId: ForgeScope = null,
 ) {
-  return forgePullSchema.parse(
+  return forgePullExtSchema.parse(
     await rpc().pull({ ...repo, number, ...scoped(workspaceId) }),
   );
 }
@@ -363,6 +365,159 @@ export async function deleteForgeBranch(
 ) {
   return forgeBranchDeletionSchema.parse(
     await rpc().deleteBranch({ ...repo, number, headSha }),
+  );
+}
+
+/* ------------- 搜索、筛选与审查（#934，形状见 plans/forge-search） ------------- */
+
+/**
+ * 列表的新字段一律可选并带缺省：旧 core 不给时照常渲染。契约类型随 core 一条线
+ * 落进 `@armadra/shared` 之前，页面在这里扩展基础 schema。
+ */
+export const forgeReviewDecisionSchema = z
+  .enum(["approved", "changesRequested", "reviewRequired"])
+  .nullable();
+export type ForgeReviewDecision = z.infer<typeof forgeReviewDecisionSchema>;
+
+export const forgeChecksRollupSchema = z.object({
+  rollup: z.enum(["pending", "success", "failure", "neutral", "none"]),
+  passed: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative(),
+});
+export type ForgeChecksRollup = z.infer<typeof forgeChecksRollupSchema>;
+
+const count = z.number().int().nonnegative().nullable().default(null);
+
+export const forgeIssueExtSchema = forgeIssueSchema.extend({
+  assignees: z.array(z.string()).default([]),
+  milestone: z.string().nullable().default(null),
+  linkedPulls: z.number().int().nonnegative().default(0),
+});
+export type ForgeIssueItem = z.infer<typeof forgeIssueExtSchema>;
+
+export const forgePullExtSchema = forgePullSchema.extend({
+  labels: z.array(z.string()).default([]),
+  assignees: z.array(z.string()).default([]),
+  milestone: z.string().nullable().default(null),
+  commentCount: z.number().int().nonnegative().default(0),
+  reviewDecision: forgeReviewDecisionSchema.default(null),
+  checks: forgeChecksRollupSchema.nullable().default(null),
+  additions: count,
+  deletions: count,
+  changedFiles: count,
+  commitCount: count,
+  linkedIssues: z.array(z.number().int().positive()).default([]),
+  authorAssociation: z.string().nullable().default(null),
+});
+export type ForgePullItem = z.infer<typeof forgePullExtSchema>;
+
+const pageFields = {
+  nextCursor: z.string().nullable(),
+  totalCount: count,
+  openCount: count,
+  closedCount: count,
+  page: count,
+  pageCount: count,
+  unsupported: z.array(z.string()).default([]),
+};
+export const forgeIssuePageExtSchema = z.object({
+  items: z.array(forgeIssueExtSchema),
+  ...pageFields,
+});
+export const forgePullPageExtSchema = z.object({
+  items: z.array(forgePullExtSchema),
+  ...pageFields,
+});
+export type ForgeIssuePage = z.infer<typeof forgeIssuePageExtSchema>;
+export type ForgePullPage = z.infer<typeof forgePullPageExtSchema>;
+
+export type ForgeSort = "updated" | "created" | "comments";
+export interface ForgeListOptions {
+  /** 限定词串，如 `label:core author:x sync`；空串不发。 */
+  q?: string;
+  sort?: ForgeSort;
+  direction?: "asc" | "desc";
+  /** 1 起；给了 core 就按页码翻、忽略 cursor。 */
+  page?: number;
+}
+
+function listOptions(options: ForgeListOptions): Record<string, unknown> {
+  const q = options.q?.trim();
+  return {
+    ...(q ? { q } : {}),
+    ...(options.sort ? { sort: options.sort } : {}),
+    ...(options.direction ? { direction: options.direction } : {}),
+    ...(options.page && options.page > 1 ? { page: options.page } : {}),
+  };
+}
+
+export const forgeReviewerSchema = z.object({
+  login: z.string(),
+  state: z.enum([
+    "approved",
+    "changesRequested",
+    "commented",
+    "pending",
+    "dismissed",
+  ]),
+  submittedAtMs: z.number().int().nullable().default(null),
+});
+export type ForgeReviewer = z.infer<typeof forgeReviewerSchema>;
+
+export const forgeCommitSchema = z.object({
+  sha: z.string(),
+  title: z.string(),
+  author: z.string().nullable(),
+  authoredAtMs: z.number().int(),
+  url: z.string(),
+});
+export type ForgeCommit = z.infer<typeof forgeCommitSchema>;
+
+export const forgeFacetsSchema = z.object({
+  labels: z
+    .array(z.object({ name: z.string(), color: z.string().nullable() }))
+    .default([]),
+  milestones: z
+    .array(z.object({ title: z.string(), open: z.boolean() }))
+    .default([]),
+  assignees: z.array(z.string()).default([]),
+});
+export type ForgeFacets = z.infer<typeof forgeFacetsSchema>;
+
+interface ForgeSearchRpc {
+  issues(input: unknown): Promise<unknown>;
+  pulls(input: unknown): Promise<unknown>;
+  pullReviewers(input: unknown): Promise<unknown>;
+  pullCommits(input: unknown): Promise<unknown>;
+  facets(input: unknown): Promise<unknown>;
+}
+const searchRpc = () => rpc() as unknown as ForgeSearchRpc;
+
+export async function forgePullReviewers(
+  repo: ForgeRepo,
+  number: number,
+): Promise<ForgeReviewer[]> {
+  return z
+    .object({ reviewers: z.array(forgeReviewerSchema) })
+    .parse(await searchRpc().pullReviewers({ ...repo, number })).reviewers;
+}
+
+export async function forgePullCommits(
+  repo: ForgeRepo,
+  number: number,
+): Promise<ForgeCommit[]> {
+  return z
+    .object({ commits: z.array(forgeCommitSchema) })
+    .parse(await searchRpc().pullCommits({ ...repo, number })).commits;
+}
+
+/** 筛选下拉的候选；旧 core 没有这条路由时调用方退回列表里出现过的值。 */
+export async function forgeFacets(
+  repo: ForgeRepo,
+  workspaceId: ForgeScope = null,
+): Promise<ForgeFacets> {
+  return forgeFacetsSchema.parse(
+    await searchRpc().facets({ ...repo, ...scoped(workspaceId) }),
   );
 }
 
