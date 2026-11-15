@@ -54,6 +54,7 @@ async function rig(
     env?: NodeJS.ProcessEnv;
     answer?: (file: string, args: readonly string[]) => string | undefined;
     probe?: Record<string, { status: number; body?: unknown }>;
+    now?: () => number;
   } = {},
 ): Promise<Rig> {
   const fixture = await githubFixture();
@@ -89,6 +90,7 @@ async function rig(
     home: () => "/home/test",
     env: {},
     platform: "linux",
+    ...(options.now === undefined ? {} : { now: options.now }),
   });
   const secrets = new Map<string, string>();
   const backend: SecretBackend = {
@@ -221,6 +223,30 @@ describe("按主机的 GitHub", () => {
       "/api/forge/repos/github.com/octo/repo/issues",
     );
     expect(missing.status).toBe(200);
+  });
+});
+
+describe("后台读先预热", () => {
+  it("本机登录缓存过期后同步 forgeFor 报未配置，forgeForReady / resolveReady 重新读到", async () => {
+    let clock = 1_000_000;
+    const h = await rig({ now: () => clock });
+    const repo = { host: "github.com", owner: "octo", name: "repo" };
+    await h.service.forgeForReady(repo);
+    // 缓存 60 秒；过期以后只靠 gh 登录的仓库，同步入口就认不出令牌了。
+    clock += 61_000;
+    expect(() => h.service.forgeFor(repo)).toThrow();
+    expect(
+      h.service.resolve("https://github.com/octo/repo.git").credential,
+    ).toBe(false);
+    const ready = await h.service.resolveReady(
+      "https://github.com/octo/repo.git",
+    );
+    expect(ready.credential).toBe(true);
+    clock += 61_000;
+    await expect(h.service.forgeForReady(repo)).resolves.toBeDefined();
+    expect(
+      h.commands.filter((c) => c === "gh auth token --hostname github.com"),
+    ).toHaveLength(3);
   });
 });
 

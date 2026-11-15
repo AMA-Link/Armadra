@@ -215,8 +215,8 @@ export function workflowOperations(service: WorkflowService) {
     sources: (boardId: unknown) => ({
       sources: service.sources(optional(boardId)).map(sourceJson),
     }),
-    saveSource: (body: Record<string, unknown>) => ({
-      source: sourceJson(service.saveSource(body)),
+    saveSource: async (body: Record<string, unknown>) => ({
+      source: sourceJson(await service.saveSource(body)),
     }),
     deleteSource: (id: unknown) => ({
       deleted: service.deleteSource(optional(id)),
@@ -482,8 +482,8 @@ export function installWorkflowRoutes(
   route("GET", `${BASE}/sources`, (_match, request) =>
     ok(ops.sources(query(request, "boardId"))),
   );
-  route("POST", `${BASE}/sources`, (_match, request) =>
-    ok(ops.saveSource(jsonBody(request))),
+  route("POST", `${BASE}/sources`, async (_match, request) =>
+    ok(await ops.saveSource(jsonBody(request))),
   );
   route("DELETE", `${BASE}/sources/{id}`, (match) =>
     ok(ops.deleteSource(param(match, "id"))),

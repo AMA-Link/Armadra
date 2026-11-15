@@ -853,8 +853,9 @@ describe("协调者任务", () => {
 /* ------------------------ §43.3 来源与候选（§104.7） ------------------------ */
 
 describe("来源与候选", () => {
+  // 来源配置走预热后的 `resolveReady`（#950）。
   const fakeForge = {
-    resolve: (remote: string) => {
+    resolveReady: async (remote: string) => {
       const { host, pathname } = new URL(remote);
       const [owner, name] = pathname.split("/").filter(Boolean);
       return { forge: "github", repository: { host, owner, name } };

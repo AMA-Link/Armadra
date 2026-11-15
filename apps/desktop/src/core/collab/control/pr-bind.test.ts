@@ -23,26 +23,32 @@ let lead: string;
 let member: string;
 const original = pullBindDeps.current;
 
-/** 只认 `resolve`：把远端地址认成 GitHub / GitLab 的仓库，其余认不出。 */
+/** 把远端地址认成 GitHub / GitLab 的仓库，其余认不出。 */
+function stubResolve(remoteUrl: string) {
+  const parts = remoteSegments(remoteUrl);
+  if (parts === undefined) throw new Error("bad remote");
+  const gitlab = parts.host.startsWith("gitlab");
+  const repository = forgeRepo(
+    parts.host,
+    parts.segments.slice(0, -1).join("/"),
+    parts.segments.at(-1) as string,
+  );
+  const known = parts.host.startsWith("github") || gitlab;
+  return {
+    repository,
+    forge: known ? (gitlab ? "gitlab" : "github") : null,
+    webUrl: known
+      ? `https://${repository.host}/${repository.owner}/${repository.name}`
+      : null,
+  };
+}
+
+/**
+ * 只给预热后的 `resolveReady`：绑定不得走同步的 `resolve`（没探过的自建主机认不出
+ * 平台）。
+ */
 const stubForge = {
-  resolve(remoteUrl: string) {
-    const parts = remoteSegments(remoteUrl);
-    if (parts === undefined) throw new Error("bad remote");
-    const gitlab = parts.host.startsWith("gitlab");
-    const repository = forgeRepo(
-      parts.host,
-      parts.segments.slice(0, -1).join("/"),
-      parts.segments.at(-1) as string,
-    );
-    const known = parts.host.startsWith("github") || gitlab;
-    return {
-      repository,
-      forge: known ? (gitlab ? "gitlab" : "github") : null,
-      webUrl: known
-        ? `https://${repository.host}/${repository.owner}/${repository.name}`
-        : null,
-    };
-  },
+  resolveReady: async (remoteUrl: string) => stubResolve(remoteUrl),
 } as unknown as ForgeService;
 
 async function run(

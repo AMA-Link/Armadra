@@ -155,8 +155,9 @@ class ScriptedForge {
     },
   } as unknown as Forge;
 
+  /** 只给预热后的入口：后台轮询不得走同步的 forgeFor（本机登录缓存过期就报未配置）。 */
   readonly service = {
-    forgeFor: () => this.remote,
+    forgeForReady: async () => this.remote,
   } as unknown as ForgeService;
 }
 

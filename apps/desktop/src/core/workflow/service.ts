@@ -461,7 +461,7 @@ export class WorkflowService {
    * 仓库写法：网页地址或 `<主机>/<owner>/<名字>`，交给托管平台域的 `resolve` 认并
    * 规范化。认不出 400，托管平台域没装配 409 `forge_not_wired`。
    */
-  private resolveRepo(raw: string, workspaceId: string): string {
+  private async resolveRepo(raw: string, workspaceId: string): Promise<string> {
     const forge = (this.options.forge ?? forgeService)();
     if (forge === undefined) {
       throw new DomainError(
@@ -509,7 +509,7 @@ export class WorkflowService {
     }
     let detection;
     try {
-      detection = forge.resolve(remote, workspaceId);
+      detection = await forge.resolveReady(remote, workspaceId);
     } catch {
       throw bad();
     }
@@ -518,7 +518,7 @@ export class WorkflowService {
     return `${repo.host}/${repo.owner}/${repo.name}`;
   }
 
-  saveSource(body: Record<string, unknown>): SourceView {
+  async saveSource(body: Record<string, unknown>): Promise<SourceView> {
     const text = (value: unknown, name: string): string => {
       if (typeof value !== "string" || value.trim() === "") {
         throw new DomainError(400, "bad_request", `${name} 不能缺。`);
@@ -558,7 +558,7 @@ export class WorkflowService {
     const repo =
       existing !== undefined && existing.repo === raw.trim()
         ? existing.repo
-        : this.resolveRepo(raw, workspaceId);
+        : await this.resolveRepo(raw, workspaceId);
     const confirm = body.confirmRules;
     const saved = saveSource(
       this.database,
