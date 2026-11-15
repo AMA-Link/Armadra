@@ -33,6 +33,12 @@ import {
   type Forge,
   type ForgeCheckState,
   type ForgeChecks,
+  type ForgeCommit,
+  type ForgeFacets,
+  type ForgeReviewer,
+  MAX_COMMITS,
+  MAX_FACETS,
+  PULL_EXTRAS,
   type ForgeConversation,
   type ForgeConversationItem,
   type ForgeThreadKind,
@@ -62,6 +68,18 @@ import {
   pagePollInterval,
 } from "./types";
 import {
+  type IssueNode,
+  type PullNode,
+  detailDocument,
+  issueFromNode,
+  mapSearch,
+  planSearch,
+  pullFromNode,
+  searchDocument,
+  searchVariables,
+} from "./github-search";
+import { hexColor, names, pageSize, text } from "./wire";
+import {
   type WireRepository,
   fromWireRepository,
   present,
@@ -89,10 +107,20 @@ export function fromGithubIssue(issue: GithubIssue): ForgeIssue {
     createdAtMs: ms(issue.createdAtUnixMs),
     updatedAtMs: ms(issue.updatedAtUnixMs),
     closedAtMs: msOrNull(issue.closedAtUnixMs),
+    assignees: issue.assignees.map((user) => user.login).filter(Boolean),
+    milestone: issue.milestone?.title ? issue.milestone.title : null,
+    linkedPulls: 0,
   };
 }
 
-export function fromGithubPull(pull: GithubPullRequest): ForgePull {
+/**
+ * `detail`：来自单条读取（REST 的详情带增删行与提交数）；列表的 REST 记录不带，
+ * 这些字段就留 `null`，免得把「没给」当成 0。
+ */
+export function fromGithubPull(
+  pull: GithubPullRequest,
+  detail = false,
+): ForgePull {
   const state =
     pull.state === GithubPullState.MERGED
       ? "merged"
@@ -100,6 +128,13 @@ export function fromGithubPull(pull: GithubPullRequest): ForgePull {
         ? "closed"
         : "open";
   return {
+    ...PULL_EXTRAS,
+    labels: pull.labels.map((label) => label.name),
+    assignees: [],
+    additions: detail ? Number(pull.additions) : null,
+    deletions: detail ? Number(pull.deletions) : null,
+    changedFiles: detail ? Number(pull.changedFiles) : null,
+    commitCount: detail ? Number(pull.commits) : null,
     number: Number(pull.number),
     title: pull.title,
     body: pull.body,
@@ -284,6 +319,32 @@ function toConversationItem(
   };
 }
 
+interface WireCommit {
+  sha?: unknown;
+  html_url?: unknown;
+  author?: { login?: unknown } | null;
+  commit?: {
+    message?: unknown;
+    author?: { name?: unknown; date?: unknown } | null;
+  } | null;
+}
+
+/** GitHub 评审的结论 → 审查者状态；草稿（`PENDING`）与不认识的丢掉。 */
+function githubReviewState(value: unknown): ForgeReviewer["state"] | undefined {
+  switch (typeof value === "string" ? value.toUpperCase() : "") {
+    case "APPROVED":
+      return "approved";
+    case "CHANGES_REQUESTED":
+      return "changesRequested";
+    case "COMMENTED":
+      return "commented";
+    case "DISMISSED":
+      return "dismissed";
+    default:
+      return undefined;
+  }
+}
+
 function perPage(limit: number): string {
   return String(limit > 0 && limit <= MAX_LIMIT ? limit : DEFAULT_LIMIT);
 }
@@ -391,11 +452,72 @@ export class GithubForge implements Forge {
     });
   }
 
+  /** 富查询：GraphQL 搜索一次请求拿一页与两个计数（契约 §112.1）。 */
+  private async search<T>(
+    kind: "issue" | "pull",
+    repo: ForgeRepo,
+    options: ListOptions & { rich: NonNullable<ListOptions["rich"]> },
+    map: (node: IssueNode | PullNode) => T,
+  ): Promise<ForgePage<T>> {
+    const { client, ref } = this.target(repo);
+    const limit = pageSize(options.limit, DEFAULT_LIMIT, MAX_LIMIT);
+    const plan = planSearch(
+      kind,
+      ref.owner,
+      ref.name,
+      options.state,
+      options.rich,
+    );
+    const data = await client.graphql(
+      searchDocument(kind),
+      searchVariables(plan, options.page, limit),
+    );
+    const result = mapSearch(data, options.page, limit, map);
+    return {
+      items: result.items,
+      nextCursor:
+        result.page < result.pageCount ? String(result.page + 1) : null,
+      totalCount: result.totalCount,
+      openCount: result.openCount,
+      closedCount: result.closedCount,
+      page: result.page,
+      pageCount: result.pageCount,
+      unsupported: plan.unsupported,
+    };
+  }
+
+  /** 单条详情的 GraphQL 补充（指派、里程碑、审查结论、检查、关联…）；失败不拖累详情。 */
+  private async extras(
+    kind: "issue" | "pull",
+    repo: ForgeRepo,
+    number: number,
+  ): Promise<IssueNode | PullNode | undefined> {
+    try {
+      const { client, ref } = this.target(repo);
+      const data = (await client.graphql(detailDocument(kind), {
+        owner: ref.owner,
+        name: ref.name,
+        number,
+      })) as { repository?: { item?: IssueNode | PullNode | null } | null };
+      return data?.repository?.item ?? undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   listIssues(
     repo: ForgeRepo,
     options: ListOptions,
   ): Promise<ForgePage<ForgeIssue>> {
     return this.run(async () => {
+      if (options.rich !== undefined) {
+        return this.search(
+          "issue",
+          repo,
+          { ...options, rich: options.rich },
+          issueFromNode,
+        );
+      }
       const { client, ref } = this.target(repo);
       const query: Record<string, string> = {
         state: options.state,
@@ -429,7 +551,16 @@ export class GithubForge implements Forge {
         numbered(number),
         this.service.now(),
       );
-      return fromGithubIssue(result.issue);
+      const issue = fromGithubIssue(result.issue);
+      const extra = await this.extras("issue", repo, number);
+      if (extra === undefined) return issue;
+      const more = issueFromNode(extra);
+      return {
+        ...issue,
+        assignees: more.assignees,
+        milestone: more.milestone,
+        linkedPulls: more.linkedPulls,
+      };
     });
   }
 
@@ -459,6 +590,14 @@ export class GithubForge implements Forge {
     options: ListOptions,
   ): Promise<ForgePage<ForgePull>> {
     return this.run(async () => {
+      if (options.rich !== undefined) {
+        return this.search(
+          "pull",
+          repo,
+          { ...options, rich: options.rich },
+          (node) => pullFromNode(node as PullNode),
+        );
+      }
       const { client, ref } = this.target(repo);
       const query: Record<string, string> = {
         state: options.state,
@@ -493,7 +632,20 @@ export class GithubForge implements Forge {
         [],
         this.service.now(),
       );
-      return fromGithubPull(result.pull);
+      const pull = fromGithubPull(result.pull, true);
+      const extra = await this.extras("pull", repo, number);
+      if (extra === undefined) return pull;
+      const more = pullFromNode(extra as PullNode);
+      return {
+        ...pull,
+        assignees: more.assignees,
+        milestone: more.milestone,
+        commentCount: more.commentCount,
+        reviewDecision: more.reviewDecision,
+        checks: more.checks,
+        linkedIssues: more.linkedIssues,
+        authorAssociation: more.authorAssociation,
+      };
     });
   }
 
@@ -516,7 +668,7 @@ export class GithubForge implements Forge {
         [],
         this.service.now(),
       );
-      return fromGithubPull(pull);
+      return fromGithubPull(pull, true);
     });
   }
 
@@ -590,6 +742,177 @@ export class GithubForge implements Forge {
       return {
         items,
         pollIntervalMs: intervalSec > 0 ? intervalSec * 1000 : null,
+      };
+    });
+  }
+
+  /**
+   * 审查者：各人最新的一次评审（草稿不算；只留评论的不盖掉先前的通过 / 要求修改），
+   * 加上还在等的被请求者（`pending`，盖过旧结论：重新请求就是又在等）。
+   */
+  pullReviewers(
+    repo: ForgeRepo,
+    number: number,
+  ): Promise<readonly ForgeReviewer[]> {
+    return this.run(async () => {
+      const { client, ref } = this.target(repo);
+      const index = numbered(number);
+      const byLogin = new Map<string, ForgeReviewer>();
+      let page = 1;
+      for (let pages = 0; pages < MAX_CONVERSATION_PAGES; pages += 1) {
+        const query: Record<string, string> = { per_page: "100" };
+        if (page > 1) query.page = String(page);
+        const response = await client.get(
+          `/repos/${ref.owner}/${ref.name}/pulls/${index}/reviews`,
+          query,
+        );
+        for (const value of decodeArray<WireNote>(response.body)) {
+          const login = value.user?.login;
+          const state = githubReviewState(value.state);
+          const at = noteTime(value.submitted_at);
+          if (typeof login !== "string" || login === "" || state === undefined)
+            continue;
+          const before = byLogin.get(login);
+          if (
+            state === "commented" &&
+            before !== undefined &&
+            before.state !== "commented"
+          ) {
+            continue;
+          }
+          byLogin.set(login, {
+            login,
+            state,
+            submittedAtMs: at === 0 ? null : at,
+          });
+        }
+        if (response.nextPage <= page) break;
+        page = response.nextPage;
+      }
+      const requested = await client.get(
+        `/repos/${ref.owner}/${ref.name}/pulls/${index}/requested_reviewers`,
+      );
+      const users = (
+        JSON.parse(requested.body.toString("utf8")) as {
+          users?: { login?: unknown }[];
+        }
+      ).users;
+      for (const login of names(users, (user) =>
+        text((user as { login?: unknown }).login, 128),
+      )) {
+        byLogin.set(login, { login, state: "pending", submittedAtMs: null });
+      }
+      return [...byLogin.values()];
+    });
+  }
+
+  pullCommits(
+    repo: ForgeRepo,
+    number: number,
+  ): Promise<readonly ForgeCommit[]> {
+    return this.run(async () => {
+      const { client, ref } = this.target(repo);
+      const index = numbered(number);
+      const commits: ForgeCommit[] = [];
+      let page = 1;
+      for (
+        let pages = 0;
+        pages < 3 && commits.length < MAX_COMMITS;
+        pages += 1
+      ) {
+        const query: Record<string, string> = { per_page: "100" };
+        if (page > 1) query.page = String(page);
+        const response = await client.get(
+          `/repos/${ref.owner}/${ref.name}/pulls/${index}/commits`,
+          query,
+        );
+        for (const value of decodeArray<WireCommit>(response.body)) {
+          const sha = typeof value.sha === "string" ? value.sha : "";
+          if (!validSha(sha)) continue;
+          const message =
+            typeof value.commit?.message === "string"
+              ? value.commit.message
+              : "";
+          const login = value.author?.login;
+          const name = value.commit?.author?.name;
+          const author =
+            typeof login === "string" && login !== ""
+              ? login
+              : typeof name === "string" && name !== ""
+                ? name.slice(0, 256)
+                : null;
+          const url =
+            typeof value.html_url === "string" &&
+            /^https?:\/\//i.test(value.html_url)
+              ? value.html_url.slice(0, 2048)
+              : "";
+          commits.push({
+            sha,
+            title: (message.split("\n")[0] ?? "").slice(0, 512),
+            author,
+            authoredAtMs: noteTime(value.commit?.author?.date),
+            url,
+          });
+        }
+        if (response.nextPage <= page) break;
+        page = response.nextPage;
+      }
+      return commits.slice(0, MAX_COMMITS);
+    });
+  }
+
+  facets(repo: ForgeRepo): Promise<ForgeFacets> {
+    return this.run(async () => {
+      const { client, ref } = this.target(repo);
+      const read = async (
+        suffix: string,
+        query: Record<string, string>,
+      ): Promise<unknown[]> => {
+        const items: unknown[] = [];
+        let page = 1;
+        for (
+          let pages = 0;
+          pages < 2 && items.length < MAX_FACETS;
+          pages += 1
+        ) {
+          const response = await client.get(
+            `/repos/${ref.owner}/${ref.name}/${suffix}`,
+            {
+              ...query,
+              per_page: "100",
+              ...(page > 1 ? { page: String(page) } : {}),
+            },
+          );
+          items.push(...decodeArray<unknown>(response.body));
+          if (response.nextPage <= page) break;
+          page = response.nextPage;
+        }
+        return items.slice(0, MAX_FACETS);
+      };
+      const [labels, milestones, assignees] = await Promise.all([
+        read("labels", {}),
+        read("milestones", { state: "all" }),
+        // 能指派的人只是下拉的候选；没权限读就空着。
+        read("assignees", {}).catch(() => [] as unknown[]),
+      ]);
+      return {
+        labels: labels
+          .map((item) => item as { name?: unknown; color?: unknown })
+          .filter((item) => typeof item.name === "string" && item.name !== "")
+          .map((item) => ({
+            name: text(item.name, 128),
+            color: hexColor(item.color),
+          })),
+        milestones: milestones
+          .map((item) => item as { title?: unknown; state?: unknown })
+          .filter((item) => typeof item.title === "string" && item.title !== "")
+          .map((item) => ({
+            title: text(item.title, 256),
+            open: item.state !== "closed",
+          })),
+        assignees: names(assignees, (user) =>
+          text((user as { login?: unknown })?.login, 128),
+        ),
       };
     });
   }

@@ -69,6 +69,9 @@ const stubForge = {
         createdAtMs: T0,
         updatedAtMs: T0,
         closedAtMs: null,
+        assignees: [],
+        milestone: null,
+        linkedPulls: 0,
       };
     },
     conversation: async () => ({

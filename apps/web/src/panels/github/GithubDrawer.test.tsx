@@ -80,6 +80,9 @@ const forgeIssue = (number: number, title: string): ForgeIssue => ({
   createdAtMs: AT,
   updatedAtMs: AT,
   closedAtMs: null,
+  assignees: [],
+  milestone: null,
+  linkedPulls: 0,
 });
 
 const forgePull = (number: number, title: string) =>

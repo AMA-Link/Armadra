@@ -8,6 +8,7 @@ import {
   CalendarClock,
   FolderOpen,
   FolderTree,
+  GitBranch,
   Frame,
   Globe,
   LayoutGrid,
@@ -277,6 +278,19 @@ export function buildAddMenu(
         create(context, "files", {
           position: nodeDropPosition("files", { anchor: context.position }),
           data: { kind: "files", path: context.workspace.rootPath },
+        });
+      },
+    },
+    {
+      // Git 节点（#935）：与侧边栏同一个历史组件，右键就能摆到画布上。
+      id: "add.git",
+      label: t("add.git"),
+      icon: GitBranch,
+      group: "content",
+      run: (context) => {
+        create(context, "git", {
+          position: nodeDropPosition("git", { anchor: context.position }),
+          data: { kind: "git" },
         });
       },
     },

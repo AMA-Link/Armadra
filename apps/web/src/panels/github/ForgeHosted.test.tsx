@@ -55,6 +55,9 @@ const issue = (number: number, title: string): ForgeIssue => ({
   createdAtMs: 1_788_557_900_000,
   updatedAtMs: 1_788_557_900_000,
   closedAtMs: null,
+  assignees: [],
+  milestone: null,
+  linkedPulls: 0,
 });
 
 function renderHosted(

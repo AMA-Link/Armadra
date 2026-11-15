@@ -35,6 +35,13 @@ import {
   type ForgeCheck,
   type ForgeCheckState,
   type ForgeChecks,
+  type ForgeCommit,
+  type ForgeFacets,
+  type ForgeReviewer,
+  MAX_COMMITS,
+  MAX_FACETS,
+  PULL_EXTRAS,
+  summarizeChecks,
   type ForgeConversation,
   type ForgeConversationItem,
   type ForgeThreadKind,
@@ -71,12 +78,29 @@ import {
 } from "./types";
 import {
   ForgeTransport,
+  type Query,
   type TokenSource,
   decodeJson,
   normalizeBase,
 } from "./transport";
 import { validName } from "../github/remote";
-import { count, numbered, text, webUrl } from "./wire";
+import {
+  count,
+  hexColor,
+  names,
+  numbered,
+  pageSize,
+  pool,
+  text,
+  webUrl,
+} from "./wire";
+import {
+  QueryParts,
+  effectiveSort,
+  parseQuery,
+  stateOf,
+  withoutState,
+} from "./query";
 import {
   type WireProject as WireRepoProject,
   fromWireProject,
@@ -85,6 +109,8 @@ import {
 } from "./repositories";
 
 const API_SUFFIX = "/api/v4";
+/** 逐条补检查的并发上限。 */
+const CONCURRENCY = 4;
 /** 差异按页取；三页一百个文件到 {@link MAX_FILES}。 */
 const DIFF_PAGE = 100;
 
@@ -142,6 +168,9 @@ interface WireIssue {
   state?: string;
   author?: WireUser | null;
   labels?: unknown[] | null;
+  assignees?: WireUser[] | null;
+  milestone?: { title?: string } | null;
+  merge_requests_count?: number;
   user_notes_count?: number;
   web_url?: string;
   created_at?: string;
@@ -156,6 +185,12 @@ interface WireMergeRequest {
   draft?: boolean;
   work_in_progress?: boolean;
   author?: WireUser | null;
+  labels?: unknown[] | null;
+  assignees?: WireUser[] | null;
+  reviewers?: WireUser[] | null;
+  milestone?: { title?: string } | null;
+  user_notes_count?: number;
+  changes_count?: string | number | null;
   source_branch?: string;
   target_branch?: string;
   sha?: string | null;
@@ -258,7 +293,25 @@ function toIssue(value: WireIssue): ForgeIssue {
     createdAtMs: timeMs(value.created_at) ?? 0,
     updatedAtMs: timeMs(value.updated_at) ?? 0,
     closedAtMs: closed ? timeMs(value.closed_at) : null,
+    assignees: logins(value.assignees),
+    milestone: milestoneTitle(value.milestone),
+    linkedPulls: count(value.merge_requests_count),
   };
+}
+
+function logins(values: WireUser[] | null | undefined): string[] {
+  return names(values, (user) => text((user as WireUser)?.username, 128));
+}
+
+function milestoneTitle(value: { title?: string } | null | undefined) {
+  const title = text(value?.title, 256);
+  return title === "" ? null : title;
+}
+
+/** `changes_count` 是字符串，过千写成 `1000+`：取数字部分。 */
+function changesCount(value: unknown): number | null {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
 }
 
 function pullState(value: string | undefined): ForgePullState {
@@ -297,6 +350,12 @@ export function toPull(value: WireMergeRequest): ForgePull {
   const title = text(value.title, MAX_TITLE * 4);
   const sha = value.sha ?? "";
   return {
+    ...PULL_EXTRAS,
+    labels: labelNames(value.labels),
+    assignees: logins(value.assignees),
+    milestone: milestoneTitle(value.milestone),
+    commentCount: count(value.user_notes_count),
+    changedFiles: changesCount(value.changes_count),
     number: count(value.iid),
     title,
     body: text(value.description, MAX_BODY * 4),
@@ -415,6 +474,88 @@ function array<T>(value: unknown): T[] {
   return value as T[];
 }
 
+/** 一次富查询拆出来的列表参数（契约 §112.1）。 */
+export interface GitlabFilter {
+  readonly params: Query;
+  readonly state: "open" | "closed" | "all" | "merged";
+  readonly orderBy: "updated_at" | "created_at";
+  readonly sort: "asc" | "desc";
+  readonly unsupported: string[];
+}
+
+/**
+ * 限定词串 → GitLab 的列表参数。能对上的：`is:open|closed|merged`、`label:`（含取反与
+ * `no:label`）、`author:`（含取反）、`assignee:`（issue）、`reviewer:`（MR）、
+ * `milestone:`、`no:assignee|milestone`、`is:draft`、`base:`、`head:`、词里的全文；
+ * 其余原样进 `unsupported`。按评论数排序没有对应，改按更新时间并回报。
+ */
+export function gitlabFilter(
+  kind: "issues" | "merge_requests",
+  options: ListOptions,
+): GitlabFilter {
+  const rich = options.rich;
+  const parsed = parseQuery(rich?.query ?? "");
+  const given = stateOf(parsed);
+  const sorted = effectiveSort(
+    withoutState(parsed),
+    rich?.sort,
+    rich?.direction,
+  );
+  const parts = new QueryParts(sorted.parsed);
+  const unsupported: string[] = [];
+  const mr = kind === "merge_requests";
+  let state = (given ?? options.state) as GitlabFilter["state"];
+  if (state === "merged" && !mr) {
+    unsupported.push("is:merged");
+    state = "closed";
+  }
+  const params: Query = {};
+  const labels = parts.take("label").map((item) => item.value);
+  const notLabels = parts.take("label", true).map((item) => item.value);
+  const none = parts.take("no").map((item) => item.value.toLowerCase());
+  if (none.includes("label")) params.labels = "None";
+  else if (labels.length > 0) params.labels = labels.join(",");
+  if (notLabels.length > 0) params["not[labels]"] = notLabels.join(",");
+  const author = parts.take("author")[0]?.value ?? "";
+  if (author !== "") params.author_username = author;
+  const notAuthor = parts.take("author", true)[0]?.value ?? "";
+  if (notAuthor !== "") params["not[author_username]"] = notAuthor;
+  const milestone = parts.take("milestone")[0]?.value ?? "";
+  if (none.includes("milestone")) params.milestone = "None";
+  else if (milestone !== "") params.milestone = milestone;
+  const assignee = parts.take("assignee")[0]?.value ?? "";
+  if (none.includes("assignee")) params.assignee_id = "None";
+  else if (assignee !== "") {
+    if (mr) unsupported.push(`assignee:${assignee}`);
+    else params.assignee_username = assignee;
+  }
+  const reviewer = parts.take("reviewer")[0]?.value ?? "";
+  if (reviewer !== "") {
+    if (mr) params.reviewer_username = reviewer;
+    else unsupported.push(`reviewer:${reviewer}`);
+  }
+  if (mr) {
+    if (parts.takeIs("draft")) params.draft = "yes";
+    const base = parts.take("base")[0]?.value ?? "";
+    if (base !== "") params.target_branch = base;
+    const head = parts.take("head")[0]?.value ?? "";
+    if (head !== "") params.source_branch = head;
+  }
+  if (parts.text !== "") params.search = parts.text;
+  for (const rest of parts.rest()) unsupported.push(rest);
+  for (const value of none) {
+    if (!["label", "milestone", "assignee"].includes(value)) {
+      unsupported.push(`no:${value}`);
+    }
+  }
+  let orderBy: GitlabFilter["orderBy"] = "updated_at";
+  if (sorted.sort === "created") orderBy = "created_at";
+  else if (sorted.sort === "comments") {
+    unsupported.push(`sort:comments-${sorted.direction}`);
+  }
+  return { params, state, orderBy, sort: sorted.direction, unsupported };
+}
+
 export interface GitlabOptions {
   readonly apiBase: string;
   readonly token: TokenSource;
@@ -469,10 +610,37 @@ export class GitlabForge implements Forge {
     };
   }
 
+  /** 同一个筛选下只数条数：`per_page=1` 取 `X-Total`（超过一万条远端不给，答 `null`）。 */
+  private async tally(path: string, params: Query): Promise<number | null> {
+    try {
+      const response = await this.http.get(path, { ...params, per_page: "1" });
+      return response.totalCount ?? null;
+    } catch (error) {
+      if (error instanceof ForgeError && error.kind === "unavailable") {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  private pageMeta(
+    response: { nextPage: number },
+    total: number | null,
+    page: number,
+    limit: number,
+  ) {
+    return {
+      nextCursor: response.nextPage > 1 ? String(response.nextPage) : null,
+      page,
+      pageCount: total === null ? null : Math.max(1, Math.ceil(total / limit)),
+    };
+  }
+
   async listIssues(
     repo: ForgeRepo,
     options: ListOptions,
   ): Promise<ForgePage<ForgeIssue>> {
+    if (options.rich !== undefined) return this.richIssues(repo, options);
     const response = await this.http.get(
       projectPath(repo, "/issues"),
       listQuery(options, "issues"),
@@ -480,6 +648,41 @@ export class GitlabForge implements Forge {
     return {
       items: array<WireIssue>(decodeJson(response)).map(toIssue),
       nextCursor: response.nextPage > 1 ? String(response.nextPage) : null,
+      ...pagePollInterval(response),
+    };
+  }
+
+  private async richIssues(
+    repo: ForgeRepo,
+    options: ListOptions,
+  ): Promise<ForgePage<ForgeIssue>> {
+    const filter = gitlabFilter("issues", options);
+    const limit = pageSize(options.limit, DEFAULT_LIMIT, MAX_LIMIT);
+    const path = projectPath(repo, "/issues");
+    const response = await this.http.get(path, {
+      ...filter.params,
+      state: filter.state === "open" ? "opened" : filter.state,
+      order_by: filter.orderBy,
+      sort: filter.sort,
+      per_page: String(limit),
+      ...(options.page > 1 ? { page: String(options.page) } : {}),
+    });
+    const total = response.totalCount ?? null;
+    const [openCount, closedCount] = await Promise.all([
+      filter.state === "open"
+        ? total
+        : this.tally(path, { ...filter.params, state: "opened" }),
+      filter.state === "closed"
+        ? total
+        : this.tally(path, { ...filter.params, state: "closed" }),
+    ]);
+    return {
+      items: array<WireIssue>(decodeJson(response)).map(toIssue),
+      ...this.pageMeta(response, total, options.page, limit),
+      totalCount: total,
+      openCount,
+      closedCount,
+      unsupported: filter.unsupported,
       ...pagePollInterval(response),
     };
   }
@@ -508,6 +711,7 @@ export class GitlabForge implements Forge {
     repo: ForgeRepo,
     options: ListOptions,
   ): Promise<ForgePage<ForgePull>> {
+    if (options.rich !== undefined) return this.richPulls(repo, options);
     const response = await this.http.get(
       projectPath(repo, "/merge_requests"),
       listQuery(options, "merge_requests"),
@@ -519,6 +723,77 @@ export class GitlabForge implements Forge {
     return {
       items,
       nextCursor: response.nextPage > 1 ? String(response.nextPage) : null,
+      ...pagePollInterval(response),
+    };
+  }
+
+  /**
+   * MR 的「已关闭」要连已合并：GitLab 的 `closed` 不含 merged，所以已关闭 / 全部都按
+   * `all` 取、本地滤掉开着的（一页可能不满，页数按 `all` 的总数算）；已关闭的数 =
+   * 全部 − 开启。
+   */
+  private async richPulls(
+    repo: ForgeRepo,
+    options: ListOptions,
+  ): Promise<ForgePage<ForgePull>> {
+    const filter = gitlabFilter("merge_requests", options);
+    const limit = pageSize(options.limit, DEFAULT_LIMIT, MAX_LIMIT);
+    const path = projectPath(repo, "/merge_requests");
+    const wire =
+      filter.state === "open"
+        ? "opened"
+        : filter.state === "closed"
+          ? "all"
+          : filter.state;
+    const response = await this.http.get(path, {
+      ...filter.params,
+      state: wire,
+      order_by: filter.orderBy,
+      sort: filter.sort,
+      per_page: String(limit),
+      ...(options.page > 1 ? { page: String(options.page) } : {}),
+    });
+    const listed = response.totalCount ?? null;
+    const [openCount, allCount] = await Promise.all([
+      filter.state === "open"
+        ? listed
+        : this.tally(path, { ...filter.params, state: "opened" }),
+      filter.state === "closed" || filter.state === "all"
+        ? listed
+        : this.tally(path, { ...filter.params, state: "all" }),
+    ]);
+    const closedCount =
+      openCount === null || allCount === null
+        ? null
+        : Math.max(0, allCount - openCount);
+    let pulls = array<WireMergeRequest>(decodeJson(response)).map(toPull);
+    if (filter.state === "closed") {
+      pulls = pulls.filter((pull) => pull.state !== "open");
+    }
+    // 检查只为这一页逐条取，并发有上限；取不到的留 `null`。
+    const items = await pool(pulls, CONCURRENCY, async (pull) => {
+      if (pull.headSha === "") return pull;
+      try {
+        return {
+          ...pull,
+          checks: summarizeChecks(await this.statusList(repo, pull.headSha)),
+        };
+      } catch {
+        return pull;
+      }
+    });
+    return {
+      items,
+      ...this.pageMeta(response, listed, options.page, limit),
+      totalCount:
+        filter.state === "closed"
+          ? closedCount
+          : filter.state === "open"
+            ? openCount
+            : listed,
+      openCount,
+      closedCount,
+      unsupported: filter.unsupported,
       ...pagePollInterval(response),
     };
   }
@@ -735,17 +1010,15 @@ export class GitlabForge implements Forge {
     return files;
   }
 
-  async checks(repo: ForgeRepo, number: number): Promise<ForgeChecks> {
-    const raw = await this.rawPull(repo, number);
-    const pull = toPull(raw);
-    if (pull.headSha === "") {
-      return { headSha: "", rollup: "none", checks: [] };
-    }
+  /** 一个提交上的状态；同名的多次上报（重跑的作业）只留 id 最大的那条。 */
+  private async statusList(
+    repo: ForgeRepo,
+    sha: string,
+  ): Promise<ForgeCheck[]> {
     const response = await this.http.get(
-      projectPath(repo, `/repository/commits/${pull.headSha}/statuses`),
+      projectPath(repo, `/repository/commits/${sha}/statuses`),
       { per_page: "100" },
     );
-    // 同名的多次上报（重跑的作业）只留 id 最大的那条。
     const latest = new Map<string, WireStatus>();
     for (const status of array<WireStatus>(decodeJson(response))) {
       const name = text(status.name, 256);
@@ -755,10 +1028,19 @@ export class GitlabForge implements Forge {
         latest.set(name, status);
       }
     }
-    const checks: ForgeCheck[] = [...latest.entries()].map(([name, status]) => {
+    return [...latest.entries()].map(([name, status]) => {
       const url = webUrl(status.target_url);
       return { name, state: checkState(status), url: url === "" ? null : url };
     });
+  }
+
+  async checks(repo: ForgeRepo, number: number): Promise<ForgeChecks> {
+    const raw = await this.rawPull(repo, number);
+    const pull = toPull(raw);
+    if (pull.headSha === "") {
+      return { headSha: "", rollup: "none", checks: [] };
+    }
+    const checks = await this.statusList(repo, pull.headSha);
     // 流水线本身（作业都在 statuses 里，这一条给的是整条流水线的结论与链接）。
     // 只认跑在这个 head 上的那条：旧 head 的流水线不该替新提交说话。
     const pipeline = raw.head_pipeline;
@@ -828,6 +1110,132 @@ export class GitlabForge implements Forge {
     return {
       items,
       pollIntervalMs: intervalSec > 0 ? intervalSec * 1000 : null,
+    };
+  }
+
+  /** 把分页读到底（有上限）：审查、提交与筛选候选用它。 */
+  private async readAll<T>(
+    path: string,
+    query: Query = {},
+    pages = 3,
+  ): Promise<T[]> {
+    const items: T[] = [];
+    let page = 1;
+    for (let read = 0; read < pages && items.length < MAX_FACETS; read += 1) {
+      const response = await this.http.get(path, {
+        ...query,
+        per_page: "100",
+        ...(page > 1 ? { page: String(page) } : {}),
+      });
+      items.push(...array<T>(decodeJson(response)));
+      if (response.nextPage <= page) break;
+      page = response.nextPage;
+    }
+    return items.slice(0, MAX_FACETS);
+  }
+
+  /**
+   * 审查者：已批准的（`approvals`）加还没批的被请求者（`pending`）。GitLab 的
+   * 审查者没有「要求修改」这一档（只有 GraphQL 给），所以不出现 `changesRequested`；
+   * 版本或套餐没有 approvals 接口时只给被请求者。
+   */
+  async pullReviewers(
+    repo: ForgeRepo,
+    number: number,
+  ): Promise<readonly ForgeReviewer[]> {
+    const index = numbered(number);
+    const raw = await this.rawPull(repo, index);
+    const byLogin = new Map<string, ForgeReviewer>();
+    for (const login of logins(raw.reviewers)) {
+      byLogin.set(login, { login, state: "pending", submittedAtMs: null });
+    }
+    try {
+      const approvals = decodeJson<{
+        approved_by?: { user?: WireUser | null }[] | null;
+      }>(
+        await this.http.get(
+          projectPath(repo, `/merge_requests/${index}/approvals`),
+        ),
+      );
+      for (const item of approvals.approved_by ?? []) {
+        const login = text(item?.user?.username, 128);
+        if (login === "") continue;
+        byLogin.set(login, { login, state: "approved", submittedAtMs: null });
+      }
+    } catch (error) {
+      if (
+        !(error instanceof ForgeError) ||
+        (error.kind !== "notFound" && error.kind !== "remoteForbidden")
+      ) {
+        throw error;
+      }
+    }
+    return [...byLogin.values()];
+  }
+
+  async pullCommits(
+    repo: ForgeRepo,
+    number: number,
+  ): Promise<readonly ForgeCommit[]> {
+    const values = await this.readAll<{
+      id?: string;
+      title?: string;
+      author_name?: string;
+      authored_date?: string;
+      web_url?: string;
+    }>(
+      projectPath(repo, `/merge_requests/${numbered(number)}/commits`),
+      {},
+      Math.ceil(MAX_COMMITS / 100),
+    );
+    const commits: ForgeCommit[] = [];
+    for (const value of values) {
+      const sha = text(value.id, 64);
+      if (!validSha(sha)) continue;
+      const author = text(value.author_name, 256);
+      commits.push({
+        sha,
+        title: text(value.title, 512),
+        author: author === "" ? null : author,
+        authoredAtMs: timeMs(value.authored_date) ?? 0,
+        url: webUrl(value.web_url),
+      });
+    }
+    // GitLab 最新的在前；统一成从早到晚。
+    return commits.reverse().slice(0, MAX_COMMITS);
+  }
+
+  async facets(repo: ForgeRepo): Promise<ForgeFacets> {
+    const [labels, milestones, members] = await Promise.all([
+      this.readAll<{ name?: string; color?: string }>(
+        projectPath(repo, "/labels"),
+        {},
+        2,
+      ),
+      this.readAll<{ title?: string; state?: string }>(
+        projectPath(repo, "/milestones"),
+        {},
+        2,
+      ),
+      // 成员只是指派下拉的候选；没权限读就空着。
+      this.readAll<WireUser>(projectPath(repo, "/members/all"), {}, 2).catch(
+        () => [] as WireUser[],
+      ),
+    ]);
+    return {
+      labels: labels
+        .filter((label) => text(label?.name, 128) !== "")
+        .map((label) => ({
+          name: text(label.name, 128),
+          color: hexColor(label.color),
+        })),
+      milestones: milestones
+        .filter((item) => text(item?.title, 256) !== "")
+        .map((item) => ({
+          title: text(item.title, 256),
+          open: item.state !== "closed",
+        })),
+      assignees: logins(members),
     };
   }
 
