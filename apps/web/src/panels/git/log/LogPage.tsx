@@ -564,6 +564,10 @@ export function LogPage({ workspaceId, refreshToken = 0 }: LogPageProps) {
         repositoryNames={repositoryNames}
         emphasis={git.emphasis}
         identityEmail={myEmail}
+        repositoryColumnCollapsed={git.repositoryColumnCollapsed}
+        onToggleRepositoryColumn={() =>
+          set("repositoryColumnCollapsed", !git.repositoryColumnCollapsed)
+        }
         expanded={expandedMerges}
         onToggleMerge={(rowKey) =>
           setExpandedMerges((current) => {

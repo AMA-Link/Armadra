@@ -77,15 +77,14 @@ function table(overrides: Partial<Parameters<typeof LogTable>[0]> = {}) {
 }
 
 describe("提交图表格", () => {
-  it("画出四列表头，hash 列可以关掉", () => {
+  it("不画表头；hash 列可以关掉（#935）", () => {
     const view = table();
-    expect(screen.getByText("Message")).toBeTruthy();
-    expect(screen.getByText("Author")).toBeTruthy();
-    expect(screen.getByText("Date")).toBeTruthy();
-    expect(screen.getByText("Hash")).toBeTruthy();
+    expect(screen.queryByRole("columnheader")).toBeNull();
+    // 三行各一个短 hash（测试里的 oid 前七位相同）。
+    expect(screen.getAllByText(oid(2).slice(0, 7))).toHaveLength(3);
     view.unmount();
     table({ showHash: false });
-    expect(screen.queryByText("Hash")).toBeNull();
+    expect(screen.queryAllByText(oid(2).slice(0, 7))).toHaveLength(0);
   });
 
   it("每个提交一行，图上一个点", () => {
@@ -115,22 +114,78 @@ describe("提交图表格", () => {
     ).not.toBeNull();
   });
 
-  it("多仓库才画左侧颜色条", () => {
+  it("多仓库才有仓库标识列：同一仓库连续的行合成一段（#935）", () => {
     const single = table();
     expect(
-      single.container.querySelector('[data-slot="git-log-repository-color"]'),
+      single.container.querySelector(
+        '[data-slot="git-log-repository-segment"]',
+      ),
     ).toBeNull();
     single.unmount();
     const many = table({
-      commits: [commit(2), commit(1, "packages/foo")],
+      commits: [commit(3), commit(2), commit(1, "packages/foo"), commit(0)],
       colors: new Map([
         [".", 0],
         ["packages/foo", 1],
       ]),
+      repositoryNames: new Map([
+        [".", "root"],
+        ["packages/foo", "foo"],
+      ]),
     });
+    const segments = many.container.querySelectorAll(
+      '[data-slot="git-log-repository-segment"]',
+    );
     expect(
-      many.container.querySelector('[data-slot="git-log-repository-color"]'),
-    ).not.toBeNull();
+      [...segments].map((node) => node.getAttribute("data-repository")),
+    ).toEqual([".", "packages/foo", "."]);
+    expect(segments[0]!.textContent).toBe("root");
+    expect(segments[0]!.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("点仓库色块整列收起 / 展开；收起后只剩色条、所有段一起变", () => {
+    const onToggle = vi.fn();
+    const props = {
+      commits: [commit(1), commit(0, "packages/foo")],
+      colors: new Map([
+        [".", 0],
+        ["packages/foo", 1],
+      ]),
+      onToggleRepositoryColumn: onToggle,
+    };
+    const open = table(props);
+    fireEvent.click(
+      open.container.querySelector('[data-slot="git-log-repository-segment"]')!,
+    );
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    open.unmount();
+    const closed = table({ ...props, repositoryColumnCollapsed: true });
+    const segments = closed.container.querySelectorAll(
+      '[data-slot="git-log-repository-segment"]',
+    );
+    expect(segments).toHaveLength(2);
+    for (const segment of segments) {
+      expect(segment.getAttribute("aria-expanded")).toBe("false");
+      expect(segment.textContent).toBe("");
+    }
+    // 收起只改列宽，提交一条不少。
+    expect(screen.getByText("commit 1")).toBeTruthy();
+  });
+
+  it("引用徽标最多两枚，其余折成 +N", () => {
+    const busy: GitLogCommit = {
+      ...commit(1),
+      refs: [
+        "refs/heads/main",
+        "refs/remotes/origin/main",
+        "refs/remotes/origin/HEAD",
+        "refs/tags/v1",
+      ],
+    };
+    const { container } = table({ commits: [busy, commit(0)] });
+    expect(
+      container.querySelector('[data-slot="git-log-more-refs"]')!.textContent,
+    ).toBe("+2");
   });
 
   it("最后一行进入视野就续页", () => {
