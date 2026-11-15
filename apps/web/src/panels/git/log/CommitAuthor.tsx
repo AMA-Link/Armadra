@@ -74,8 +74,9 @@ export function CommitAuthor({
         <span
           data-slot="git-log-author"
           className={cn(
-            "flex shrink-0 items-center gap-1.5 truncate text-muted-foreground",
-            narrow ? "w-auto" : "w-28",
+            // 窄的时候作者先让位（只剩头像），时间列不被挤（#935）。
+            "flex min-w-5 shrink items-center gap-1.5 overflow-hidden text-muted-foreground",
+            narrow ? "w-auto shrink-0" : "w-28",
           )}
           aria-label={
             lead

@@ -7,7 +7,15 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { sk } from "../../../sources/scope";
-import { ChevronLeft, PanelLeft, PanelRight, X } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Crosshair,
+  PanelLeft,
+  PanelRight,
+  X,
+} from "lucide-react";
 import { toast } from "@/ui/toast";
 import type {
   GitExpectedState,
@@ -43,6 +51,7 @@ import { followOperation } from "./follow-operation";
 import { filterKey, logRequestFromPreferences } from "./filters";
 import { commitKey, repositoryColor } from "./graph";
 import { githubAccountId } from "./people";
+import { collapseLog } from "./collapse";
 import { useGitUncommittedRequest } from "../focus";
 import { defaultExpanded, refKey, type BranchTreeNode } from "./build-tree";
 import {
@@ -87,9 +96,18 @@ export interface LogPageProps {
   workspaceId: string;
   /** 窗口壳的刷新按钮每按一次换一个值，交给右栏的提交台（见 `CommitPage`）。 */
   refreshToken?: number;
+  /**
+   * 选中「未提交的变更」：交给外面切到「本地更改」页（#935 C2）。不给时退回
+   * 在右栏里挂提交台。
+   */
+  onUncommitted?: () => void;
 }
 
-export function LogPage({ workspaceId, refreshToken = 0 }: LogPageProps) {
+export function LogPage({
+  workspaceId,
+  refreshToken = 0,
+  onUncommitted,
+}: LogPageProps) {
   const t = useT();
   const compact = useCompactLayout();
   const client = useQueryClient();
@@ -154,10 +172,14 @@ export function LogPage({ workspaceId, refreshToken = 0 }: LogPageProps) {
 
   // Agent 节点菜单里的「Git：未提交的变更」：打开窗口之后选中那一行（#927 B4）。
   const focusUncommitted = useCallback(() => {
+    if (onUncommitted) {
+      onUncommitted();
+      return;
+    }
     setSelected(UNCOMMITTED_KEY);
     setCommit(null);
     if (compact) setStage("details");
-  }, [compact]);
+  }, [compact, onUncommitted]);
   useGitUncommittedRequest(focusUncommitted);
 
   /** 每个仓库当前分支的 ↑↓；没有上游（`null`）的不进表。 */
@@ -177,6 +199,10 @@ export function LogPage({ workspaceId, refreshToken = 0 }: LogPageProps) {
   /** 展开的合并（`commitKey`）。只活在这次打开里，不进偏好。 */
   const [expandedMerges, setExpandedMerges] = useState<ReadonlySet<string>>(
     () => new Set(),
+  );
+  /** 让表格滚到某一行；`nonce` 让同一行能被再次定位。 */
+  const [reveal, setReveal] = useState<{ key: string; nonce: number } | null>(
+    null,
   );
 
   /** 没筛仓库时请求哪些：链接 worktree 默认不进时间线（它与主检出共享提交）。 */
@@ -295,6 +321,11 @@ export function LogPage({ workspaceId, refreshToken = 0 }: LogPageProps) {
         ),
       ),
     [avatarQuery.data],
+  );
+  /** 折叠归属：定位被折叠的分支提交时，先展开带它进来的合并。 */
+  const folded = useMemo(
+    () => collapseLog(commits, expandedMerges, git.collapseMerges),
+    [commits, expandedMerges, git.collapseMerges],
   );
   const repositoryNames = useMemo(
     () =>
@@ -548,11 +579,16 @@ export function LogPage({ workspaceId, refreshToken = 0 }: LogPageProps) {
         colors={colors}
         selected={selected}
         onSelect={(rowKey, entry) => {
+          if (rowKey === UNCOMMITTED_KEY && onUncommitted) {
+            onUncommitted();
+            return;
+          }
           setSelected(rowKey);
           setCommit(entry);
           setCompareBase(null);
           if (compact) setStage("details");
         }}
+        revealKey={reveal}
         uncommitted={uncommitted}
         compact={git.compactRows}
         showHash={git.showHashColumn}
@@ -605,11 +641,97 @@ export function LogPage({ workspaceId, refreshToken = 0 }: LogPageProps) {
         commit={commit}
         base={compareBase}
         onBaseChange={setCompareBase}
-        onOpenFile={compact ? () => setStage("diff") : undefined}
+        repositoryName={repositoryNames?.get(commit.repositoryPath) ?? null}
+        onSelectParent={(oid) => jumpTo(commit.repositoryPath, oid)}
+        stacked={compact}
       />
     ) : (
-      <EmptyState inline title={t("gitLog.details.empty")} />
+      // 没选提交时两块各有一句占位（规格 §7.7）。
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex min-h-0 flex-[55] items-center justify-center border-b border-border">
+          <EmptyState inline title={t("gitLog.details.emptyFiles")} />
+        </div>
+        <div className="flex min-h-0 flex-[45] items-center justify-center">
+          <EmptyState inline title={t("gitLog.details.emptyInfo")} />
+        </div>
+      </div>
     );
+
+  /** 选中并滚到某个提交；被折叠在合并里的先展开那个合并。 */
+  const select = (target: GitLogCommit) => {
+    const rowKey = commitKey(target);
+    const owner = folded.mergedBy.get(rowKey);
+    if (owner && git.collapseMerges && !expandedMerges.has(owner)) {
+      setExpandedMerges((current) => new Set([...current, owner]));
+    }
+    setSelected(rowKey);
+    setCommit(target);
+    setCompareBase(null);
+    setReveal({ key: rowKey, nonce: Date.now() });
+  };
+  const jumpTo = (repositoryPath: string, oid: string) => {
+    const found = commits.find(
+      (entry) => entry.repositoryPath === repositoryPath && entry.oid === oid,
+    );
+    if (found) select(found);
+    else toast.info(t("gitLog.details.parentOutside"));
+  };
+  const locateHead = () => {
+    const head = commits.find((entry) =>
+      entry.refs.some((ref) => ref.startsWith("HEAD -> ") || ref === "HEAD"),
+    );
+    if (head) select(head);
+  };
+
+  // 竖向工具栏（规格 §10）：面板显隐、定位、全部展开 / 收起合并。
+  const rail = (
+    <div
+      role="toolbar"
+      aria-orientation="vertical"
+      aria-label={t("gitLog.rail.label")}
+      data-slot="git-log-rail"
+      className="flex w-9 shrink-0 flex-col items-center gap-0.5 border-r border-border py-1"
+    >
+      <IconButton
+        label={t(
+          git.treeCollapsed ? "gitLog.tree.expand" : "gitLog.tree.collapse",
+        )}
+        active={!git.treeCollapsed}
+        onClick={() => set("treeCollapsed", !git.treeCollapsed)}
+      >
+        <PanelLeft />
+      </IconButton>
+      <IconButton
+        label={t(
+          git.detailsCollapsed
+            ? "gitLog.details.expand"
+            : "gitLog.details.collapse",
+        )}
+        active={!git.detailsCollapsed}
+        onClick={() => set("detailsCollapsed", !git.detailsCollapsed)}
+      >
+        <PanelRight />
+      </IconButton>
+      <span aria-hidden className="my-1 h-px w-5 bg-border" />
+      <IconButton label={t("gitLog.rail.locateHead")} onClick={locateHead}>
+        <Crosshair />
+      </IconButton>
+      <IconButton
+        label={t("gitLog.rail.expandAll")}
+        disabled={!git.collapseMerges || folded.sideCount.size === 0}
+        onClick={() => setExpandedMerges(new Set(folded.sideCount.keys()))}
+      >
+        <ChevronsUpDown />
+      </IconButton>
+      <IconButton
+        label={t("gitLog.rail.collapseAll")}
+        disabled={!git.collapseMerges || expandedMerges.size === 0}
+        onClick={() => setExpandedMerges(new Set())}
+      >
+        <ChevronsDownUp />
+      </IconButton>
+    </div>
+  );
 
   const dialogs = (
     <>
@@ -734,7 +856,8 @@ export function LogPage({ workspaceId, refreshToken = 0 }: LogPageProps) {
   }
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <div className="flex min-h-0 min-w-0 flex-1">
+      {rail}
       <ResizablePanelGroup
         orientation="horizontal"
         className="min-h-0 min-w-0 flex-1"
@@ -783,27 +906,6 @@ export function LogPage({ workspaceId, refreshToken = 0 }: LogPageProps) {
           </>
         )}
       </ResizablePanelGroup>
-      <div className="flex shrink-0 items-center gap-1 border-t border-border px-2 py-0.5">
-        <IconButton
-          label={t(
-            git.treeCollapsed ? "gitLog.tree.expand" : "gitLog.tree.collapse",
-          )}
-          onClick={() => set("treeCollapsed", !git.treeCollapsed)}
-        >
-          <PanelLeft />
-        </IconButton>
-        <span className="flex-1" />
-        <IconButton
-          label={t(
-            git.detailsCollapsed
-              ? "gitLog.details.expand"
-              : "gitLog.details.collapse",
-          )}
-          onClick={() => set("detailsCollapsed", !git.detailsCollapsed)}
-        >
-          <PanelRight />
-        </IconButton>
-      </div>
       {dialogs}
     </div>
   );

@@ -83,6 +83,8 @@ export interface LogTableProps {
    */
   repositoryColumnCollapsed?: boolean;
   onToggleRepositoryColumn?: () => void;
+  /** 滚到这一行（定位 HEAD、跳父提交）；`nonce` 变了就再滚一次。 */
+  revealKey?: { key: string; nonce: number } | null;
   /** 「我的」看的邮箱（`git config user.email`）；与是否加粗高亮无关。 */
   identityEmail?: string | null;
   /** 展开的合并（`commitKey`）。 */
@@ -172,6 +174,7 @@ export function LogTable({
   identityEmail: identity = null,
   repositoryColumnCollapsed = false,
   onToggleRepositoryColumn,
+  revealKey = null,
   expanded = NONE,
   onToggleMerge,
 }: LogTableProps) {
@@ -259,6 +262,14 @@ export function LogTable({
     overscan: 12,
   });
   const items = virtualizer.getVirtualItems();
+
+  useEffect(() => {
+    if (!revealKey) return;
+    const index = rows.findIndex((row) => row.key === revealKey.key);
+    if (index >= 0) virtualizer.scrollToIndex(index, { align: "center" });
+    // 只在请求变了时滚；行数变化（翻页）不该把视图拽回去。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealKey]);
 
   // 滚到底继续翻页。判据是「最后一个虚拟行进入了视野」，不是滚动位置：
   // 行高变了、窗口变了都不用重新调这个数。

@@ -108,43 +108,66 @@ describe("提交详情", () => {
     view();
     await screen.findByText("web/src");
     usePreferencesStore.getState().setGitPreference("flatFiles", true);
-    // 一行在文件列表里，一行是自动打开的差异标题。
-    expect(await screen.findAllByText("apps/web/src/a.ts")).toHaveLength(2);
+    expect(await screen.findByText("apps/web/src/a.ts")).toBeTruthy();
     expect(screen.queryByText("web/src")).toBeNull();
+    usePreferencesStore.getState().setGitPreference("flatFiles", false);
   });
 
-  it("桌面上自动打开第一个文件的差异，占满下半（#927 B2）", async () => {
+  it("上「变更文件」下「提交详情」，顶部写明比较方向（#935 C2）", async () => {
     const { container } = view();
-    await waitFor(() => expect(commitFile).toHaveBeenCalled());
+    await screen.findByText("web/src");
     expect(
-      container.querySelector('[data-slot="git-log-diff"]'),
+      container.querySelector('[data-slot="git-log-changed-files"]'),
     ).not.toBeNull();
+    expect(
+      container.querySelector('[data-slot="git-log-commit-info"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[data-slot="git-log-compare"]')!.textContent,
+    ).toContain(`Compare ${oid("b").slice(0, 7)} → ${oid("a").slice(0, 7)}`);
+    // 没点过文件时不打开差异。
+    expect(commitFile).not.toHaveBeenCalled();
+  });
+
+  it("单击文件只选中；双击才在对话框里打开差异", async () => {
+    view();
+    const file = await screen.findByText("a.ts");
+    fireEvent.click(file);
+    expect(commitFile).not.toHaveBeenCalled();
+    fireEvent.doubleClick(file);
+    await waitFor(() => expect(commitFile).toHaveBeenCalled());
     expect((await screen.findByLabelText("File diff")).textContent).toContain(
       "+new",
     );
   });
 
-  it("并排开关进偏好，换成左右两列", async () => {
+  it("选中后「打开 Diff」按钮可用；回车也能打开", async () => {
     view();
+    const openDiff = await screen.findByRole("button", { name: "Open diff" });
+    expect(openDiff.hasAttribute("disabled")).toBe(true);
+    const file = await screen.findByText("a.ts");
+    fireEvent.click(file);
+    expect(openDiff.hasAttribute("disabled")).toBe(false);
+    fireEvent.keyDown(file.closest("button")!, { key: "Enter" });
+    expect(await screen.findByLabelText("File diff")).toBeTruthy();
+  });
+
+  it("差异对话框里的并排开关进偏好", async () => {
+    view();
+    fireEvent.doubleClick(await screen.findByText("a.ts"));
     await screen.findByLabelText("File diff");
     fireEvent.click(screen.getByRole("button", { name: "Side by side" }));
     expect(usePreferencesStore.getState().git.diffSplit).toBe(true);
     usePreferencesStore.getState().setGitPreference("diffSplit", false);
   });
 
-  it("关掉差异后上半回到整栏", async () => {
-    const { container } = view();
-    await screen.findByLabelText("File diff");
-    fireEvent.click(screen.getByRole("button", { name: "Hide the diff" }));
-    expect(container.querySelector('[data-slot="git-log-diff"]')).toBeNull();
-  });
-
-  it("点一个文件在同一栏里展开差异", async () => {
-    view();
-    fireEvent.click(await screen.findByText("a.ts"));
-    await waitFor(() => expect(commitFile).toHaveBeenCalled());
-    const pre = await screen.findByLabelText("File diff");
-    expect(pre.textContent).toContain("+new");
+  it("点父提交交给外面去日志里定位", async () => {
+    const onSelectParent = vi.fn();
+    view({ onSelectParent });
+    fireEvent.click(
+      await screen.findByRole("button", { name: oid("b").slice(0, 7) }),
+    );
+    expect(onSelectParent).toHaveBeenCalledWith(oid("b"));
   });
 
   it("合并提交才有「与哪个父比」的切换", async () => {
