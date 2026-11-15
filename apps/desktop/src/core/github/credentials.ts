@@ -33,6 +33,7 @@ import {
 } from "./types";
 import { GithubCredentialStatusSchema } from "./schema";
 import { create } from "../contract/message";
+import { agentPath } from "../terminal/environment";
 
 import { GithubClient, type GithubClientOptions } from "./client";
 import { codeOf, githubError, GithubApiError } from "./errors";
@@ -231,6 +232,7 @@ function run(
   });
 }
 
+/** `PATH` 补上 Homebrew 等目录（{@link agentPath}）：从 Dock 启动时也找得到 `gh`。 */
 function minimalEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const name of [
@@ -244,6 +246,7 @@ function minimalEnv(): NodeJS.ProcessEnv {
     const value = process.env[name];
     if (value !== undefined) env[name] = value;
   }
+  env.PATH = agentPath();
   return env;
 }
 
