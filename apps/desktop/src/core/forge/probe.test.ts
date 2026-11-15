@@ -33,6 +33,24 @@ describe("PlatformProbe", () => {
     expect(calls).toEqual([]);
   });
 
+  it("已知平台的别名按主站认，API 根也用主站，不联网", async () => {
+    const { fetch, calls } = fakeFetch({});
+    const probe = new PlatformProbe({ fetch });
+    expect(probe.peek("altssh.gitlab.com")).toEqual({
+      forge: "gitlab",
+      apiBase: "https://gitlab.com/api/v4",
+    });
+    expect(probe.peek("www.gitlab.com")?.forge).toBe("gitlab");
+    expect(probe.peek("www.gitea.com")?.apiBase).toBe(
+      "https://gitea.com/api/v1",
+    );
+    expect(probe.peek("www.codeberg.org")?.forge).toBe("gitea");
+    expect((await probe.probe("ssh.github.com"))?.apiBase).toBe(
+      "https://api.github.com",
+    );
+    expect(calls).toEqual([]);
+  });
+
   it("GitHub 企业版：/api/v3/meta 200", async () => {
     const { fetch } = fakeFetch({
       "/api/v3/meta": { status: 200, body: { installed_version: "3.12" } },
