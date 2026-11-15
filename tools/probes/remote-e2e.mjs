@@ -443,8 +443,8 @@ async function scenario(ctx) {
     await page.click('button[aria-label="资源管理器"]');
     await sleep(300);
     await page.click('button[aria-label="源码控制"]');
-    // #927 B2 起没有「提交」页签：点表格最上面那条「未提交的变更」，右栏就是
-    // 提交台。只认 Git 面板里、带勾选框的那一行：画布上 README.md 编辑器节点
+    // 点日志表格最上面那条「未提交的变更」：#935 C2 起工作台切到「本地更改」
+    // 页，那里就是提交台。只认 Git 面板里、带勾选框的那一行：画布上 README.md 编辑器节点
     // 的标题也写着「README.md」，按全页文字等会在提交台还没出来时就放行。
     await page.click("button", "未提交的变更");
     await page.waitFor(
@@ -497,14 +497,28 @@ async function scenario(ctx) {
       `return [...document.querySelectorAll("[data-sonner-toast]")].map((node) => node.innerText.trim());`,
     );
   const startFetch = async () => {
-    // #927 B2 起 Git 窗口只有一页、分支树默认收起：树不在时先用底栏按钮
-    // 展开它，再在仓库节点上右键。
+    // #935 C2 起 Git 工作台分「日志 / 本地更改」两页：上一段在「未提交的变更」
+    // 里提交，工作台停在「本地更改」，日志页只是 hidden、分支树还在 DOM 里。
+    // 先切回「日志」，再只认看得见的分支树节点；树被收起时用竖向工具栏展开。
+    await page.click('[data-slot="git-workbench"] [role="tab"]', "日志", {
+      exact: true,
+    });
+    await page.waitFor(
+      `return [...document.querySelectorAll('[data-slot="git-workbench"] [role="tab"]')]
+         .some((tab) => tab.innerText.trim() === "日志" && tab.getAttribute("aria-selected") === "true");`,
+      { what: "Git 工作台切到「日志」页" },
+    );
     const treeShown = await page.evaluate(
-      `return Boolean(document.querySelector('[role="treeitem"]'));`,
+      `return [...document.querySelectorAll('[data-slot="git-workbench"] [role="treeitem"]')]
+         .some((node) => node.getClientRects().length > 0);`,
     );
     if (!treeShown) await page.click("button", "展开分支栏");
     await page.rightClickAt(
-      await page.locate('[role="treeitem"]', "project", true),
+      await page.locate(
+        '[data-slot="git-workbench"] [role="treeitem"]',
+        "project",
+        true,
+      ),
     );
     await page.click('[role="menuitem"]', "获取远端更新");
     await page.click(
