@@ -21,7 +21,7 @@ describe("minimalEnv", () => {
     mkdirSync(join(home, ".local", "bin"), { recursive: true });
     const env = minimalEnv(
       { EXTRA: "1" },
-      { PATH: "/usr/bin:/bin", HOME: home, SECRET: "x" },
+      { PATH: ["/usr/bin", "/bin"].join(delimiter), HOME: home, SECRET: "x" },
     );
     const path = (env.PATH ?? "").split(delimiter);
     expect(path.slice(0, 2)).toEqual(["/usr/bin", "/bin"]);
@@ -33,7 +33,7 @@ describe("minimalEnv", () => {
   });
 
   it("补 Homebrew 的目录（机器上有时）", () => {
-    const env = minimalEnv({}, { PATH: "/usr/bin:/bin" });
+    const env = minimalEnv({}, { PATH: ["/usr/bin", "/bin"].join(delimiter) });
     const path = (env.PATH ?? "").split(delimiter);
     for (const dir of ["/opt/homebrew/bin", "/usr/local/bin"]) {
       let exists: boolean;
