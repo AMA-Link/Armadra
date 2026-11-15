@@ -1,17 +1,25 @@
 import { useState, type ReactNode } from "react";
-import { Regex, Settings2, X } from "lucide-react";
+import { ChevronDown, Eye, Regex, Search, X } from "lucide-react";
 
 import { useT, usePreferencesStore } from "../../../app/preferences-store";
 import { cn } from "../../../lib/cn";
 import { Button } from "../../../ui/button";
-import { ToggleGroup, ToggleGroupItem } from "../../../ui/toggle-group";
 import { Input } from "../../../ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "../../../ui/input-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../../ui/dropdown-menu";
@@ -51,7 +59,8 @@ type ViewToggle =
   | "highlightMine"
   | "compactRows"
   | "showHashColumn"
-  | "collapseMerges";
+  | "collapseMerges"
+  | "repositoryColumnCollapsed";
 
 /**
  * 仓库色块按钮的下一份筛选（#927 B1）。`selected` 空 = 缺省那一组
@@ -80,6 +89,12 @@ export function nextRepositories(
     defaults.every((entry) => next.includes(entry));
   return same ? [] : all.filter((entry) => next.includes(entry));
 }
+
+/**
+ * ⌘ 点击的判据要在 `onCheckedChange` 之前记下：Radix 的勾选项只交出「勾没
+ * 勾上」，修饰键在那一刻已经没了。
+ */
+let soloClick = false;
 
 function toggle(list: readonly string[], value: string): string[] {
   return list.includes(value)
@@ -119,48 +134,101 @@ export function LogToolbar({
   return (
     <div
       data-slot="git-log-toolbar"
-      className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border px-2 py-1"
+      className="flex shrink-0 flex-wrap items-center gap-0.5 border-b border-border px-2 py-1"
     >
-      <div className="flex min-w-40 flex-1 items-center gap-1">
-        <Input
+      {/* 搜索框内含正则与大小写两个开关（#935）：一行放得下全部筛选。 */}
+      <InputGroup className="max-w-80 min-w-44 flex-1">
+        <InputGroupAddon>
+          <Search />
+        </InputGroupAddon>
+        <InputGroupInput
           value={git.searchText}
           onChange={(event) => set("searchText", event.target.value)}
           placeholder={t("gitLog.toolbar.search")}
           aria-label={t("gitLog.toolbar.search")}
           size="sm"
-          className="min-w-0 flex-1"
         />
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-pressed={git.searchRegex}
-              aria-label={t("gitLog.toolbar.regex")}
-              className="aria-pressed:bg-muted"
-              onClick={() => set("searchRegex", !git.searchRegex)}
-            >
-              <Regex />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t("gitLog.toolbar.regex")}</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-pressed={git.searchMatchCase}
-              aria-label={t("gitLog.toolbar.matchCase")}
-              className="font-mono text-caption aria-pressed:bg-muted"
-              onClick={() => set("searchMatchCase", !git.searchMatchCase)}
-            >
-              Cc
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t("gitLog.toolbar.matchCase")}</TooltipContent>
-        </Tooltip>
-      </div>
+        <InputGroupAddon align="inline-end">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <InputGroupButton
+                size="icon-xs"
+                aria-pressed={git.searchRegex}
+                aria-label={t("gitLog.toolbar.regex")}
+                className="aria-pressed:bg-muted aria-pressed:text-foreground"
+                onClick={() => set("searchRegex", !git.searchRegex)}
+              >
+                <Regex />
+              </InputGroupButton>
+            </TooltipTrigger>
+            <TooltipContent>{t("gitLog.toolbar.regex")}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <InputGroupButton
+                size="icon-xs"
+                aria-pressed={git.searchMatchCase}
+                aria-label={t("gitLog.toolbar.matchCase")}
+                className="font-mono text-caption aria-pressed:bg-muted aria-pressed:text-foreground"
+                onClick={() => set("searchMatchCase", !git.searchMatchCase)}
+              >
+                Cc
+              </InputGroupButton>
+            </TooltipTrigger>
+            <TooltipContent>{t("gitLog.toolbar.matchCase")}</TooltipContent>
+          </Tooltip>
+        </InputGroupAddon>
+      </InputGroup>
+
+      {repositories.length > 1 && (
+        <Facet
+          label={t("gitLog.toolbar.repository")}
+          count={git.repositories.length}
+          slot="git-log-repository-filter"
+        >
+          {repositories.map((repository) => {
+            const on =
+              git.repositories.length === 0
+                ? !repository.worktree
+                : git.repositories.includes(repository.path);
+            return (
+              <DropdownMenuCheckboxItem
+                key={repository.path}
+                checked={on}
+                title={t("gitLog.toolbar.repositoryToggle", {
+                  name: repository.name,
+                })}
+                onSelect={(event) => event.preventDefault()}
+                onPointerDown={(event) => {
+                  soloClick = event.metaKey || event.ctrlKey;
+                }}
+                onCheckedChange={() => {
+                  set(
+                    "repositories",
+                    nextRepositories(
+                      repositories.map((entry) => entry.path),
+                      git.repositories,
+                      repository.path,
+                      soloClick,
+                      repositories
+                        .filter((entry) => !entry.worktree)
+                        .map((entry) => entry.path),
+                    ),
+                  );
+                  soloClick = false;
+                }}
+              >
+                <span
+                  aria-hidden
+                  className="h-3.5 w-1 shrink-0 rounded-full"
+                  style={{ background: repository.color }}
+                />
+                <span className="truncate">{repository.name}</span>
+              </DropdownMenuCheckboxItem>
+            );
+          })}
+        </Facet>
+      )}
 
       <Facet label={t("gitLog.toolbar.branch")} count={git.selectedRefs.length}>
         <DropdownMenuItem onSelect={() => set("selectedRefs", [])}>
@@ -286,99 +354,7 @@ export function LogToolbar({
         ))}
       </Facet>
 
-      <ToggleGroup
-        type="single"
-        size="sm"
-        variant="outline"
-        spacing={0}
-        aria-label={t("gitLog.toolbar.emphasis")}
-        data-slot="git-log-emphasis"
-        value={git.emphasis}
-        onValueChange={(next) =>
-          next && set("emphasis", next as typeof git.emphasis)
-        }
-      >
-        <ToggleGroupItem value="all">
-          {t("gitLog.toolbar.emphasis.all")}
-        </ToggleGroupItem>
-        {myEmail && (
-          <ToggleGroupItem value="mine">
-            {t("gitLog.toolbar.emphasis.mine")}
-          </ToggleGroupItem>
-        )}
-        <ToggleGroupItem value="agent">
-          {t("gitLog.toolbar.emphasis.agent")}
-        </ToggleGroupItem>
-      </ToggleGroup>
-
-      {repositories.length > 1 && (
-        <div
-          role="group"
-          aria-label={t("gitLog.toolbar.repositories")}
-          data-slot="git-log-repository-filter"
-          className="flex flex-wrap items-center gap-1"
-        >
-          {repositories.map((repository) => {
-            const on =
-              git.repositories.length === 0
-                ? !repository.worktree
-                : git.repositories.includes(repository.path);
-            return (
-              <Button
-                key={repository.path}
-                size="sm"
-                variant="outline"
-                aria-pressed={on}
-                title={t("gitLog.toolbar.repositoryToggle", {
-                  name: repository.name,
-                })}
-                className="gap-1.5 aria-[pressed=false]:text-muted-foreground aria-[pressed=false]:opacity-60"
-                onClick={(event) =>
-                  set(
-                    "repositories",
-                    nextRepositories(
-                      repositories.map((entry) => entry.path),
-                      git.repositories,
-                      repository.path,
-                      event.metaKey || event.ctrlKey,
-                      repositories
-                        .filter((entry) => !entry.worktree)
-                        .map((entry) => entry.path),
-                    ),
-                  )
-                }
-              >
-                <span
-                  aria-hidden
-                  className="h-3.5 w-1 rounded-full"
-                  style={{ background: repository.color }}
-                />
-                {repository.name}
-              </Button>
-            );
-          })}
-        </div>
-      )}
-
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label={t("gitLog.toolbar.settings")}
-          >
-            <Settings2 />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          {setting("showAllBranches", t("gitLog.toolbar.showAllBranches"))}
-          {setting("highlightMine", t("gitLog.toolbar.highlightMine"))}
-          {setting("compactRows", t("gitLog.toolbar.compactRows"))}
-          {setting("showHashColumn", t("gitLog.toolbar.showHashColumn"))}
-          {setting("collapseMerges", t("gitLog.toolbar.collapseMerges"))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
+      <div className="flex-1" />
       {active && (
         <Button
           size="sm"
@@ -397,6 +373,51 @@ export function LogToolbar({
           {t("gitLog.toolbar.clear")}
         </Button>
       )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label={t("gitLog.toolbar.settings")}
+            data-slot="git-log-display-settings"
+          >
+            <Eye />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuLabel>{t("gitLog.toolbar.emphasis")}</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={git.emphasis}
+            onValueChange={(next) =>
+              set("emphasis", next as typeof git.emphasis)
+            }
+          >
+            <DropdownMenuRadioItem value="all">
+              {t("gitLog.toolbar.emphasis.all")}
+            </DropdownMenuRadioItem>
+            {myEmail && (
+              <DropdownMenuRadioItem value="mine">
+                {t("gitLog.toolbar.emphasis.mine")}
+              </DropdownMenuRadioItem>
+            )}
+            <DropdownMenuRadioItem value="agent">
+              {t("gitLog.toolbar.emphasis.agent")}
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+          <DropdownMenuSeparator />
+          {setting("collapseMerges", t("gitLog.toolbar.collapseMerges"))}
+          {setting("showAllBranches", t("gitLog.toolbar.showAllBranches"))}
+          {setting("highlightMine", t("gitLog.toolbar.highlightMine"))}
+          <DropdownMenuSeparator />
+          {repositories.length > 1 &&
+            setting(
+              "repositoryColumnCollapsed",
+              t("gitLog.toolbar.repositoryColumnCollapsed"),
+            )}
+          {setting("compactRows", t("gitLog.toolbar.compactRows"))}
+          {setting("showHashColumn", t("gitLog.toolbar.showHashColumn"))}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
@@ -404,10 +425,12 @@ export function LogToolbar({
 function Facet({
   label,
   count,
+  slot,
   children,
 }: {
   label: string;
   count: number;
+  slot?: string;
   children: ReactNode;
 }) {
   return (
@@ -417,7 +440,11 @@ function Facet({
           size="sm"
           variant="ghost"
           aria-label={label}
-          className={cn(count > 0 && "bg-muted")}
+          data-slot={slot}
+          className={cn(
+            "gap-1 px-2 text-muted-foreground hover:text-foreground",
+            count > 0 && "bg-muted text-foreground",
+          )}
         >
           {label}
           {count > 0 && (
@@ -425,6 +452,7 @@ function Facet({
               {count}
             </span>
           )}
+          <ChevronDown aria-hidden className="size-3 opacity-70" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
