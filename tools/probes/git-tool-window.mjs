@@ -150,6 +150,70 @@ async function main() {
   } catch {
     // 冲突正是这里要的状态；`git merge` 以非零码退出。
   }
+  // 多分支、反复合并的仓库（#942）：几条分支从同一个点分出、依次合并，外加
+  // 一条从很早分出、最后才合并的长分支——提交图的逐行布线、左移与长边箭头都在
+  // 这里看。时间戳逐个递增，并且早于别的仓库，按时间排在它们下面。
+  const busy = join(project, "packages/busy");
+  let tick = Date.parse("2026-11-01T08:00:00Z") / 1000;
+  const dated = (args) => {
+    tick += 60;
+    const date = `${tick} +0000`;
+    return run("git", ["-C", busy, ...args], {
+      env: { ...process.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date },
+    });
+  };
+  const work = (file, message) => {
+    writeFileSync(join(busy, file), `${message}\n`);
+    dated(["add", "-A"]);
+    dated(["commit", "-qm", message]);
+  };
+  newRepository(busy);
+  work("a.txt", "chore: init");
+  work("a.txt", "chore: remove unused code");
+  dated(["branch", "release/long"]);
+  work("a.txt", "fix: recover configuration lock");
+  work("a.txt", "fix(database): recover the connection");
+  const branches = [
+    "fix/qwen",
+    "fix/trae",
+    "feat/i18n",
+    "fix/liveagent",
+    "fix/codebuddy",
+  ];
+  for (const name of branches) dated(["branch", name]);
+  for (const [index, name] of branches.entries()) {
+    const scope = name.replace("/", "(");
+    dated(["checkout", "-q", name]);
+    work(`${index}.txt`, `${scope}): first change`);
+    if (index % 2 === 0) work(`${index}.txt`, `${scope}): follow-up`);
+  }
+  dated(["checkout", "-q", "main"]);
+  for (const name of branches) {
+    dated([
+      "merge",
+      "-q",
+      "--no-ff",
+      "-m",
+      `Merge remote-tracking branch 'origin/${name}'`,
+      name,
+    ]);
+    work("main.txt", `chore: after ${name}`);
+  }
+  for (let index = 0; index < 26; index += 1) {
+    work("main.txt", `feat(app): step ${index}`);
+  }
+  dated(["checkout", "-q", "release/long"]);
+  work("r.txt", "fix(release): backport");
+  dated(["checkout", "-q", "main"]);
+  dated([
+    "merge",
+    "-q",
+    "--no-ff",
+    "-m",
+    "Merge branch 'release/long'",
+    "release/long",
+  ]);
+
   step(
     "三个检出就位",
     "根仓库有暂存/未暂存/未跟踪与一条 stash，嵌套仓库停在 merge 冲突，另有一个链接 worktree",
@@ -493,6 +557,27 @@ createRoot(document.getElementById("root")!).render(
   `);
   await sleep(1500);
   await capture("log-maximized");
+  // 多分支仓库的提交图（#942）：滚到它的分支与合并处，再到长分支汇回处。
+  await evaluate(`
+    const button = document.querySelector('button[aria-label="展开全部合并"]');
+    if (!button) return "missing";
+    button.click();
+    return "clicked";
+  `);
+  await sleep(800);
+  for (const [name, top] of [
+    ["graph-busy", 0.12],
+    ["graph-busy-tail", 0.6],
+  ]) {
+    await evaluate(`
+      const rows = document.querySelector('[data-slot="git-log-rows"]');
+      if (!rows) return "missing";
+      rows.scrollTop = rows.scrollHeight * ${top};
+      return "scrolled";
+    `);
+    await sleep(800);
+    await capture(name);
+  }
 
   /* ---------------------- 桌面：选中「未提交」即提交台 ---------------------- */
 
