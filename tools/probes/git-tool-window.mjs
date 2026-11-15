@@ -539,9 +539,17 @@ createRoot(document.getElementById("root")!).render(
   `);
   await sleep(2500);
   await capture("mobile-diff");
-  // 退回提交列表，点「未提交的变更」进提交台。
-  await clickText("button", "返回");
-  await clickText("button", "返回");
+  // 退回提交列表，点「未提交的变更」进提交台。上一步不一定真进了第四级（选中
+  // 的提交里未必有 .ts 文件），所以「返回」点到没有为止，而不是固定点两次。
+  for (let step = 0; step < 3; step += 1) {
+    const back = await evaluate(`
+      return [...document.querySelectorAll("button")].some(
+        (node) => (node.textContent ?? "").trim() === "返回",
+      );
+    `);
+    if (!back) break;
+    await clickText("button", "返回");
+  }
   await clickText("button", "未提交的变更");
   await sleep(3000);
   await capture("mobile-commit");

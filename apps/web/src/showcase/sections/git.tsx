@@ -1,7 +1,11 @@
 import * as React from "react";
 
 import { LogTable } from "@/panels/git/log/LogTable";
-import { GIT_LOG_COLORS, GIT_LOG_COMMITS } from "../fixtures/git";
+import {
+  GIT_LOG_COLORS,
+  GIT_LOG_COMMITS,
+  GIT_LOG_NAMES,
+} from "../fixtures/git";
 
 const noop = () => undefined;
 
@@ -17,6 +21,7 @@ export default function GitSection() {
       ]),
   );
   const [selected, setSelected] = React.useState<string | null>(null);
+  const [collapsed, setCollapsed] = React.useState(false);
   const table = (collapse: boolean) => (
     <div
       data-git-graph={collapse ? "collapsed" : "full"}
@@ -35,6 +40,9 @@ export default function GitSection() {
         loading={false}
         onLoadMore={noop}
         collapseMerges={collapse}
+        repositoryNames={GIT_LOG_NAMES}
+        repositoryColumnCollapsed={collapsed}
+        onToggleRepositoryColumn={() => setCollapsed((value) => !value)}
         expanded={expanded}
         onToggleMerge={(key) =>
           setExpanded((current) => {
@@ -48,7 +56,7 @@ export default function GitSection() {
     </div>
   );
   return (
-    <div className="grid gap-4 xl:grid-cols-2">
+    <div className="grid gap-4">
       {table(true)}
       {table(false)}
     </div>
