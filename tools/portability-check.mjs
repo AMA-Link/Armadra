@@ -32,10 +32,14 @@ export const TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/;
 const ALLOW = /portability-ok:/;
 const WINDOWS_WORDS = /win32|isWindows|IS_WINDOWS/;
 
-/** 字面量里有没有 POSIX 的列表分隔符：`:`，但不算 `C:\`、`C:/` 这样的盘符和 `://`。 */
+/**
+ * 字面量里有没有 POSIX 的列表分隔符：`:`，但不算 `C:\`、`C:/` 这样的盘符和 `://`。
+ * 已经按 `;` 分隔的 Windows 列表（`C:\\Windows;D:\\bin`）逐段剥掉盘符再看。
+ */
 export function hasListColon(text) {
-  const rest = text.replace(/^[A-Za-z]:[\\/]/, "");
-  return /:(?!\/\/)/.test(rest);
+  return text
+    .split(";")
+    .some((part) => /:(?!\/\/)/.test(part.replace(/^[A-Za-z]:[\\/]/, "")));
 }
 
 function isColonLiteral(node) {

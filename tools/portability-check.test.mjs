@@ -71,5 +71,8 @@ describe("PATH 用 `:` 写死", () => {
     assert.equal(hasListColon("/usr/bin:/bin"), true);
     assert.equal(hasListColon("C:\\x"), false);
     assert.equal(hasListColon("https://x"), false);
+    assert.equal(hasListColon("C:\\Windows;D:\\bin"), false);
+    assert.equal(hasListColon("C:/a;D:/b"), false);
+    assert.equal(hasListColon("C:\\x;/usr/bin:/bin"), true);
   });
 });
