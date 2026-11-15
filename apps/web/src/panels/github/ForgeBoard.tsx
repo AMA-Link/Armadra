@@ -10,9 +10,10 @@ import type {
   ForgeSort,
 } from "../../api/forge";
 import { Failure } from "./ForgeDetail";
+import { ForgeItemMenu } from "./ForgeItemMenu";
 import { ForgeItemRow } from "./ForgeItemRow";
 import { ForgeListSkeleton } from "./ForgeListSkeleton";
-import { type ForgePage, type ForgeRowWrap, listRequest } from "./ForgeList";
+import { type ForgePage, listRequest } from "./ForgeList";
 import { forgeKeys, type ForgeListKey } from "./forge-keys";
 import { stateFromQuery } from "./forge-query";
 import type { ForgeTab } from "./ForgeHosted";
@@ -73,7 +74,6 @@ export function ForgeBoard({
   sort,
   direction,
   onOpen,
-  wrapRow,
 }: {
   kind: ForgeTab;
   repo: ForgeRepo;
@@ -84,7 +84,6 @@ export function ForgeBoard({
   sort: ForgeSort;
   direction: "asc" | "desc";
   onOpen: (number: number) => void;
-  wrapRow?: ForgeRowWrap;
 }) {
   const t = useT();
   const pinned = stateFromQuery(query);
@@ -141,19 +140,24 @@ export function ForgeBoard({
           {entry.items.length === 0 && (
             <EmptyState inline title={t("forge.empty")} />
           )}
-          {entry.items.map((item) => {
-            const element = (
+          {entry.items.map((item) => (
+            <ForgeItemMenu
+              key={item.number}
+              repo={repo}
+              kind={rowKind}
+              number={item.number}
+              url={item.url}
+              onOpen={() => onOpen(item.number)}
+            >
               <ForgeItemRow
-                key={item.number}
                 kind={rowKind}
                 item={item}
                 locale={locale}
                 columns={false}
                 onOpen={() => onOpen(item.number)}
               />
-            );
-            return wrapRow ? wrapRow(rowKind, item.number, element) : element;
-          })}
+            </ForgeItemMenu>
+          ))}
         </section>
       ))}
     </div>

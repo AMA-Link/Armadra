@@ -4,7 +4,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
 import { useT } from "@/app/preferences-store";
 import type { ForgeDetection, ForgeScope } from "../../api/forge";
 import { IssueDetail, OpenRemote, PullDetail } from "./ForgeDetail";
-import { ForgeList, type ForgeRowWrap, type ForgeView } from "./ForgeList";
+import { AddToCanvasButton } from "./ForgeItemMenu";
+import { ForgeList, type ForgeView } from "./ForgeList";
 import { forgeKeys } from "./forge-keys";
 
 export { OpenRemote, forgeKeys };
@@ -56,8 +57,6 @@ export interface ForgeHostedProps {
   /** 给了就由调用方持有导航状态（画布节点）；不给用本地状态。 */
   nav?: ForgeNav;
   onNav?: (nav: ForgeNav) => void;
-  /** 列表行的外壳（画布里是右键菜单）。 */
-  wrapRow?: ForgeRowWrap;
 }
 
 const kindOf = (tab: ForgeTab) => (tab === "issues" ? "issue" : "pull");
@@ -70,7 +69,6 @@ export function ForgeHosted({
   focus = null,
   nav,
   onNav,
-  wrapRow,
 }: ForgeHostedProps) {
   const t = useT();
   const forge = detection.forge ?? "github";
@@ -161,6 +159,9 @@ export function ForgeHosted({
             number={selected}
             locale={locale}
             onBack={close}
+            headerActions={
+              <AddToCanvasButton repo={repo} kind="issue" number={selected} />
+            }
           />
         ) : (
           <ForgeList
@@ -173,7 +174,6 @@ export function ForgeHosted({
             onQuery={(next) => update({ query: next })}
             view={view}
             onOpen={openItem("issues")}
-            wrapRow={wrapRow}
             onCounts={(count) =>
               setCounts((previous) => ({ ...previous, issues: count }))
             }
@@ -191,6 +191,9 @@ export function ForgeHosted({
             number={selected}
             locale={locale}
             onBack={close}
+            headerActions={
+              <AddToCanvasButton repo={repo} kind="pull" number={selected} />
+            }
           />
         ) : (
           <ForgeList
@@ -203,7 +206,6 @@ export function ForgeHosted({
             onQuery={(next) => update({ query: next })}
             view={view}
             onOpen={openItem("pulls")}
-            wrapRow={wrapRow}
             onCounts={(count) =>
               setCounts((previous) => ({ ...previous, pulls: count }))
             }

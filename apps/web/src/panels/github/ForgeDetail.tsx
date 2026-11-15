@@ -226,12 +226,15 @@ export function IssueDetail({
   number,
   locale,
   onBack,
+  headerActions,
 }: {
   repo: ForgeRepo;
   scope: ForgeScope;
   number: number;
   locale: string;
   onBack: () => void;
+  /** 头部右侧的额外动作（「加到画板」）。 */
+  headerActions?: React.ReactNode;
 }) {
   const issue = useQuery({
     queryKey: forgeKeys.issue(repo, number, scope),
@@ -249,7 +252,11 @@ export function IssueDetail({
       className="flex min-w-0 flex-col gap-(--space-block) p-(--space-page)"
       data-slot="forge-issue-detail"
     >
-      <Back onBack={onBack} url={issue.data?.url ?? ""} />
+      <Back
+        onBack={onBack}
+        url={issue.data?.url ?? ""}
+        actions={headerActions}
+      />
       {issue.isError && <Failure error={issue.error} />}
       {issue.isLoading && <ForgeDetailLoading />}
       {issue.data && (

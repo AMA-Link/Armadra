@@ -26,6 +26,7 @@ import {
 } from "../../api/forge";
 import { Failure } from "./ForgeDetail";
 import { ForgeBoard } from "./ForgeBoard";
+import { ForgeItemMenu } from "./ForgeItemMenu";
 import { ForgeItemRow } from "./ForgeItemRow";
 import { ForgeListSkeleton } from "./ForgeListSkeleton";
 import { ForgeSearchBar, type ForgeFilterOptions } from "./ForgeSearchBar";
@@ -35,13 +36,6 @@ import type { ForgeTab } from "./ForgeHosted";
 
 export type ForgeView = "list" | "board";
 export type ForgePage = ForgeIssuePage | ForgePullPage;
-
-/** 包一行的外壳（画布里是右键菜单）；面板里不给就是这一行本身。 */
-export type ForgeRowWrap = (
-  kind: "issue" | "pull",
-  number: number,
-  row: React.ReactElement,
-) => React.ReactElement;
 
 const sortChoice = (id: ForgeSortId) =>
   SORT_CHOICES.find((choice) => choice.id === id) ?? SORT_CHOICES[0];
@@ -83,7 +77,6 @@ export function ForgeList({
   onQuery,
   view = "list",
   onOpen,
-  wrapRow,
   onCounts,
 }: {
   kind: ForgeTab;
@@ -95,7 +88,6 @@ export function ForgeList({
   onQuery: (query: string) => void;
   view?: ForgeView;
   onOpen: (number: number) => void;
-  wrapRow?: ForgeRowWrap;
   onCounts?: (count: number | null) => void;
 }) {
   const t = useT();
@@ -171,18 +163,23 @@ export function ForgeList({
     [items, facets.data],
   );
 
-  const row = (item: ForgePage["items"][number]) => {
-    const element = (
+  const row = (item: ForgePage["items"][number]) => (
+    <ForgeItemMenu
+      key={item.number}
+      repo={repo}
+      kind={rowKind}
+      number={item.number}
+      url={item.url}
+      onOpen={() => onOpen(item.number)}
+    >
       <ForgeItemRow
-        key={item.number}
         kind={rowKind}
         item={item}
         locale={locale}
         onOpen={() => onOpen(item.number)}
       />
-    );
-    return wrapRow ? wrapRow(rowKind, item.number, element) : element;
-  };
+    </ForgeItemMenu>
+  );
 
   const shownPage = data?.page ?? page;
   const pageCount = data?.pageCount ?? null;
@@ -223,7 +220,6 @@ export function ForgeList({
           sort={sort}
           direction={direction}
           onOpen={onOpen}
-          wrapRow={wrapRow}
         />
       ) : result.isError ? (
         <Failure error={result.error} />
