@@ -41,7 +41,7 @@ import { create } from "../contract/message";
 import { GiteaForge, giteaApiBase, giteaWebRoot } from "./gitea";
 import { GithubForge, type GithubAccess, hostGithubAccess } from "./github";
 import type { GithubClientOptions } from "../github/client";
-import type { LocalLogins } from "./logins";
+import { type LocalLogins, loginHost } from "./logins";
 import type { ReuseSwitch } from "./reuse";
 import { GitlabForge, gitlabApiBase, gitlabWebRoot } from "./gitlab";
 import type { ForgeConfigRecord, ForgeStore } from "./store";
@@ -486,11 +486,7 @@ export class ForgeService {
   ): boolean {
     if (kind === "github") {
       const side = this.githubSide();
-      return (
-        side.configured &&
-        webHostFor(side.base) ===
-          (host === "www.github.com" ? "github.com" : host)
-      );
+      return side.configured && webHostFor(side.base) === loginHost(host);
     }
     const config =
       repo === undefined
