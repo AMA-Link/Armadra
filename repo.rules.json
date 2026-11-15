@@ -4,6 +4,7 @@
     ".claude",
     ".coderabbit.yaml",
     ".gitattributes",
+    ".githooks",
     ".github",
     ".gitignore",
     ".prettierignore",
