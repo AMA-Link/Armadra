@@ -473,6 +473,10 @@ export interface CommitDetail {
   readonly commit: CommitRecord;
   readonly files: CommitFile[];
   readonly truncated: boolean;
+  /** Everything after the subject line, trailers included (#935). */
+  readonly body: string;
+  readonly committerName: string;
+  readonly committerEmail: string;
 }
 
 export interface CommitFileDiff {

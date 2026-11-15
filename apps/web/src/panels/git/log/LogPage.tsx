@@ -200,6 +200,8 @@ export function LogPage({
   const [expandedMerges, setExpandedMerges] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  /** 两个提交比较时的基准那一端（先选的那个）。 */
+  const [compareFrom, setCompareFrom] = useState<GitLogCommit | null>(null);
   /** 让表格滚到某一行；`nonce` 让同一行能被再次定位。 */
   const [reveal, setReveal] = useState<{ key: string; nonce: number } | null>(
     null,
@@ -578,16 +580,30 @@ export function LogPage({
         commits={commits}
         colors={colors}
         selected={selected}
-        onSelect={(rowKey, entry) => {
+        onSelect={(rowKey, entry, additive) => {
           if (rowKey === UNCOMMITTED_KEY && onUncommitted) {
             onUncommitted();
             return;
           }
+          // ⌘ / Ctrl 点第二个提交：先选的是基准、后选的是目标（规格 §7.7）。
+          if (additive && commit && entry && rowKey !== selected) {
+            if (entry.repositoryPath !== commit.repositoryPath) {
+              toast.info(t("gitLog.details.crossRepository"));
+              return;
+            }
+            setCompareFrom(commit);
+            setSelected(rowKey);
+            setCommit(entry);
+            setCompareBase(commit.oid);
+            return;
+          }
+          setCompareFrom(null);
           setSelected(rowKey);
           setCommit(entry);
           setCompareBase(null);
           if (compact) setStage("details");
         }}
+        compareKey={compareFrom ? commitKey(compareFrom) : null}
         revealKey={reveal}
         uncommitted={uncommitted}
         compact={git.compactRows}
@@ -643,6 +659,18 @@ export function LogPage({
         onBaseChange={setCompareBase}
         repositoryName={repositoryNames?.get(commit.repositoryPath) ?? null}
         onSelectParent={(oid) => jumpTo(commit.repositoryPath, oid)}
+        onSwapCompare={
+          compareFrom
+            ? () => {
+                // 交换方向：目标变基准，基准变目标。
+                const target = commit;
+                setCommit(compareFrom);
+                setSelected(commitKey(compareFrom));
+                setCompareBase(target.oid);
+                setCompareFrom(target);
+              }
+            : undefined
+        }
         stacked={compact}
       />
     ) : (
@@ -659,6 +687,7 @@ export function LogPage({
 
   /** 选中并滚到某个提交；被折叠在合并里的先展开那个合并。 */
   const select = (target: GitLogCommit) => {
+    setCompareFrom(null);
     const rowKey = commitKey(target);
     const owner = folded.mergedBy.get(rowKey);
     if (owner && git.collapseMerges && !expandedMerges.has(owner)) {

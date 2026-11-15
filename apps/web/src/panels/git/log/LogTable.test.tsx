@@ -95,6 +95,26 @@ describe("提交图表格", () => {
     expect(screen.getByText("commit 2")).toBeTruthy();
   });
 
+  it("Cmd/Ctrl 点击是加选；比较的另一端也高亮（#935 C3）", () => {
+    const onSelect = vi.fn();
+    table({ onSelect });
+    fireEvent.click(screen.getByText("commit 1"), { metaKey: true });
+    expect(onSelect).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({ subject: "commit 1" }),
+      true,
+    );
+    fireEvent.click(screen.getByText("commit 0"));
+    expect(onSelect.mock.lastCall?.[2]).toBe(false);
+    const first = onSelect.mock.calls[0]?.[0] as string;
+    const second = onSelect.mock.lastCall?.[0] as string;
+    cleanup();
+    const rendered = table({ selected: second, compareKey: first });
+    expect(
+      rendered.container.querySelectorAll('[data-selected="true"]'),
+    ).toHaveLength(2);
+  });
+
   it("只渲染看得见的那些行，而不是全部", () => {
     const commits = Array.from({ length: 500 }, (_, index) =>
       commit(500 - index),
