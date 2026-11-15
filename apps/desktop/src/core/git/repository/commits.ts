@@ -31,6 +31,8 @@ import type {
  */
 
 const MAX_FILES = 2_000;
+/** The detail pane shows the message, not a document: past this it is cut. */
+const MAX_BODY_CHARS = 64 * 1024;
 const MAX_PATCH_BYTES = 1024 * 1024;
 
 export async function commitDetail(
@@ -109,7 +111,8 @@ export async function commitDetail(
   files.sort((left, right) =>
     left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
   );
-  return { oid: commit.oid, baseOid, commit, files, truncated };
+  const message = await commitMessage(service, context, oid);
+  return { oid: commit.oid, baseOid, commit, files, truncated, ...message };
 }
 
 export async function commitFileDiff(
@@ -169,6 +172,37 @@ function onBoundary(bytes: Buffer, end: number): boolean {
  * rather than an internal error: the graph may be showing a page from a
  * checkout that has since been pruned or rewritten.
  */
+/**
+ * The message body and the committer's identity (#935): the log rows carry the
+ * subject and the author only, and the detail pane shows both people and the
+ * full message. `%b` is the body without the subject; trailers stay in it.
+ */
+async function commitMessage(
+  service: RepositoryService,
+  context: RepositoryContext,
+  oid: string,
+): Promise<{ body: string; committerName: string; committerEmail: string }> {
+  const output = await service.read(context.repository, [
+    "show",
+    "-s",
+    "--no-show-signature",
+    "--no-color",
+    "--format=%cn%x00%ce%x00%b",
+    oid,
+    "--",
+  ]);
+  const text = output.toString("utf8");
+  const first = text.indexOf("\0");
+  const second = text.indexOf("\0", first + 1);
+  if (first < 0 || second < 0) throw malformed();
+  const body = text.slice(second + 1).replace(/\s+$/, "");
+  return {
+    committerName: text.slice(0, first),
+    committerEmail: text.slice(first + 1, second),
+    body: body.length > MAX_BODY_CHARS ? body.slice(0, MAX_BODY_CHARS) : body,
+  };
+}
+
 async function singleCommit(
   service: RepositoryService,
   context: RepositoryContext,

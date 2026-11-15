@@ -121,6 +121,13 @@ export const gitCommitDetailSchema = z.object({
   commit: gitCommitRecordSchema,
   files: z.array(gitCommitFileSchema),
   truncated: z.boolean(),
+  /**
+   * The message after the subject line, trailers included, and the committer
+   * (#935). Absent from a core older than protocol 1.51.
+   */
+  body: z.string().optional(),
+  committerName: z.string().optional(),
+  committerEmail: z.string().optional(),
 });
 export const gitCommitFileDiffSchema = z.object({
   oid,

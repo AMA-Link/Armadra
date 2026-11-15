@@ -267,6 +267,40 @@ describe("reflog", () => {
 });
 
 describe("commit detail", () => {
+  it("carries the message body and the committer (#935)", async () => {
+    const repo = repository("commit-detail-body");
+    repo.write("a.txt", "a\n");
+    repo.git("add", "-A");
+    repo.git(
+      "commit",
+      "-q",
+      "--author=Author <author@example.invalid>",
+      "-m",
+      "feat: subject",
+      "-m",
+      "Why it changed.\n\nCo-authored-by: Claude <noreply@anthropic.com>",
+    );
+    const oid = repo.git("rev-parse", "HEAD").trim();
+    const detail = await commitDetail(
+      service(),
+      repo.path,
+      ".",
+      oid,
+      undefined,
+    );
+    // 夹具用环境变量钉住了提交者；以 git 自己的答案为准。
+    expect(detail.committerName).toBe(
+      repo.git("log", "-1", "--format=%cn").trim(),
+    );
+    expect(detail.committerEmail).toBe(
+      repo.git("log", "-1", "--format=%ce").trim(),
+    );
+    expect(detail.body).toBe(
+      "Why it changed.\n\nCo-authored-by: Claude <noreply@anthropic.com>",
+    );
+    expect(detail.commit.authorName).toBe("Author");
+  });
+
   it("lists a commit's files and answers one file's patch", async () => {
     const repo = repository("commit-detail");
     repo.write("one.txt", "one\n");
