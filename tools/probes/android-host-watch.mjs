@@ -4,17 +4,29 @@
 // 内核日志（OOM 或段错误会写在那里）、模拟器的崩溃转储目录、systemd-coredump 的摘要与线程栈、
 // 占内存最多的进程。
 // 只读 /proc 与几条只读命令；不在 Linux 上就什么也不做。
+//
+// 另有两个子命令给夜间工作流判断要不要重启模拟器重跑一次（#921）：
+//   node tools/probes/android-host-watch.mjs archive <输出目录>
+//     上一轮 result.json 判定为「模拟器进程中途消失」时，把这一轮的产物挪进 attempt-<n>/，
+//     输出 `crashed=true`；否则什么也不挪、输出 `crashed=false`（用例断言失败不重试）。
+//   node tools/probes/android-host-watch.mjs tally <输出目录>
+//     数这一路一共崩了几次（attempt-*/ 与当前的 result.json），输出 `crashes=<n>`。
+// 两者的输出都是 `key=value` 行，工作流直接追加进 GITHUB_OUTPUT。
 import { spawn, spawnSync } from "node:child_process";
 import {
   appendFileSync,
   closeSync,
   existsSync,
+  mkdirSync,
   readFileSync,
   openSync,
   readdirSync,
+  renameSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /** `MemAvailable` 换成 MB；读不到返回 null。 */
 export function memAvailableMb(meminfo) {
@@ -46,6 +58,11 @@ export function emulatorProcesses(proc = "/proc") {
     }
   }
   return found;
+}
+
+/** systemd-coredump 摘要里的信号名（`Signal: 11 (SEGV)` → `SEGV`）；没有就是 null。 */
+export function coredumpSignal(summary) {
+  return /^\s*Signal:\s*\d+\s*\((\w+)\)/m.exec(summary)?.[1] ?? null;
 }
 
 const text = (command, args, timeout = 20_000) => {
@@ -86,7 +103,8 @@ function coredumpJob(file, settleSeconds, timeoutMs) {
 /**
  * 开始旁观，返回 `{ stop, sample }`。`dir` 里写 host-watch.log（每个采样一行）、host-watch-gone.log
  * （模拟器进程消失时的现场，只写一次）与 host-watch-coredump.log（后台取的转储摘要）。
- * `sample()` 立刻采一次并说模拟器是不是已经不见了；`stop()` 停止采样，并等转储摘要取完。
+ * `sample()` 立刻采一次并说模拟器是不是已经不见了；`stop()` 停止采样，等转储摘要取完，
+ * 返回 `{ gone, signal }`（signal 是转储摘要里的信号名，取不到为 null）。
  */
 export function startHostWatch({
   dir,
@@ -96,7 +114,10 @@ export function startHostWatch({
   coredumpTimeoutMs = 240_000,
 }) {
   if (!existsSync(join(proc, "meminfo")))
-    return { stop: async () => {}, sample: () => false };
+    return {
+      stop: async () => ({ gone: false, signal: null }),
+      sample: () => false,
+    };
   const sampleLog = join(dir, "host-watch.log");
   const goneLog = join(dir, "host-watch-gone.log");
   let seen = false;
@@ -155,6 +176,78 @@ export function startHostWatch({
       clearInterval(timer);
       tick();
       await dump;
+      if (!gone) return { gone, signal: null };
+      let summary = "";
+      try {
+        summary = readFileSync(join(dir, "host-watch-coredump.log"), "utf8");
+      } catch {
+        // 转储摘要没写出来：只知道进程消失了。
+      }
+      return { gone, signal: coredumpSignal(summary) };
     },
   };
+}
+
+const readResult = (file) => {
+  try {
+    return JSON.parse(readFileSync(file, "utf8"));
+  } catch {
+    return null;
+  }
+};
+
+/** mobile-shell-e2e 的 result.json 是否判定为模拟器进程中途消失（不是用例断言失败）。 */
+export function emulatorCrashed(result) {
+  return result?.emulatorCrashed === true;
+}
+
+const attemptDirs = (dir) =>
+  readdirSync(dir).filter(
+    (name) =>
+      /^attempt-\d+$/.test(name) && statSync(join(dir, name)).isDirectory(),
+  );
+
+/**
+ * 重跑之前（#921）：`dir/result.json` 判定为模拟器崩溃时，把 `dir` 里这一轮的文件（不含子目录）
+ * 挪进 `attempt-<n>/`，重跑的产物就不会盖掉崩溃现场；返回 `{ crashed, attempt }`。
+ * 没崩（用例断言失败、超时、没有 result.json）时什么也不动，返回 `{ crashed: false }`。
+ */
+export function archiveCrashedAttempt(dir) {
+  if (!emulatorCrashed(readResult(join(dir, "result.json"))))
+    return { crashed: false, attempt: null };
+  const attempt = attemptDirs(dir).length + 1;
+  const target = join(dir, `attempt-${attempt}`);
+  mkdirSync(target);
+  for (const name of readdirSync(dir)) {
+    if (statSync(join(dir, name)).isFile())
+      renameSync(join(dir, name), join(target, name));
+  }
+  return { crashed: true, attempt };
+}
+
+/** 这一路一共崩了几次：各 `attempt-*` 与当前 `result.json` 里判定为模拟器崩溃的轮数。 */
+export function countCrashes(dir) {
+  if (!existsSync(dir)) return 0;
+  const results = [
+    ...attemptDirs(dir).map((name) => join(dir, name, "result.json")),
+    join(dir, "result.json"),
+  ];
+  return results.filter((file) => emulatorCrashed(readResult(file))).length;
+}
+
+if (
+  process.argv[1] &&
+  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  const [command, dir] = process.argv.slice(2);
+  if (command === "archive" && dir) {
+    const { crashed, attempt } = archiveCrashedAttempt(resolve(dir));
+    console.log(`crashed=${crashed}`);
+    if (crashed) console.log(`attempt=${attempt}`);
+  } else if (command === "tally" && dir) {
+    console.log(`crashes=${countCrashes(resolve(dir))}`);
+  } else {
+    console.error("用法：android-host-watch.mjs archive|tally <输出目录>");
+    process.exit(2);
+  }
 }
