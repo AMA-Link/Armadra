@@ -16,6 +16,8 @@ Version aligned with armadra-cloud and armadra-agent (all three ship 0.18.0), wi
   Git workbench (#935): a repository column, a one-line filter bar with display settings and a canvas "Add → Git history" entry (#936); Log / Local changes pages, a vertical tool rail, a split right pane and a dialog diff viewer (#940); two-commit comparison, file path search and full commit message and committer (#941, core `commitDetail` gains the body and committer).
 - 提交图逐行布线：每条边在每一行都有车道、汇入与左移、长边截成箭头，车道色改为主题 token；头像在 core 落盘缓存七天、离线回落旧图（#943，Refs #942）。
   Row-by-row routed commit graph: a lane per edge on every row with converging and left-shifting lanes, long edges cut into arrows, theme lane tokens; avatars are cached on disk by core for seven days and fall back to the stale image offline (#943, Refs #942).
+- Git：提交详情里超过读取上限的单文件补丁截断显示，不再报 500；改名的文件按改名显示，不再显示为整文件新增（#951，Closes #950）。
+  Git: in commit details, a single-file patch beyond the read budget is shown truncated instead of failing with 500, and renamed files are shown as renames rather than whole-file additions (#951, Closes #950).
 
 ### 代码托管
 
@@ -25,6 +27,10 @@ Version aligned with armadra-cloud and armadra-agent (all three ship 0.18.0), wi
   List search and filters (#934): Issue / PR lists support qualifier search, filters, sorting, page numbers and open / closed counts, PR rows carry CI, review decision and comment counts, and the PR overview shows reviewers, assignees and a merge-status card; implemented per platform for GitHub, Gitea and GitLab (#937, #938).
 - 画布：右键新建「代码托管」节点（列表 / 看板），列表行与详情可「加到画板」成单条卡片；节点只存仓库、标签页、搜索串或编号，不存令牌与远端数据（#939）。
   Canvas: the context menu creates a code-hosting node (list / board) and rows or details can be added as single cards; nodes persist only the repository, tab, query or number, never tokens or remote data (#939).
+- 远程执行主机：代码托管面板能识别远程执行主机上工作空间的仓库（经执行主机读取 remote，令牌与 API 请求仍在本机）；内网主机不可达时不再卡住面板，平台探测并行进行，最多等待 4 秒（#948，Closes #947）。
+  Remote execution hosts: the code-hosting panel detects repositories for workspaces on remote execution hosts (remotes are read on the host; tokens and API calls stay local), and an unreachable intranet host no longer stalls the panel: platform probes run in parallel and wait at most 4 seconds (#948, Closes #947).
+- 登录与识别修正：PR / Issue 后台轮询、PR 绑定与来源配置先预热再认平台，只用 `gh` 等本机登录的仓库不会在缓存过期后报未配置；本机登录按归一后的主机名查找，`ssh.github.com:443`、`www.github.com`、`altssh.gitlab.com` 的 remote 也能用上主站登录；外部命令补上 Homebrew 等 PATH 目录，从 Dock 启动也找得到 `gh` / `glab`；搜索串上限统一为 512（#951，Closes #950）。
+  Login and detection fixes: background PR / issue polling, PR binding and source configuration warm up before detecting the forge, so repositories relying only on local logins such as `gh` no longer report "not configured" after the cache expires; local logins are looked up by normalized host name, so `ssh.github.com:443`, `www.github.com` and `altssh.gitlab.com` remotes use the main site's login; external commands add Homebrew and similar PATH directories so `gh` / `glab` are found from a Dock launch; the search query limit is unified at 512 (#951, Closes #950).
 
 ### 随包 Agent
 
