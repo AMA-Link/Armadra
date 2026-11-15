@@ -16,7 +16,7 @@ import { IconButton } from "../../../ui/icon-button";
 import { WorkPanelSheet } from "../../WorkPanelSheet";
 import { ExecutionHostBadge } from "../../ExecutionHostBadge";
 import { invalidateGitQueries } from "../queries";
-import { LogPage } from "../log/LogPage";
+import { GitWorkbench } from "./GitWorkbench";
 
 /**
  * Git 工具窗口（Git 工具窗口设计 §2.1）。
@@ -112,7 +112,7 @@ export function GitToolWindow() {
         {workspaceId && (
           // 一张表、两种右栏（#927 B2）：选中「未提交的变更」那一行，右栏就是
           // 提交台；换工作空间就是换一份历史与一棵变更树，重挂比逐个同步干净。
-          <LogPage
+          <GitWorkbench
             key={workspaceId}
             workspaceId={workspaceId}
             refreshToken={refreshToken}

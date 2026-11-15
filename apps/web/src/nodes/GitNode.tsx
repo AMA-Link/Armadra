@@ -1,7 +1,7 @@
 import { PanelBottom } from "lucide-react";
 
 import { useT } from "@/app/preferences-store";
-import { LogPage } from "@/panels/git/log/LogPage";
+import { GitWorkbench } from "@/panels/git/window/GitWorkbench";
 import { useCanvasStore } from "@/store/canvas-store";
 import { IconButton } from "@/ui/icon-button";
 import { EmptyState } from "@/ui/state";
@@ -42,7 +42,7 @@ export function GitNode({ node, selected }: NodeBodyProps) {
         className="flex h-full min-h-0 min-w-0 flex-col"
       >
         {workspaceId ? (
-          <LogPage key={workspaceId} workspaceId={workspaceId} />
+          <GitWorkbench key={workspaceId} workspaceId={workspaceId} />
         ) : (
           <EmptyState inline title={t("gitLog.dock.noWorkspace")} />
         )}
