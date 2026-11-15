@@ -61740,6 +61740,15 @@
                     },
                     "truncated": {
                       "type": "boolean"
+                    },
+                    "body": {
+                      "type": "string"
+                    },
+                    "committerName": {
+                      "type": "string"
+                    },
+                    "committerEmail": {
+                      "type": "string"
                     }
                   },
                   "required": ["oid", "baseOid", "commit", "files", "truncated"]
