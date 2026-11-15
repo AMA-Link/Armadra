@@ -364,6 +364,14 @@ describe("buildAddMenu", () => {
     });
   });
 
+  it("右键「添加 → Git 历史」建一个 Git 节点（#935）", () => {
+    itemById("add.git").run(ctx);
+    expect(addNode).toHaveBeenCalledWith("git", {
+      position: centered,
+      data: { kind: "git" },
+    });
+  });
+
   it("「打开文件…」开的是资源管理器抽屉，不建节点", () => {
     itemById("add.openFile").run(ctx);
     expect(setPanel).toHaveBeenCalledWith("explorer", "drawer");
