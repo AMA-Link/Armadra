@@ -46,6 +46,7 @@ import type { ReuseSwitch } from "./reuse";
 import { GitlabForge, gitlabApiBase, gitlabWebRoot } from "./gitlab";
 import type { ForgeConfigRecord, ForgeStore } from "./store";
 import type { PlatformProbe } from "./probe";
+import { WARM_DEADLINE_MS, settleWithin } from "./deadline";
 import { loopbackHost } from "./transport";
 import {
   CONFIGURABLE_FORGES,
@@ -134,6 +135,8 @@ export interface ForgeServiceOptions {
   readonly reuse?: ReuseSwitch;
   /** 按主机访问 GitHub 时 client 的传输选项（测试指向本地 mock）。 */
   readonly githubClient?: Omit<GithubClientOptions, "token" | "apiBase">;
+  /** {@link ForgeService.hosts} 预热所有主机的整体时限（毫秒），缺省 {@link WARM_DEADLINE_MS}。 */
+  readonly warmDeadlineMs?: number;
 }
 
 /** `GET /api/forge/hosts` 的一行（契约 §111.6）。 */
@@ -851,7 +854,8 @@ export class ForgeService {
   /**
    * 已识别的主机（§111.6）：工作空间 remote 里见过的、配置表里的、GitHub 凭据的
    * 并集，各带平台与令牌来源。见过的主机只记在内存里（重启后随工作空间被打开
-   * 再出现）。每个主机先预热一次，所以这里读得到本机登录。
+   * 再出现）。每个主机先并行预热一次（整体限时，见 {@link settleWithin}），所以这里
+   * 读得到本机登录。
    */
   async hosts(workspaceId = ""): Promise<ForgeHosts> {
     const names = new Set<string>(this.seen);
@@ -865,8 +869,14 @@ export class ForgeService {
     const side = this.githubSide();
     if (side.configured) names.add(webHostFor(side.base));
     const hosts: ForgeHostRow[] = [];
-    for (const host of [...names].filter(validHost).sort()) {
-      await this.warm(host, workspaceId);
+    const valid = [...names].filter(validHost).sort();
+    // 并行预热、整体限时：不可达的内网主机不拖住其余主机；没赶上的先按未知
+    // 给出，探测在后台完成后下一次读取即生效。
+    await settleWithin(
+      Promise.all(valid.map((host) => this.warm(host, workspaceId))),
+      this.options.warmDeadlineMs ?? WARM_DEADLINE_MS,
+    );
+    for (const host of valid) {
       const kind = this.kindOf(host, workspaceId);
       if (kind === null) {
         hosts.push({
