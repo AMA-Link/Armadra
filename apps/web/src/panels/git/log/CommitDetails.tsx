@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  ArrowLeftRight,
   Check,
   ChevronDown,
   ChevronUp,
@@ -25,6 +26,7 @@ import {
   ResponsiveDialogTitle,
 } from "../../ResponsiveDialog";
 import { EmptyState } from "../../../ui/state";
+import { Input } from "../../../ui/input";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -71,6 +73,8 @@ export interface CommitDetailsProps {
   onSelectParent?: (oid: string) => void;
   /** 手机上没有上下分栏：两块依次排开。 */
   stacked?: boolean;
+  /** 两个提交比较时交换方向（规格 §7.7）；不在比较时不给。 */
+  onSwapCompare?: () => void;
 }
 
 export function CommitDetails({
@@ -82,6 +86,7 @@ export function CommitDetails({
   repositoryName = null,
   onSelectParent,
   stacked = false,
+  onSwapCompare,
 }: CommitDetailsProps) {
   const t = useT();
   const flat = usePreferencesStore((state) => state.git.flatFiles);
@@ -89,6 +94,8 @@ export function CommitDetails({
   const setPreference = usePreferencesStore((state) => state.setGitPreference);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [diffFile, setDiffFile] = useState<string | null>(null);
+  /** 文件搜索只过滤右侧文件列表，不碰日志的筛选（规格 §7.2）。 */
+  const [query, setQuery] = useState("");
   const merge = commit.parents.length > 1;
   const repositoryKey = `${target.repositoryPath}:${commit.repositoryPath}`;
 
@@ -104,10 +111,15 @@ export function CommitDetails({
       gitGateway.commitDetail(target, commit.oid, base, signal),
     retry: false,
   });
-  const rows = useMemo(
-    () => buildFileRows(detail.data?.files ?? [], flat),
-    [detail.data, flat],
+  const needle = query.trim().toLowerCase();
+  const matched = useMemo(
+    () =>
+      (detail.data?.files ?? []).filter(
+        (file) => needle === "" || file.path.toLowerCase().includes(needle),
+      ),
+    [detail.data, needle],
   );
+  const rows = useMemo(() => buildFileRows(matched, flat), [matched, flat]);
   const filePaths = useMemo(
     () => rows.flatMap((row) => (row.kind === "file" ? [row.path] : [])),
     [rows],
@@ -140,6 +152,14 @@ export function CommitDetails({
         >
           <Folder />
         </IconButton>
+        {onSwapCompare && (
+          <IconButton
+            label={t("gitLog.details.swapCompare")}
+            onClick={onSwapCompare}
+          >
+            <ArrowLeftRight />
+          </IconButton>
+        )}
         <IconButton
           label={t("gitLog.details.openDiff")}
           disabled={selectedFile === null}
@@ -173,7 +193,28 @@ export function CommitDetails({
           </span>
         )}
       </p>
-      {merge && (
+      {detail.data && detail.data.files.length > 0 && (
+        <div className="flex shrink-0 items-center gap-2 px-2 pb-1">
+          <Input
+            size="sm"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={t("gitLog.details.searchFiles")}
+            aria-label={t("gitLog.details.searchFiles")}
+            className="min-w-0 flex-1"
+          />
+          {needle !== "" && (
+            <span
+              data-slot="git-log-file-matches"
+              data-numeric
+              className="shrink-0 text-caption text-muted-foreground"
+            >
+              {matched.length}/{detail.data.files.length}
+            </span>
+          )}
+        </div>
+      )}
+      {merge && !onSwapCompare && (
         <div className="flex shrink-0 flex-wrap items-center gap-1 px-2 pb-1">
           <span className="text-caption text-muted-foreground">
             {t("gitLog.details.parent")}
@@ -277,6 +318,7 @@ export function CommitDetails({
       commit={commit}
       repositoryName={repositoryName}
       onSelectParent={onSelectParent}
+      message={detail.data ?? null}
     />
   );
 
@@ -333,6 +375,16 @@ export function CommitDetails({
   );
 }
 
+/** 完整时间：本地时区，带时区名（规格 §7.5）；读不出来时原样给出。 */
+function fullTime(iso: string, locale: string): string {
+  const at = Date.parse(iso);
+  if (Number.isNaN(at)) return iso;
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeStyle: "long",
+  }).format(at);
+}
+
 /** 文件状态的颜色：只是辅助，字母本身已经说明状态（规格 §7.3）。 */
 function statusTone(status: string | undefined): string {
   switch (status?.slice(0, 1)) {
@@ -353,13 +405,28 @@ function CommitInfo({
   commit,
   repositoryName,
   onSelectParent,
+  message,
 }: {
   commit: GitLogCommit;
   repositoryName: string | null;
   onSelectParent?: (oid: string) => void;
+  /** 详情读取的结果：正文与提交者（协议 1.51 起有）。 */
+  message: {
+    body?: string;
+    committerName?: string;
+    committerEmail?: string;
+  } | null;
 }) {
   const t = useT();
+  const locale = usePreferencesStore((state) => state.locale);
   const [copied, setCopied] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const body = message?.body ?? "";
+  const long = body.split("\n").length > 4 || body.length > 320;
+  const sameCommitter =
+    message?.committerName === undefined ||
+    (message.committerName === commit.authorName &&
+      message.committerEmail === commit.authorEmail);
   const badges = useMemo(() => refBadges(commit.refs), [commit.refs]);
   const agents = useMemo(() => commitAgents(commit), [commit]);
   return (
@@ -368,9 +435,48 @@ function CommitInfo({
       aria-label={t("gitLog.details.info")}
       className="min-w-0 p-2 text-meta"
     >
-      <p className="font-medium break-words whitespace-pre-wrap text-foreground">
-        {commit.subject}
-      </p>
+      <div className="flex items-start gap-1">
+        <p className="min-w-0 flex-1 font-medium break-words whitespace-pre-wrap text-foreground">
+          {commit.subject}
+        </p>
+        <IconButton
+          label={t("gitLog.details.copyMessage")}
+          onClick={() =>
+            writeClipboard(
+              body ? `${commit.subject}\n\n${body}` : commit.subject,
+            )
+          }
+        >
+          <Copy />
+        </IconButton>
+      </div>
+      {body && (
+        // 正文按纯文本显示，保留换行与尾注；长的先收起（规格 §7.5）。
+        <div data-slot="git-log-commit-body" className="mt-1">
+          <p
+            className={cn(
+              "break-words whitespace-pre-wrap text-muted-foreground",
+              long && !expanded && "line-clamp-4",
+            )}
+          >
+            {body}
+          </p>
+          {long && (
+            <Button
+              size="xs"
+              variant="ghost"
+              className="mt-0.5 px-1"
+              onClick={() => setExpanded((value) => !value)}
+            >
+              {t(
+                expanded
+                  ? "gitLog.details.collapseBody"
+                  : "gitLog.details.expandBody",
+              )}
+            </Button>
+          )}
+        </div>
+      )}
       <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
         {repositoryName && (
           <>
@@ -407,14 +513,25 @@ function CommitInfo({
         <dd className="break-words">
           {commit.authorName} &lt;{commit.authorEmail}&gt;
           <span className="block text-caption text-muted-foreground">
-            {commit.authorTime}
+            {fullTime(commit.authorTime, locale)}
           </span>
         </dd>
         <dt className="text-muted-foreground">
           {t("gitLog.details.committer")}
         </dt>
-        <dd className="text-caption text-muted-foreground">
-          {commit.committerTime}
+        <dd className="break-words" data-slot="git-log-committer">
+          {sameCommitter ? (
+            <span className="text-muted-foreground">
+              {t("gitLog.details.sameAsAuthor")}
+            </span>
+          ) : (
+            <>
+              {message?.committerName} &lt;{message?.committerEmail}&gt;
+            </>
+          )}
+          <span className="block text-caption text-muted-foreground">
+            {fullTime(commit.committerTime, locale)}
+          </span>
         </dd>
         {agents.length > 0 && (
           <>

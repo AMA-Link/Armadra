@@ -41,7 +41,16 @@ export interface LogTableProps {
   colors: ReadonlyMap<string, number>;
   /** 被选中的行（`commitKey`）；`"uncommitted"` 是那条合成行。 */
   selected: string | null;
-  onSelect: (key: string, commit: GitLogCommit | null) => void;
+  /**
+   * `additive`：⌘ / Ctrl 点击——日志页拿它做「两个提交比较」（组件规格 §7.7）。
+   */
+  onSelect: (
+    key: string,
+    commit: GitLogCommit | null,
+    additive?: boolean,
+  ) => void;
+  /** 两个提交比较时的另一端：与选中行同样高亮，但浅一级。 */
+  compareKey?: string | null;
   /** HEAD 有未提交变更的仓库；空 = 不显示那条虚线行。 */
   uncommitted: readonly string[];
   compact: boolean;
@@ -175,6 +184,7 @@ export function LogTable({
   repositoryColumnCollapsed = false,
   onToggleRepositoryColumn,
   revealKey = null,
+  compareKey = null,
   expanded = NONE,
   onToggleMerge,
 }: LogTableProps) {
@@ -557,8 +567,10 @@ export function LogTable({
                       narrow,
                     )}
                     fullWhen={fullWhen(row.commit.committerTime, locale)}
-                    selected={selected === row.key}
-                    onSelect={() => onSelect(row.key, row.commit)}
+                    selected={selected === row.key || compareKey === row.key}
+                    onSelect={(additive) =>
+                      onSelect(row.key, row.commit, additive)
+                    }
                   />
                 );
               return (
@@ -711,7 +723,7 @@ function CommitRow({
   /** 悬停看的完整时间与时区。 */
   fullWhen: string;
   selected: boolean;
-  onSelect: () => void;
+  onSelect: (additive: boolean) => void;
 }) {
   const t = useT();
   const badges = useMemo(() => refBadges(commit.refs), [commit.refs]);
@@ -728,7 +740,7 @@ function CommitRow({
         variant="ghost"
         aria-pressed={selected}
         data-commit={commit.oid}
-        onClick={onSelect}
+        onClick={(event) => onSelect(event.metaKey || event.ctrlKey)}
         style={{ height, paddingLeft: gutter }}
         className={cn(
           "h-auto min-w-0 flex-1 justify-start gap-2 rounded-none border-0 bg-transparent pr-3 text-left text-meta font-normal hover:bg-transparent aria-pressed:bg-transparent",

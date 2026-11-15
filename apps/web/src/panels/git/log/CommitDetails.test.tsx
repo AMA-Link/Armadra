@@ -191,4 +191,57 @@ describe("提交详情", () => {
     expect(screen.getByText("HEAD")).toBeTruthy();
     expect(screen.getByText("main")).toBeTruthy();
   });
+
+  it("文件搜索只过滤列表，并给出命中数（#935 C3）", async () => {
+    commitDetail.mockResolvedValue(detail);
+    const { container } = view();
+    await screen.findByText("a.ts");
+    fireEvent.change(screen.getByLabelText("Search file paths"), {
+      target: { value: "b.ts" },
+    });
+    expect(screen.queryByText("a.ts")).toBeNull();
+    expect(screen.getByText("b.ts")).toBeTruthy();
+    expect(
+      container.querySelector('[data-slot="git-log-file-matches"]')
+        ?.textContent,
+    ).toBe("1/3");
+  });
+
+  it("正文、提交者与交换比较方向（#935 C3）", async () => {
+    commitDetail.mockResolvedValue({
+      ...detail,
+      body: "Explain why.\n\nCo-authored-by: Bot <bot@example.invalid>",
+      committerName: "Ada",
+      committerEmail: "ada@example.invalid",
+    });
+    const onSwapCompare = vi.fn();
+    const { container } = view({ onSwapCompare });
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-slot="git-log-commit-body"]')
+          ?.textContent,
+      ).toContain("Explain why."),
+    );
+    expect(
+      container.querySelector('[data-slot="git-log-committer"]')?.textContent,
+    ).toContain("Same as the author");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Swap the comparison" }),
+    );
+    expect(onSwapCompare).toHaveBeenCalledTimes(1);
+  });
+
+  it("提交者与作者不同时写出提交者", async () => {
+    commitDetail.mockResolvedValue({
+      ...detail,
+      committerName: "Grace",
+      committerEmail: "grace@example.invalid",
+    });
+    const { container } = view();
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-slot="git-log-committer"]')?.textContent,
+      ).toContain("Grace"),
+    );
+  });
 });
