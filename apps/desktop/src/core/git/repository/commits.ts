@@ -130,7 +130,10 @@ export async function commitFileDiff(
   const context = await service.context(workspaceRoot, requested);
   const commit = await singleCommit(service, context, oid);
   const baseOid = await resolveBase(service, context, commit, base);
-  const raw = await service.read(
+  // A single file can be far larger than the repository read budget: read a
+  // bounded slice (a few bytes past the cut, so it can land on a character
+  // boundary) and report `truncated` rather than failing the request.
+  const read = await service.readBounded(
     context.repository,
     baseOid === null
       ? [
@@ -145,8 +148,10 @@ export async function commitFileDiff(
           file,
         ]
       : ["diff", "--no-ext-diff", "--no-textconv", baseOid, oid, "--", file],
+    MAX_PATCH_BYTES + 4,
   );
-  const truncated = raw.length > MAX_PATCH_BYTES;
+  const raw = read.stdout;
+  const truncated = read.truncated || raw.length > MAX_PATCH_BYTES;
   let patch: string;
   if (truncated) {
     // The response is JSON, so the cut must land on a character boundary.

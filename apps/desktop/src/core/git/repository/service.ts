@@ -294,6 +294,9 @@ export class RepositoryService {
       readonly environment?: Readonly<Record<string, string>>;
       readonly onMutationStarted?: () => void;
       readonly onProgress?: (percent: number) => void;
+      /** A bounded read: see `RunOptions.truncateStdout` in `../command`. */
+      readonly stdoutLimit?: number;
+      readonly truncateStdout?: boolean;
     } = {},
   ): Promise<CommandOutput> {
     if (this.lifecycle.stopping) throw shuttingDown();
@@ -304,8 +307,9 @@ export class RepositoryService {
       prefix: REPOSITORY_PREFIX,
       args: prepared,
       timeoutMs,
-      stdoutLimit: REPOSITORY_STDOUT_LIMIT,
+      stdoutLimit: options.stdoutLimit ?? REPOSITORY_STDOUT_LIMIT,
       stderrLimit: REPOSITORY_STDERR_LIMIT,
+      ...(options.truncateStdout === true ? { truncateStdout: true } : {}),
       environment: {
         restrict: !this.allowHelpers,
         ...(options.environment === undefined
@@ -341,6 +345,31 @@ export class RepositoryService {
     );
     if (output.status !== 0) throw commandError(output);
     return output.stdout;
+  }
+
+  /**
+   * A read whose output is shown rather than parsed (a patch): at most
+   * `limit` bytes, and past that the answer is `truncated` instead of the
+   * bounded-budget failure {@link read} gives.
+   */
+  async readBounded(
+    directory: string,
+    args: readonly string[],
+    limit: number,
+    signal?: AbortSignal,
+  ): Promise<{ stdout: Buffer; truncated: boolean }> {
+    const output = await this.output(
+      directory,
+      args,
+      Math.min(this.commandTimeoutMs, 15_000),
+      signal,
+      { stdoutLimit: limit, truncateStdout: true },
+    );
+    if (output.truncated === true) {
+      return { stdout: output.stdout, truncated: true };
+    }
+    if (output.status !== 0) throw commandError(output);
+    return { stdout: output.stdout, truncated: false };
   }
 
   /** One mutating command, reported into the operation that started it. */

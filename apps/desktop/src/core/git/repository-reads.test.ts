@@ -334,6 +334,31 @@ describe("commit detail", () => {
     expect(patch.truncated).toBe(false);
   });
 
+  it("cuts a patch past the repository read budget instead of failing", async () => {
+    const repo = repository("commit-huge-file");
+    // One line of ~5 MB plus a multi-byte tail: larger than the 4 MB read
+    // budget, so only the bounded read can answer it.
+    repo.write(
+      "huge.txt",
+      `${"x".repeat(5 * 1024 * 1024)}\n${"é".repeat(64)}\n`,
+    );
+    const oid = repo.commit("huge");
+    const patch = await commitFileDiff(
+      service(),
+      repo.path,
+      ".",
+      oid,
+      undefined,
+      "huge.txt",
+    );
+    expect(patch.truncated).toBe(true);
+    expect(Buffer.byteLength(patch.patch, "utf8")).toBeLessThanOrEqual(
+      1024 * 1024,
+    );
+    expect(patch.patch).toContain("+++ b/huge.txt");
+    expect(patch.patch).not.toContain("\uFFFD");
+  });
+
   it("treats a root commit as all additions", async () => {
     const repo = repository("commit-root");
     const first = run(repo.path, "rev-list", "--max-parents=0", "HEAD").trim();
