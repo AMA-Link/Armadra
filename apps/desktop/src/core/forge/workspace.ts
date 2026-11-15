@@ -95,7 +95,10 @@ export interface WorkspaceRepositoryOptions {
   readonly remoteHost?: RemoteHostReader;
   readonly ssh?: SshAliasResolver;
   readonly now?: () => number;
-  /** 一次读取里所有 remote 预热的整体时限（毫秒），缺省 {@link WARM_DEADLINE_MS}。 */
+  /**
+   * 时限（毫秒），缺省 {@link WARM_DEADLINE_MS}：读远程执行主机上的 remote 最多
+   * 等这么久，一次读取里所有 remote 的预热加起来也最多等这么久。
+   */
   readonly warmDeadlineMs?: number;
 }
 
@@ -120,7 +123,7 @@ function remoteEntries(value: unknown): RemoteEntry[] {
     const { name, fetchUrl } = item as { name?: unknown; fetchUrl?: unknown };
     if (typeof name !== "string" || typeof fetchUrl !== "string") continue;
     if (name === "" || fetchUrl === "" || found.has(name)) continue;
-    found.set(name, stripCredentials(fetchUrl));
+    found.set(name, stripCredentials(dropRedactedUser(fetchUrl)));
   }
   return [...found.entries()]
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
@@ -129,19 +132,35 @@ function remoteEntries(value: unknown): RemoteEntry[] {
 }
 
 /**
- * 远端答的错误：4xx（路径不是 git 仓库、不是目录）是工作空间本身的问题；其余
- * （501 不支持、503 断线、没装配远端执行、超时）都是主机这条路走不通。
+ * 远端脱敏把 `<scheme>://<userinfo>@` 一律换成 `<scheme>://[redacted]@`，连
+ * `ssh://git@…` 里的用户名也换掉；那一段对识别与展示都没有用，整段去掉。
+ */
+function dropRedactedUser(url: string): string {
+  return url.replace(/^([A-Za-z][A-Za-z0-9+.-]*:\/\/)\[redacted\]@/, "$1");
+}
+
+/** Worker 对「根目录不是 git 仓库 / 不是目录」的答复（`RepositoryService.context`）。 */
+const NOT_GIT_MESSAGE =
+  /not a (?:working )?git (?:working )?repository|git path must be a directory/i;
+
+/**
+ * 远端答的错误：只有 400「不是 git 仓库、不是目录」是工作空间本身的问题；其余
+ * （409 重连窗口里的 `instance_mismatch`、403 授权根外、remote 过多的 400、501
+ * 不支持、503 断线、没装配远端执行、超时）都按主机这条路走不通。
  */
 function remoteFailureReason(error: unknown): WorkspaceRepositoryReason {
   if (
     error instanceof CoreFailure &&
-    error.status >= 400 &&
-    error.status < 500
+    error.status === 400 &&
+    NOT_GIT_MESSAGE.test(error.message)
   ) {
     return "notGit";
   }
   return "remoteHostUnavailable";
 }
+
+/** 等远端答复的时限内没答，按主机这条路走不通。 */
+class RemoteHostTimeout extends Error {}
 
 function empty(
   workspaceId: string,
@@ -213,7 +232,16 @@ export class WorkspaceRepositoryService {
   ): Promise<Located> {
     let answer: unknown;
     try {
-      answer = await this.remoteHost(target);
+      // 执行主机的握手最长 30 秒、单个请求最长 60 秒；面板与 `report --pr` 不跟着
+      // 等。超时后请求在后台跑完，结果丢掉。
+      const pending = this.remoteHost(target);
+      pending.catch(() => undefined);
+      const done = await settleWithin(
+        pending,
+        this.options.warmDeadlineMs ?? WARM_DEADLINE_MS,
+      );
+      if (!done) throw new RemoteHostTimeout();
+      answer = await pending;
     } catch (error) {
       return empty(workspaceId, remoteFailureReason(error), true);
     }
