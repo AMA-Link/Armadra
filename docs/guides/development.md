@@ -178,7 +178,9 @@ Rust↔Go 的归档互通，以及需要受管二进制路径的 `agent:smoke` /
 ### 推送前检查
 
 `pnpm install` 把 `core.hooksPath` 指到 `.githooks`，`git push` 前自动跑 `tools/hooks/pre-push.mjs`，
-只查这次推送带上的改动（已有分支看远端旧值以来，新分支看相对 `main` 的合并基点），删除分支与只推 tag 不查：
+只查这次推送带上的改动（基点取远端旧值与 `main` 各自同推送提交的合并基点中更近的那个），删除分支与只推 tag 不查；
+推送的提交不是当前检出时不查，并输出「未检查」。检查跑在工作区上：未跟踪的源码（`.ts` / `.tsx` / `.mjs` / `.js`）默认拦下，
+其它未跟踪文件与范围外的未提交修改会列出来：
 
 - 只改文档（与 CI 的 `changes` 判定一致）：改动文件的 prettier 与 `repo:check`。
 - 有代码：`libs:build` 后并行跑 `pnpm check` 的各项（prettier 与 ESLint 只看改动文件，配置变了全量），
