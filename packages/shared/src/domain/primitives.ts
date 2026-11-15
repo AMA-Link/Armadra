@@ -11,6 +11,8 @@ export const NODE_TYPES = [
   "automation",
   "agentActivity",
   "git",
+  "forge",
+  "forgeItem",
 ] as const;
 
 /** Only one edge kind is persisted; rope/subagent edges are derived per frame. */

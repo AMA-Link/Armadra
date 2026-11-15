@@ -50,6 +50,8 @@ describe("canvas domain v3", () => {
       "automation",
       "agentActivity",
       "git",
+      "forge",
+      "forgeItem",
     ]);
     expect(NODE_TYPES).not.toContain("agent");
     expect(NODE_TYPES).not.toContain("log");
@@ -111,6 +113,20 @@ describe("canvas domain v3", () => {
         sessionId: "session-1",
       },
       { kind: "git" },
+      {
+        kind: "forge",
+        repo: { host: "github.com", owner: "AMA-Link", name: "Armadra" },
+        tab: "pulls",
+        query: "label:core",
+        view: "board",
+        open: { kind: "pull", number: 7 },
+      },
+      {
+        kind: "forgeItem",
+        repo: { host: "github.com", owner: "AMA-Link", name: "Armadra" },
+        itemKind: "issue",
+        number: 3,
+      },
     ];
     for (const data of payloads) {
       const parsed = canvasNodeSchema.safeParse(
@@ -141,6 +157,13 @@ describe("canvas domain v3", () => {
       },
       { kind: "agentActivity", sourceNodeId: otherNodeId },
       { kind: "git" },
+      { kind: "forge" },
+      {
+        kind: "forgeItem",
+        repo: { host: "github.com", owner: "o", name: "n" },
+        itemKind: "pull",
+        number: 1,
+      },
     ];
     expect(payloads).toHaveLength(NODE_TYPES.length);
     for (const data of payloads) {
@@ -453,5 +476,71 @@ describe("retired board state, labels and notes", () => {
     expect(
       accountRefSchema.safeParse({ credentialRef: "keychain://x" }).success,
     ).toBe(false);
+  });
+});
+
+describe("forge canvas nodes (#934)", () => {
+  it("a bare forge node takes the panel defaults", () => {
+    const parsed = canvasNodeSchema.parse(
+      node({ type: "forge", title: "forge", data: { kind: "forge" } }),
+    );
+    expect(parsed.data).toEqual({
+      kind: "forge",
+      repo: null,
+      tab: "issues",
+      query: "",
+      view: "list",
+      open: null,
+    });
+  });
+
+  it("persists coordinates only: unknown keys such as a token or a body are stripped", () => {
+    const parsed = canvasNodeSchema.parse(
+      node({
+        type: "forgeItem",
+        title: "x",
+        data: {
+          kind: "forgeItem",
+          repo: {
+            host: "git.example.test",
+            owner: "a/b",
+            name: "c",
+            token: "secret",
+          },
+          itemKind: "pull",
+          number: 9,
+          title: "remote title",
+          body: "remote body",
+          token: "secret",
+        },
+      }),
+    );
+    expect(parsed.data).toEqual({
+      kind: "forgeItem",
+      repo: { host: "git.example.test", owner: "a/b", name: "c" },
+      itemKind: "pull",
+      number: 9,
+    });
+  });
+
+  it("rejects an item without a repository or with a bad number or kind", () => {
+    const base = {
+      kind: "forgeItem",
+      repo: { host: "h", owner: "o", name: "n" },
+      itemKind: "issue",
+      number: 1,
+    };
+    for (const data of [
+      { ...base, repo: undefined },
+      { ...base, number: 0 },
+      { ...base, itemKind: "commit" },
+      { ...base, repo: { host: "", owner: "o", name: "n" } },
+    ]) {
+      expect(
+        canvasNodeSchema.safeParse(
+          node({ type: "forgeItem", title: "x", data }),
+        ).success,
+      ).toBe(false);
+    }
   });
 });

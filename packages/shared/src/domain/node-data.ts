@@ -373,6 +373,50 @@ export const gitNodeDataSchema = z.object({
   ...addressable,
 });
 
+/**
+ * 一个托管仓库的坐标（#934）：只有主机、所有者（GitLab 可以是多级子组）与名字。
+ * 令牌、正文与远端数据都不入库，每次从 core 现读。
+ */
+export const forgeRepoRefSchema = z.object({
+  host: z.string().min(1).max(255),
+  owner: z.string().min(1).max(512),
+  name: z.string().min(1).max(255),
+});
+
+export const FORGE_TABS = ["issues", "pulls"] as const;
+export const FORGE_VIEWS = ["list", "board"] as const;
+export const FORGE_ITEM_KINDS = ["issue", "pull"] as const;
+export const FORGE_QUERY_MAX = 500;
+
+/**
+ * 画布上的代码托管节点（#934）：内容是侧边面板那一份列表与详情，节点只记
+ * 仓库（空则按工作空间自动识别）、标签页、搜索串、视图与打开的条目编号。
+ */
+export const forgeNodeDataSchema = z.object({
+  kind: z.literal("forge"),
+  ...addressable,
+  repo: forgeRepoRefSchema.nullable().default(null),
+  tab: z.enum(FORGE_TABS).default("issues"),
+  query: z.string().max(FORGE_QUERY_MAX).default(""),
+  view: z.enum(FORGE_VIEWS).default("list"),
+  open: z
+    .object({
+      kind: z.enum(FORGE_ITEM_KINDS),
+      number: z.number().int().positive(),
+    })
+    .nullable()
+    .default(null),
+});
+
+/** 「加到画板」的单条 Issue / PR 卡片（#934）：只记坐标与编号，标题与状态现读。 */
+export const forgeItemNodeDataSchema = z.object({
+  kind: z.literal("forgeItem"),
+  ...addressable,
+  repo: forgeRepoRefSchema,
+  itemKind: z.enum(FORGE_ITEM_KINDS),
+  number: z.number().int().positive(),
+});
+
 export const agentActivityNodeDataSchema = z.object({
   kind: z.literal("agentActivity"),
   ...addressable,
@@ -411,6 +455,8 @@ export const canvasNodeDataSchema = z.discriminatedUnion("kind", [
   automationNodeDataSchema,
   agentActivityNodeDataSchema,
   gitNodeDataSchema,
+  forgeNodeDataSchema,
+  forgeItemNodeDataSchema,
 ]);
 
 export type DiffScope = (typeof DIFF_SCOPES)[number];
@@ -433,6 +479,9 @@ export type BrowserNodeData = z.infer<typeof browserNodeDataSchema>;
 export type AutomationNodeData = z.infer<typeof automationNodeDataSchema>;
 export type AgentActivityNodeData = z.infer<typeof agentActivityNodeDataSchema>;
 export type GitNodeData = z.infer<typeof gitNodeDataSchema>;
+export type ForgeRepoRef = z.infer<typeof forgeRepoRefSchema>;
+export type ForgeNodeData = z.infer<typeof forgeNodeDataSchema>;
+export type ForgeItemNodeData = z.infer<typeof forgeItemNodeDataSchema>;
 export type AutomationScheduleKind = (typeof AUTOMATION_SCHEDULE_KINDS)[number];
 export type AgentActivitySource = (typeof AGENT_ACTIVITY_SOURCES)[number];
 export type NativeRecurrence = z.infer<typeof nativeRecurrenceSchema>;

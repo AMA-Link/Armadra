@@ -255,9 +255,10 @@ Agent 在另一台执行主机的 SSH 终端里时，只有它的转录到那台
   不依赖 React Flow 的按键状态：那份状态由 keydown 落在谁身上决定，终端拿到
   焦点时并不可靠。
 
-节点类型共 9 种（`packages/shared/src/domain/primitives.ts` 的 `NODE_TYPES`）：
+节点类型共 12 种（`packages/shared/src/domain/primitives.ts` 的 `NODE_TYPES`）：
 `terminal`（含 Agent）、`sticky`、`group`、`editor`、`diff`、`files`、`browser`、
-`automation`、`agentActivity`。
+`automation`、`agentActivity`、`git`、`forge`（代码托管面板，只记仓库坐标、标签页、
+搜索串与视图）、`forgeItem`（单条 Issue / PR 卡片，只记坐标与编号）。
 入库的连线只有一种：`link`；派生的视觉边（子代理 rope 等）每帧算出来，不入库。
 
 ## 4. Agent 运行时

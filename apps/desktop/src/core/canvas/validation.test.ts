@@ -70,6 +70,20 @@ describe("document validation", () => {
         source: "subagent",
       },
       { kind: "git" },
+      {
+        kind: "forge",
+        repo: { host: "github.com", owner: "AMA-Link", name: "Armadra" },
+        tab: "pulls",
+        query: "is:open label:core",
+        view: "board",
+        open: { kind: "pull", number: 7 },
+      },
+      {
+        kind: "forgeItem",
+        repo: { host: "github.com", owner: "AMA-Link", name: "Armadra" },
+        itemKind: "issue",
+        number: 3,
+      },
     ];
     expect(payloads).toHaveLength(NODE_TYPES.length);
     const nodes = payloads.map((data) => withData(data.kind as string, data));
@@ -254,6 +268,13 @@ describe("document validation", () => {
         sourceNodeId: "3f0d6a4e-6f3d-4c9a-9f2b-1c0f5a7d8e21",
       },
       git: { kind: "git" },
+      forge: { kind: "forge" },
+      forgeItem: {
+        kind: "forgeItem",
+        repo: { host: "h", owner: "o", name: "n" },
+        itemKind: "pull",
+        number: 1,
+      },
     };
     for (const type of NODE_TYPES) {
       expect(
@@ -326,6 +347,30 @@ describe("document validation", () => {
         () =>
           validateDocument(boardId, [terminal({ id: "claude", account })], []),
         JSON.stringify(account),
+      ).toThrowError();
+    }
+  });
+
+  it("validates the forge node and card payloads, not just their kind (#934)", () => {
+    const repo = { host: "h", owner: "o", name: "n" };
+    const bad: [string, Record<string, unknown>][] = [
+      ["forge", { kind: "forge", repo: { host: "h", owner: "o" } }],
+      ["forge", { kind: "forge", tab: "commits" }],
+      ["forge", { kind: "forge", view: "grid" }],
+      ["forge", { kind: "forge", query: "x".repeat(2_001) }],
+      ["forge", { kind: "forge", open: { kind: "pull", number: 0 } }],
+      ["forge", { kind: "forge", open: { kind: "branch", number: 1 } }],
+      ["forgeItem", { kind: "forgeItem", itemKind: "issue", number: 1 }],
+      [
+        "forgeItem",
+        { kind: "forgeItem", repo, itemKind: "issue", number: 1.5 },
+      ],
+      ["forgeItem", { kind: "forgeItem", repo, itemKind: "tag", number: 1 }],
+    ];
+    for (const [type, data] of bad) {
+      expect(
+        () => validateDocument(boardId, [withData(type, data)], []),
+        JSON.stringify(data),
       ).toThrowError();
     }
   });

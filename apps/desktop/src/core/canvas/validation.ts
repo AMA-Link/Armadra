@@ -32,6 +32,8 @@ export const NODE_TYPES = [
   "automation",
   "agentActivity",
   "git",
+  "forge",
+  "forgeItem",
 ] as const;
 
 export const EDGE_KINDS = ["link"] as const;
@@ -259,6 +261,27 @@ export function validNodeData(node: CanvasNode): boolean {
     // The Git node holds nothing but its kind (#927): history is read live.
     case "git":
       return true;
+    // 代码托管节点（#934）只记仓库坐标、标签页、搜索串、视图与打开的条目编号。
+    case "forge":
+      return (
+        isAbsentOr(data, "repo", validForgeRepo) &&
+        isAbsentOr(
+          data,
+          "tab",
+          (value) => value === "issues" || value === "pulls",
+        ) &&
+        isAbsentOr(
+          data,
+          "view",
+          (value) => value === "list" || value === "board",
+        ) &&
+        optionalBoundedString(data, "query", 2_000) &&
+        isAbsentOr(data, "open", validForgeItem)
+      );
+    case "forgeItem":
+      return (
+        validForgeRepo(at(data, "repo")) && validForgeItem(data, "itemKind")
+      );
     // A read-only observation card. Identity is the observed session's, so a
     // title collision can never merge two different native jobs.
     case "agentActivity":
@@ -385,6 +408,35 @@ export function validAgentId(value: string): boolean {
 }
 
 /* ------------------------------- field probes ------------------------------ */
+
+function boundedNonEmpty(value: unknown, max: number): boolean {
+  return (
+    typeof value === "string" &&
+    value !== "" &&
+    Buffer.byteLength(value, "utf8") <= max
+  );
+}
+
+/** `{ host, owner, name }`：托管仓库的坐标，别的都不收。 */
+function validForgeRepo(value: unknown): boolean {
+  return (
+    boundedNonEmpty(at(value, "host"), 255) &&
+    boundedNonEmpty(at(value, "owner"), 512) &&
+    boundedNonEmpty(at(value, "name"), 255)
+  );
+}
+
+/** 一条 Issue / PR 的指向：种类加正整数编号（`open` 用 `kind`，卡片用 `itemKind`）。 */
+function validForgeItem(value: unknown, kindKey = "kind"): boolean {
+  const kind = at(value, kindKey);
+  const number = at(value, "number");
+  return (
+    (kind === "issue" || kind === "pull") &&
+    typeof number === "number" &&
+    Number.isInteger(number) &&
+    number > 0
+  );
+}
 
 function at(source: unknown, name: string): unknown {
   if (source === null || typeof source !== "object") return undefined;
