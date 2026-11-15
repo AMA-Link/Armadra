@@ -74,6 +74,9 @@ const issue = (
   createdAtMs: AT,
   updatedAtMs: AT,
   closedAtMs: null,
+  assignees: [],
+  milestone: null,
+  linkedPulls: 0,
   ...overrides,
 });
 

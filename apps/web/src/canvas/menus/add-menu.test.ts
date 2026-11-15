@@ -364,6 +364,14 @@ describe("buildAddMenu", () => {
     });
   });
 
+  it("右键「添加 → Git 历史」建一个 Git 节点（#935）", () => {
+    itemById("add.git").run(ctx);
+    expect(addNode).toHaveBeenCalledWith("git", {
+      position: centered,
+      data: { kind: "git" },
+    });
+  });
+
   it("代码托管：建一个 forge 节点，仓库留空按工作空间自动识别（#934）", () => {
     itemById("add.forge").run(ctx);
     expect(addNode).toHaveBeenCalledWith("forge", { position: centered });

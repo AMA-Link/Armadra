@@ -58,6 +58,9 @@ export function normalizeBase(value: string): string | undefined {
   return `${parsed.protocol}//${authority}${path}`;
 }
 
+/** 查询串：值是数组时同名参数重复。 */
+export type Query = Record<string, string | readonly string[]>;
+
 export type TokenSource = () => Promise<string>;
 
 export interface ForgeResponse {
@@ -66,6 +69,8 @@ export interface ForgeResponse {
   readonly nextPage: number;
   /** 服务端的 `x-poll-interval`（秒）；没给省略。 */
   readonly pollIntervalSec?: number;
+  /** 总条数（Gitea `x-total-count`、GitLab `x-total`）；没给省略。 */
+  readonly totalCount?: number;
 }
 
 export interface TransportOptions {
@@ -98,7 +103,7 @@ export class ForgeTransport {
 
   get(
     path: string,
-    query?: Record<string, string>,
+    query?: Query,
     accept = "application/json",
   ): Promise<ForgeResponse> {
     return this.perform("GET", path, query, undefined, true, accept);
@@ -119,7 +124,7 @@ export class ForgeTransport {
     );
   }
 
-  private resolve(path: string, query?: Record<string, string>): string {
+  private resolve(path: string, query?: Query): string {
     if (!path.startsWith("/") || path.includes("//") || /[?#\\]/.test(path)) {
       throw forgeError("invalid", "PATH_INVALID");
     }
@@ -132,7 +137,14 @@ export class ForgeTransport {
     const target = new URL(this.base.toString());
     target.pathname = `${this.base.pathname.replace(/\/+$/, "")}${path}`;
     if (query !== undefined && Object.keys(query).length > 0) {
-      target.search = new URLSearchParams(query).toString();
+      const search = new URLSearchParams();
+      for (const [key, value] of Object.entries(query)) {
+        // 数组是重复的同名参数（`labels=1&labels=2`）。
+        for (const item of typeof value === "string" ? [value] : value) {
+          search.append(key, item);
+        }
+      }
+      target.search = search.toString();
     }
     return target.toString();
   }
@@ -140,7 +152,7 @@ export class ForgeTransport {
   private async perform(
     method: string,
     path: string,
-    query: Record<string, string> | undefined,
+    query: Query | undefined,
     body: unknown,
     read: boolean,
     accept: string,
@@ -212,6 +224,9 @@ export class ForgeTransport {
           nextPage(result.headers.get("link") ?? "") ||
           headerPage(result.headers.get("x-next-page") ?? ""),
         ...pollInterval(result.headers.get("x-poll-interval")),
+        ...totalOf(
+          result.headers.get("x-total-count") ?? result.headers.get("x-total"),
+        ),
       };
     }
     throw (
@@ -238,6 +253,11 @@ function classify(status: number, read: boolean): ForgeError {
       : forgeError("unknownOutcome", "REMOTE_UNAVAILABLE");
   }
   return forgeError("invalid", "UNEXPECTED_STATUS");
+}
+
+function totalOf(raw: string | null): { totalCount?: number } {
+  if (!/^[0-9]{1,9}$/.test((raw ?? "").trim())) return {};
+  return { totalCount: Number((raw ?? "").trim()) };
 }
 
 function pollInterval(raw: string | null): { pollIntervalSec?: number } {

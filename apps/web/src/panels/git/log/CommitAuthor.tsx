@@ -87,7 +87,11 @@ export function CommitAuthor({
           }
         >
           {face("sm")}
-          {!narrow && <span className="truncate">{commit.authorName}</span>}
+          {!narrow && (
+            <span className="truncate font-medium text-foreground">
+              {commit.authorName}
+            </span>
+          )}
         </span>
       </HoverCardTrigger>
       <HoverCardContent align="end" className="w-72 p-0 text-meta">

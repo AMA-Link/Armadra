@@ -7,6 +7,7 @@ import { nowSeconds } from "../collab/service";
 import type { ForgeService } from "../forge/service";
 import {
   ForgeError,
+  PULL_EXTRAS,
   type Forge,
   type ForgeChecks,
   type ForgeConversationItem,
@@ -82,6 +83,7 @@ function pullOf(state: ForgePull["state"], at = T0): ForgePull {
     mergedAtMs: state === "merged" ? at : null,
     autoMerge: false,
     fromFork: false,
+    ...PULL_EXTRAS,
   };
 }
 
@@ -98,6 +100,9 @@ function issueOf(state: ForgeIssue["state"], at = T0): ForgeIssue {
     createdAtMs: T0 - 1_000_000,
     updatedAtMs: at,
     closedAtMs: state === "closed" ? at : null,
+    assignees: [],
+    milestone: null,
+    linkedPulls: 0,
   };
 }
 

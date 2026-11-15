@@ -77,6 +77,12 @@ export interface LogTableProps {
    * 线，分支提交也会失去上下文。合并行看它名下的分支提交。
    */
   emphasis?: "all" | "mine" | "agent";
+  /**
+   * 仓库标识列收成细色条（#935）。只在多仓库时有这一列；切换只改列宽，
+   * 不筛仓库、不动选中与滚动位置。
+   */
+  repositoryColumnCollapsed?: boolean;
+  onToggleRepositoryColumn?: () => void;
   /** 「我的」看的邮箱（`git config user.email`）；与是否加粗高亮无关。 */
   identityEmail?: string | null;
   /** 展开的合并（`commitKey`）。 */
@@ -86,6 +92,8 @@ export interface LogTableProps {
 
 const NONE: ReadonlySet<string> = new Set();
 const NO_AVATARS: ReadonlyMap<number, string> = new Map();
+/** 一行最多两枚引用徽标，其余折成 `+N`（#935）。 */
+const MAX_BADGES = 2;
 
 export const UNCOMMITTED_KEY = "uncommitted";
 
@@ -94,31 +102,53 @@ type Row =
   | { kind: "commit"; key: string; commit: GitLogCommit };
 
 /**
- * 日期列按 IDEA 的写法：`2026/9/6 21:43`——日期与时刻同列，今天的提交只留时刻。
- * 窄布局（手机）没有这一列的宽度，退回只显示日期。
+ * 时间列（#935）：今天、昨天说「今天 06:37」「昨天 21:10」，今年内说「11月3日
+ * 21:10」，更早的才带年份。窄布局（手机）没有这一列的宽度，只留日期或时刻。
  */
-function formatWhen(
+export function formatWhen(
   iso: string,
   now: number,
   locale: string,
+  labels: {
+    today: (time: string) => string;
+    yesterday: (time: string) => string;
+  },
   narrow = false,
 ): string {
   const at = Date.parse(iso);
   if (Number.isNaN(at)) return iso;
-  const sameDay = new Date(at).toDateString() === new Date(now).toDateString();
+  const day = (value: number) => new Date(value).toDateString();
   const time = new Intl.DateTimeFormat(locale, {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
   }).format(at);
-  if (sameDay) return time;
+  if (day(at) === day(now)) return narrow ? time : labels.today(time);
+  if (day(at) === day(now - 24 * 60 * 60 * 1000)) {
+    return narrow ? labels.yesterday("").trim() : labels.yesterday(time);
+  }
+  const sameYear = new Date(at).getFullYear() === new Date(now).getFullYear();
   const date = new Intl.DateTimeFormat(locale, {
-    year: "numeric",
-    month: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+    month: sameYear ? "short" : "numeric",
     day: "numeric",
   }).format(at);
   return narrow ? date : `${date} ${time}`;
 }
+
+/** 悬停看的完整时间：本地时区，带时区名（#935）。 */
+function fullWhen(iso: string, locale: string): string {
+  const at = Date.parse(iso);
+  if (Number.isNaN(at)) return iso;
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: "full",
+    timeStyle: "long",
+  }).format(at);
+}
+
+/** 仓库标识列的宽度：展开显示名字，收起只剩一条细色条（#935）。 */
+export const REPOSITORY_COLUMN_WIDTH = 112;
+export const REPOSITORY_COLUMN_COLLAPSED = 12;
 
 export function LogTable({
   commits,
@@ -140,6 +170,8 @@ export function LogTable({
   repositoryNames,
   emphasis = "all",
   identityEmail: identity = null,
+  repositoryColumnCollapsed = false,
+  onToggleRepositoryColumn,
   expanded = NONE,
   onToggleMerge,
 }: LogTableProps) {
@@ -198,8 +230,16 @@ export function LogTable({
   const offset = rows.length - shown.length;
   const graph = useMemo(() => commitGraph(shown, logGraphKeys), [shown]);
   const lanes = Math.min(graph.lanes, MAX_LANES);
-  // 左边 6px 留给仓库色块，图从它右边起。
-  const gutter = lanes * LANE_WIDTH + 18;
+  // 多仓库时左边是仓库标识列，图从它右边起（#935）。
+  // 手机宽度放不下带名字的一列：固定用细色条（规格「窄窗口优先压缩」）。
+  const columnCollapsed = repositoryColumnCollapsed || narrow;
+  const repositoryColumn = multiRepository
+    ? columnCollapsed
+      ? REPOSITORY_COLUMN_COLLAPSED
+      : REPOSITORY_COLUMN_WIDTH
+    : 0;
+  const graphLeft = repositoryColumn + 4;
+  const gutter = graphLeft + lanes * LANE_WIDTH + 12;
 
   /**
    * 主线用仓库色（单仓库就是品牌色）；分支车道轮换其余颜色，跳过品牌色，
@@ -233,7 +273,8 @@ export function LogTable({
   const visible = (row: number) =>
     row + offset >= first - 4 && row + offset <= until + 4;
 
-  const x = (lane: number) => Math.min(lane, MAX_LANES - 1) * LANE_WIDTH + 14;
+  const x = (lane: number) =>
+    graphLeft + Math.min(lane, MAX_LANES - 1) * LANE_WIDTH + 8;
 
   /**
    * 「未提交」挂在哪：第一个有改动的仓库在本页的第一行。那个仓库一行都没有
@@ -254,34 +295,32 @@ export function LogTable({
   }, [uncommitted, shown, graph, colors]);
   const y = (row: number) => (row + offset) * rowHeight + rowHeight / 2;
 
+  /** 同一仓库连续的行合成一段（#935）；「未提交」那行算在脏仓库名下。 */
+  const segments = useMemo(() => {
+    if (!multiRepository) return [];
+    const result: { repository: string; start: number; end: number }[] = [];
+    rows.forEach((row, index) => {
+      const repository =
+        row.kind === "commit"
+          ? row.commit.repositoryPath
+          : (dirtyHead?.repository ?? null);
+      if (repository === null) return;
+      const last = result[result.length - 1];
+      if (last && last.repository === repository && last.end === index - 1) {
+        last.end = index;
+      } else {
+        result.push({ repository, start: index, end: index });
+      }
+    });
+    return result;
+  }, [rows, multiRepository, dirtyHead]);
+  const original = useMemo(
+    () => new Map(commits.map((commit) => [commitKey(commit), commit])),
+    [commits],
+  );
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div
-        role="row"
-        className="flex shrink-0 items-center gap-2 border-b border-border pr-3 text-caption text-muted-foreground"
-        style={{ height: rowHeight, paddingLeft: gutter }}
-      >
-        <span role="columnheader" className="min-w-0 flex-1 truncate">
-          {t("gitLog.table.message")}
-        </span>
-        {!narrow && (
-          <span role="columnheader" className="w-28 shrink-0 truncate">
-            {t("gitLog.table.author")}
-          </span>
-        )}
-        <span role="columnheader" className="w-20 shrink-0 truncate text-right">
-          {t("gitLog.table.date")}
-        </span>
-        {showHash && !narrow && (
-          <span
-            role="columnheader"
-            className="w-16 shrink-0 truncate text-right"
-          >
-            {t("gitLog.table.hash")}
-          </span>
-        )}
-        {collapseMerges && <span aria-hidden className="w-10 shrink-0" />}
-      </div>
       <Loadable
         loading={loading && commits.length === 0}
         className="flex min-h-0 flex-1 flex-col overflow-hidden"
@@ -304,6 +343,52 @@ export function LogTable({
             className="relative w-full"
             style={{ height: `${virtualizer.getTotalSize()}px` }}
           >
+            {segments.map((segment) => {
+              if (segment.end < first - 4 || segment.start > until + 4)
+                return null;
+              const color = repositoryHue(segment.repository);
+              const name =
+                repositoryNames?.get(segment.repository) ?? segment.repository;
+              const hint = t(
+                columnCollapsed
+                  ? "gitLog.table.repositoryExpand"
+                  : "gitLog.table.repositoryCollapse",
+              );
+              return (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  key={`${segment.repository}:${segment.start}`}
+                  data-slot="git-log-repository-segment"
+                  data-repository={segment.repository}
+                  aria-expanded={!columnCollapsed}
+                  aria-label={`${name} · ${hint}`}
+                  title={`${name}\n${segment.repository}\n${hint}`}
+                  onClick={onToggleRepositoryColumn}
+                  className="absolute left-0.5 z-20 h-auto min-w-0 cursor-pointer items-start justify-start overflow-hidden rounded-tight border-0 p-0 text-left font-normal hover:brightness-110"
+                  style={{
+                    top: segment.start * rowHeight + 1,
+                    height: (segment.end - segment.start + 1) * rowHeight - 2,
+                    width: repositoryColumn - 4,
+                    background: columnCollapsed
+                      ? "transparent"
+                      : `color-mix(in oklab, ${color} 26%, var(--background))`,
+                  }}
+                >
+                  {columnCollapsed ? (
+                    <span
+                      aria-hidden
+                      className="absolute inset-y-0.5 left-0.5 w-1 rounded-full"
+                      style={{ background: color }}
+                    />
+                  ) : (
+                    <span className="truncate px-2 pt-1 text-caption font-medium text-foreground">
+                      {name}
+                    </span>
+                  )}
+                </Button>
+              );
+            })}
             <svg
               aria-label={t("gitLog.table.graph")}
               role="img"
@@ -434,13 +519,7 @@ export function LogTable({
                     }
                     gutter={gutter}
                     height={rowHeight}
-                    color={
-                      multiRepository
-                        ? repositoryColor(
-                            colors.get(row.commit.repositoryPath) ?? 0,
-                          )
-                        : null
-                    }
+                    merged={(original.get(row.key)?.parents.length ?? 0) > 1}
                     mine={isMine(row.commit)}
                     dimmed={dimmed(row.commit)}
                     author={
@@ -459,8 +538,14 @@ export function LogTable({
                       row.commit.committerTime,
                       Date.now(),
                       locale,
+                      {
+                        today: (time) => t("gitLog.time.today", { time }),
+                        yesterday: (time) =>
+                          t("gitLog.time.yesterday", { time }),
+                      },
                       narrow,
                     )}
+                    fullWhen={fullWhen(row.commit.committerTime, locale)}
                     selected={selected === row.key}
                     onSelect={() => onSelect(row.key, row.commit)}
                   />
@@ -583,11 +668,12 @@ function CommitRow({
   author,
   gutter,
   height,
-  color,
+  merged,
   mine,
   showHash,
   narrow,
   when,
+  fullWhen,
   selected,
   onSelect,
 }: {
@@ -605,11 +691,14 @@ function CommitRow({
   author: ReactNode;
   gutter: number;
   height: number;
-  color: string | null;
+  /** 合并提交（按原始父提交数）：标题降一级（#935）。 */
+  merged: boolean;
   mine: boolean;
   showHash: boolean;
   narrow: boolean;
   when: string;
+  /** 悬停看的完整时间与时区。 */
+  fullWhen: string;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -623,14 +712,6 @@ function CommitRow({
       data-dimmed={dimmed ? "true" : undefined}
       className="group/row relative flex h-full w-full min-w-0 items-center hover:bg-muted data-selected:bg-muted data-dimmed:opacity-40"
     >
-      {color && (
-        <span
-          aria-hidden
-          data-slot="git-log-repository-color"
-          className="absolute top-1/2 left-0.5 h-4 w-1 -translate-y-1/2 rounded-full"
-          style={{ background: color }}
-        />
-      )}
       <Button
         type="button"
         variant="ghost"
@@ -641,7 +722,7 @@ function CommitRow({
         className={cn(
           "h-auto min-w-0 flex-1 justify-start gap-2 rounded-none border-0 bg-transparent pr-3 text-left text-meta font-normal hover:bg-transparent aria-pressed:bg-transparent",
           mine && "font-medium text-foreground",
-          side && "text-muted-foreground",
+          (side || merged) && "text-muted-foreground",
         )}
       >
         <span
@@ -656,23 +737,41 @@ function CommitRow({
             <span className="ml-1.5 text-muted-foreground">{label.pr}</span>
           )}
         </span>
-        {badges.map((badge) => (
-          <Badge
-            key={`${badge.kind}:${badge.label}`}
-            title={badge.label}
-            size="sm"
-            variant={
-              badge.kind === "tag"
-                ? "brand"
-                : badge.kind === "head"
-                  ? "default"
-                  : "outline"
-            }
-            className="max-w-28 min-w-0 justify-start truncate"
-          >
-            {badge.label}
-          </Badge>
-        ))}
+        {/* 徽标放进一个可收缩、超出即裁掉的容器：标题保底宽度之后，剩下的
+            空间不够时先裁徽标，时间列始终对齐（#935）。 */}
+        <span className="flex min-w-0 shrink items-center gap-1 overflow-hidden">
+          {badges.slice(0, MAX_BADGES).map((badge) => (
+            <Badge
+              key={`${badge.kind}:${badge.label}`}
+              title={badge.label}
+              size="sm"
+              variant={
+                badge.kind === "tag"
+                  ? "brand"
+                  : badge.kind === "head"
+                    ? "default"
+                    : "outline"
+              }
+              className="max-w-28 min-w-0 justify-start truncate"
+            >
+              {badge.label}
+            </Badge>
+          ))}
+          {badges.length > MAX_BADGES && (
+            <Badge
+              size="sm"
+              variant="outline"
+              data-slot="git-log-more-refs"
+              title={badges
+                .slice(MAX_BADGES)
+                .map((badge) => badge.label)
+                .join("\n")}
+              className="shrink-0"
+            >
+              +{badges.length - MAX_BADGES}
+            </Badge>
+          )}
+        </span>
         {sync && (sync.ahead > 0 || sync.behind > 0) && (
           <span
             data-slot="git-log-sync"
@@ -690,8 +789,8 @@ function CommitRow({
         {!narrow && author}
         <span
           data-numeric
-          className="w-20 shrink-0 truncate text-right text-muted-foreground"
-          title={commit.committerTime}
+          className="w-24 shrink-0 truncate text-right text-muted-foreground"
+          title={fullWhen}
         >
           {when}
         </span>

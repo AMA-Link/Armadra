@@ -79,6 +79,11 @@ export interface GitPreferences {
   collapseMerges: boolean;
   /** 详情里的代码差异用并排视图（#927 B2）；否则统一视图。 */
   diffSplit: boolean;
+  /**
+   * 多仓库日志左侧的仓库标识列收成细色条（#935）。只改列宽，不筛仓库、不动
+   * 选中与滚动位置。
+   */
+  repositoryColumnCollapsed: boolean;
   /** 表格突出哪一类提交（#927 B3）：全部、我的、Agent 协作。 */
   emphasis: GitLogEmphasis;
   /** 详情里的变更文件：树形（false）还是平铺（true）。 */
@@ -113,6 +118,7 @@ export const GIT_KEYS: Record<keyof GitPreferences, string> = {
   collapseMerges: KEY("collapseMerges"),
   diffSplit: KEY("diffSplit"),
   emphasis: KEY("emphasis"),
+  repositoryColumnCollapsed: KEY("repositoryColumnCollapsed"),
   flatFiles: KEY("flatFiles"),
   // 键名与字段名不一致是故意的：这一项原来住在提交页自己的 `preferences.ts`
   // 里，沿用旧键，已经存过的人搬过来之后仍然停在自己选的那个排列上。
@@ -163,6 +169,10 @@ export function storedGitPreferences(): GitPreferences {
     collapseMerges: storedBoolean(GIT_KEYS.collapseMerges, true),
     diffSplit: storedBoolean(GIT_KEYS.diffSplit, false),
     emphasis: storedEnum(GIT_KEYS.emphasis, GIT_LOG_EMPHASES, "all"),
+    repositoryColumnCollapsed: storedBoolean(
+      GIT_KEYS.repositoryColumnCollapsed,
+      false,
+    ),
     flatFiles: storedBoolean(GIT_KEYS.flatFiles, false),
     changeLayout: storedEnum(GIT_KEYS.changeLayout, GIT_CHANGE_LAYOUTS, "tree"),
   };

@@ -8,6 +8,7 @@ import {
   CalendarClock,
   FolderOpen,
   FolderTree,
+  GitBranch,
   Frame,
   GitPullRequest,
   Globe,
@@ -282,6 +283,31 @@ export function buildAddMenu(
       },
     },
     {
+      // Git 节点（#935）：与侧边栏同一个历史组件，右键就能摆到画布上。
+      id: "add.git",
+      label: t("add.git"),
+      icon: GitBranch,
+      group: "content",
+      run: (context) => {
+        create(context, "git", {
+          position: nodeDropPosition("git", { anchor: context.position }),
+          data: { kind: "git" },
+        });
+      },
+    },
+    {
+      id: "add.forge",
+      label: t("add.forge"),
+      icon: GitPullRequest,
+      group: "content",
+      // 节点内容是侧边面板的列表与详情；仓库留空，按工作空间自动识别（#934）。
+      run: (context) => {
+        create(context, "forge", {
+          position: nodeDropPosition("forge", { anchor: context.position }),
+        });
+      },
+    },
+    {
       id: "add.openFile",
       label: t("add.openFile"),
       icon: FolderOpen,
@@ -352,18 +378,6 @@ export function buildAddMenu(
           } satisfies AddMenuItem,
         ]
       : []),
-    {
-      id: "add.forge",
-      label: t("add.forge"),
-      icon: GitPullRequest,
-      group: "content",
-      // 节点内容是侧边面板的列表与详情；仓库留空，按工作空间自动识别（#934）。
-      run: (context) => {
-        create(context, "forge", {
-          position: nodeDropPosition("forge", { anchor: context.position }),
-        });
-      },
-    },
     {
       id: "add.automation",
       label: t("add.automation"),

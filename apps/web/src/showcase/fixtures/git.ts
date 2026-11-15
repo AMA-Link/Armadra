@@ -202,3 +202,10 @@ export const GIT_LOG_COLORS = new Map([
   ["Armadra", 1],
   ["armadra-cloud", 2],
 ]);
+
+/** 仓库路径 → 名字：仓库标识列显示它（#935）。 */
+export const GIT_LOG_NAMES = new Map([
+  [".", "armadra-workspace"],
+  ["Armadra", "Armadra"],
+  ["armadra-cloud", "armadra-cloud"],
+]);

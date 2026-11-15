@@ -157,8 +157,27 @@ export const forgeIssueSchema = z.object({
   createdAtMs: z.number().int(),
   updatedAtMs: z.number().int(),
   closedAtMs: z.number().int().nullable(),
+  /** §112 新增；旧 core 不给时取缺省。 */
+  assignees: z.array(z.string()).default([]),
+  milestone: z.string().nullable().default(null),
+  /** 关联的 PR 数。 */
+  linkedPulls: z.number().int().nonnegative().default(0),
 });
 export type ForgeIssue = z.infer<typeof forgeIssueSchema>;
+
+export const forgeReviewDecisionSchema = z.enum([
+  "approved",
+  "changesRequested",
+  "reviewRequired",
+]);
+
+/** 列表行上的检查汇总：结论加「通过数 / 总数」（§112.2）。 */
+export const forgeChecksSummarySchema = z.object({
+  rollup: z.enum(["pending", "success", "failure", "neutral", "none"]),
+  passed: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative(),
+});
+export type ForgeChecksSummary = z.infer<typeof forgeChecksSummarySchema>;
 
 export const forgePullSchema = z.object({
   number: z.number().int().positive(),
@@ -179,17 +198,82 @@ export const forgePullSchema = z.object({
   autoMerge: z.boolean().default(false),
   /** The head branch lives in another repository. */
   fromFork: z.boolean().default(false),
+  /* §112.2: everything below is optional with a default. */
+  labels: z.array(z.string()).default([]),
+  assignees: z.array(z.string()).default([]),
+  milestone: z.string().nullable().default(null),
+  commentCount: z.number().int().nonnegative().default(0),
+  reviewDecision: forgeReviewDecisionSchema.nullable().default(null),
+  checks: forgeChecksSummarySchema.nullable().default(null),
+  additions: z.number().int().nonnegative().nullable().default(null),
+  deletions: z.number().int().nonnegative().nullable().default(null),
+  changedFiles: z.number().int().nonnegative().nullable().default(null),
+  commitCount: z.number().int().nonnegative().nullable().default(null),
+  /** Issue numbers this PR closes (`Closes #n`). */
+  linkedIssues: z.array(z.number().int().positive()).default([]),
+  /** `member` / `contributor` / `firstTimeContributor`…; `null` when unknown. */
+  authorAssociation: z.string().nullable().default(null),
 });
 export type ForgePull = z.infer<typeof forgePullSchema>;
 
+/** Counts and page numbers, given only for a search/sort/page request (§112.1). */
+const pageExtras = {
+  totalCount: z.number().int().nonnegative().nullable().optional(),
+  openCount: z.number().int().nonnegative().nullable().optional(),
+  closedCount: z.number().int().nonnegative().nullable().optional(),
+  page: z.number().int().positive().nullable().optional(),
+  pageCount: z.number().int().positive().nullable().optional(),
+  /** Qualifiers this forge cannot apply and ignored. */
+  unsupported: z.array(z.string()).optional(),
+};
 export const forgeIssuePageSchema = z.object({
   items: z.array(forgeIssueSchema),
   nextCursor: z.string().nullable(),
+  ...pageExtras,
 });
 export const forgePullPageSchema = z.object({
   items: z.array(forgePullSchema),
   nextCursor: z.string().nullable(),
+  ...pageExtras,
 });
+
+/** `GET …/pulls/{n}/reviewers` (§112.3). */
+export const forgeReviewerSchema = z.object({
+  login: z.string(),
+  state: z.enum([
+    "approved",
+    "changesRequested",
+    "commented",
+    "pending",
+    "dismissed",
+  ]),
+  submittedAtMs: z.number().int().nullable(),
+});
+export const forgeReviewersSchema = z.object({
+  reviewers: z.array(forgeReviewerSchema),
+});
+export type ForgeReviewer = z.infer<typeof forgeReviewerSchema>;
+
+/** `GET …/pulls/{n}/commits` (§112.3). */
+export const forgeCommitSchema = z.object({
+  sha: z.string(),
+  title: z.string(),
+  author: z.string().nullable(),
+  authoredAtMs: z.number().int(),
+  url: z.string(),
+});
+export const forgeCommitsSchema = z.object({
+  commits: z.array(forgeCommitSchema),
+});
+export type ForgeCommit = z.infer<typeof forgeCommitSchema>;
+
+/** `GET …/facets` (§112.3): candidates for the filter dropdowns. */
+export const forgeFacetsSchema = z.object({
+  labels: z.array(z.object({ name: z.string(), color: z.string().nullable() })),
+  milestones: z.array(z.object({ title: z.string(), open: z.boolean() })),
+  assignees: z.array(z.string()),
+});
+export type ForgeFacets = z.infer<typeof forgeFacetsSchema>;
 
 /**
  * One repository an account can see (§29.7). `owner` may be a GitLab
