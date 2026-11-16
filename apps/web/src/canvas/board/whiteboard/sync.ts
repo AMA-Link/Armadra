@@ -90,7 +90,8 @@ export function createWhiteboardSync(
     if (changed.length === 0 && gone.length === 0) return;
     board.scene.transact(
       (draft) => {
-        for (const entity of changed) draft.set(entity as Entity<CanvasNode>);
+        for (const entity of changed)
+          draft.set(entity as unknown as Entity<CanvasNode>);
         for (const id of gone) draft.remove(id);
       },
       { history: "ignore" },

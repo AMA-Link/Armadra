@@ -43,7 +43,7 @@ const env = (image?: unknown): DomPaintEnv => ({
 
 const style = { color: "blue", size: "m" } as const;
 const base = { x: 10, y: 20, w: 100, h: 50, z: 1, style };
-const entity = (item: Item, geo?: Partial<Entity>): Entity<Item> => ({
+const entity = (item: Item, geo?: Partial<Entity<Item>>): Entity<Item> => ({
   id: `wb:${item.id}`,
   kind: wbKindOf(item),
   x: item.x,
@@ -215,7 +215,7 @@ describe("paint", () => {
 });
 
 describe("hit", () => {
-  const hit = (item: Item, x: number, y: number, geo?: Partial<Entity>) =>
+  const hit = (item: Item, x: number, y: number, geo?: Partial<Entity<Item>>) =>
     specOf(item).hit!(entity(item, geo), { x, y }, 4);
 
   it("空心形状只命中轮廓，实心形状命中内部", () => {
