@@ -573,7 +573,8 @@
   --connection-port-size: 14px;
   --connection-hit-size: 34px;
   position: absolute;
-  z-index: 1;
+  /* 比缩放把手（5 / 6）高：选中的节点边中点上，起笔的圆点不被缩放条盖住。 */
+  z-index: 7;
   width: var(--connection-port-size);
   height: var(--connection-port-size);
   border: 2px solid var(--card);
@@ -1200,7 +1201,8 @@
   --connection-port-size: 14px;
   --connection-hit-size: 34px;
   position: absolute;
-  z-index: 1;
+  /* 比缩放把手（5 / 6）高：选中的节点边中点上，起笔的圆点不被缩放条盖住。 */
+  z-index: 7;
   width: var(--connection-port-size);
   height: var(--connection-port-size);
   border: 2px solid var(--card);

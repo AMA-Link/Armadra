@@ -318,7 +318,7 @@ function BoardWorkspaceInner() {
               <CommentLayer />
             </WorldOverlay>
           </BoardView>
-          <BoardMinimap />
+          <BoardMinimap board={board} />
           <CanvasStylePanel />
           <CanvasTopBar />
         </div>

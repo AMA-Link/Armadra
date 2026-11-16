@@ -9,7 +9,6 @@ import {
 } from "@testing-library/react";
 import type { CanvasNode } from "@armadra/shared";
 import { createBoard } from "@armadra/board/dom";
-import { BoardProvider } from "@armadra/board/react";
 
 import { installDomPolyfills, TestProviders } from "@/app/test-harness";
 import { useMinimapPreferences } from "@/app/minimap-preferences";
@@ -48,12 +47,7 @@ function board() {
 describe("<BoardMinimap />", () => {
   it("展开时画缩略图 Canvas，收起后只剩展开钮；钮的位置随收起态变", () => {
     const stage = board();
-    render(
-      <BoardProvider value={stage}>
-        <BoardMinimap />
-      </BoardProvider>,
-      { wrapper: TestProviders },
-    );
+    render(<BoardMinimap board={stage} />, { wrapper: TestProviders });
     const map = document.querySelector<HTMLElement>(".board-minimap")!;
     expect(map).not.toBeNull();
     expect(

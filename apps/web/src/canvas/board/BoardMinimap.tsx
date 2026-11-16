@@ -3,9 +3,9 @@ import type { CanvasNode } from "@armadra/shared";
 import type { Entity } from "@armadra/board/core";
 import {
   createMinimap,
+  type DomBoard,
   type Minimap as EngineMinimap,
 } from "@armadra/board/dom";
-import { useBoard } from "@armadra/board/react";
 
 import { useMinimapPreferences } from "@/app/minimap-preferences";
 import { useResolvedTheme, useT } from "@/app/preferences-store";
@@ -57,11 +57,12 @@ export function createColorResolver(host: HTMLElement): ColorResolver {
   return resolve;
 }
 
-export function BoardMinimap() {
+/** 与 `BoardView` 是兄弟（要贴在舞台右下角），所以板由属性传入，不读 context。 */
+export function BoardMinimap({ board }: { board: DomBoard<CanvasNode> }) {
   const { collapsed, setCollapsed } = useMinimapPreferences();
   return (
     <>
-      {collapsed ? null : <MinimapView />}
+      {collapsed ? null : <MinimapView board={board} />}
       <div
         className="minimap-toggle-panel"
         style={minimapToggleStyle(collapsed)}
@@ -75,9 +76,8 @@ export function BoardMinimap() {
   );
 }
 
-function MinimapView() {
+function MinimapView({ board }: { board: DomBoard<CanvasNode> }) {
   const t = useT();
-  const board = useBoard<CanvasNode>();
   const theme = useResolvedTheme();
   const glowOf = useGlowOf();
   const families = useFamilies();

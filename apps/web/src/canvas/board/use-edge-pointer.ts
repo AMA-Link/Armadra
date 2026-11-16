@@ -73,19 +73,22 @@ export function useEdgePointer(
       const id = target.hasAttribute("data-board-stage")
         ? edgeAt(event.clientX, event.clientY)
         : null;
-      if (id === over) return;
-      over = id;
-      const stageEl = element;
-      const host = stageEl.querySelector<HTMLElement>("[data-board-stage]");
-      if (host) {
-        if (id) {
-          saved = host.style.cursor;
-          host.style.cursor = "pointer";
-        } else host.style.cursor = saved;
+      if (id !== over) {
+        over = id;
+        const host = element.querySelector<HTMLElement>("[data-board-stage]");
+        if (host) {
+          if (id) {
+            saved = host.style.cursor;
+            host.style.cursor = "pointer";
+          } else host.style.cursor = saved;
+        }
       }
+      // 提示文字会随投递结果变，每次移动都对一遍。
       const text = id ? edgeTooltip(id) : undefined;
-      if (text) stageEl.title = text;
-      else stageEl.removeAttribute("title");
+      if (text) {
+        if (element.title !== text) element.title = text;
+      } else if (element.hasAttribute("title"))
+        element.removeAttribute("title");
     };
     element.addEventListener("pointermove", onMove);
     return () => {

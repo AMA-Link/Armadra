@@ -24,7 +24,7 @@ export type BoardEdgeEntity = Entity<CanvasNode>;
 /** 边的实体：几何字段不用（`ends` 的实体取两端的并集）。 */
 export function edgeEntity(edge: {
   id: string;
-  type: string;
+  type?: string | undefined;
   source: string;
   target: string;
   data?: { role?: CanvasEdgeRole } | Record<string, never> | undefined;
