@@ -184,3 +184,20 @@ describe("textItemAt", () => {
     });
   });
 });
+
+describe("墨迹落成保存原始盒", () => {
+  it("origin 等于落成时的 w / h，之后缩放只改 w / h", () => {
+    const draft = startDraft("draw", { x: 10, y: 10 }, 0.5) as InkDraft;
+    const done = commitDraft(
+      extendDraft(draft, { x: 60, y: 40 }, 0.5),
+      "ink-1",
+    );
+    expect(done).toMatchObject({ kind: "ink" });
+    const ink = done as {
+      w: number;
+      h: number;
+      origin: { w: number; h: number };
+    };
+    expect(ink.origin).toEqual({ w: ink.w, h: ink.h });
+  });
+});

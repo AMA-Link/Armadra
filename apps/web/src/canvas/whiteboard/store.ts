@@ -13,6 +13,7 @@ import {
 import { backZ, frontZ, nextUnderZ } from "./bands";
 import {
   fromItemId,
+  newItemId,
   toItemId,
   type Item,
   type ItemStyle,
@@ -62,8 +63,9 @@ export function nextZ(): number {
   return nextUnderZ(whiteboardDoc().items.map((item) => item.z));
 }
 
+/** 新对象的 id：12 位 base62（见 `model.newItemId`）。 */
 export function createItemId(): string {
-  return crypto.randomUUID();
+  return newItemId();
 }
 
 /* -------------------------------- 写 -------------------------------------- */
@@ -173,8 +175,9 @@ export interface ItemBox {
 /**
  * resize 一条对象。
  *
- * 墨迹与直线的点集要跟着缩，否则线会留在原来的大小里；缩放比例由旧尺寸
- * 与新尺寸算，宽或高为 0 时按 1 处理（`ink.scaleInk` 自己兜底）。
+ * 墨迹不重写点集：记下落成时的原始盒 `origin`，画出来时按「现在的盒 / 原始盒」
+ * 缩放（`board/whiteboard/kinds`）——实时板上改一次大小只写几个字节，不是把整条
+ * 点集再写一遍。直线的折点是整数且很少，跟着盒子按比例重算。
  */
 export function resizeItem(
   id: string,
@@ -197,21 +200,17 @@ export function resizeItem(
 }
 
 function resized(item: Item, box: ItemBox): Item {
-  const scaleX = item.w > 0 ? box.w / item.w : 1;
-  const scaleY = item.h > 0 ? box.h / item.h : 1;
   const base = { ...item, x: box.x, y: box.y, w: box.w, h: box.h };
   if (item.kind === "ink") {
     return {
       ...base,
       kind: "ink",
-      points: item.points.map(([x, y, pressure]) => [
-        x * scaleX,
-        y * scaleY,
-        pressure,
-      ]),
+      origin: item.origin ?? { w: item.w, h: item.h },
     } as Item;
   }
   if (item.kind === "line") {
+    const scaleX = item.w > 0 ? box.w / item.w : 1;
+    const scaleY = item.h > 0 ? box.h / item.h : 1;
     return {
       ...base,
       kind: "line",

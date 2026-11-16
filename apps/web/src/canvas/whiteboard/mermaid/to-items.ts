@@ -182,7 +182,7 @@ const base = (id: string, box: Box, style: ItemStyle) => ({
   // z 一律 0：`store.addItems` 会按数组顺序从当前顶层往上编号，所以
   // 「子图框在最底、边标签在最上」由入列顺序表达（设计 §3.1）。
   z: 0,
-  parentId: null,
+  parentId: undefined,
   style,
 });
 

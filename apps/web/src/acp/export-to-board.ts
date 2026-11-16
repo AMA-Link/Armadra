@@ -433,7 +433,7 @@ export async function exportMermaid(
     w: size.w,
     h: size.h,
     z: 0,
-    parentId: null,
+    parentId: undefined,
     style: { color: "black", size: "m" },
     assetPath,
     alt: parsed.diagramType || "mermaid",

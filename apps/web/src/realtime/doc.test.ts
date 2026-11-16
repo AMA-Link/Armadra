@@ -5,6 +5,7 @@ import { WHITEBOARD_COLORS, WHITEBOARD_SIZES } from "../app/preferences-store";
 import { emptyWhiteboard, type Item } from "../canvas/whiteboard/model";
 import {
   itemsOf,
+  metaOf,
   nodesOf,
   readRemote,
   rebaseText,
@@ -140,6 +141,62 @@ describe("文档结构（契约 §16.1）", () => {
     itemsOf(doc).set("c", "{not json");
     const remote = readRemote(doc, BOARD.id, EMPTY);
     expect(remote.whiteboard.items.map((item) => item.id)).toEqual(["b", "a"]);
+  });
+});
+
+describe("白板对象的 v3 线上格式", () => {
+  const withInk = () => {
+    const doc = new Y.Doc();
+    const whiteboard = { ...emptyWhiteboard(), items: [ink("a", 1)] };
+    writeLocal(doc, EMPTY, snapshot([], whiteboard), ORIGIN);
+    return { doc, whiteboard };
+  };
+
+  it("每项存的是 encodeItem 的串（短键、点集压成串），读回逐项解码", () => {
+    const { doc, whiteboard } = withInk();
+    const wire = JSON.parse(itemsOf(doc).get("a")!) as Record<string, unknown>;
+    expect(wire).toMatchObject({ id: "a", k: "ink", b: [0, 0, 1, 1], z: 1 });
+    expect(typeof wire.pt).toBe("string");
+    const remote = readRemote(doc, BOARD.id, EMPTY);
+    expect(remote.whiteboard.items).toEqual(whiteboard.items);
+  });
+
+  it("本地对象的线上串与文档里逐字相同时沿用本地对象（身份不变）", () => {
+    const { doc, whiteboard } = withInk();
+    const local = snapshot([], whiteboard);
+    expect(readRemote(doc, BOARD.id, local).whiteboard).toBe(local.whiteboard);
+  });
+
+  it("上一代 v2 的整条 JSON、损坏的串读回时忽略，传了 origin 就在事务里删掉", () => {
+    const { doc } = withInk();
+    itemsOf(doc).set(
+      "old",
+      JSON.stringify({ id: "old", kind: "ink", points: [[0, 0, 0.5]] }),
+    );
+    itemsOf(doc).set("junk", "{not json");
+    const seen: unknown[] = [];
+    doc.on("afterTransaction", (t: Y.Transaction) => seen.push(t.origin));
+    const quiet = readRemote(doc, BOARD.id, EMPTY);
+    expect(quiet.whiteboard.items.map((i) => i.id)).toEqual(["a"]);
+    expect([...itemsOf(doc).keys()].sort()).toEqual(["a", "junk", "old"]);
+    const pruned = readRemote(doc, BOARD.id, EMPTY, ORIGIN);
+    expect(pruned.whiteboard.items.map((i) => i.id)).toEqual(["a"]);
+    expect([...itemsOf(doc).keys()]).toEqual(["a"]);
+    expect(seen).toContain(ORIGIN);
+  });
+
+  it("文档里是上一代外壳时，写入白板内容会把外壳换成 v3 的", () => {
+    const { doc } = withInk();
+    metaOf(doc).set(
+      "whiteboardEnvelope",
+      JSON.stringify({ engine: "armadra-flow", version: 2 }),
+    );
+    const before = { ...emptyWhiteboard(), items: [ink("a", 1)] };
+    const after = { ...emptyWhiteboard(), items: [ink("a", 1), ink("b", 2)] };
+    writeLocal(doc, snapshot([], before), snapshot([], after), ORIGIN);
+    expect(JSON.parse(metaOf(doc).get("whiteboardEnvelope") as string)).toEqual(
+      { engine: "armadra-board", version: 3 },
+    );
   });
 });
 

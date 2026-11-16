@@ -83,7 +83,7 @@ export function ItemMenuContent({ itemId }: ItemMenuContentProps) {
       id: createItemId(),
       // 复制出来的一律落在页面级：组员的坐标相对 Frame，带着 `parentId`
       // 复制会让偏移量落在另一个坐标系里。
-      parentId: null,
+      parentId: undefined,
       x: item.x + DUPLICATE_OFFSET,
       y: item.y + DUPLICATE_OFFSET,
       z: 0,

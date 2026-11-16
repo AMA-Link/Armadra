@@ -1070,11 +1070,11 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
 | ---------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `nodes`          | `Y.Map<nodeId, Y.Map>`       | 每个节点一张 `Y.Map`，键与 `CanvasNode` 同名：`type title color position size collapsed expandedHeight parentId labels note data createdAt updatedAt`，值是 JSON、按字段 LWW；`data.content` 是字符串时放在键 `content` 的 `Y.Text` 里，`data` 里不再带它 |
 | `edges`          | `Y.Map<edgeId, JSON>`        | `{ source, target, kind, role?, createdAt, updatedAt }`，整条 LWW                                                                                                                                                                                         |
-| `whiteboard`     | `Y.Map<itemId, string>`      | 白板 `items[]` 的每一项一条 JSON 串，按 item LWW                                                                                                                                                                                                          |
+| `whiteboard`     | `Y.Map<itemId, string>`      | 白板 `items[]` 的每一项一条 JSON 串，按 item LWW；页面写的是 v3 线上格式（短键 `id` `k` `b` `z`…，墨迹点集压成串，见 [自研画板引擎设计](../design/board-engine.md) §3.2）                                                                                 |
 | `whiteboardRefs` | `Y.Map<referenceId, string>` | 白板 `references[]` 的每一项一条 JSON 串                                                                                                                                                                                                                  |
-| `meta`           | `Y.Map`                      | `whiteboardEnvelope`：白板 JSON 去掉两个数组后的外壳（JSON 串）；`whiteboardRaw`：认不出外壳的白板原文。视口不进文档                                                                                                                                      |
+| `meta`           | `Y.Map`                      | `whiteboardEnvelope`：白板 JSON 去掉两个数组后的外壳（JSON 串，现为 `{"engine":"armadra-board","version":3}`，其它取值页面一律按空白板处理）；`whiteboardRaw`：认不出外壳的白板原文。视口不进文档                                                         |
 
-`id` 与 `boardId` 不存进节点与边的值里，由键与所在的板给出。core 不解析白板 item 的内容，只认外壳：`items` / `references` 两个数组、每项有唯一的字符串 `id`。
+`id` 与 `boardId` 不存进节点与边的值里，由键与所在的板给出。core 不解析白板 item 的内容，只认外壳：`items` / `references` 两个数组、每项有唯一的字符串 `id`（`engine` / `version` 的取值只有页面认，core 当不透明字节）。
 
 ### 16.2 物化与 `board.changed`
 

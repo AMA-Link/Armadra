@@ -23,6 +23,7 @@ import type {
 
 import { installDomPolyfills, TestProviders } from "../app/test-harness";
 import { emptyWhiteboard } from "../canvas/whiteboard/model";
+import { serializeWhiteboard } from "../canvas/whiteboard/serialize";
 import { useCanvasStore } from "../store/canvas-store";
 import { SidebarSearch } from "./SidebarSearch";
 
@@ -90,7 +91,7 @@ function documentOf(
       name,
       sortOrder: 0,
       viewport: { x: 0, y: 0, zoom: 1 },
-      whiteboard: JSON.stringify({
+      whiteboard: serializeWhiteboard({
         ...emptyWhiteboard(),
         items: texts.map((text, index) => ({
           id: `item-${index}`,

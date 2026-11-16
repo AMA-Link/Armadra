@@ -146,11 +146,7 @@ export function mergeWhiteboard(
   const parsed = parseWhiteboard(snapshot).doc;
   const items = keepLocalEdits(local.items, parsed.items, mine);
   const references = keepLocalEdits(local.references, parsed.references, mine);
-  if (
-    items === local.items &&
-    references === local.references &&
-    sameJson(parsed.legacy ?? null, local.legacy ?? null)
-  ) {
+  if (items === local.items && references === local.references) {
     return local;
   }
   return { ...parsed, items, references };

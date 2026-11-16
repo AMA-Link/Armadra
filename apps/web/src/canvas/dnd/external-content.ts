@@ -10,7 +10,7 @@ import {
 } from "@armadra/shared";
 import { runtimeApi } from "../../api/client";
 import { AssetTooLargeError, uploadAsset } from "../assets";
-import type { Item } from "../whiteboard/model";
+import { newItemId as createItemId, type Item } from "../whiteboard/model";
 import { commitBatch, emptyBatch, type ImportBatch } from "../import-group";
 import { isMermaidFileName } from "../whiteboard/mermaid/detect";
 import { openMermaidImport } from "../whiteboard/mermaid/open";
@@ -256,14 +256,14 @@ export async function createImageShapes(
     point,
   );
   const items: Item[] = uploaded.map((entry, index) => ({
-    id: crypto.randomUUID(),
+    id: createItemId(),
     kind: "image" as const,
     x: points[index]!.x,
     y: points[index]!.y,
     w: entry.size.w,
     h: entry.size.h,
     z: 0,
-    parentId: null,
+    parentId: undefined,
     style: { color: "black" as const, size: "m" as const },
     assetPath: entry.path,
     alt: entry.alt,
@@ -562,14 +562,14 @@ async function importImageShape(
   if (!importTargetIsActive(target)) return null;
   const size = imageShapeSize(natural);
   return {
-    id: crypto.randomUUID(),
+    id: createItemId(),
     kind: "image",
     x: position.x - size.w / 2,
     y: position.y - size.h / 2,
     w: size.w,
     h: size.h,
     z: 0,
-    parentId: null,
+    parentId: undefined,
     style: { color: "black", size: "m" },
     assetPath: asset.path,
     alt: baseName(path),

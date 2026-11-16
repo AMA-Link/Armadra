@@ -268,7 +268,7 @@ describe("projectNodes", () => {
           w: 10,
           h: 10,
           z: 0,
-          parentId: null,
+          parentId: undefined,
           style: { color: "black", size: "m" },
           text: "",
         },

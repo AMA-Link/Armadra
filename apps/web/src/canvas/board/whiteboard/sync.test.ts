@@ -61,7 +61,7 @@ const shape = (id: string, patch: Record<string, unknown> = {}) =>
     w: 100,
     h: 60,
     z: 0,
-    parentId: null,
+    parentId: undefined,
     style: { color: "black", size: "m" },
     geo: "rectangle",
     ...patch,

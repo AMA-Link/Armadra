@@ -7,11 +7,10 @@ import {
 } from "@armadra/shared";
 
 import { adoptList } from "../canvas/sync/merge";
+import { codec } from "@armadra/board/core";
+
 import {
   emptyWhiteboard,
-  itemSchema,
-  referenceSchema,
-  whiteboardLegacySchema,
   type Item,
   type Reference,
   type WhiteboardDoc,
@@ -26,7 +25,8 @@ import {
  *   * `nodes: Y.Map<nodeId, Y.Map>`：字段与 `CanvasNode` 同名、按字段 LWW；
  *     `data.content` 是字符串时放在键 `content` 的 `Y.Text` 里。
  *   * `edges: Y.Map<edgeId, JSON>`：整条 LWW，不带 `id` / `boardId`。
- *   * `whiteboard` / `whiteboardRefs: Y.Map<id, string>`：每项一条 JSON 串。
+ *   * `whiteboard: Y.Map<id, string>`：每项一条 v3 线上格式的 JSON 串（`codec.encodeItem`）；
+ *     `whiteboardRefs: Y.Map<id, string>`：每项一条引用的 JSON 串。
  *   * `meta.whiteboardEnvelope`：白板去掉两个数组之后的外壳（JSON 串）。
  *
  * 写入按**实体身份**比：store 的每个动作都造新对象，没动过的仍是同一个引用，
@@ -315,6 +315,7 @@ function writeStrings<T extends { id: string }>(
   map: Y.Map<string>,
   before: readonly T[],
   after: readonly T[],
+  encode: (entity: T) => string = (entity) => JSON.stringify(entity),
 ): boolean {
   if (before === after) return false;
   const from = indexById(before);
@@ -330,7 +331,7 @@ function writeStrings<T extends { id: string }>(
     const previous = from.get(id);
     if (previous === entity) continue;
     if (previous !== undefined && !map.has(id)) continue;
-    const json = JSON.stringify(entity);
+    const json = encode(entity);
     if (map.get(id) === json) continue;
     map.set(id, json);
     wrote = true;
@@ -348,7 +349,12 @@ function writeWhiteboard(
   before: WhiteboardDoc,
   after: WhiteboardDoc,
 ): boolean {
-  let wrote = writeStrings(itemsOf(doc), before.items, after.items);
+  let wrote = writeStrings(
+    itemsOf(doc),
+    before.items,
+    after.items,
+    codec.encodeItem,
+  );
   wrote =
     writeStrings(referencesOf(doc), before.references, after.references) ||
     wrote;
@@ -357,11 +363,13 @@ function writeWhiteboard(
   const current = meta.get(WHITEBOARD_ENVELOPE);
   const parsed = typeof current === "string" ? parseJson(current) : undefined;
   if (stableJson(parsed) !== stableJson(envelope)) {
-    // 只在外壳真的变了（或文档还没有外壳而这边有白板内容）时写。
+    // 只在外壳真的变了、或文档里的外壳与这边不一致（没有外壳，或是上一代格式
+    // 留下的）而这边有白板内容时写：否则旧外壳会和 v3 对象串一起被物化成一份
+    // 认不出的文档。
     if (
       stableJson(envelopeOf(before)) !== stableJson(envelope) ||
-      (parsed === undefined &&
-        (after.items.length > 0 || after.references.length > 0))
+      after.items.length > 0 ||
+      after.references.length > 0
     ) {
       meta.set(WHITEBOARD_ENVELOPE, JSON.stringify(envelope));
       wrote = true;
@@ -395,12 +403,34 @@ export function readRemote(
   doc: Y.Doc,
   boardId: string,
   local: LocalSnapshot,
+  origin?: object,
 ): RemoteState {
-  return {
+  const state = {
     nodes: readNodes(doc, boardId, local.nodes),
     edges: readEdges(doc, boardId, local.edges),
     whiteboard: readWhiteboard(doc, local.whiteboard),
   };
+  if (origin) pruneInvalidItems(doc, origin);
+  return state;
+}
+
+/**
+ * 解码失败的白板对象（上一代格式留下的串、损坏的串）：读回时已经忽略，这里
+ * 在同一次事务里把它们从文档删掉，否则它们会一直占着文档、每次读都再解一遍。
+ * 用绑定自己的 `origin`，这次删除不会被当成别人的改动回灌。
+ */
+export function pruneInvalidItems(doc: Y.Doc, origin: object): number {
+  const map = itemsOf(doc);
+  const bad: string[] = [];
+  map.forEach((json, id) => {
+    const decoded = codec.decodeItem(json);
+    if (!decoded.ok || decoded.value.id !== id) bad.push(id);
+  });
+  if (bad.length === 0) return 0;
+  doc.transact(() => {
+    for (const id of bad) map.delete(id);
+  }, origin);
+  return bad.length;
 }
 
 function byCreated(
@@ -493,64 +523,66 @@ function readEdges(
 
 function readEntries<T extends { id: string }>(
   map: Y.Map<string>,
-  schema: { safeParse(value: unknown): { success: boolean; data?: T } },
+  decode: (json: string) => T | null,
   local: readonly T[],
+  /** 本地对象的线上串：与文档里的串逐字相同就沿用本地对象，不必再解码。 */
+  encode: (entity: T) => string,
 ): T[] {
   const known = indexById(local);
   const out: T[] = [];
   map.forEach((json, id) => {
-    const value = parseJson(json);
     const existing = known.get(id);
-    if (existing && sameJson(existing, value)) {
+    if (existing && encode(existing) === json) {
       out.push(existing);
       return;
     }
-    const parsed = schema.safeParse(value);
-    if (parsed.success && parsed.data && parsed.data.id === id) {
-      out.push(parsed.data);
-    }
+    const decoded = decode(json);
+    if (decoded && decoded.id === id) out.push(decoded);
   });
   return out;
 }
 
+const decodeItem = (json: string): Item | null => {
+  const decoded = codec.decodeItem(json);
+  return decoded.ok ? decoded.value : null;
+};
+
+const decodeReference = (json: string): Reference | null => {
+  const value = parseJson(json);
+  if (!isRecord(value)) return null;
+  const { id, itemId, nodeId } = value;
+  return typeof id === "string" &&
+    id &&
+    typeof itemId === "string" &&
+    itemId &&
+    typeof nodeId === "string" &&
+    nodeId
+    ? { id, itemId, nodeId }
+    : null;
+};
+
 function readWhiteboard(doc: Y.Doc, local: WhiteboardDoc): WhiteboardDoc {
   const items = orderLike(
     local.items,
-    readEntries<Item>(itemsOf(doc), itemSchema, local.items),
+    readEntries<Item>(itemsOf(doc), decodeItem, local.items, codec.encodeItem),
     (a, b) => a.z - b.z || compare(a.id, b.id),
   );
   const references = orderLike(
     local.references,
     readEntries<Reference>(
       referencesOf(doc),
-      referenceSchema,
+      decodeReference,
       local.references,
+      (reference) => JSON.stringify(reference),
     ),
     (a, b) => compare(a.id, b.id),
   );
-  const envelope = metaOf(doc).get(WHITEBOARD_ENVELOPE);
-  const parsed = typeof envelope === "string" ? parseJson(envelope) : undefined;
-  const legacy = isRecord(parsed)
-    ? whiteboardLegacySchema.safeParse(parsed.legacy)
-    : undefined;
   const nextItems = adoptList(local.items, items);
   const nextReferences = adoptList(local.references, references);
-  const nextLegacy =
-    legacy?.success && legacy.data !== undefined ? legacy.data : undefined;
-  if (
-    nextItems === local.items &&
-    nextReferences === local.references &&
-    sameJson(nextLegacy ?? null, local.legacy ?? null)
-  ) {
+  if (nextItems === local.items && nextReferences === local.references) {
     return local;
   }
-  const base = emptyWhiteboard();
-  return {
-    ...base,
-    items: nextItems,
-    references: nextReferences,
-    ...(nextLegacy === undefined ? {} : { legacy: nextLegacy }),
-  };
+  return { ...emptyWhiteboard(), items: nextItems, references: nextReferences };
 }
 
 /* ------------------------------- 正文变基 -------------------------------- */

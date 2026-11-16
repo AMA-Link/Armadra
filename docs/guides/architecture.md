@@ -422,10 +422,11 @@ SSH 节点的适配器起在执行主机上（`ssh.ts`）：`host.ts` 的 transp
 - 持久化两条通道由 `PUT /api/workspaces/{id}/boards/{boardId}/document` 一次带走。
   节点与连线仍是 `nodes` / `edges` 表——core、hook、控制动词、会话侧栏只认这张表；
   节点 id 就是那一行的 uuid，白板对象是 `wb:<uuid>`，都不查表；分组是 `group` 节点。
-- 白板对象与内容引用序列化成一份 `{"engine":"armadra-flow","version":2,…}` 的
-  JSON 存进 `boards.whiteboard_json`，**core 不解析它**（只看长度与摘要）。
-  上限 8 MiB，超了这一轮不保存并提示。不认识的 `engine` / 更高的 `version`
-  按「保留原文」处理：不覆盖，也不显示成空白板。
+- 白板对象与内容引用序列化成一份 `{"engine":"armadra-board","version":3,…}` 的
+  JSON 存进 `boards.whiteboard_json`（短键、墨迹点集压缩，设计见
+  [自研画板引擎](../design/board-engine.md) §3），**core 不解析它**（只看长度与摘要）。
+  上限 8 MiB，超了这一轮不保存并提示。不认识的 `engine` / `version`（含上一代
+  v2）一律按空白板处理，下一次保存覆盖，不迁移、不读旧格式。
 - **图片资产不进快照**：字节走 `POST /api/workspaces/{id}/assets`（或按路径
   `.../assets/import`），内容寻址落在工作区的
   `.armadra/assets/<sha256 前 16 位>.<ext>`，快照里只留 URL 与工作区相对路径。

@@ -155,7 +155,7 @@ describe("实时板的撤销", () => {
       w: 120,
       h: 24,
       z: 0,
-      parentId: null,
+      parentId: undefined,
       style: {
         color: "black" as const,
         size: "m" as const,

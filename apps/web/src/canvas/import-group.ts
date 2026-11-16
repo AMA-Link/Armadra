@@ -181,7 +181,11 @@ export function ungroup(groupId: string): void {
       updateItems(
         items.map((item) => ({
           id: toItemId(item.id),
-          patch: { parentId: null, x: item.x + origin.x, y: item.y + origin.y },
+          patch: {
+            parentId: undefined,
+            x: item.x + origin.x,
+            y: item.y + origin.y,
+          },
         })),
       );
     }

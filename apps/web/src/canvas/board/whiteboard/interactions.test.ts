@@ -26,7 +26,7 @@ const item = (id: string, patch: Record<string, unknown> = {}) =>
     w: 100,
     h: 100,
     z: 0,
-    parentId: null,
+    parentId: undefined,
     style: { color: "black", size: "m", fill: "solid" },
     geo: "rectangle",
     ...patch,

@@ -232,7 +232,7 @@ describe("直线端点", () => {
         w: 100,
         h: 50,
         z: 0,
-        parentId: null,
+        parentId: undefined,
         style: { color: "black", size: "m" },
         points: [
           [0, 0],

@@ -72,7 +72,7 @@ export function bindStore(options: BindingOptions): Binding {
     const local = snapshotOf(state);
     if (!local) return;
     pending = false;
-    const remote = readRemote(doc, boardId, local);
+    const remote = readRemote(doc, boardId, local, origin);
     applying = true;
     try {
       state.applyRealtimeState(remote);

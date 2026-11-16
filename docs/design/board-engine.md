@@ -1,6 +1,6 @@
 # 自研画板引擎设计
 
-> 状态：**目标设计，实施中**（2026-11-15 定稿，B0 骨架已落地）。§8 的 Q1–Q12 均已决定，按「决定」列执行；Issue：Armadra#952。
+> 状态：**目标设计，实施中**（2026-11-15 定稿；B0–B3 已落地，B5 的 `next` 白板对象与 v3 存储已落地，实测见 §3.2 末尾）。§8 的 Q1–Q12 均已决定，按「决定」列执行；Issue：Armadra#952。
 > 基线：`main` `c2281727d`；体积数据取自 `apps/web/dist`（2026-11-11 构建，已压缩）与 `apps/desktop/out`（2026-11-14 构建，未压缩）。
 > 范围：`apps/web/src/canvas/`、`apps/web/src/store/canvas/`、`apps/web/src/realtime/` 中与画布引擎相关的部分；`boards.whiteboard_json` 的新格式；实施批次与验收。只读了代码，没有运行应用，凡未经运行验证的判断都标了「待核实」。
 > 前置阅读：[React Flow 画布](canvas-react-flow.md)（现行画布设计，§1.2 能力清单、§2 架构、§3 数据、§6 验收口径本文沿用）。
