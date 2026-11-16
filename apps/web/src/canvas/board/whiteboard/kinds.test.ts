@@ -106,7 +106,7 @@ describe("paint", () => {
     expect(again.calls.find(([n]) => n === "fill")![1]).toBe(first);
   });
 
-  it("高亮笔半透明且 multiply", () => {
+  it("高亮笔半透明（不用 multiply，屏幕与导出一致）", () => {
     const ink = {
       id: "a",
       kind: "ink",
@@ -117,7 +117,9 @@ describe("paint", () => {
     const { ctx, calls } = fakeCtx();
     specOf(ink).paint!(ctx, entity(ink), env());
     expect(calls).toContainEqual(["set:globalAlpha", 0.35]);
-    expect(calls).toContainEqual(["set:globalCompositeOperation", "multiply"]);
+    expect(calls.some(([n]) => n === "set:globalCompositeOperation")).toBe(
+      false,
+    );
   });
 
   it("形状：虚线、半透明填充与描边", () => {

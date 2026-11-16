@@ -50,6 +50,12 @@ export function colorHex(
   return swatch[scheme];
 }
 
+/** 画布点阵的颜色（引擎在 Canvas 上画点阵，吃不了 CSS 变量）。 */
+export const DOT_COLORS: Record<ColorScheme, string> = {
+  light: "rgba(0,0,0,0.18)",
+  dark: "rgba(255,255,255,0.18)",
+};
+
 /* -------------------------------- 线宽 ------------------------------------ */
 
 /** s/m/l/xl → 线宽（§2.4）。墨迹、几何形、直线共用。 */

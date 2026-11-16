@@ -81,10 +81,9 @@ function paintInk(
   const o = originOf(item);
   ctx.translate(e.x, e.y);
   ctx.scale(e.w / o.w, e.h / o.h);
-  if (item.highlight) {
-    ctx.globalAlpha = HIGHLIGHT_OPACITY;
-    ctx.globalCompositeOperation = "multiply";
-  }
+  // 只用透明度，不用 multiply：屏幕上 Canvas 层是透明的，混合不到底下的内容，
+  // 而导出带底色，两边会不一致。
+  if (item.highlight) ctx.globalAlpha = HIGHLIGHT_OPACITY;
   ctx.fillStyle = env.color(item.style.color);
   ctx.fill(path);
 }

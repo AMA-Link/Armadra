@@ -1,4 +1,4 @@
-import { colorHex } from "../../whiteboard/palette";
+import { colorHex, DOT_COLORS } from "../../whiteboard/palette";
 import { canvasScheme } from "../../whiteboard/scheme";
 import { peekImage } from "./images";
 
@@ -8,9 +8,7 @@ import { peekImage } from "./images";
  */
 export function boardColor(name: string): string {
   const scheme = canvasScheme();
-  if (name === "dot") {
-    return scheme === "dark" ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.18)";
-  }
+  if (name === "dot") return DOT_COLORS[scheme];
   return colorHex(name, scheme);
 }
 
