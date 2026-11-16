@@ -87,11 +87,8 @@ export function createDrag(
     const w = v.w * camera.get().zoom;
     const h = v.h * camera.get().zoom;
     const axis = (p: number, size: number) =>
-      p < EDGE
-        ? Math.min(1, (EDGE - p) / EDGE) * EDGE_SPEED
-        : p > size - EDGE
-          ? -Math.min(1, (p - (size - EDGE)) / EDGE) * EDGE_SPEED
-          : 0;
+      EDGE_SPEED *
+      (Math.max(0, 1 - p / EDGE) - Math.max(0, 1 - (size - p) / EDGE));
     const x = axis(last.screen.x, w);
     const y = axis(last.screen.y, h);
     return x || y ? { x, y } : null;
@@ -136,21 +133,15 @@ export function createDrag(
       apply(input);
       const positions = new Map<EntityId, Vec>();
       const reparent = new Map<EntityId, EntityId | null>();
-      const origin = target ? scene.bounds(target) : undefined;
+      // 新父级（没换父级时就是原父级）的原点：位置一律相对它
+      const origin = (target && scene.bounds(target)) || { x: 0, y: 0 };
       for (const i of ids) {
-        const from = start.get(i)!;
-        const next = (from.parent ?? null) === target ? undefined : target;
-        if (next !== undefined) reparent.set(i, next);
         const b = abs.get(i)!;
-        positions.set(
-          i,
-          next === undefined
-            ? { x: from.x + delta.x, y: from.y + delta.y }
-            : {
-                x: b.x + delta.x - (origin?.x ?? 0),
-                y: b.y + delta.y - (origin?.y ?? 0),
-              },
-        );
+        positions.set(i, {
+          x: b.x + delta.x - origin.x,
+          y: b.y + delta.y - origin.y,
+        });
+        if ((start.get(i)!.parent ?? null) !== target) reparent.set(i, target);
       }
       board.emit("move", { ids, positions, reparent });
       scene.clearPreview(ids);
