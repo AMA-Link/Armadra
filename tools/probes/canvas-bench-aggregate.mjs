@@ -26,10 +26,11 @@ const run = (cmd, args) => {
     return "";
   }
 };
-const { metrics, spread, runs } = aggregate(results);
+const { metrics, spread, range, runs } = aggregate(results);
 const file = {
   schema: SCHEMA,
   commit: run("git", ["rev-parse", "HEAD"]),
+  base: run("git", ["merge-base", "HEAD", "origin/main"]),
   machine:
     run("sysctl", ["-n", "machdep.cpu.brand_string"]) || os.cpus()[0]?.model,
   memoryGb: Math.round(os.totalmem() / 1024 ** 3),
@@ -39,6 +40,7 @@ const file = {
   runs,
   metrics,
   spread,
+  range,
 };
 writeFileSync(output, `${JSON.stringify(file, null, 2)}\n`);
 console.log(

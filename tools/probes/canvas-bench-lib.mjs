@@ -33,8 +33,9 @@ export const SEGMENTS = [
  */
 export const SEGMENT_METRICS = [
   { key: "fps", label: "平均帧率 fps", higher: true },
-  { key: "p50Ms", label: "帧时 p50 ms", higher: false },
-  { key: "p95Ms", label: "帧时 p95 ms", higher: false },
+  // p50 / p95 帧时写进 result.json 但不进比较：不封顶后帧时是双峰的（输入合并出的
+  // 毫秒级帧 + 压在 17.7 ms 上的 60 Hz 心跳帧），p95 在旧引擎上就贴着 17.7 ms，
+  // 新引擎再快也只能打平，没有判别力。判别用 fps、最慢帧、超 33.4 ms 帧数与 CPU。
   { key: "slowestMs", label: "最慢一帧 ms", higher: false },
   { key: "over33", label: "超 33.4 ms 帧数", higher: false, floor: true },
   { key: "longTasks", label: "长任务数 >50 ms", higher: false, floor: true },
@@ -50,7 +51,7 @@ export const SEGMENT_METRICS = [
  * 的帧指标照常写进 result.json，但不进比较，只比 CPU、长任务、堆与 DOM 节点。
  */
 export const PACED_SEGMENTS = ["idle", "typing"];
-export const FRAME_KEYS = ["fps", "p50Ms", "p95Ms", "slowestMs", "over33"];
+export const FRAME_KEYS = ["fps", "slowestMs", "over33"];
 
 /** 非逐段的指标。 */
 export const GLOBAL_METRICS = [
@@ -217,11 +218,26 @@ export function median(values) {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-/** 多次运行取逐项中位数，并给出每项的波动（(max-min)/中位数）。 */
+/** 线性插值分位数。 */
+export function quantile(values, q) {
+  const sorted = [...values].sort((a, b) => a - b);
+  if (sorted.length === 0) return NaN;
+  const at = (sorted.length - 1) * q;
+  const lo = Math.floor(at);
+  const hi = Math.ceil(at);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (at - lo);
+}
+
+/**
+ * 多次运行取逐项中位数，并给出每项的波动：`spread` 是四分位距 / 中位数
+ * （对单次离群不敏感），`range` 是 (max-min) / 中位数。中位数为 0 时，
+ * 全相同记 0，否则记 null。
+ */
 export function aggregate(results) {
   const flats = results.map(flatten);
   const metrics = {};
   const spread = {};
+  const range = {};
   for (const { key } of metricList()) {
     const values = flats
       .map((flat) => flat[key])
@@ -229,11 +245,14 @@ export function aggregate(results) {
     if (values.length === 0) continue;
     const mid = median(values);
     metrics[key] = round(mid, 2);
-    const range = Math.max(...values) - Math.min(...values);
-    spread[key] =
-      mid === 0 ? (range === 0 ? 0 : null) : round(range / Math.abs(mid), 3);
+    const full = Math.max(...values) - Math.min(...values);
+    const iqr = quantile(values, 0.75) - quantile(values, 0.25);
+    const rel = (x) =>
+      mid === 0 ? (x === 0 ? 0 : null) : round(x / Math.abs(mid), 3);
+    spread[key] = rel(iqr);
+    range[key] = rel(full);
   }
-  return { metrics, spread, runs: results.length };
+  return { metrics, spread, range, runs: results.length };
 }
 
 /** 读 result.json 或基线文件，统一成指标表。 */

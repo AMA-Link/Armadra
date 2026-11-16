@@ -125,7 +125,8 @@ test("median 与 aggregate：逐项中位数与波动", () => {
   const out = aggregate([fakeResult(1), fakeResult(1.1), fakeResult(1.2)]);
   assert.equal(out.runs, 3);
   assert.equal(out.metrics["pan.mainThreadMs"], 990);
-  assert.equal(out.spread["pan.mainThreadMs"], 0.182);
+  assert.equal(out.range["pan.mainThreadMs"], 0.182);
+  assert.equal(out.spread["pan.mainThreadMs"], 0.091);
   assert.equal(out.spread["pan.over33"], 0);
   assert.equal(loadMetrics({ metrics: out.metrics }), out.metrics);
   assert.deepEqual(loadMetrics(fakeResult(1)), flatten(fakeResult(1)));
@@ -152,7 +153,7 @@ test("compareMetrics：全部严格更优才通过", () => {
   // over33 与 longTasks 基线为 0、候选为 0：floor 持平算过
   assert.equal(result.pass, true);
   assert.ok(result.rows.some((row) => row.status === "floor"));
-  assert.ok(result.rows.filter((row) => row.status === "better").length > 50);
+  assert.ok(result.rows.filter((row) => row.status === "better").length > 35);
 });
 
 test("compareMetrics：fps 越大越好、其余越小越好，持平与变差都不过", () => {
