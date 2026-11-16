@@ -938,6 +938,19 @@ async function main() {
     await click(sticky.x, sticky.y);
   }
   await sleep(600);
+  // 真实点击偶尔落在刚取消选择的重绘间隙里没触发；兜底用 DOM click，React 的
+  // onClick 照常进入编辑态（点击本身不在测量段内）。
+  const editorOpen = () =>
+    evaluate(
+      `return document.querySelector(${JSON.stringify(SELECTORS.stickyInput)}) ? 1 : 0;`,
+    );
+  for (let attempt = 0; attempt < 3 && !(await editorOpen()); attempt += 1) {
+    report.stickyRetries = (report.stickyRetries ?? 0) + 1;
+    await evaluate(
+      `document.querySelector(${JSON.stringify(SELECTORS.stickyBody)})?.click(); return 1;`,
+    );
+    await sleep(600);
+  }
   // 选择器必须限在便签里：每个终端的 xterm 都有一个隐藏的 helper textarea，
   // 排在便签前面。不限的话字符打进的是第一个终端的 PTY（每一下还会续一次
   // 驱动租约、广播一帧 `terminal.lease`），量到的根本不是便签。
