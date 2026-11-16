@@ -64,4 +64,46 @@ describe("marquee", () => {
     g.end(pointer({ x: 300, y: 120 }, { mods: shift }));
     expect(of("select")).toEqual([{ ids: ["b"], additive: true }]);
   });
+
+  it("边拖边发 select：选区变了才发，松手时不重复", () => {
+    const { board, of } = scene();
+    const g = createMarquee({ board, deps: {} }, pointer({ x: -10, y: -10 }));
+    g.move(pointer({ x: 50, y: 50 }));
+    g.move(pointer({ x: 60, y: 60 }));
+    g.move(pointer({ x: 300, y: 120 }));
+    g.end(pointer({ x: 300, y: 120 }));
+    expect(of("select")).toEqual([
+      { ids: ["a"], additive: false },
+      { ids: ["a", "b"], additive: false },
+    ]);
+  });
+
+  it("拖出去又缩回没有命中：选区清空也发出来", () => {
+    const { board, of } = scene();
+    const g = createMarquee({ board, deps: {} }, pointer({ x: -10, y: -10 }));
+    g.move(pointer({ x: 50, y: 50 }));
+    g.move(pointer({ x: -5, y: -5 }));
+    g.end(pointer({ x: -5, y: -5 }));
+    expect(of("select")).toEqual([
+      { ids: ["a"], additive: false },
+      { ids: [], additive: false },
+    ]);
+  });
+
+  it("Shift 边拖边发也以开始时的选区为基准", () => {
+    const { board, of } = scene();
+    board.setSelection(new Set(["a"]));
+    const shift = { ...NO_MODS, shift: true };
+    const g = createMarquee(
+      { board, deps: {} },
+      pointer({ x: -10, y: -10 }, { mods: shift }),
+    );
+    g.move(pointer({ x: 50, y: 50 }, { mods: shift }));
+    g.move(pointer({ x: 300, y: 120 }, { mods: shift }));
+    g.end(pointer({ x: 300, y: 120 }, { mods: shift }));
+    expect(of("select")).toEqual([
+      { ids: [], additive: true },
+      { ids: ["b"], additive: true },
+    ]);
+  });
 });

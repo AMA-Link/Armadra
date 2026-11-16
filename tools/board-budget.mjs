@@ -11,7 +11,8 @@ import { fileURLToPath } from "node:url";
 export const BUDGET = {
   core: 4500,
   // B5 起 2740 → 2750：createBoard 加 `image` / `invalidate` 与「置顶对象先于 DOM 命中」。
-  dom: 2750,
+  // B6 起 2750 → 2760：框选边拖边发 select（与旧画布一致，松手一次提交整批选区会卡出长任务）。
+  dom: 2760,
   react: 500,
   total: 7600,
 };
