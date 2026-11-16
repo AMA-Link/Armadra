@@ -5,6 +5,10 @@
  */
 import { join } from "node:path";
 import { runServeShell, serveArguments } from "./serve-launch";
+import { guardStdio } from "./stdio-guard";
+
+// 两种模式都把 core 输出回显到自己的 stderr；管道断开不能弹窗（#961）。
+guardStdio();
 
 const serveRest = serveArguments(process.argv);
 if (serveRest !== null) {
