@@ -11,7 +11,7 @@ import {
 import type { Camera, DomKindSpec } from "../types";
 import type { RenderEnv } from "./env";
 import { createLayers } from "./layers";
-import { createPainter, dotGap } from "./painter";
+import { createPainter, dotGap, PAD } from "./painter";
 
 /** 记录调用的假 2D 上下文。 */
 function fakeCtx(): Record<string, unknown> & { calls: string[] } {
@@ -127,15 +127,56 @@ describe("createPainter", () => {
     expect(paints).toEqual(["a@0,0", "b@0,0", "top@0,0"]);
   });
 
-  it("相机矩阵 = dpr × 缩放；先清屏", () => {
-    const { layers, painter, ctxs, camera } = setup();
+  it("对象画进离屏位图（相机矩阵 = dpr × 缩放，外扩 PAD），先清屏再贴图", () => {
+    const { layers, scene, painter, ctxs, camera } = setup();
+    scene.transact((d) => d.set(make("a")));
     camera.set({ x: 30, y: 10, zoom: 2 });
     painter.flush();
     const calls = ctxs.get(layers.under)!.calls;
-    expect(calls).toContain("setTransform(4,0,0,4,60,20)");
-    expect(calls.indexOf("clearRect(0,0,400,200)")).toBeLessThan(
-      calls.indexOf("setTransform(4,0,0,4,60,20)"),
+    const offscreen = [...ctxs.entries()].find(
+      ([canvas]) => canvas !== layers.under && canvas !== layers.over,
+    )!;
+    expect(offscreen[0].width).toBe((200 + 2 * PAD) * 2);
+    expect(offscreen[1].calls).toContain(
+      `setTransform(4,0,0,4,${2 * (30 + PAD)},${2 * (10 + PAD)})`,
     );
+    expect(calls.indexOf("clearRect(0,0,400,200)")).toBeLessThan(
+      calls.findIndex((c) => c.startsWith("drawImage(")),
+    );
+    expect(calls.at(-1)).toBe(
+      `drawImage([object HTMLCanvasElement],${-2 * PAD},${-2 * PAD})`,
+    );
+  });
+
+  it("只平移相机时贴图挪位，不重画对象；缩放或平移出圈才重画", () => {
+    const { layers, scene, painter, ctxs, camera, paints } = setup();
+    scene.transact((d) => d.set(make("a")));
+    painter.flush();
+    expect(paints.length).toBe(1);
+    camera.set({ x: 40.3, y: -20, zoom: 1 });
+    painter.flush();
+    expect(paints.length).toBe(1);
+    expect(ctxs.get(layers.under)!.calls.at(-1)).toBe(
+      `drawImage([object HTMLCanvasElement],${Math.round(2 * 40.3) - 2 * PAD},${-40 - 2 * PAD})`,
+    );
+    camera.set({ x: PAD + 1, y: 0, zoom: 1 });
+    painter.flush();
+    expect(paints.length).toBe(2);
+    camera.set({ x: PAD + 1, y: 0, zoom: 1.5 });
+    painter.flush();
+    expect(paints.length).toBe(3);
+    painter.invalidate();
+    painter.flush();
+    expect(paints.length).toBe(4);
+  });
+
+  it("这一层没有对象就不建离屏位图，也不贴图", () => {
+    const { layers, painter, ctxs } = setup();
+    painter.flush();
+    expect(ctxs.size).toBe(2);
+    expect(
+      ctxs.get(layers.under)!.calls.some((c) => c.startsWith("drawImage(")),
+    ).toBe(false);
   });
 
   it("一帧内多次标脏只重绘一次；相机与场景变化都会标脏", () => {

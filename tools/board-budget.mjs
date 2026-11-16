@@ -12,7 +12,8 @@ export const BUDGET = {
   core: 4500,
   // B5 起 2740 → 2750：createBoard 加 `image` / `invalidate` 与「置顶对象先于 DOM 命中」。
   // B6 起 2750 → 2760：框选边拖边发 select（与旧画布一致，松手一次提交整批选区会卡出长任务）。
-  dom: 2760,
+  // 再到 2850：Canvas 层离屏位图缓存，只平移时贴图不重画（300 条墨迹板平移的主线程耗时）。
+  dom: 2850,
   react: 500,
   total: 7600,
 };
