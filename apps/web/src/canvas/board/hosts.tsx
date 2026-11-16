@@ -32,6 +32,23 @@ function ResizeHandles({ widthOnly = false }: { widthOnly?: boolean }) {
   );
 }
 
+/**
+ * 缩放把手只给「单选」的实体：多选时每个实体八个把手，框选三十个节点就是 240 个
+ * 元素，取消选择时一起拆成垃圾，而多选里本来也没人去缩放其中一个。
+ */
+function useSoleSelected(id: string): boolean {
+  const board = useBoard();
+  const subscribe = React.useCallback(
+    (notify: () => void) => board.on("selection", notify),
+    [board],
+  );
+  const read = () => {
+    const selection = board.selection();
+    return selection.size === 1 && selection.has(id);
+  };
+  return React.useSyncExternalStore(subscribe, read, read);
+}
+
 /** 这个实体正在被手势预览（拖动 / 缩放中）；拖动中阴影加倍靠它。 */
 function usePreviewing(id: string): boolean {
   const { scene } = useBoard();
@@ -52,6 +69,7 @@ export const CardHost = React.memo(function CardHost({
 }) {
   const node: CanvasNode = entity.data;
   const selected = useSelected(entity.id);
+  const sole = useSoleSelected(entity.id);
   const ghost = entity.kind === GHOST_KIND;
   const dragging = usePreviewing(entity.id);
   const entering = useNodeEntering();
@@ -68,7 +86,7 @@ export const CardHost = React.memo(function CardHost({
         style={ghost ? { display: "none" } : undefined}
         className="contents"
       >
-        {selected && !ghost ? (
+        {sole && !ghost ? (
           <ResizeHandles widthOnly={node.collapsed === true} />
         ) : null}
         <CardContent node={node} selected={selected} focused={focused} />
@@ -83,9 +101,10 @@ export const GroupHost = React.memo(function GroupHost({
   entity: BoardEntity;
 }) {
   const selected = useSelected(entity.id);
+  const sole = useSoleSelected(entity.id);
   return (
     <BoardHostProvider value>
-      {selected ? <ResizeHandles /> : null}
+      {sole ? <ResizeHandles /> : null}
       <GroupFrame node={entity.data} selected={selected} />
     </BoardHostProvider>
   );
