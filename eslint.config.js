@@ -69,6 +69,27 @@ const CORE = [
 ];
 const SHELL_CORE = ["apps/desktop/src/shell-core/**/*.ts"];
 
+// ----------------------------------------------- 画板引擎包的分层边界
+
+const BOARD = "packages/board/src/";
+const BOARD_TESTS = [`${BOARD}**/*.test.{ts,tsx}`];
+/** 浏览器独有的全局（去掉 Node 与语言内置也有的，如 setTimeout、URL）。 */
+const BROWSER_ONLY_GLOBALS = Object.keys(globals.browser).filter(
+  (name) => !(name in globals.node) && !(name in globals.builtin),
+);
+const boardReactPattern = {
+  group: ["react", "react/*", "react-dom", "react-dom/*"],
+  message: "这一层不得依赖 React；React 只出现在 @armadra/board/react。",
+};
+const boardUpwardPattern = (...layers) => ({
+  regex: `^(\\.\\./|\\./)+(${layers.join("|")})(/|$)`,
+  message: `不得向上依赖 ${layers.join(" / ")}：core → dom → react 单向。`,
+});
+const boardBarePattern = {
+  regex: "^[^./]",
+  message: "core 零运行时依赖：只能 import 相对路径。",
+};
+
 // ------------------------------------------------- 前端业务代码的禁止事项
 
 /**
@@ -325,6 +346,36 @@ export default tseslint.config(
     files: SHELL_CORE,
     rules: restrictImports(orpcPattern, electronPattern, mainPattern),
   },
+  // 画板引擎：core 没有 DOM、没有 React、没有第三方依赖；dom 没有 React。
+  {
+    files: [`${BOARD}core/**/*.ts`],
+    ignores: BOARD_TESTS,
+    rules: {
+      ...restrictImports(
+        orpcPattern,
+        boardReactPattern,
+        boardBarePattern,
+        boardUpwardPattern("dom", "react"),
+      ),
+      "no-restricted-globals": [
+        "error",
+        ...BROWSER_ONLY_GLOBALS.map((name) => ({
+          name,
+          message: "core 是纯 TypeScript，不得使用浏览器全局；放到 dom 入口。",
+        })),
+      ],
+    },
+  },
+  {
+    files: [`${BOARD}dom/**/*.ts`],
+    ignores: BOARD_TESTS,
+    rules: restrictImports(
+      orpcPattern,
+      boardReactPattern,
+      boardUpwardPattern("react"),
+    ),
+  },
+
   // 门面：放开 @orpc/*；core 门面仍守 core 边界。
   {
     files: ORPC_FACADES,
