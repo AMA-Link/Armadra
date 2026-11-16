@@ -167,7 +167,9 @@ describe("createBoard", () => {
     const svg = container.querySelector("[data-board-layer=overlay-world]")!;
     fire(container, "pointerdown", { clientX: 200, clientY: 200 });
     fire(container, "pointermove", { clientX: 250, clientY: 260 });
-    expect(svg.querySelector("rect")).not.toBeNull();
+    const rect = svg.querySelector("rect")!;
+    expect(rect.getAttribute("width")).toBe("50");
+    expect(rect.getAttribute("height")).toBe("60");
     fire(container, "pointerup", { clientX: 250, clientY: 260 });
     expect(svg.children.length).toBe(0);
     board.destroy();

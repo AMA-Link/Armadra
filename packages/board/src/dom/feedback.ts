@@ -5,6 +5,9 @@ import type { GestureFeedback } from "./gestures";
 
 const NS = "http://www.w3.org/2000/svg";
 
+/** SVG 的矩形用 width / height。 */
+const svgRect = (r: Rect) => ({ x: r.x, y: r.y, width: r.w, height: r.h });
+
 /** 把反馈画进 `svg`，返回画出的元素（调用方下次先移除）；画不出就返回 null。 */
 export function drawFeedback(
   svg: SVGSVGElement,
@@ -24,7 +27,7 @@ export function drawFeedback(
   let shape: SVGElement | null = null;
   if (fb.type === "marquee") {
     shape = el("rect", {
-      ...fb.rect,
+      ...svgRect(fb.rect),
       "stroke-dasharray": 4 * px,
       fill: "currentColor",
       "fill-opacity": 0.08,
@@ -44,7 +47,7 @@ export function drawFeedback(
         points: d.points.map((p: Vec) => `${p.x},${p.y}`).join(" "),
       });
     } else if (d && d.x !== undefined && d.w !== undefined) {
-      shape = el("rect", d as Record<string, number>);
+      shape = el("rect", svgRect(d as Rect));
     }
   }
   return shape ? svg.appendChild(shape) : null;
