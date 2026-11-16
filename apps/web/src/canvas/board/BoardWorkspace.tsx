@@ -121,13 +121,13 @@ function BoardWorkspaceInner() {
 
   /** 开板一次：视口恢复（`board.id` 变了才算换了一块板）。 */
   const boardId = useCanvasStore((state) => state.document?.board.id);
-  const document = useCanvasStore((state) => state.document);
+  const openedDocument = useCanvasStore((state) => state.document);
   const opened = React.useRef<string | null>(null);
   React.useEffect(() => {
-    if (!document || !boardId || opened.current === boardId) return;
+    if (!openedDocument || !boardId || opened.current === boardId) return;
     opened.current = boardId;
-    applyBoardViewport(document);
-  }, [boardId, document]);
+    applyBoardViewport(openedDocument);
+  }, [boardId, openedDocument]);
 
   /** 锁上之后正在用的白板工具也要退回选择。 */
   React.useEffect(() => {
@@ -207,8 +207,15 @@ function BoardWorkspaceInner() {
    */
   const onPointerDownCapture = React.useCallback(
     (event: React.PointerEvent) => {
-      if (event.button !== 0 || readOnly) return;
       const target = event.target as Element;
+      // 点空白：引擎接管了这一下（不会让焦点自己离开终端 / 编辑器），手动放掉。
+      if (target.hasAttribute("data-board-stage")) {
+        const active = document.activeElement;
+        if (active instanceof HTMLElement && active !== document.body) {
+          active.blur();
+        }
+      }
+      if (event.button !== 0 || readOnly) return;
       const host = target.closest("[data-board-id]");
       const id = host?.getAttribute("data-board-id");
       if (!id || !target.closest(BOARD_SELECTORS.editable)) return;
@@ -260,7 +267,11 @@ function BoardWorkspaceInner() {
           onWheelCapture={onWheelCapture}
           aria-label={t("canvas.label")}
         >
-          <BoardView board={board} className="absolute inset-0">
+          <BoardView
+            board={board}
+            className="absolute inset-0"
+            data-board-stage=""
+          >
             <EntityHosts<CanvasNode> render={renderEntity} />
           </BoardView>
           <CanvasStylePanel />
