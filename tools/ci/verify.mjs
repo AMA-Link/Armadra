@@ -91,7 +91,6 @@ export const PACKAGES = [
   {
     // 画板引擎纯 Node 单测，包很小，改动就整包跑。
     name: "board",
-    root: "packages/board",
     dir: "packages/board/",
     full: [/./],
     runs: [{ id: "board", cmd: ["exec", "vitest", "run"] }],
@@ -102,11 +101,18 @@ export const PACKAGES = [
     full: [/./],
     runs: [{ id: "push-relay", cmd: ["exec", "vitest", "run"] }],
   },
+  {
+    // 共享模型改了本来就全量（GLOBAL_TRIGGERS），这里只是让它自己的测试也在列。
+    name: "shared",
+    dir: "packages/shared/",
+    full: [/./],
+    runs: [{ id: "shared", cmd: ["exec", "vitest", "run"] }],
+  },
 ];
 
 /**
  * 根据改动的文件列出要跑的测试。`changed` 为 null 表示拿不到基点（当全量处理）。
- * 返回 `{ full, runs: [{ id, pkg, args }] }`；`args` 是在包目录里给 pnpm 的参数。
+ * 返回 `{ full, runs: [{ id, pkg, args }] }`：`pkg` 是包目录（相对仓库根），`args` 是在包目录里给 pnpm 的参数。
  */
 export function planTests(changed, { full = false, base = null } = {}) {
   const everything =
@@ -132,7 +138,7 @@ export function planTests(changed, { full = false, base = null } = {}) {
       const args = [...run.cmd];
       if (run.changed && !whole)
         args.push("--changed", base, "--passWithNoTests");
-      runs.push({ id: run.id, pkg: pkg.root ?? `apps/${pkg.name}`, args });
+      runs.push({ id: run.id, pkg: pkg.dir.replace(/\/$/, ""), args });
     }
   }
   return { full: everything, runs };
@@ -220,6 +226,7 @@ async function main(argv) {
     "lint",
     "typecheck",
     "repo:check",
+    "portability:check",
     "ci:workflows",
     "release:check",
     "notices:check",
