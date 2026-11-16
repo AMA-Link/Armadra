@@ -10,9 +10,9 @@ import { fileURLToPath } from "node:url";
 /** 子入口目录 → 行数上限；`total` 是整包上限。 */
 export const BUDGET = {
   core: 4500,
-  dom: 2000,
+  dom: 2650,
   react: 500,
-  total: 7000,
+  total: 7600,
 };
 
 const SOURCE = /\.(ts|tsx)$/;

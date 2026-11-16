@@ -39,6 +39,7 @@ import GroupNode from "@/canvas/flow/nodes/GroupNode";
 import { NodeShell } from "@/nodes/NodeShell";
 import { StickyNode } from "@/nodes/StickyNode";
 import { Banner } from "@/shell/Banners";
+import { BoardEngineSpecimen } from "./board-engine";
 import { Badge } from "@/ui/badge";
 import { ColorDot } from "@/ui/color-dot";
 import { memberColorVar } from "@/ui/member-dot";
@@ -764,6 +765,7 @@ export default function CanvasSection() {
       <BannerSpecimen />
       <ClusterSpecimen scale={scale} />
       <FollowSpecimen scale={scale} />
+      <BoardEngineSpecimen />
     </div>
   );
 }
