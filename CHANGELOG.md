@@ -2,6 +2,37 @@
 
 每个版本一节，按发布倒序。括号里是合入的 PR 编号（github.com/AMA-Link/Armadra，2026-10-11 前为 Owlbay/Armadra，旧编号照常跳转）。兼容范围以 `tools/release/compatibility.json` 为准，发布说明里的 `armadra-compatibility` 围栏由它渲染。桌面、服务器与手机 / 平板 App 共用一条版本线和一个标签 `vX.Y.Z`（规则见 `docs/guides/ci-release.md`「版本规则」）；有手机端改动的版本，在「手机与平板」小节里写，其余写在「桌面 / 服务器」下。2026-10-10 之前手机端曾单独编号（1.0.0、1.1.0），内容并入对应的 0.2.5、0.2.6。
 
+## 0.19.0（2026-11-16）
+
+版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.19.0。随包 `@armadra/agent` 0.19.0 与平台协议包 0.19.0（没有形状变化，协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.19.0。本版是功能版：自研画板引擎 `@armadra/board`（#952，B0–B5）进入应用，放在 `canvas.engine` 开关后面，缺省仍是现有引擎；白板序列化对两种引擎都切到 v3；随包的 ama 增加本地扩展。
+
+Version aligned with armadra-cloud and armadra-agent (all three ship 0.19.0), with `@armadra/agent` 0.19.0 and platform protocol 0.19.0 (no shape changes, still protocol 1.4); matching images `armadra-cloud` / `armadra-relay` 0.19.0. A feature release: the in-house board engine `@armadra/board` (#952, B0–B5) lands behind the `canvas.engine` flag with the current engine still the default; whiteboard serialization switches to v3 for both engines; the bundled ama gains local extensions.
+
+### 画布与白板
+
+- 自研画板引擎（#952）：`packages/board` 分 `core` / `dom` / `react` 三层，带边界检查与行数预算（#957）；core 含几何与相机、场景与撤销、白板 v3 编解码与连线路由，web 的连线路由缩成适配层（#958）；dom 层含相机、原生指针输入与手势、分层渲染、缩略图、栅格导出与 `createBoard` 门面，展示页「画布」分区有独立演示（#959）；接入应用的 react 绑定与适配器，节点、分组与视口（#963）；连线、引用边、叠加层、协作光标与跟随，画布外不再依赖 React Flow（#964）；五种白板对象与绘图工具、文字就地编辑，PNG 导出走引擎绘制（#965）。新引擎缺省关闭、设置页不露出，`localStorage["armadra.canvas.engine"]="next"` 打开；触屏长按菜单与手机真机留给 B6。
+  In-house board engine (#952): `packages/board` in three layers (`core` / `dom` / `react`) with boundary checks and a line budget (#957); core has geometry and camera, scene and undo, the whiteboard v3 codec and edge routing, with web's edge router reduced to an adapter (#958); the dom layer has the camera, native pointer input and gestures, layered rendering, minimap, raster export and the `createBoard` facade, with a standalone demo in the showcase "Canvas" section (#959); React bindings and the adapter that bring nodes, groups and the viewport into the app (#963); edges, reference edges, overlays, collaborative cursors and follow, with nothing outside the canvas depending on React Flow (#964); five whiteboard object kinds, drawing tools and in-place text editing, with PNG export rendered by the engine (#965). The new engine is off by default and not shown in Settings; `localStorage["armadra.canvas.engine"]="next"` turns it on. The touch long-press menu and real-device mobile checks are left for B6.
+- 白板序列化切到 v3（两种引擎都用）：短键、墨迹点集量化差分压缩、12 位 id，300 条墨迹的样本从约 581 KB 降到约 58 KB；剪贴板载荷同为 v3。实时板格式号升到 3，格式不一致的客户端退出实时并提示（#964、#965）。
+  Whiteboard serialization switches to v3 (used by both engines): short keys, quantized delta-compressed ink points and 12-character ids; a 300-stroke sample drops from about 581 KB to about 58 KB, and clipboard payloads use v3 too. The realtime board format becomes 3, and a client with a different format leaves realtime with a notice (#964, #965).
+
+### 修正
+
+- 桌面壳主进程的 stdout / stderr 管道断开时不再弹出未捕获的 EPIPE 异常（#962，Closes #961）。
+  The desktop main process no longer shows an uncaught EPIPE error when its stdout / stderr pipe goes away (#962, Closes #961).
+
+### 随包 Agent
+
+- `@armadra/agent` 0.19.0：本地扩展，`<配置目录>/extensions/` 下的单文件与目录扩展按 sha256 信任，可注册工具、斜杠命令（`api.commands.register`，宿主 API 1.4）与子代理 runner；激活失败整体回滚，`-p` 与 ACP 也能派发扩展命令。
+  `@armadra/agent` 0.19.0: local extensions; single-file and directory extensions under `<configDir>/extensions/` are trusted by sha256 and can register tools, slash commands (`api.commands.register`, host API 1.4) and sub-agent runners; failed activations roll back completely, and `-p` and ACP dispatch extension commands too.
+
+### 部署说明
+
+- **v2 白板按空白板打开，不迁移**：升级后旧的白板内容（画笔、形状、文字、图片、直线）不再显示，在新版里编辑保存会覆盖旧内容；节点与连线不受影响。实时板上 0.19.0 与旧版客户端不再同连。
+  **v2 whiteboards open as empty boards, with no migration**: after upgrading, existing whiteboard content (ink, shapes, text, images, lines) is no longer shown, and editing and saving in the new version overwrites it; nodes and edges are unaffected. 0.19.0 and older clients no longer share a realtime board.
+- 没有新的数据库迁移，核心库仍是 0067；契约 §16.1 补白板 v3 外壳说明（core 仍把白板条目当不透明字节），核心 JSON API 协议不变。云端协议仍是 1.4。
+- 配套镜像 `ghcr.io/ama-link/armadra-cloud:0.19.0`、`ghcr.io/ama-link/armadra-relay:0.19.0` 与协议包 0.19.0 同号（cloud 侧只有推送前检查钩子与测试修正，没有新迁移；控制台页面取自本版服务器壳镜像）；推送中继镜像 `ghcr.io/ama-link/armadra-push-relay:0.19.0` 与服务器壳镜像同号。发版顺序沿用 0.18.0：先打 Armadra `v0.19.0`，等服务器壳镜像推送成功后再打 armadra-cloud `v0.19.0`。
+- 开发侧：推送前本地把关（`.githooks/pre-push`，按推送改动跑对应检查，`git push --no-verify` 或 `ARMADRA_SKIP_PREPUSH=1` 跳过）与 `pnpm portability:check`（#954，Closes #953）；画布压力探针修复选择器并支持不封顶基准与对比（#960，Closes #956）。
+
 ## 0.18.0（2026-11-15）
 
 版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.18.0。随包 `@armadra/agent` 0.18.0 与平台协议包 0.18.0（没有形状变化，协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.18.0。本版是功能版：新的 Git 工作台（提交图、历史视图与画布 Git 节点）、代码托管全自动识别与列表搜索，以及画布上的代码托管节点；随包的 ama 增加参数宽松强转、Anthropic 消息线程与 QuickJS 引擎的代码模式。
