@@ -26,17 +26,24 @@ export function fontFamily(): string {
   return family;
 }
 
-/** 字体晚到（`document.fonts.ready`）后丢掉缓存的字体栈与排版并通知重绘。 */
+/**
+ * 字体晚到（`document.fonts.ready`，以及之后任何一次字体加载完成）后丢掉缓存的
+ * 字体栈与排版并通知重绘 / 重排。
+ */
 export function onFontsReady(callback: () => void): () => void {
+  if (typeof document === "undefined" || !document.fonts) return () => {};
   let live = true;
-  void document.fonts?.ready.then(() => {
+  const refresh = () => {
     if (!live) return;
     family = null;
     layouts = new WeakMap();
     callback();
-  });
+  };
+  void document.fonts.ready.then(refresh);
+  document.fonts.addEventListener("loadingdone", refresh);
   return () => {
     live = false;
+    document.fonts.removeEventListener("loadingdone", refresh);
   };
 }
 

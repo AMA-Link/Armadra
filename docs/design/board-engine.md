@@ -525,6 +525,8 @@ useGestureActive(): boolean
 
 以上除第三行的 v2 值外都是按格式推算，未实测；B1 的编解码测试里要落一组固定样本作为体积基准。
 
+**B5 实测（2026-11-16，序列化已切到 v3）**：用 `tools/probes/canvas-bench-lib.mjs` 的墨迹样本（种子 952，300 条、每条 40 个原始采样点、完整 double 精度、压力恒 0.5）：v2 `JSON.stringify` 581,414 B，同一份内容 v3 `serializeWhiteboard` **58,368 B（约 1/10）**。比上表第三行的估计（30–40 KB）大，因为样本是未经 0.35 容差简化的 40 点原始采样（约 195 B/条）；真实手写经 `simplifyPoints` 后点更少。真实浏览器里画一笔、一个形状、一条文字的 v3 串依次约 100 B、75 B、80 B，保存后重开内容一致，v2 文本打开为空且不报错。
+
 ### 3.3 Y.Doc
 
 结构不变：`whiteboard: Y.Map<itemId, string>` 每项一条 JSON 串，按对象粒度 LWW（`apps/web/src/realtime/doc.ts:314-339`）。v3 让每条串变小，移动一条墨迹从「重写 30–40 KB」变成「重写 3–7 KB」，且 resize 不再重写点集。
