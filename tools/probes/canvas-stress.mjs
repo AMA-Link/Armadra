@@ -533,11 +533,17 @@ async function main() {
   const call = (method, params = {}) =>
     new Promise((done, fail) => {
       const id = (sequence += 1);
-      pending.set(id, (message) =>
-        message.error
-          ? fail(new Error(message.error.message))
-          : done(message.result),
-      );
+      // 页面卡死（导航被确认框挡住、渲染进程挂起）时 CDP 永远不答：超时就让这一轮失败，
+      // 而不是把整个基准挂上几十分钟。
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        fail(new Error(`CDP ${method} 120 s 没有应答`));
+      }, 120_000);
+      pending.set(id, (message) => {
+        clearTimeout(timer);
+        if (message.error) fail(new Error(message.error.message));
+        else done(message.result);
+      });
       socket.send(JSON.stringify({ id, method, params }));
     });
 
