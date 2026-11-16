@@ -184,6 +184,44 @@ describe("createBoard", () => {
     board.destroy();
   });
 
+  it("置顶的 Canvas 对象先于 DOM 宿主命中；置底的在宿主之下", () => {
+    const over: DomKindSpec = { layer: "canvas-over", paint: () => {} };
+    const board = createBoard({ kinds: { card, dot, over } });
+    board.scene.transact(
+      (d) => {
+        d.set(entity("a"));
+        d.set(entity("o", "over", 20, 20));
+        d.set(entity("u", "dot", 300, 0));
+      },
+      { history: "ignore" },
+    );
+    const container = document.createElement("div");
+    document.body.append(container);
+    container.setPointerCapture = vi.fn();
+    board.mount(container);
+    const picked: string[] = [];
+    board.on("select", ({ ids }) => picked.push(...ids));
+    const host = board.hostOf("a")!;
+    // 指针位置 (30,30) 同时落在宿主 a 与置顶对象 o 上；containter 在 jsdom 里原点是 (0,0)。
+    fire(host, "pointerdown", { clientX: 30, clientY: 30 });
+    fire(host, "pointerup", { clientX: 30, clientY: 30 });
+    expect(picked).toEqual(["o"]);
+    // 置顶对象之外的点仍然归宿主。
+    picked.length = 0;
+    fire(host, "pointerdown", { clientX: 5, clientY: 5 });
+    fire(host, "pointerup", { clientX: 5, clientY: 5 });
+    expect(picked).toEqual(["a"]);
+    board.destroy();
+  });
+
+  it("invalidate 在未挂载时是空操作，挂载后触发重绘", () => {
+    const { board, container } = setup();
+    expect(() => board.invalidate()).not.toThrow();
+    board.mount(container);
+    expect(() => board.invalidate()).not.toThrow();
+    board.destroy();
+  });
+
   it("gesture 事件维护 gestureActive", () => {
     const { board } = setup();
     expect(board.gestureActive()).toBe(false);
