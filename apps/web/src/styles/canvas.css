@@ -491,3 +491,84 @@
 :root[data-canvas-focus="true"] .canvas-stage .minimap-toggle {
   display: none;
 }
+
+/* ------------------- 自研画板引擎（canvas.engine = next） ------------------- */
+
+/*
+ * 缩放把手是宿主里的真实元素（`canvas/board/hosts.tsx`），引擎按 `data-board-handle`
+ * 认它们。四边是 6px 的透明命中条，四角是 8px 的实心点；与 React Flow 版本的视觉一致。
+ */
+.canvas-stage .board-resize-handle {
+  position: absolute;
+  z-index: 5;
+  background: transparent;
+}
+.canvas-stage .board-resize-handle[data-board-handle="n"],
+.canvas-stage .board-resize-handle[data-board-handle="s"] {
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+}
+.canvas-stage .board-resize-handle[data-board-handle="e"],
+.canvas-stage .board-resize-handle[data-board-handle="w"] {
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+}
+.canvas-stage .board-resize-handle[data-board-handle="n"] {
+  top: -3px;
+}
+.canvas-stage .board-resize-handle[data-board-handle="s"] {
+  bottom: -3px;
+}
+.canvas-stage .board-resize-handle[data-board-handle="e"] {
+  right: -3px;
+}
+.canvas-stage .board-resize-handle[data-board-handle="w"] {
+  left: -3px;
+}
+.canvas-stage
+  .board-resize-handle:is(
+    [data-board-handle="ne"],
+    [data-board-handle="nw"],
+    [data-board-handle="se"],
+    [data-board-handle="sw"]
+  ) {
+  z-index: 6;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--panel);
+  border-radius: var(--r-tight);
+  background: var(--brand);
+}
+.canvas-stage .board-resize-handle[data-board-handle="ne"] {
+  top: -4px;
+  right: -4px;
+  cursor: nesw-resize;
+}
+.canvas-stage .board-resize-handle[data-board-handle="nw"] {
+  top: -4px;
+  left: -4px;
+  cursor: nwse-resize;
+}
+.canvas-stage .board-resize-handle[data-board-handle="se"] {
+  right: -4px;
+  bottom: -4px;
+  cursor: nwse-resize;
+}
+.canvas-stage .board-resize-handle[data-board-handle="sw"] {
+  bottom: -4px;
+  left: -4px;
+  cursor: nesw-resize;
+}
+
+/* 整理那一下：宿主的位置与尺寸走过渡，结束后 `data-tidying` 被撤掉 */
+.canvas-stage[data-tidying="true"] [data-board-id] {
+  transition:
+    left var(--dur-page) var(--ease-out),
+    top var(--dur-page) var(--ease-out),
+    width var(--dur-page) var(--ease-out),
+    height var(--dur-page) var(--ease-out);
+}

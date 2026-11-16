@@ -305,7 +305,7 @@ export function applyBoardViewport(document: BoardDocument): void {
  */
 let openingCamera: FlowViewport | null = null;
 
-function isOpeningCamera(viewport: FlowViewport): boolean {
+export function isOpeningCamera(viewport: FlowViewport): boolean {
   const camera = openingCamera;
   if (!camera) return false;
   if (
