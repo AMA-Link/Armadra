@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, render } from "@testing-library/react";
 
 import { installDomPolyfills } from "@/app/test-harness";
 import { renderFlow } from "@/canvas/test-support";
@@ -120,5 +120,15 @@ describe("挂上以后补量一次", () => {
     updateNodeInternals.mockClear();
     renderFlow(<ConnectionHandles />, { nodeId: "late-node" });
     expect(updateNodeInternals).toHaveBeenCalledWith("late-node");
+  });
+});
+
+describe("不在任何画布里", () => {
+  it("没有 provider 也不在节点里（手机焦点页）：不画把手，也不抛错", () => {
+    const { container } = render(<ConnectionHandles />);
+    const { sources, drop, anchor } = handles(container);
+    expect(sources).toHaveLength(0);
+    expect(drop).toBeNull();
+    expect(anchor).toBeNull();
   });
 });
