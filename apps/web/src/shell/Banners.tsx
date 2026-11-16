@@ -76,7 +76,6 @@ export function Banners() {
   const notices = useDeliveryStore((state) => state.notices);
   const dismissNotice = useDeliveryStore((state) => state.dismissNotice);
   const selectNodes = useCanvasStore((state) => state.selectNodes);
-  const nodes = useCanvasStore((state) => state.document?.nodes);
   const compact = useCompactLayout();
   const panels = useCanvasStore((state) => state.panels);
   const { left, right } = bannerBounds(panels, compact);
@@ -85,8 +84,11 @@ export function Banners() {
   // 别人分享来的工作空间在同一排还有「<主人> 的 <工作空间>」（`canvas/share/CanvasTopBar`）。
   const shared = useSharedWorkspaceOpen();
   const belowPresence = usePresenceBarVisible() || shared;
+  // 标题在渲染通知时现读：订阅节点表会让每次拖动、改名都重渲整条横幅。
   const nodeTitle = (nodeId: string) =>
-    nodes?.find((node) => node.id === nodeId)?.title ?? nodeId;
+    useCanvasStore
+      .getState()
+      .document?.nodes.find((node) => node.id === nodeId)?.title ?? nodeId;
 
   const health = useQuery({
     queryKey: ["health"],

@@ -70,7 +70,12 @@ export function useSearchEntries(open: boolean, query: string) {
   const workspace = useCanvasStore((state) => state.workspace);
   const boards = useCanvasStore((state) => state.boards);
   const boardId = useCanvasStore((state) => state.boardId);
-  const document = useCanvasStore((state) => state.document);
+  // 只订节点与板的 id / 名字：整份 `document` 每次平移（视口回写）都换对象。
+  const nodes = useCanvasStore((state) => state.document?.nodes);
+  const documentBoardId = useCanvasStore((state) => state.document?.board.id);
+  const documentBoardName = useCanvasStore(
+    (state) => state.document?.board.name,
+  );
   const whiteboard = useCanvasStore((state) => state.whiteboard);
   const searching = open && query.trim() !== "";
 
@@ -151,15 +156,15 @@ export function useSearchEntries(open: boolean, query: string) {
 
     // 当前画布：store 里的文档，含未保存的编辑。
     const space = spaces.find((item) => item.id === workspace?.id);
-    if (space && document && document.board.id === boardId) {
+    if (space && nodes && documentBoardId && documentBoardId === boardId) {
       out.push(
         ...documentEntries({
           workspace: space,
           board: {
-            id: document.board.id,
-            name: nameOf(space.id, document.board.id) ?? document.board.name,
+            id: documentBoardId,
+            name: nameOf(space.id, documentBoardId) ?? documentBoardName ?? "",
           },
-          nodes: document.nodes,
+          nodes,
           whiteboard,
         }),
       );
@@ -179,7 +184,18 @@ export function useSearchEntries(open: boolean, query: string) {
     return out;
     // 依赖 `stamp` 而不是 `documents` 本身，见上。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boardId, document, open, refs, spaces, stamp, whiteboard, workspace?.id]);
+  }, [
+    boardId,
+    documentBoardId,
+    documentBoardName,
+    nodes,
+    open,
+    refs,
+    spaces,
+    stamp,
+    whiteboard,
+    workspace?.id,
+  ]);
 
   return { entries, workspaces: summaries ?? [] };
 }
