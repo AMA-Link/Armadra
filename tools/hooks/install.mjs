@@ -7,7 +7,7 @@
  * （GIT_DIR 指向那个仓库），不能把设置写进那个仓库。
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -22,12 +22,9 @@ function git(args) {
   return result.status === 0 ? result.stdout.trim() : null;
 }
 
-const top = git(["rev-parse", "--show-toplevel"]);
-if (
-  top !== null &&
-  existsSync(join(ROOT, HOOKS, "pre-push")) &&
-  realpathSync(top) === realpathSync(ROOT)
-) {
+// 前缀为空才是检出根目录；不比路径，Windows 上 git 给长路径、临时目录可能是 8.3 短名。
+const prefix = git(["rev-parse", "--show-prefix"]);
+if (prefix === "" && existsSync(join(ROOT, HOOKS, "pre-push"))) {
   const current = git(["config", "--local", "--get", "core.hooksPath"]);
   if (current === null) git(["config", "--local", "core.hooksPath", HOOKS]);
   else if (current !== HOOKS)
