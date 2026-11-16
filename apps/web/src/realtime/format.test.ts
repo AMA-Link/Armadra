@@ -28,8 +28,8 @@ describe("checkFormat", () => {
     expect(checkFormat(doc)).toBe("stamp");
     expect(checkFormat(doc, 3)).toBe("stamp");
     nodesOf(doc).set("n", new Y.Map());
-    expect(checkFormat(doc)).toBe("stamp");
-    expect(checkFormat(doc, 3)).toBe("mismatch");
+    expect(checkFormat(doc)).toBe("mismatch");
+    expect(checkFormat(doc, 2)).toBe("stamp");
   });
 
   it("落号写进 meta", () => {

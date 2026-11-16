@@ -11,9 +11,9 @@ import { edgesOf, itemsOf, metaOf, nodesOf } from "./doc";
  * 同步完成的客户端都拿自己的号去比，不一样就退出实时、提示升级，不往里写任何东西。
  *
  * 没有这个键的文档来自没有闸的旧客户端，它们全是 {@link LEGACY_FORMAT}。
- * 写白板线格式（v3，Armadra#952 B5）的客户端把 {@link BOARD_FORMAT} 改成 3。
+ * 写白板线格式 v3（Armadra#952 B5）的客户端是 3。
  */
-export const BOARD_FORMAT = 2;
+export const BOARD_FORMAT = 3;
 export const LEGACY_FORMAT = 2;
 export const FORMAT_KEY = "boardFormat";
 
