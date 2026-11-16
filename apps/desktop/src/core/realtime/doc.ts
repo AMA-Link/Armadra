@@ -22,6 +22,7 @@
  * 这里全是纯函数（只碰 `Y.Doc`，不碰库），物化与拦截都建在它上面。
  */
 
+import { BOARD_FORMAT, BOARD_FORMAT_KEY } from "@armadra/shared";
 import * as Y from "yjs";
 
 import type { CanvasEdge, CanvasNode } from "../canvas/document-types";
@@ -319,7 +320,12 @@ export function applyDelta(
   }, origin);
 }
 
-/** 整份写入：文档变成 `target`（种子与测试用）。 */
+/**
+ * 整份写入：文档变成 `target`（种子与测试用）。
+ *
+ * 种出来的文档一并落下格式号：没有这个键的非空文档，客户端的格式闸会当成
+ * 上一代格式拒绝加入。
+ */
 export function applyDocument(
   doc: Y.Doc,
   boardId: string,
@@ -327,6 +333,9 @@ export function applyDocument(
   origin: unknown,
 ): void {
   applyDelta(doc, projectDoc(doc, boardId), target, origin);
+  if (!metaOf(doc).has(BOARD_FORMAT_KEY)) {
+    doc.transact(() => metaOf(doc).set(BOARD_FORMAT_KEY, BOARD_FORMAT), origin);
+  }
 }
 
 function applyNodes(
@@ -525,6 +534,15 @@ function applyStrings(
     }
     map.set(id, json);
   }
+}
+
+/**
+ * 给服务端种出来的文档落下格式号：没有这个键的非空文档，客户端的格式闸会当成
+ * 上一代格式拒绝加入。
+ */
+export function stampBoardFormat(doc: Y.Doc, origin: unknown): void {
+  if (metaOf(doc).has(BOARD_FORMAT_KEY)) return;
+  doc.transact(() => metaOf(doc).set(BOARD_FORMAT_KEY, BOARD_FORMAT), origin);
 }
 
 /** 一块空板的文档。 */

@@ -328,7 +328,7 @@ describe("暂停与恢复", () => {
       pumpAll([writer]);
     }
     expect(slow.inbox).toHaveLength(0);
-    expect(slow.doc.getMap("meta").size).toBe(0);
+    expect(slow.doc.getMap("meta").has("k0")).toBe(false);
 
     slow.conn?.resume();
     // step1 + 一份整的 step2 + 当前 awareness：三帧，不是五十条更新。
