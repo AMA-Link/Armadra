@@ -11,12 +11,25 @@ export type ResolveTarget = (
   world: Vec,
 ) => HitTarget;
 
+/** 应用补充的选择器：沿用别处已有的类名约定，免得到处加 data 属性。 */
+export interface BoardSelectors {
+  /** 与 `[data-board-editable]` 同义：命中就放手。 */
+  editable?: string;
+  /** 与 `[data-board-nowheel]` 同义：普通滚轮归它自己。 */
+  nowheel?: string;
+}
+
+export const selectorOf = (base: string, extra?: string): string =>
+  extra ? `${base},${extra}` : base;
+
 export function createResolveTarget(
   hitCanvas?: (world: Vec) => HitTarget | undefined | null,
+  selectors: BoardSelectors = {},
 ): ResolveTarget {
+  const editable = selectorOf("[data-board-editable]", selectors.editable);
   return (target, world) => {
     const el = target instanceof Element ? target : null;
-    if (el?.closest("[data-board-editable]")) return { type: "editable" };
+    if (el?.closest(editable)) return { type: "editable" };
     const idOf = (e: Element | null | undefined) =>
       e?.getAttribute("data-board-id");
     const handle = el?.closest("[data-board-handle]");

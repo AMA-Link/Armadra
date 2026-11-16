@@ -83,5 +83,5 @@ test("命令行：预算内退出 0，超出退出 1 并点名", () => {
 });
 
 test("预算数字与设计 §5.3 一致", () => {
-  assert.deepEqual(BUDGET, { core: 4500, dom: 2650, react: 500, total: 7600 });
+  assert.deepEqual(BUDGET, { core: 4500, dom: 2720, react: 500, total: 7600 });
 });

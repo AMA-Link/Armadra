@@ -137,6 +137,10 @@ export interface BoardEvents {
   "double-click": { target: HitTarget; world: Vec };
   camera: CameraState;
   gesture: { active: boolean };
+  /** 世界层宿主增减（React 绑定据此增删 portal）。 */
+  hosts: { added: EntityId[]; removed: EntityId[] };
+  /** 选区变化（含程序设置）；`select` 才是用户意图。 */
+  selection: { ids: EntityId[] };
 }
 
 export interface Board<D = unknown> {

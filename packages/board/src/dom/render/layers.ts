@@ -19,6 +19,8 @@ export interface Layers {
   readonly overlay: HTMLElement;
   /** 叠加层里的世界坐标 SVG（连线、预览线）：与世界层同一个变换。 */
   readonly worldSvg: SVGSVGElement;
+  /** 叠加层里的世界坐标 HTML 插槽（派生卡片、光标、评论钉）：同一个变换。 */
+  readonly worldHtml: HTMLElement;
   /** 叠加层里的屏幕坐标插槽（选框、把手、光标、评论钉）。 */
   readonly screenSlot: HTMLElement;
   size(): LayerSize;
@@ -65,8 +67,13 @@ export function createLayers(
   worldSvg.dataset.boardLayer = "overlay-world";
   worldSvg.style.cssText =
     "position:absolute;left:0;top:0;width:1px;height:1px;overflow:visible;transform-origin:0 0;pointer-events:none;";
+  const worldHtml = element(
+    "div",
+    "overlay-world-html",
+    "position:absolute;left:0;top:0;width:0;height:0;overflow:visible;transform-origin:0 0;pointer-events:none;",
+  );
   const screenSlot = element("div", "overlay-screen", FILL);
-  overlay.append(worldSvg, screenSlot);
+  overlay.append(worldSvg, worldHtml, screenSlot);
   container.append(under, world, over, overlay);
 
   const listeners = new Set<(size: LayerSize) => void>();
@@ -104,12 +111,14 @@ export function createLayers(
     over,
     overlay,
     worldSvg,
+    worldHtml,
     screenSlot,
     size: () => size,
     setCamera(camera) {
       const transform = `translate(${camera.x}px, ${camera.y}px) scale(${camera.zoom})`;
       world.style.transform = transform;
       worldSvg.style.transform = transform;
+      worldHtml.style.transform = transform;
     },
     onResize(listener) {
       listeners.add(listener);

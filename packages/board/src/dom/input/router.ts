@@ -12,7 +12,11 @@ import type {
   Tool,
 } from "../types";
 import { createTouchRecognizer, ECHO_WINDOW_MS } from "./recognizers";
-import { createResolveTarget, type ResolveTarget } from "./target";
+import {
+  createResolveTarget,
+  type BoardSelectors,
+  type ResolveTarget,
+} from "./target";
 import { attachSafariGestures, createWheelHandler } from "./wheel";
 
 export interface InputRouterDeps {
@@ -26,6 +30,10 @@ export interface InputRouterDeps {
   /** 整体替换按下目标的解析；缺省走 DOM 属性约定（见 target.ts）。 */
   resolveTarget?: ResolveTarget;
   gestureDeps?: GestureDeps;
+  /** 应用补充的「可编辑区 / 自滚区」选择器。 */
+  selectors?: BoardSelectors;
+  /** 应用自己接管 contextmenu（弹自己的菜单）：引擎不再 preventDefault。 */
+  nativeContextMenu?: boolean;
 }
 
 export interface InputRouter {
@@ -40,7 +48,8 @@ export function createInputRouter(
 ): InputRouter {
   const { board } = deps;
   const { camera } = board;
-  const resolve = deps.resolveTarget ?? createResolveTarget(deps.hitCanvas);
+  const resolve =
+    deps.resolveTarget ?? createResolveTarget(deps.hitCanvas, deps.selectors);
   const ctx: GestureCtx = { board, deps: deps.gestureDeps ?? {} };
   let active: Gesture | null = null;
   /** 活动手势里的手指：id → 最近的输入（带按下时的目标；第二指接管时取首指位置）。 */
@@ -170,14 +179,19 @@ export function createInputRouter(
     if (e.type === "click")
       return void (echo(e) && (e.stopPropagation(), e.preventDefault()));
     if (target.type === "editable") return;
-    if (e.type === "contextmenu") e.preventDefault();
+    if (e.type === "contextmenu" && !deps.nativeContextMenu) e.preventDefault();
     if (echo(e)) return;
     if (e.type === "contextmenu")
       board.emit("context-menu", { target, screen, world });
     else board.emit("double-click", { target, world });
   };
 
-  const wheel = createWheelHandler(container, camera, deps.inputDevice);
+  const wheel = createWheelHandler(
+    container,
+    camera,
+    deps.inputDevice,
+    deps.selectors,
+  );
   const detachGestures = attachSafariGestures(container, camera);
   const on = <E extends Event>(
     target: EventTarget,
