@@ -564,6 +564,106 @@
   cursor: nesw-resize;
 }
 
+/*
+ * 连线起笔把手（`flow/nodes/ConnectionHandles.tsx` 的 `BoardHandles`）：与 React Flow
+ * 版本同一套尺寸与观感（14px 圆点骑在边上、34px 命中区往节点外偏），只是选择器
+ * 换成宿主里的真实元素。引擎按 `data-board-handle` 认它们。
+ */
+.canvas-stage .board-connection-handle {
+  --connection-port-size: 14px;
+  --connection-hit-size: 34px;
+  position: absolute;
+  z-index: 1;
+  width: var(--connection-port-size);
+  height: var(--connection-port-size);
+  border: 2px solid var(--card);
+  border-radius: var(--r-pill);
+  background: var(--muted-foreground);
+  box-shadow: 0 0 0 1px var(--border-strong);
+  opacity: 0.85;
+  transition:
+    opacity var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+  cursor: crosshair;
+  touch-action: none;
+}
+.canvas-stage .board-connection-handle::before {
+  position: absolute;
+  width: var(--connection-hit-size);
+  height: var(--connection-hit-size);
+  border-radius: var(--r-pill);
+  content: "";
+}
+.canvas-stage
+  .board-connection-handle:is([data-side="left"], [data-side="right"]) {
+  top: 50%;
+  transform: translateY(-50%);
+}
+.canvas-stage
+  .board-connection-handle:is([data-side="left"], [data-side="right"])::before {
+  top: 50%;
+  transform: translateY(-50%);
+}
+.canvas-stage .board-connection-handle[data-side="left"] {
+  left: calc(var(--connection-port-size) * -0.5);
+}
+.canvas-stage .board-connection-handle[data-side="left"]::before {
+  right: -2px;
+}
+.canvas-stage .board-connection-handle[data-side="right"] {
+  right: calc(var(--connection-port-size) * -0.5);
+}
+.canvas-stage .board-connection-handle[data-side="right"]::before {
+  left: -2px;
+}
+.canvas-stage
+  .board-connection-handle:is([data-side="top"], [data-side="bottom"]) {
+  left: 50%;
+  transform: translateX(-50%);
+}
+.canvas-stage
+  .board-connection-handle:is([data-side="top"], [data-side="bottom"])::before {
+  left: 50%;
+  transform: translateX(-50%);
+}
+.canvas-stage .board-connection-handle[data-side="top"] {
+  top: calc(var(--connection-port-size) * -0.5);
+}
+.canvas-stage .board-connection-handle[data-side="top"]::before {
+  bottom: -2px;
+}
+.canvas-stage .board-connection-handle[data-side="bottom"] {
+  bottom: calc(var(--connection-port-size) * -0.5);
+}
+.canvas-stage .board-connection-handle[data-side="bottom"]::before {
+  top: -2px;
+}
+.canvas-stage .board-connection-handle:hover,
+.canvas-stage [data-slot="node-shell"]:hover .board-connection-handle,
+.canvas-stage
+  [data-slot="node-shell"][data-selected="true"]
+  .board-connection-handle {
+  opacity: 1;
+  background: var(--foreground);
+}
+@media (hover: none), (any-pointer: coarse) {
+  .canvas-stage .board-connection-handle {
+    --connection-port-size: 16px;
+    --connection-hit-size: 36px;
+    opacity: 1;
+  }
+}
+/* 拉线悬在一个连不上的节点上（含它自己）：把手整圈变 danger 并抖两下；合法时描一圈品牌色。 */
+.canvas-stage [data-connect-target="invalid"] .board-connection-handle {
+  background: var(--danger);
+  opacity: 1;
+  animation: armadra-handle-shake var(--dur-slow) linear;
+}
+.canvas-stage [data-connect-target="valid"] [data-slot="node-shell"] {
+  border-radius: var(--r-card);
+  box-shadow: 0 0 0 2px var(--brand);
+}
+
 /* 整理那一下：宿主的位置与尺寸走过渡，结束后 `data-tidying` 被撤掉 */
 .canvas-stage[data-tidying="true"] [data-board-id] {
   transition:

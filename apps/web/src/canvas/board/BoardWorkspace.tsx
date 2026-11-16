@@ -44,6 +44,8 @@ import { createBoardAdapter } from "./board-adapter";
 import { createBoardEdgeAdapter } from "./edge-adapter";
 import { BoardEdges } from "./BoardEdges";
 import { useEdgePointer } from "./use-edge-pointer";
+import { BoardConnectionLine } from "./connect-preview";
+import { useBoardConnect } from "./use-board-connect";
 import { createBoardFlowHandle } from "./flow-handle";
 import { renderEntity } from "./hosts";
 import { BOARD_SELECTORS, nodeKinds } from "./model";
@@ -91,6 +93,7 @@ function BoardWorkspaceInner() {
   );
 
   const edgePointer = useEdgePointer(board, stage);
+  const spawnMenu = useBoardConnect(board, stage);
   useLayoutDirectionSync();
   useBoardViewportSync(board);
   useBoardAutosave();
@@ -288,12 +291,14 @@ function BoardWorkspaceInner() {
           >
             <EntityHosts<CanvasNode> render={renderEntity} />
             <BoardEdges />
+            <BoardConnectionLine />
           </BoardView>
           <CanvasStylePanel />
           <CanvasTopBar />
         </div>
       </ContextMenuTrigger>
       {menus}
+      {spawnMenu}
       {dialog}
     </ContextMenu>
   );

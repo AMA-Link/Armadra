@@ -6,17 +6,9 @@ import type {
   IsValidConnection,
   NodeChange,
 } from "@xyflow/react";
-import { toast } from "@/ui/toast";
-
-import { t } from "@/app/preferences-store";
 import { useCanvasStore } from "@/store/canvas-store";
-import { MAX_LINKS } from "../content-links";
-import { createContentReference } from "../create-content-reference";
-import {
-  classifyConnection,
-  connectionRejection,
-  isValidCanvasConnection,
-} from "./edges/connect";
+import { isValidCanvasConnection } from "./edges/connect";
+import { commitConnection, rejectConnection } from "./edges/connect-commit";
 import { centerOf, hitTestGroup, nodeBox, type Box } from "../geometry";
 import {
   EMPTY_SELECTION,
@@ -29,7 +21,6 @@ import {
 } from "../sync/project";
 import { clearDrafts, setDrafts, useDrafts } from "./drafts";
 import { applyWebviewPool } from "@/nodes/browser/pool";
-import { requestNodeNames } from "@/nodes/node-names";
 
 /**
  * 投影 + 回调翻译（React Flow 计划 §2.1，归属 canvas）。
@@ -303,23 +294,7 @@ export function useFlowNodes(): FlowBindings {
    */
   const onConnect = React.useCallback((connection: Connection) => {
     if (!connection.source || !connection.target) return;
-    const state = useCanvasStore.getState();
-    const verdict = classifyConnection(
-      { source: connection.source, target: connection.target },
-      { document: state.document, whiteboard: state.whiteboard },
-    );
-    if (verdict.kind === "reference") {
-      createContentReference(verdict.itemId, verdict.nodeId, {
-        notify: false,
-      });
-      return;
-    }
-    if (verdict.kind !== "link") return;
-    const edgeId = state.addEdge(verdict.source, verdict.target);
-    if (edgeId === null) return;
-    // 一条边建立的那一刻，两端才第一次需要互相称呼（设计 §2.2）。两端各自
-    // 缺名字的才会被问，可以跳过——跳过之后连线照样成立。
-    requestNodeNames([verdict.source, verdict.target], { edgeId });
+    commitConnection(connection.source, connection.target);
   }, []);
 
   /**
@@ -339,13 +314,7 @@ export function useFlowNodes(): FlowBindings {
       const from = connectionState.fromNode?.id ?? null;
       const to = connectionState.toNode?.id ?? null;
       if (!from || !to) return;
-      const state = useCanvasStore.getState();
-      const verdict = classifyConnection(
-        { source: from, target: to },
-        { document: state.document, whiteboard: state.whiteboard },
-      );
-      const message = connectionRejection(verdict);
-      if (message) toast.error(t(message, { limit: MAX_LINKS }));
+      rejectConnection(from, to);
     },
     [],
   );

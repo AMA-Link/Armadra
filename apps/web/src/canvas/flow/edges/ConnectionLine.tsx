@@ -35,6 +35,54 @@ function boxOf(node: {
   };
 }
 
+export type ConnectionStatus = "valid" | "invalid" | null | undefined;
+
+/**
+ * 预览线本体：两端矩形与状态 → 一条圆角折线加终点圆点。旧引擎的
+ * `ConnectionLine` 与自研引擎的连线预览（`board/BoardConnectionLine.tsx`）共用。
+ */
+export function ConnectionPath({
+  from,
+  to,
+  snapped,
+  status,
+}: {
+  from: Box;
+  to: Box;
+  snapped: boolean;
+  status: ConnectionStatus;
+}) {
+  const route = routeFor(from, to);
+  const end = route.points[route.points.length - 1]!;
+  const invalid = status === "invalid";
+  const color =
+    status === "valid" ? VALID_COLOR : invalid ? INVALID_COLOR : NEUTRAL_COLOR;
+
+  return (
+    <g data-slot="connection-line">
+      <path
+        d={roundedPath(route.points, CORNER_RADIUS)}
+        fill="none"
+        stroke={color}
+        style={{ strokeWidth: STROKE_WIDTH }}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        // 还没落到目标上时用虚线：一眼能看出这条线还没连上东西。
+        {...(snapped ? {} : { strokeDasharray: "6 4" })}
+      />
+      {/* 终点圆点：吸到目标上时软位移（canvas.css，只在 snapped 时过渡，免得拖线时
+          圆点落后于指针）；目标不可连接时左右抖两次。 */}
+      <circle
+        data-snapped={snapped ? "true" : undefined}
+        className={invalid ? "anim-shake" : undefined}
+        style={{ cx: end.x, cy: end.y }}
+        r={3}
+        fill={color}
+      />
+    </g>
+  );
+}
+
 export function ConnectionLine({
   fromNode,
   toNode,
@@ -47,39 +95,13 @@ export function ConnectionLine({
   const to: Box = toNode
     ? boxOf(toNode)
     : { x: toX, y: toY, width: 0, height: 0 };
-  const route = routeFor(from, to);
-  const end = route.points[route.points.length - 1]!;
-  const snapped = toNode !== undefined && toNode !== null;
-  const invalid = connectionStatus === "invalid";
-  const color =
-    connectionStatus === "valid"
-      ? VALID_COLOR
-      : invalid
-        ? INVALID_COLOR
-        : NEUTRAL_COLOR;
-
   return (
-    <g data-slot="connection-line">
-      <path
-        d={roundedPath(route.points, CORNER_RADIUS)}
-        fill="none"
-        stroke={color}
-        style={{ strokeWidth: STROKE_WIDTH }}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        // 还没落到目标上时用虚线：一眼能看出这条线还没连上东西。
-        {...(toNode ? {} : { strokeDasharray: "6 4" })}
-      />
-      {/* 终点圆点：吸到目标上时软位移（canvas.css，只在 snapped 时过渡，免得拖线时
-          圆点落后于指针）；目标不可连接时左右抖两次。 */}
-      <circle
-        data-snapped={snapped ? "true" : undefined}
-        className={invalid ? "anim-shake" : undefined}
-        style={{ cx: end.x, cy: end.y }}
-        r={3}
-        fill={color}
-      />
-    </g>
+    <ConnectionPath
+      from={from}
+      to={to}
+      snapped={toNode !== undefined && toNode !== null}
+      status={connectionStatus}
+    />
   );
 }
 
