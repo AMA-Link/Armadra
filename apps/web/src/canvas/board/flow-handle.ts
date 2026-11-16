@@ -73,8 +73,9 @@ export function createBoardFlowHandle(
     getNodes: () =>
       scene
         .ordered()
-        .flatMap((entity) => nodeOf(entity.id) ?? []) as ReturnType<
-        FlowHandle["getNodes"]
-      >,
+        // 连线（带 `ends` 的实体）不是节点。
+        .flatMap((entity) =>
+          entity.ends ? [] : (nodeOf(entity.id) ?? []),
+        ) as ReturnType<FlowHandle["getNodes"]>,
   };
 }

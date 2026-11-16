@@ -41,6 +41,9 @@ import {
   useCanvasDelete,
 } from "../workspace-commands";
 import { createBoardAdapter } from "./board-adapter";
+import { createBoardEdgeAdapter } from "./edge-adapter";
+import { BoardEdges } from "./BoardEdges";
+import { useEdgePointer } from "./use-edge-pointer";
 import { createBoardFlowHandle } from "./flow-handle";
 import { renderEntity } from "./hosts";
 import { BOARD_SELECTORS, nodeKinds } from "./model";
@@ -87,6 +90,7 @@ function BoardWorkspaceInner() {
     [],
   );
 
+  const edgePointer = useEdgePointer(board, stage);
   useLayoutDirectionSync();
   useBoardViewportSync(board);
   useBoardAutosave();
@@ -100,6 +104,7 @@ function BoardWorkspaceInner() {
   React.useEffect(() => {
     const element = stage.current;
     const adapter = createBoardAdapter(board);
+    const edgeAdapter = createBoardEdgeAdapter(board);
     setFlow(createBoardFlowHandle(board, () => stage.current));
     setFlowContainer(element);
     publishBoardZoom(board.camera.get().zoom);
@@ -112,6 +117,7 @@ function BoardWorkspaceInner() {
       stopZoom();
       publishBoardZoom(null);
       adapter.destroy();
+      edgeAdapter.destroy();
       setFlow(null);
       setFlowContainer(null);
       clearAllDrafts();
@@ -215,6 +221,11 @@ function BoardWorkspaceInner() {
           active.blur();
         }
       }
+      // 空白处按在连线上：选中连线，引擎不再看见这次按下（不会开始框选）。
+      if (edgePointer.press(event)) {
+        event.stopPropagation();
+        return;
+      }
       if (event.button !== 0 || readOnly) return;
       const host = target.closest("[data-board-id]");
       const id = host?.getAttribute("data-board-id");
@@ -233,17 +244,20 @@ function BoardWorkspaceInner() {
         state.setSelection({ nodes: [id], edges: [], items: [] });
       }
     },
-    [readOnly],
+    [readOnly, edgePointer],
   );
 
   const onContextMenuCapture = React.useCallback(
     (event: React.MouseEvent) => {
       const host = (event.target as Element).closest("[data-board-id]");
       const id = host?.getAttribute("data-board-id");
+      const edge = id ? null : edgePointer.edgeAt(event.clientX, event.clientY);
       if (id) menuHandlers.onNodeContextMenu(event, { id } as never);
+      else if (edge)
+        menuHandlers.onEdgeContextMenu(event, { id: edge } as never);
       else menuHandlers.onPaneContextMenu(event);
     },
-    [menuHandlers],
+    [menuHandlers, edgePointer],
   );
 
   /** 滚轮移动相机就不再跟随别人；锁定时滚轮不动相机，也就不取消。 */
@@ -273,6 +287,7 @@ function BoardWorkspaceInner() {
             data-board-stage=""
           >
             <EntityHosts<CanvasNode> render={renderEntity} />
+            <BoardEdges />
           </BoardView>
           <CanvasStylePanel />
           <CanvasTopBar />
