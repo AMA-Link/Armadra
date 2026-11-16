@@ -270,13 +270,21 @@ const SPECS: Record<Item["kind"], Omit<DomKindSpec<Item>, "layer">> = {
   line: { paint, hit, resize: false },
 };
 
+/** 白板对象只能当连线落点（旧引擎的 `dropOnly` 把手），不能起笔。 */
+const CONNECT = { start: false, end: true } as const;
+
 /** 全部白板种类：每种两档（下带 / 上带），`kind` 名见 `wbKindOf`。 */
 export function whiteboardKinds(): Record<string, DomKindSpec<CanvasNode>> {
   const kinds: Record<string, DomKindSpec<Item>> = {};
   for (const [name, spec] of Object.entries(SPECS)) {
-    kinds[`${WB_PREFIX}${name}`] = { ...spec, layer: "canvas-under" };
+    kinds[`${WB_PREFIX}${name}`] = {
+      ...spec,
+      connect: CONNECT,
+      layer: "canvas-under",
+    };
     kinds[`${WB_PREFIX}${name}${OVER_SUFFIX}`] = {
       ...spec,
+      connect: CONNECT,
       layer: "canvas-over",
     };
   }
