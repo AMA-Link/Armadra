@@ -29,8 +29,11 @@ export function onImageLoaded(listener: () => void): () => void {
   return () => void waiters.delete(listener);
 }
 
-async function load(path: string): Promise<ImageBitmap | null> {
-  const url = assetUrlFor(workspace, path);
+async function load(
+  path: string,
+  resolve?: (path: string) => string | null | undefined,
+): Promise<ImageBitmap | null> {
+  const url = resolve?.(path) ?? assetUrlFor(workspace, path);
   if (!url || typeof createImageBitmap !== "function") return null;
   try {
     const response = await routedFetch(url);
@@ -43,11 +46,14 @@ async function load(path: string): Promise<ImageBitmap | null> {
 
 const pending = new Map<string, Promise<void>>();
 
-function ensure(path: string): Promise<void> {
+function ensure(
+  path: string,
+  resolve?: (path: string) => string | null | undefined,
+): Promise<void> {
   const running = pending.get(path);
   if (running) return running;
   const owner = workspace;
-  const task = load(path).then((bitmap) => {
+  const task = load(path, resolve).then((bitmap) => {
     pending.delete(path);
     if (owner !== workspace) return bitmap?.close?.();
     cache.set(path, bitmap ?? "failed");
@@ -66,6 +72,11 @@ export function peekImage(path: string): ImageBitmap | undefined {
 }
 
 /** 等这些路径的位图都到位（导出前）。 */
-export async function preloadImages(paths: readonly string[]): Promise<void> {
-  await Promise.all(paths.filter((p) => !cache.has(p)).map(ensure));
+export async function preloadImages(
+  paths: readonly string[],
+  resolve?: (path: string) => string | null | undefined,
+): Promise<void> {
+  await Promise.all(
+    paths.filter((p) => !cache.has(p)).map((p) => ensure(p, resolve)),
+  );
 }
