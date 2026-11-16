@@ -7,7 +7,11 @@ import {
   type GestureFeedback,
 } from "./gestures";
 import { drawFeedback } from "./feedback";
-import { createInputRouter, type InputRouter } from "./input";
+import {
+  createInputRouter,
+  type BoardSelectors,
+  type InputRouter,
+} from "./input";
 import { rasterize, browserRasterEnv } from "./raster";
 import { createRenderer, type Renderer } from "./render";
 import type {
@@ -35,17 +39,40 @@ export interface CreateBoardOptions<D> extends Partial<BoardOptions> {
   tool?: Tool;
   /** 颜色名 → CSS 颜色（点阵色叫 `dot`）；绘制与导出共用。 */
   color?(name: string): string;
+  /** 应用补充的可编辑区 / 自滚区选择器（沿用节点体已有的类名约定）。 */
+  selectors?: BoardSelectors;
+  /** 应用自己弹右键菜单：引擎只发事件，不拦原生 contextmenu。 */
+  nativeContextMenu?: boolean;
 }
 
-/** 门面多暴露一项：应用自定义工具建手势时要用的依赖（选项、种类表、反馈）。 */
+/** 叠加层插槽：React 绑定往里 createPortal。 */
+export interface BoardSlots {
+  worldSvg: SVGSVGElement;
+  worldHtml: HTMLElement;
+  screen: HTMLElement;
+}
+
+/** 门面多暴露两项：应用自定义工具的手势依赖（选项、种类表、反馈）与叠加层插槽。 */
 export type DomBoard<D = unknown> = Board<D> & {
   readonly gestureDeps: GestureDeps;
+  /** 挂载后的叠加层插槽；没挂载为 null。 */
+  slots(): BoardSlots | null;
+  /** 只拆 DOM 与输入，保留场景、相机与监听；可以再 `mount`（React 严格模式的卸载重挂）。 */
+  unmount(): void;
 };
 
 export function createBoard<D = unknown>(
   init: CreateBoardOptions<D> = {},
 ): DomBoard<D> {
-  const { kinds: initial, camera: start, tool: first, color, ...rest } = init;
+  const {
+    kinds: initial,
+    camera: start,
+    tool: first,
+    color,
+    selectors,
+    nativeContextMenu,
+    ...rest
+  } = init;
   const kinds = new Map(Object.entries(initial ?? {}));
   const kind = (name: string) => kinds.get(name) as DomKindSpec | undefined;
   const scene = createMemoryScene<D>({ kinds: (name) => kinds.get(name) });
@@ -61,6 +88,7 @@ export function createBoard<D = unknown>(
     renderer: Renderer;
     router: InputRouter;
     draft: SVGElement | null;
+    stopHosts: () => void;
   } | null = null;
   const listeners = new Map<string, Set<(payload: never) => void>>();
 
@@ -81,8 +109,9 @@ export function createBoard<D = unknown>(
 
   const unmount = (): void => {
     if (!mounted) return;
-    const { router, renderer, container } = mounted;
+    const { router, renderer, container, stopHosts } = mounted;
     showFeedback(null);
+    stopHosts();
     router.destroy();
     renderer.destroy();
     container.style.cursor = "";
@@ -95,6 +124,17 @@ export function createBoard<D = unknown>(
     camera,
     scene,
     gestureDeps,
+    unmount,
+    slots() {
+      const layers = mounted?.renderer.layers;
+      return layers
+        ? {
+            worldSvg: layers.worldSvg,
+            worldHtml: layers.worldHtml,
+            screen: layers.screenSlot,
+          }
+        : null;
+    },
     mount(container) {
       unmount();
       const renderer = createRenderer(container, {
@@ -121,8 +161,16 @@ export function createBoard<D = unknown>(
           return e ? { type: "entity", id: e.id, part: "body" } : null;
         },
         gestureDeps,
+        ...(selectors && { selectors }),
+        ...(nativeContextMenu && { nativeContextMenu }),
       });
-      mounted = { container, renderer, router, draft: null };
+      const stopHosts = renderer.hosts.subscribe((c) =>
+        board.emit("hosts", {
+          added: [...c.added],
+          removed: [...c.removed],
+        }),
+      );
+      mounted = { container, renderer, router, draft: null, stopHosts };
       container.style.cursor = tool.cursor ?? "";
     },
     destroy() {
@@ -153,6 +201,7 @@ export function createBoard<D = unknown>(
     setSelection(ids) {
       selection = new Set(ids);
       mounted?.renderer.painter.invalidate();
+      board.emit("selection", { ids: [...selection] });
     },
     gestureActive: () => active,
     hostOf: (id) => mounted?.renderer.hosts.hostOf(id),

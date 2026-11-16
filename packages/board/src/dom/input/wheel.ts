@@ -3,6 +3,7 @@
 // 缩放手势不看焦点，只看事件自己的修饰键（对应旧 wheel-zoom.ts）。
 import { MAX_WHEEL_DELTA, wheelZoomFactor } from "../../core";
 import type { Camera, InputDevice } from "../types";
+import { selectorOf, type BoardSelectors } from "./target";
 
 const LINE = 16;
 const PAGE = 400;
@@ -11,17 +12,21 @@ export function createWheelHandler(
   container: HTMLElement,
   camera: Camera,
   inputDevice: () => InputDevice,
+  selectors: BoardSelectors = {},
 ) {
+  const own = selectorOf(
+    "[data-board-editable],[data-board-nowheel]",
+    [selectors.editable, selectors.nowheel].filter(Boolean).join(",") ||
+      undefined,
+  );
   const local = (e: { clientX: number; clientY: number }) => {
     const r = container.getBoundingClientRect();
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   };
   return (e: WheelEvent): void => {
     const zoom = e.ctrlKey || e.metaKey || inputDevice() === "mouse";
-    const own =
-      e.target instanceof Element &&
-      e.target.closest("[data-board-editable],[data-board-nowheel]");
-    if (own && !(e.ctrlKey || e.metaKey)) return;
+    const inside = e.target instanceof Element && e.target.closest(own);
+    if (inside && !(e.ctrlKey || e.metaKey)) return;
     e.preventDefault();
     if (camera.locked) return;
     const unit = e.deltaMode === 1 ? LINE : e.deltaMode === 2 ? PAGE : 1;

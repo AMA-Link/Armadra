@@ -1,0 +1,285 @@
+import * as React from "react";
+import type { CanvasNode } from "@armadra/shared";
+import {
+  createBoard,
+  createHandTool,
+  createSelectTool,
+} from "@armadra/board/dom";
+import { BoardView, EntityHosts } from "@armadra/board/react";
+
+import {
+  useT,
+  usePreferencesStore,
+  useResolvedTheme,
+} from "@/app/preferences-store";
+import { useBoardAutosave } from "@/save/autosave";
+import { stopFollowing } from "@/realtime/session";
+import { ContextMenu, ContextMenuTrigger } from "@/ui/context-menu";
+import { useCanvasStore } from "@/store/canvas-store";
+import { useCanvasReadOnly } from "@/store/canvas/presence";
+import { setCanvasLocked, useCanvasLocked } from "../canvas-lock";
+import { useCreatedNodeReveal } from "../created-node";
+import { usePublishContextLinks } from "../context-links";
+import { useOsDrop, usePasteToCanvas } from "../dnd/os-drop";
+import { registerEscapeToSelect } from "../escape-to-select";
+import {
+  CENTER_NODE_EVENT,
+  setFlow,
+  setFlowContainer,
+} from "../flow/flow-context";
+import { publishBoardZoom } from "../flow/canvas-zoom";
+import { clearAllDrafts } from "../flow/drafts";
+import { applyBoardViewport, centerOnNode } from "../flow/use-flow-viewport";
+import { setTool, useTool } from "../interaction/tool-store";
+import { useLayoutDirectionSync } from "../layout-direction";
+import { useCanvasMenus } from "../menus/CanvasMenus";
+import { CanvasStylePanel } from "../StylePanel";
+import { CanvasTopBar } from "../share/CanvasTopBar";
+import { MAX_ZOOM, MIN_ZOOM } from "../zoom";
+import {
+  registerWorkspaceCommands,
+  useCanvasDelete,
+} from "../workspace-commands";
+import { createBoardAdapter } from "./board-adapter";
+import { createBoardFlowHandle } from "./flow-handle";
+import { renderEntity } from "./hosts";
+import { BOARD_SELECTORS, nodeKinds } from "./model";
+import { useBoardViewportSync } from "./use-board-viewport";
+
+/**
+ * 自研画板引擎的画布（`canvas.engine = "next"`，docs/design/board-engine.md §6.1 B3）。
+ *
+ * 与 `FlowWorkspace` 并存、读写同一个 `canvas-store`，切换不丢数据。B3 只接节点与
+ * 分组：宿主、选择、拖动、换父、缩放、视口、锁定、只读、右键菜单；连线、白板对象、
+ * 缩略图与协作光标属于 B4 / B5，`next` 下暂不显示。
+ *
+ * 和旧画布共用的那部分（命令表、删除确认、自动保存、粘贴 / 拖放、右键菜单内容、
+ * 新建节点后的相机）原样复用，不抄一份。
+ */
+export const BoardWorkspace = React.memo(BoardWorkspaceInner);
+
+const isTextEntry = (target: EventTarget | null): boolean =>
+  target instanceof Element &&
+  Boolean(
+    target.closest('input, textarea, select, [contenteditable="true"], .xterm'),
+  );
+
+function BoardWorkspaceInner() {
+  const t = useT();
+  const theme = useResolvedTheme();
+  const preferences = usePreferencesStore((state) => state.whiteboard);
+  const locked = useCanvasLocked();
+  const readOnly = useCanvasReadOnly();
+  const tool = useTool();
+  const stage = React.useRef<HTMLDivElement>(null);
+  const { requestDelete, dialog } = useCanvasDelete();
+  const { handlers: menuHandlers, menus } = useCanvasMenus();
+
+  const board = React.useMemo(
+    () =>
+      createBoard<CanvasNode>({
+        kinds: nodeKinds(),
+        selectors: BOARD_SELECTORS,
+        // 右键菜单是应用的（Radix）：引擎只发事件，不拦原生 contextmenu。
+        nativeContextMenu: true,
+        camera: useCanvasStore.getState().document?.board.viewport,
+      }),
+    [],
+  );
+
+  useLayoutDirectionSync();
+  useBoardViewportSync(board);
+  useBoardAutosave();
+  usePasteToCanvas();
+  usePublishContextLinks();
+  useCreatedNodeReveal();
+  const { onDragOver, onDrop } = useOsDrop();
+
+  /* ------------------------------ 生命周期 -------------------------------- */
+
+  React.useEffect(() => {
+    const element = stage.current;
+    const adapter = createBoardAdapter(board);
+    setFlow(createBoardFlowHandle(board, () => stage.current));
+    setFlowContainer(element);
+    publishBoardZoom(board.camera.get().zoom);
+    const stopZoom = board.on("camera", ({ zoom }) => publishBoardZoom(zoom));
+    const offEscape = element
+      ? registerEscapeToSelect({ container: element })
+      : () => {};
+    return () => {
+      offEscape();
+      stopZoom();
+      publishBoardZoom(null);
+      adapter.destroy();
+      setFlow(null);
+      setFlowContainer(null);
+      clearAllDrafts();
+      setCanvasLocked(false);
+    };
+  }, [board]);
+
+  /** 开板一次：视口恢复（`board.id` 变了才算换了一块板）。 */
+  const boardId = useCanvasStore((state) => state.document?.board.id);
+  const openedDocument = useCanvasStore((state) => state.document);
+  const opened = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!openedDocument || !boardId || opened.current === boardId) return;
+    opened.current = boardId;
+    applyBoardViewport(openedDocument);
+  }, [boardId, openedDocument]);
+
+  /** 锁上之后正在用的白板工具也要退回选择。 */
+  React.useEffect(() => {
+    if (locked) setTool("select");
+  }, [locked]);
+
+  /* ------------------------------ 偏好与工具 ------------------------------ */
+
+  React.useEffect(() => {
+    board.setOptions({
+      grid: preferences.snap ? preferences.gridSize : 0,
+      marqueeContain: preferences.wrap,
+      inputDevice: preferences.inputMode === "mouse" ? "mouse" : "trackpad",
+      readOnly,
+      dots: preferences.grid,
+      theme,
+    });
+  }, [board, preferences, readOnly, theme]);
+
+  React.useEffect(() => {
+    board.camera.locked = locked;
+    board.camera.limits = { min: MIN_ZOOM, max: MAX_ZOOM };
+  }, [board, locked]);
+
+  React.useEffect(() => {
+    board.setTool(
+      !locked && tool === "hand"
+        ? createHandTool(board.gestureDeps)
+        : createSelectTool(board.gestureDeps),
+    );
+  }, [board, locked, tool]);
+
+  /** 空格 + 拖动平移：空格是修饰键，由键盘层写给引擎（文字输入里不算）。 */
+  React.useEffect(() => {
+    const set = (space: boolean) => (event: KeyboardEvent) => {
+      if (event.code !== "Space" || isTextEntry(event.target)) return;
+      board.setModifiers({ space });
+    };
+    const down = set(true);
+    const up = set(false);
+    const clear = () => board.setModifiers({ space: false });
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", clear);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", clear);
+    };
+  }, [board]);
+
+  /* ------------------------------ 命令 ----------------------------------- */
+
+  React.useEffect(
+    () =>
+      registerWorkspaceCommands({
+        container: () => stage.current,
+        requestDelete,
+      }),
+    [requestDelete],
+  );
+
+  React.useEffect(() => {
+    const onCenter = (event: Event) => {
+      const nodeId = (event as CustomEvent<{ nodeId: string }>).detail?.nodeId;
+      if (nodeId) centerOnNode(nodeId);
+    };
+    window.addEventListener(CENTER_NODE_EVENT, onCenter);
+    return () => window.removeEventListener(CENTER_NODE_EVENT, onCenter);
+  }, []);
+
+  /* ------------------------------ 指针与菜单 ------------------------------ */
+
+  /**
+   * 节点体里按下（终端、编辑器、网页）引擎放手，让它们自己拿焦点；但点一下体就把
+   * 节点选中是现有的约定（React Flow 版本里 §1.3 有意为之），这里补上。
+   */
+  const onPointerDownCapture = React.useCallback(
+    (event: React.PointerEvent) => {
+      const target = event.target as Element;
+      // 点空白：引擎接管了这一下（不会让焦点自己离开终端 / 编辑器），手动放掉。
+      if (target.hasAttribute("data-board-stage")) {
+        const active = document.activeElement;
+        if (active instanceof HTMLElement && active !== document.body) {
+          active.blur();
+        }
+      }
+      if (event.button !== 0 || readOnly) return;
+      const host = target.closest("[data-board-id]");
+      const id = host?.getAttribute("data-board-id");
+      if (!id || !target.closest(BOARD_SELECTORS.editable)) return;
+      const state = useCanvasStore.getState();
+      const current = state.selectedNodeIds;
+      if (event.shiftKey) {
+        state.setSelection({
+          nodes: current.includes(id)
+            ? current.filter((other) => other !== id)
+            : [...current, id],
+          edges: [],
+          items: [],
+        });
+      } else if (!current.includes(id) || current.length > 1) {
+        state.setSelection({ nodes: [id], edges: [], items: [] });
+      }
+    },
+    [readOnly],
+  );
+
+  const onContextMenuCapture = React.useCallback(
+    (event: React.MouseEvent) => {
+      const host = (event.target as Element).closest("[data-board-id]");
+      const id = host?.getAttribute("data-board-id");
+      if (id) menuHandlers.onNodeContextMenu(event, { id } as never);
+      else menuHandlers.onPaneContextMenu(event);
+    },
+    [menuHandlers],
+  );
+
+  /** 滚轮移动相机就不再跟随别人；锁定时滚轮不动相机，也就不取消。 */
+  const onWheelCapture = React.useCallback(() => {
+    if (!locked) stopFollowing();
+  }, [locked]);
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div
+          ref={stage}
+          // 壳给的容器是 `relative flex-1` 但不是 flex 容器，所以这里必须自己撑满。
+          className="canvas-stage relative h-full w-full min-h-0 min-w-0 flex-1"
+          data-engine="next"
+          style={{ background: "var(--canvas-bg)" }}
+          onDragOverCapture={onDragOver}
+          onDropCapture={onDrop}
+          onPointerDownCapture={onPointerDownCapture}
+          onContextMenuCapture={onContextMenuCapture}
+          onWheelCapture={onWheelCapture}
+          aria-label={t("canvas.label")}
+        >
+          <BoardView
+            board={board}
+            className="absolute inset-0"
+            data-board-stage=""
+          >
+            <EntityHosts<CanvasNode> render={renderEntity} />
+          </BoardView>
+          <CanvasStylePanel />
+          <CanvasTopBar />
+        </div>
+      </ContextMenuTrigger>
+      {menus}
+      {dialog}
+    </ContextMenu>
+  );
+}

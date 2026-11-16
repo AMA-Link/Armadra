@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import {
   QueryClient,
   QueryClientProvider,
@@ -9,6 +9,7 @@ import { useAgentStatusHydration } from "../agent/hydration";
 import { useWorkspaceEvents } from "../api/events";
 import { CanvasSkeleton } from "../canvas/CanvasSkeleton";
 import { FlowWorkspace } from "../canvas/FlowWorkspace";
+import { usePreferencesStore } from "./preferences-store";
 import { useSkeletonPhase } from "../loading/use-skeleton-phase";
 // 浮层都在 `./lazy` 里 `React.lazy` 包过，走各自的 chunk（§17 代码分割）；
 // `./Overlays` 是它们的挂载点，也是决定 chunk 什么时候才被取回来的闸门。
@@ -49,6 +50,16 @@ import { useUsagePolicyNotice } from "./use-usage-policy-notice";
 import { useSourceSwitchCacheReset } from "./use-sources-bootstrap";
 import { useCanvasPreferences } from "./use-canvas-preferences";
 import { SharedSessionHost } from "../shared-session/SharedSessionHost";
+
+/**
+ * 自研画板引擎的画布（`canvas.engine = "next"`）单独成块加载：缺省的 `current` 路径
+ * 不带它的任何代码（docs/design/board-engine.md §6.1 B3）。
+ */
+const BoardWorkspace = lazy(() =>
+  import("../canvas/board/BoardWorkspace").then((module) => ({
+    default: module.BoardWorkspace,
+  })),
+);
 
 function createQueryClient() {
   return new QueryClient({
@@ -91,6 +102,7 @@ export function App() {
  */
 function AppShell() {
   const workspace = useCanvasStore((state) => state.workspace);
+  const canvasEngine = usePreferencesStore((state) => state.canvasEngine);
   const minimapCollapsed = useMinimapPreferences((state) => state.collapsed);
   const compact = useCompactLayout();
   // 开屏刚退场的那一次，侧栏 → 画布 → 工具三块错落入场（`first-screen.css`）
@@ -155,7 +167,14 @@ function AppShell() {
         className="workspace-surface relative min-w-0 flex-1"
         data-minimap-collapsed={minimapCollapsed}
       >
-        {workspace && <FlowWorkspace />}
+        {workspace &&
+          (canvasEngine === "next" ? (
+            <Suspense fallback={null}>
+              <BoardWorkspace />
+            </Suspense>
+          ) : (
+            <FlowWorkspace />
+          ))}
         {!workspace && <NoWorkspaceAccess />}
         {workspace && (
           <>

@@ -315,6 +315,8 @@ export function NodeHeader({
   return (
     <div
       data-slot="node-header"
+      // 自研引擎认这个属性当拖拽起手区（React Flow 认下面那个类名）。
+      data-board-drag-handle=""
       className={cn(
         DRAG_HANDLE_CLASS,
         "flex shrink-0 items-center gap-2 px-1.5",

@@ -13,7 +13,7 @@ import { IconButton } from "@/ui/icon-button";
 import { Input } from "@/ui/input";
 import { openExternal, revealPath } from "@/platform";
 import { useCanvasStore } from "@/store/canvas-store";
-import { useReactFlow } from "@xyflow/react";
+import { useCanvasZoom } from "@/canvas/flow/canvas-zoom";
 import { useT } from "@/app/preferences-store";
 import { useKeybindings } from "@/keybindings";
 
@@ -176,9 +176,8 @@ export function WebviewSurface({ id, node, selected }: NodeBodyProps) {
    */
   const alerts = useBrowserAlerts(id, lease);
   const [leaseBusy, setLeaseBusy] = React.useState(false);
-  const flow = useReactFlow();
   // 画布缩放，只服务右键菜单的坐标换算。跟着渲染走就够——缩放变化必然重渲。
-  const zoom = flow.getZoom();
+  const zoom = useCanvasZoom();
 
   // 地址栏跟着活动标签走；人正在里面打字时不抢（焦点在 input 上就不动）。
   const addressRef = React.useRef<HTMLInputElement | null>(null);

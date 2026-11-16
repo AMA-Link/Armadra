@@ -56,7 +56,7 @@ describe("createBoard", () => {
   it("挂载后建出分层与世界层宿主，卸载后全部拆除", () => {
     const { board, container } = setup();
     board.mount(container);
-    expect(container.querySelectorAll("[data-board-layer]").length).toBe(6);
+    expect(container.querySelectorAll("[data-board-layer]").length).toBe(7);
     expect(board.hostOf("a")?.dataset.boardId).toBe("a");
     expect(board.hostOf("a")?.parentElement).toBe(
       container.querySelector("[data-board-layer=world]"),
@@ -106,6 +106,82 @@ describe("createBoard", () => {
     expect(seen).toHaveBeenCalledOnce();
     board.setSelection(new Set(["b"]));
     expect([...board.selection()]).toEqual(["b"]);
+  });
+
+  it("hosts 事件随宿主增减发出，setSelection 发 selection 事件", () => {
+    const { board, container } = setup([entity("a")]);
+    board.mount(container);
+    const hosts = vi.fn();
+    const selection = vi.fn();
+    board.on("hosts", hosts);
+    board.on("selection", selection);
+    board.scene.transact((d) => d.set(entity("c", "card", 500)), {
+      history: "ignore",
+    });
+    expect(hosts).toHaveBeenLastCalledWith({ added: ["c"], removed: [] });
+    board.scene.transact((d) => d.remove("c"), { history: "ignore" });
+    expect(hosts).toHaveBeenLastCalledWith({ added: [], removed: ["c"] });
+    board.setSelection(new Set(["a"]));
+    expect(selection).toHaveBeenLastCalledWith({ ids: ["a"] });
+    board.destroy();
+  });
+
+  it("slots 在挂载后给出叠加层插槽，卸载后为 null", () => {
+    const { board, container } = setup();
+    expect(board.slots()).toBeNull();
+    board.mount(container);
+    const slots = board.slots()!;
+    expect(slots.worldHtml.dataset.boardLayer).toBe("overlay-world-html");
+    expect(slots.worldSvg.dataset.boardLayer).toBe("overlay-world");
+    board.camera.set({ x: 5, y: 6, zoom: 2 });
+    expect(slots.worldHtml.style.transform).toBe(
+      slots.worldSvg.style.transform,
+    );
+    board.destroy();
+    expect(board.slots()).toBeNull();
+  });
+
+  it("selectors 补充的选择器按可编辑区放手，滚轮也不拦", () => {
+    const board = createBoard({
+      kinds: { card },
+      selectors: { editable: ".nodrag", nowheel: ".nowheel" },
+    });
+    board.scene.transact((d) => d.set(entity("a")), { history: "ignore" });
+    const container = document.createElement("div");
+    document.body.append(container);
+    container.setPointerCapture = vi.fn();
+    board.mount(container);
+    const inner = document.createElement("div");
+    inner.className = "nodrag nowheel";
+    board.hostOf("a")!.append(inner);
+    fire(inner, "pointerdown", { clientX: 10, clientY: 10 });
+    expect(board.gestureActive()).toBe(false);
+    const wheel = new WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 40,
+    });
+    inner.dispatchEvent(wheel);
+    expect(wheel.defaultPrevented).toBe(false);
+    board.destroy();
+  });
+
+  it("nativeContextMenu：右键事件交给应用，引擎不 preventDefault 但照发事件", () => {
+    const board = createBoard({ kinds: { card }, nativeContextMenu: true });
+    board.scene.transact((d) => d.set(entity("a")), { history: "ignore" });
+    const container = document.createElement("div");
+    document.body.append(container);
+    board.mount(container);
+    const seen = vi.fn();
+    board.on("context-menu", seen);
+    const event = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+    });
+    board.hostOf("a")!.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(seen).toHaveBeenCalledOnce();
+    board.destroy();
   });
 
   it("gesture 事件维护 gestureActive", () => {

@@ -8,6 +8,7 @@ import {
 } from "@xyflow/react";
 
 import { useT } from "@/app/preferences-store";
+import { useIsBoardHost } from "../../board/host-context";
 
 /**
  * 节点的连线端口（React Flow 计划 §2.5 / F06，归属 B1）。
@@ -78,7 +79,7 @@ export interface ConnectionHandlesProps {
   dropOnly?: boolean;
 }
 
-export function ConnectionHandles({
+function ConnectionHandlesInner({
   dropOnly = false,
 }: ConnectionHandlesProps = {}) {
   const t = useT();
@@ -144,4 +145,12 @@ export function ConnectionHandles({
       ) : null}
     </>
   );
+}
+
+/**
+ * 自研引擎的宿主里没有 React Flow 的节点上下文：连线把手由 B4 的新连线层接管，
+ * 这里什么都不画（`Handle` 在节点之外会报错）。
+ */
+export function ConnectionHandles(props: ConnectionHandlesProps = {}) {
+  return useIsBoardHost() ? null : <ConnectionHandlesInner {...props} />;
 }

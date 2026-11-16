@@ -49,30 +49,17 @@ function onResizeEnd(
   );
 }
 
-export function GroupNode({
-  data,
-  selected = false,
-}: NodeProps<ArmadraFlowNode>) {
-  const node = data;
+/** 分组的框、标题与徽章；React Flow 的 `GroupNode` 与自研引擎的 `board/GroupHost` 共用。 */
+export function GroupFrame({
+  node,
+  selected,
+}: {
+  node: CanvasNode;
+  selected: boolean;
+}) {
   const bound = frameBindingOf(node) !== null;
-  // 回调身份必须稳定，否则手指拉伸到第一帧就断（`stable-resize.ts`，#819）。
-  const resize = useStableResizeHandlers({
-    onResize: (_event, params) =>
-      setDraft(node.id, {
-        position: { x: params.x, y: params.y },
-        size: { width: params.width, height: params.height },
-      }),
-    onResizeEnd: (_event, params) => onResizeEnd(node, params),
-  });
   return (
     <>
-      <NodeResizer
-        isVisible={selected}
-        minWidth={NODE_META.group.minSize.width}
-        minHeight={NODE_META.group.minSize.height}
-        onResize={resize.onResize}
-        onResizeEnd={resize.onResizeEnd}
-      />
       <div
         data-slot="group-frame"
         data-selected={selected ? "true" : undefined}
@@ -104,6 +91,34 @@ export function GroupNode({
           </div>
         ) : null}
       </div>
+    </>
+  );
+}
+
+export function GroupNode({
+  data,
+  selected = false,
+}: NodeProps<ArmadraFlowNode>) {
+  const node = data;
+  // 回调身份必须稳定，否则手指拉伸到第一帧就断（`stable-resize.ts`，#819）。
+  const resize = useStableResizeHandlers({
+    onResize: (_event, params) =>
+      setDraft(node.id, {
+        position: { x: params.x, y: params.y },
+        size: { width: params.width, height: params.height },
+      }),
+    onResizeEnd: (_event, params) => onResizeEnd(node, params),
+  });
+  return (
+    <>
+      <NodeResizer
+        isVisible={selected}
+        minWidth={NODE_META.group.minSize.width}
+        minHeight={NODE_META.group.minSize.height}
+        onResize={resize.onResize}
+        onResizeEnd={resize.onResizeEnd}
+      />
+      <GroupFrame node={node} selected={selected} />
       <ConnectionHandles dropOnly />
     </>
   );

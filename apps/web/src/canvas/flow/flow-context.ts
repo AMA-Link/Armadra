@@ -13,8 +13,23 @@ import type { Position } from "@armadra/shared";
  * 画布没挂载（启动页、单测）时一律返回 null，调用方必须自己兜底。
  */
 
-/** 画布真正需要的那部分实例接口；测试里造一个假的比造整个实例便宜。 */
-export type FlowHandle = ReactFlowInstance;
+/**
+ * 画布真正需要的那部分实例接口；测试里造一个假的比造整个实例便宜。
+ *
+ * 两种引擎都登记进来：React Flow 的实例天然满足它，自研引擎由
+ * `board/flow-handle.ts` 按同一组方法适配，外面十几处调用方不必分叉（B4 换成
+ * 新 hook 之后这一层随 `@xyflow/react` 一起删）。
+ */
+export type FlowHandle = Pick<
+  ReactFlowInstance,
+  | "getViewport"
+  | "setViewport"
+  | "screenToFlowPosition"
+  | "zoomTo"
+  | "setCenter"
+  | "getNode"
+  | "getNodes"
+>;
 
 let current: FlowHandle | null = null;
 let container: HTMLElement | null = null;

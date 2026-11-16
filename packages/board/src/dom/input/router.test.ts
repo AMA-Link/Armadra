@@ -50,17 +50,27 @@ describe("输入路由器", () => {
   beforeEach(() => void vi.useFakeTimers());
   afterEach(() => void vi.useRealTimers());
 
-  it("点实体：按下接管并捕获指针，抬起发 select，gesture 事件成对", () => {
+  it("点实体：按下接管，抬起发 select，gesture 事件成对；没移动就不捕获指针", () => {
     const s = setup();
     const down = s.fire("pointerdown", s.q(".a"), {
       clientX: 120,
       clientY: 120,
     });
     expect(down.defaultPrevented).toBe(true);
-    expect(s.container.setPointerCapture).toHaveBeenCalledWith(1);
+    expect(s.container.setPointerCapture).not.toHaveBeenCalled();
     s.fire("pointerup", s.q(".a"), { clientX: 120, clientY: 120 });
     expect(s.of("select")).toEqual([{ ids: ["a"], additive: false }]);
     expect(s.of("gesture")).toEqual([{ active: true }, { active: false }]);
+  });
+
+  it("拖动：第一次移动才捕获指针，只捕获一次", () => {
+    const s = setup();
+    s.fire("pointerdown", s.q(".a"), { clientX: 120, clientY: 120 });
+    s.fire("pointermove", s.container, { clientX: 130, clientY: 130 });
+    s.fire("pointermove", s.container, { clientX: 140, clientY: 140 });
+    expect(s.container.setPointerCapture).toHaveBeenCalledTimes(1);
+    expect(s.container.setPointerCapture).toHaveBeenCalledWith(1);
+    s.fire("pointerup", s.container, { clientX: 140, clientY: 140 });
   });
 
   it("拖动实体：世界坐标随相机换算，结束发 move", () => {
