@@ -15,6 +15,8 @@ export interface MinimapStyle {
   fill: string;
   stroke?: string;
   strokeWidth?: number;
+  /** 连线的三次贝塞尔（世界坐标：起点、两个控制点、终点）；缺省是两端中心的直线。 */
+  curve?: [Vec, Vec, Vec, Vec];
 }
 
 export interface MinimapDeps {
@@ -126,18 +128,17 @@ export function createMinimap(el: HTMLElement, deps: MinimapDeps): Minimap {
     for (const entity of scene.ordered()) {
       const style = deps.colorOf(entity);
       if (!style) continue;
-      const { fill, stroke, strokeWidth } =
+      const { fill, stroke, strokeWidth, curve } =
         typeof style === "string" ? ({ fill: style } as MinimapStyle) : style;
       if (entity.ends) {
         const [a, b] = entity.ends.map((id) => scene.bounds(id));
         if (!a || !b || !stroke) continue;
-        const from = toPx(rectCenter(a));
-        const to = toPx(rectCenter(b));
+        const [p, c, d, q] = (curve ?? [a, a, b, b].map(rectCenter)).map(toPx);
         ctx.strokeStyle = stroke;
         ctx.lineWidth = strokeWidth ?? 1;
         ctx.beginPath();
-        ctx.moveTo(from.x, from.y);
-        ctx.lineTo(to.x, to.y);
+        ctx.moveTo(p!.x, p!.y);
+        ctx.bezierCurveTo(c!.x, c!.y, d!.x, d!.y, q!.x, q!.y);
         ctx.stroke();
         continue;
       }
