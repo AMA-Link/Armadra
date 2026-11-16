@@ -4,6 +4,7 @@ import {
   BackgroundVariant,
   ConnectionMode,
   ReactFlow,
+  ReactFlowProvider,
   ViewportPortal,
   useReactFlow,
 } from "@xyflow/react";
@@ -102,7 +103,14 @@ const ATTRIBUTION = { hideAttribution: true } as const;
  * 它一个 prop 都不收，所以 `memo` 是一道干净的墙：壳自己重渲多少次都到此为
  * 止，画布只在它订阅的 store 真的变了的时候重画。
  */
-export const FlowWorkspace = React.memo(FlowWorkspaceInner);
+export const FlowWorkspace = React.memo(function FlowWorkspace() {
+  // provider 跟着旧引擎走（`useReactFlow` 要它），不在应用根上（B4：外面不再认 React Flow）。
+  return (
+    <ReactFlowProvider>
+      <FlowWorkspaceInner />
+    </ReactFlowProvider>
+  );
+});
 
 function FlowWorkspaceInner() {
   const t = useT();

@@ -144,8 +144,7 @@
 
 /* ------------------------------ 浮层与归属 -------------------------------- */
 
-.canvas-stage .react-flow__minimap,
-.canvas-stage .board-minimap {
+.canvas-stage .react-flow__minimap {
   /* `<MiniMap>` 是一个 Panel，自带 15px margin；归零后 14px 才是真的 14px。 */
   margin: 0;
   right: calc(14px + var(--surface-inset-right, 0px));
@@ -295,8 +294,7 @@
 }
 
 @container workspace (max-width: 760px) {
-  .canvas-stage .react-flow__minimap,
-  .canvas-stage .board-minimap {
+  .canvas-stage .react-flow__minimap {
     --minimap-w: 160px;
     --minimap-h: 120px;
   }
@@ -434,8 +432,7 @@
 }
 
 .workspace-surface[data-minimap-collapsed="true"],
-.workspace-surface[data-minimap-collapsed="true"] .react-flow__minimap,
-.workspace-surface[data-minimap-collapsed="true"] .board-minimap {
+.workspace-surface[data-minimap-collapsed="true"] .react-flow__minimap {
   --minimap-w: 36px;
   --minimap-h: 36px;
 }
@@ -457,7 +454,6 @@
  */
 @media (prefers-reduced-motion: reduce) {
   .canvas-stage .react-flow__minimap,
-  .canvas-stage .board-minimap,
   .canvas-stage .minimap-toggle-panel {
     transition: none !important;
   }
@@ -471,7 +467,6 @@
   .react-flow__minimap:hover
   ~ .minimap-toggle-panel
   .minimap-toggle,
-.canvas-stage .board-minimap:hover ~ .minimap-toggle-panel .minimap-toggle,
 .canvas-stage .minimap-toggle-panel:hover .minimap-toggle,
 .canvas-stage .minimap-toggle:focus-visible,
 .canvas-stage .minimap-toggle[data-reveal="true"] {
@@ -493,7 +488,633 @@
  * 归属链接不收：MIT 礼节不看模式（§0 归属标识）。
  */
 :root[data-canvas-focus="true"] .canvas-stage .react-flow__minimap,
-:root[data-canvas-focus="true"] .canvas-stage .board-minimap,
+:root[data-canvas-focus="true"] .canvas-stage .minimap-toggle {
+  display: none;
+}
+
+/* ------------------- 自研画板引擎（canvas.engine = next） ------------------- */
+
+/*
+ * 缩放把手是宿主里的真实元素（`canvas/board/hosts.tsx`），引擎按 `data-board-handle`
+ * 认它们。四边是 6px 的透明命中条，四角是 8px 的实心点；与 React Flow 版本的视觉一致。
+ */
+.canvas-stage .board-resize-handle {
+  position: absolute;
+  z-index: 5;
+  background: transparent;
+}
+.canvas-stage .board-resize-handle[data-board-handle="n"],
+.canvas-stage .board-resize-handle[data-board-handle="s"] {
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+}
+.canvas-stage .board-resize-handle[data-board-handle="e"],
+.canvas-stage .board-resize-handle[data-board-handle="w"] {
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+}
+.canvas-stage .board-resize-handle[data-board-handle="n"] {
+  top: -3px;
+}
+.canvas-stage .board-resize-handle[data-board-handle="s"] {
+  bottom: -3px;
+}
+.canvas-stage .board-resize-handle[data-board-handle="e"] {
+  right: -3px;
+}
+.canvas-stage .board-resize-handle[data-board-handle="w"] {
+  left: -3px;
+}
+.canvas-stage
+  .board-resize-handle:is(
+    [data-board-handle="ne"],
+    [data-board-handle="nw"],
+    [data-board-handle="se"],
+    [data-board-handle="sw"]
+  ) {
+  z-index: 6;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--panel);
+  border-radius: var(--r-tight);
+  background: var(--brand);
+}
+.canvas-stage .board-resize-handle[data-board-handle="ne"] {
+  top: -4px;
+  right: -4px;
+  cursor: nesw-resize;
+}
+.canvas-stage .board-resize-handle[data-board-handle="nw"] {
+  top: -4px;
+  left: -4px;
+  cursor: nwse-resize;
+}
+.canvas-stage .board-resize-handle[data-board-handle="se"] {
+  right: -4px;
+  bottom: -4px;
+  cursor: nwse-resize;
+}
+.canvas-stage .board-resize-handle[data-board-handle="sw"] {
+  bottom: -4px;
+  left: -4px;
+  cursor: nesw-resize;
+}
+
+/*
+ * 连线起笔把手（`flow/nodes/ConnectionHandles.tsx` 的 `BoardHandles`）：与 React Flow
+ * 版本同一套尺寸与观感（14px 圆点骑在边上、34px 命中区往节点外偏），只是选择器
+ * 换成宿主里的真实元素。引擎按 `data-board-handle` 认它们。
+ */
+.canvas-stage .board-connection-handle {
+  --connection-port-size: 14px;
+  --connection-hit-size: 34px;
+  position: absolute;
+  z-index: 1;
+  width: var(--connection-port-size);
+  height: var(--connection-port-size);
+  border: 2px solid var(--card);
+  border-radius: var(--r-pill);
+  background: var(--muted-foreground);
+  box-shadow: 0 0 0 1px var(--border-strong);
+  opacity: 0.85;
+  transition:
+    opacity var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+  cursor: crosshair;
+  touch-action: none;
+}
+.canvas-stage .board-connection-handle::before {
+  position: absolute;
+  width: var(--connection-hit-size);
+  height: var(--connection-hit-size);
+  border-radius: var(--r-pill);
+  content: "";
+}
+.canvas-stage
+  .board-connection-handle:is([data-side="left"], [data-side="right"]) {
+  top: 50%;
+  transform: translateY(-50%);
+}
+.canvas-stage
+  .board-connection-handle:is([data-side="left"], [data-side="right"])::before {
+  top: 50%;
+  transform: translateY(-50%);
+}
+.canvas-stage .board-connection-handle[data-side="left"] {
+  left: calc(var(--connection-port-size) * -0.5);
+}
+.canvas-stage .board-connection-handle[data-side="left"]::before {
+  right: -2px;
+}
+.canvas-stage .board-connection-handle[data-side="right"] {
+  right: calc(var(--connection-port-size) * -0.5);
+}
+.canvas-stage .board-connection-handle[data-side="right"]::before {
+  left: -2px;
+}
+.canvas-stage
+  .board-connection-handle:is([data-side="top"], [data-side="bottom"]) {
+  left: 50%;
+  transform: translateX(-50%);
+}
+.canvas-stage
+  .board-connection-handle:is([data-side="top"], [data-side="bottom"])::before {
+  left: 50%;
+  transform: translateX(-50%);
+}
+.canvas-stage .board-connection-handle[data-side="top"] {
+  top: calc(var(--connection-port-size) * -0.5);
+}
+.canvas-stage .board-connection-handle[data-side="top"]::before {
+  bottom: -2px;
+}
+.canvas-stage .board-connection-handle[data-side="bottom"] {
+  bottom: calc(var(--connection-port-size) * -0.5);
+}
+.canvas-stage .board-connection-handle[data-side="bottom"]::before {
+  top: -2px;
+}
+.canvas-stage .board-connection-handle:hover,
+.canvas-stage [data-slot="node-shell"]:hover .board-connection-handle,
+.canvas-stage
+  [data-slot="node-shell"][data-selected="true"]
+  .board-connection-handle {
+  opacity: 1;
+  background: var(--foreground);
+}
+@media (hover: none), (any-pointer: coarse) {
+  .canvas-stage .board-connection-handle {
+    --connection-port-size: 16px;
+    --connection-hit-size: 36px;
+    opacity: 1;
+  }
+}
+/* 拉线悬在一个连不上的节点上（含它自己）：把手整圈变 danger 并抖两下；合法时描一圈品牌色。 */
+.canvas-stage [data-connect-target="invalid"] .board-connection-handle {
+  background: var(--danger);
+  opacity: 1;
+  animation: armadra-handle-shake var(--dur-slow) linear;
+}
+.canvas-stage [data-connect-target="valid"] [data-slot="node-shell"] {
+  border-radius: var(--r-card);
+  box-shadow: 0 0 0 2px var(--brand);
+}
+
+/*
+ * 缩略图（`canvas/board/BoardMinimap.tsx`）：与 `.react-flow__minimap` 同一套尺寸、
+ * 边距、边框与收起 / 专注模式规则，外加库自己提供的那部分（绝对定位、层级、底色）。
+ * 收起钮的容器与旧引擎共用 `.minimap-toggle-panel`。
+ */
+.canvas-stage .board-minimap {
+  position: absolute;
+  z-index: 5;
+  right: calc(14px + var(--surface-inset-right, 0px));
+  bottom: var(--navigation-bottom);
+  width: var(--minimap-w);
+  height: var(--minimap-h);
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-panel);
+  background: var(--xy-minimap-background-color);
+  box-shadow: var(--shadow-overlay);
+  backdrop-filter: blur(12px);
+  cursor: pointer;
+}
+@container workspace (max-width: 760px) {
+  .canvas-stage .board-minimap {
+    --minimap-w: 160px;
+    --minimap-h: 120px;
+  }
+}
+.workspace-surface[data-minimap-collapsed="true"] .board-minimap {
+  --minimap-w: 36px;
+  --minimap-h: 36px;
+}
+.canvas-stage .board-minimap:hover ~ .minimap-toggle-panel .minimap-toggle {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .canvas-stage .board-minimap {
+    transition: none !important;
+  }
+}
+:root[data-canvas-focus="true"] .canvas-stage .board-minimap {
+  display: none;
+}
+.canvas-stage .minimap-toggle-panel {
+  position: absolute;
+  z-index: 5;
+}
+
+/* 整理那一下（UI 设计 §6.5）：只动 transform，结束后 `data-tidying` 被撤掉 */
+.canvas-stage[data-tidying="true"] .react-flow__node {
+  transition: transform var(--dur-page) var(--ease-out);
+}
+
+/* 分组：色带 + 半透明底，不裁剪子级（§1.3 的差异） */
+.canvas-stage .canvas-group {
+  background: color-mix(in srgb, var(--panel) 22%, transparent);
+  border-style: solid;
+  border-width: 1.5px;
+  overflow: visible;
+}
+.canvas-stage .canvas-group[data-selected="true"] {
+  background: color-mix(in srgb, var(--panel) 34%, transparent);
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.canvas-stage .canvas-group-label {
+  position: absolute;
+  top: -18px;
+  left: 2px;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: var(--text-caption);
+  font-weight: var(--fw-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * 拖线预览的终点圆点吸到目标上（`ConnectionLine` 标 `data-snapped`）：`--dur-slow`
+ * 软位移。只在吸上之后过渡，拖线中圆点要紧跟指针，不能落后。线宽（常态 2、选中 3.5）
+ * 由 `LinkEdge` 自己写在样式里，这里不再覆盖。
+ */
+.canvas-stage [data-slot="connection-line"] circle[data-snapped="true"] {
+  transition:
+    cx var(--dur-slow) var(--ease-in-out),
+    cy var(--dur-slow) var(--ease-in-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-stage [data-slot="connection-line"] circle[data-snapped="true"] {
+    transition: none;
+  }
+}
+
+/* resize 把手：默认 4px 太小，触屏上根本按不住 */
+.canvas-stage .react-flow__resize-control.handle {
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--panel);
+  border-radius: var(--r-tight);
+}
+.canvas-stage .react-flow__resize-control.line {
+  border-color: transparent;
+  border-width: 3px;
+}
+
+/* ------------------------------ 浮层与归属 -------------------------------- */
+
+.canvas-stage .react-flow__minimap {
+  /* `<MiniMap>` 是一个 Panel，自带 15px margin；归零后 14px 才是真的 14px。 */
+  margin: 0;
+  right: calc(14px + var(--surface-inset-right, 0px));
+  bottom: var(--navigation-bottom);
+  left: auto;
+  width: var(--minimap-w);
+  height: var(--minimap-h);
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-panel);
+  box-shadow: var(--shadow-overlay);
+  backdrop-filter: blur(12px);
+}
+
+/* 浮层以真实画布宽度布局；侧栏折叠后容器查询也会重新计算。 */
+.workspace-surface {
+  container: workspace / inline-size;
+  isolation: isolate;
+  --minimap-w: 200px;
+  --minimap-h: 150px;
+  /*
+   * 四个角的浮层离边都是 14px：右上工具簇（上、右）、右下缩略图（右、下）、
+   * 底部 Dock（下）。缩略图始终在右下角；画布不够宽时是 Dock 向左让。
+   * 顶边的安全区由 App 根容器让开，底边在这里加：iPad 横屏的主页横条与窗口
+   * 缩放手柄（`--safe-bottom`，桌面与浏览器里是 0）。
+   *
+   * 左右两边的安全区（手机横屏的刘海与圆角，#766）根容器不再让：画布底色铺到
+   * 屏幕边上，贴边的浮层（工具簇、Dock、样式条、缩略图、通知条）各自加上
+   * `--surface-inset-*` 让开。停靠的侧栏开着时画布左缘已经在侧栏右边（侧栏自己
+   * 让左侧安全区），左边不用再让——见下面那条 `:has()`。
+   */
+  --surface-inset-left: var(--safe-left);
+  --surface-inset-right: var(--safe-right);
+  --navigation-bottom: calc(14px + var(--safe-bottom));
+}
+.app-shell:has(> aside[data-state="open"]) > .workspace-surface {
+  --surface-inset-left: 0px;
+}
+
+/*
+ * Dock 所在的那一行：三格网格，两侧留白相等时 Dock 在画布正中；右侧留白
+ * 的下限是缩略图的宽度加两个边距，所以画布变窄时 Dock 先向左滑，
+ * 而不是压到缩略图上。行本身不接指针，只有 Dock 接。
+ */
+.canvas-dock-row {
+  position: absolute;
+  bottom: var(--dock-bottom, calc(14px + var(--safe-bottom)));
+  left: calc(14px + var(--surface-inset-left, 0px));
+  right: calc(14px + var(--surface-inset-right, 0px));
+  z-index: var(--z-dock);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(
+      calc(var(--minimap-w) + 14px),
+      1fr
+    );
+  pointer-events: none;
+}
+/*
+ * 右侧开着工作面板时（`shell/Dock` 写 `data-panel-inset` 与 `right`），这一行
+ * 的右端已经让到面板左边。缩略图被面板盖着，右格不用再给它留位置，Dock 在
+ * 剩下那块画布里居中。
+ */
+.canvas-dock-row {
+  transition: right var(--dur-base) var(--ease-out);
+}
+.canvas-dock-row[data-panel-inset="true"] {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+@media (prefers-reduced-motion: reduce) {
+  .canvas-dock-row {
+    transition-duration: var(--dur-fast);
+  }
+}
+.canvas-dock {
+  grid-column: 2;
+  width: max-content;
+  max-width: 100%;
+  pointer-events: auto;
+}
+/*
+ * Dock 只有一行（#766）。放不下时（手机竖屏、开着缩略图的横屏、很窄的窗口）
+ * 这一行自己横向滚动：滚动从最左端开始，滚动条不画，还有内容的那一端渐隐
+ * （`shell/Dock` 的 `useScrollEdges` 写 `data-fade-*`），被截住的半个按钮加上
+ * 渐隐就是「还有」的提示。外框不滚、不渐隐。
+ */
+.canvas-dock [data-slot="dock-scroll"] {
+  --dock-fade: 24px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.canvas-dock [data-slot="dock-scroll"]::-webkit-scrollbar {
+  display: none;
+}
+.canvas-dock [data-slot="dock-scroll"][data-fade-start] {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 var(--dock-fade)
+  );
+  mask-image: linear-gradient(to right, transparent, #000 var(--dock-fade));
+}
+.canvas-dock [data-slot="dock-scroll"][data-fade-end] {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    #000 calc(100% - var(--dock-fade)),
+    transparent
+  );
+  mask-image: linear-gradient(
+    to right,
+    #000 calc(100% - var(--dock-fade)),
+    transparent
+  );
+}
+.canvas-dock [data-slot="dock-scroll"][data-fade-start][data-fade-end] {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 var(--dock-fade),
+    #000 calc(100% - var(--dock-fade)),
+    transparent
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 var(--dock-fade),
+    #000 calc(100% - var(--dock-fade)),
+    transparent
+  );
+}
+
+.dock-tools-expanded {
+  display: flex;
+}
+.dock-tools-compact {
+  display: none;
+}
+
+/* 窄画布：工具组折进一个弹层，Dock 变短；缩略图不动。 */
+@container workspace (max-width: 1000px) {
+  .dock-tools-expanded {
+    display: none;
+  }
+  .dock-tools-compact {
+    display: block;
+  }
+}
+
+@container workspace (max-width: 760px) {
+  .canvas-stage .react-flow__minimap {
+    --minimap-w: 160px;
+    --minimap-h: 120px;
+  }
+}
+
+/*
+ * 触屏在空白处长按出新建菜单（`interaction/touch-create`，#715）：长按不能先被
+ * 系统接走——iOS 的放大镜、选字与链接预览都关掉。
+ */
+.canvas-stage .react-flow__pane {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/*
+ * 手机竖屏（≤767px，与 `platform/layout.isCompactLayout` 同一个断点）：底部有一条
+ * 导航（`shell/MobileBottomNav`，56px 再加安全区）。Dock 必须坐在它**上面**
+ * ——上面那条容器查询给的 38px 会被导航盖掉一截，工具按钮按不到。
+ *
+ * Dock 在这里也是一行（#766，推翻 #715 的两行）：与桌面同序，一个按钮都不藏，
+ * 放不下的部分横向滚动（上面 `dock-scroll` 那几条）；格间距 2px、分隔线两侧各
+ * 2px。缩略图与收起钮按一行的高度（`--dock-h`）让到 Dock 之上。
+ *
+ * 写成媒体查询而不是容器查询：导航是窗口级的固定条，跟画布容器有多宽无关；
+ * 放在容器查询之后，同权重下由它接管 `--dock-bottom`。
+ */
+@media (max-width: 767px) {
+  .canvas-dock-row {
+    --dock-bottom: calc(var(--mobile-nav-h) + var(--safe-bottom) + 10px);
+    left: calc(10px + var(--surface-inset-left, 0px));
+    right: calc(10px + var(--surface-inset-right, 0px));
+    /* 手机上 Dock 要用整个宽度，缩略图改到它上方（下面那条规则）。 */
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
+  }
+  .canvas-dock [data-slot="dock-scroll"],
+  .canvas-dock [data-slot="dock-tools"] {
+    gap: 2px;
+  }
+  .canvas-dock [data-slot="separator"] {
+    margin-inline: 2px;
+  }
+  /*
+   * 缩略图和它的收起钮（`MinimapToggle` 的 Panel 与 `.react-flow__minimap` 是兄
+   * 弟，收起后缩略图本身不渲染）共用 `--navigation-bottom`，所以变量写在两者的
+   * 共同祖先上：收起钮也坐在底部导航与 Dock 之上，不再压在导航条上。
+   * `--mobile-nav-h` 矮屏自己缩到 44px，这里不用再分情况。
+   */
+  .workspace-surface {
+    --navigation-bottom: calc(
+      var(--mobile-nav-h) + var(--safe-bottom) + 10px + var(--dock-h) + 12px
+    );
+  }
+}
+
+/*
+ * 手机横屏（`platform/layout.PHONE_LANDSCAPE_QUERY`）是电脑布局（#715）：整排
+ * Dock、右上工具簇、右下缩略图都与桌面一致，只按矮屏收紧。工具组不折进弹层
+ * （`shell/Dock` 给 `DockTools inline`）；侧栏是覆盖式抽屉、不占画布宽度
+ * （`shell/LeftSidebar`，#766），缩略图默认收起（`app/minimap-preferences`），
+ * 874 宽的画布放得下整排 Dock；开着缩略图放不下时 Dock 横向滚动，两端渐隐。
+ */
+@media (pointer: coarse) and (min-width: 768px) and (max-width: 1023px) and (max-height: 500px) {
+  .canvas-dock-row {
+    --dock-bottom: calc(8px + var(--safe-bottom));
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(
+        calc(var(--minimap-w) + 14px),
+        1fr
+      );
+  }
+  .canvas-dock [data-slot="dock-scroll"],
+  .canvas-dock [data-slot="dock-tools"] {
+    gap: 2px;
+  }
+  .canvas-dock [data-slot="separator"] {
+    margin-inline: 2px;
+  }
+  .workspace-surface {
+    --navigation-bottom: calc(8px + var(--safe-bottom));
+  }
+}
+
+/*
+ * 最窄的手机（≤380px，例如 320 宽）：Dock 的十来个钮排不下，最右的缩放钮会
+ * 落到屏幕外。先收紧间距与两侧边距，仍放不下时让 Dock 自己横向滚动——被
+ * 截住的半个按钮就是「还有」的提示，不会再有点不到的钮。
+ */
+@media (max-width: 380px) {
+  .canvas-dock-row {
+    left: calc(8px + var(--surface-inset-left, 0px));
+    right: calc(8px + var(--surface-inset-right, 0px));
+  }
+  .canvas-dock [data-slot="dock-scroll"] {
+    gap: 2px;
+  }
+  .canvas-dock [data-slot="separator"] {
+    margin-inline: 2px;
+  }
+}
+
+/*
+ * 样式条（`whiteboard/StylePanel.tsx`，#714）：Dock 正上方居中，与 Dock 同一
+ * 个底边基线加上 Dock 高度与 8px 间隙。整行不接指针，只有条本身接。
+ * 手机上 Dock 抬到底部导航之上，这一行用同一个基线（`--dock-bottom` 只写在
+ * `.canvas-dock-row` 自己身上，兄弟拿不到，所以在下面的断点里重写一遍）。
+ */
+.canvas-style-row {
+  --style-row-bottom: calc(14px + var(--safe-bottom));
+  position: absolute;
+  bottom: calc(var(--style-row-bottom) + var(--dock-h) + 8px);
+  left: calc(14px + var(--surface-inset-left, 0px));
+  right: calc(14px + var(--surface-inset-right, 0px));
+  z-index: var(--z-dock);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.canvas-style-row > * {
+  pointer-events: auto;
+}
+/*
+ * 手机竖屏：Dock 与桌面一样是一行（#766），样式条按 `--dock-h` 让到它之上；
+ * 基线同 Dock，坐在底部导航上面。
+ */
+@media (max-width: 767px) {
+  .canvas-style-row {
+    --style-row-bottom: calc(var(--mobile-nav-h) + var(--safe-bottom) + 10px);
+  }
+}
+/* 手机横屏是电脑布局，一行 Dock；基线跟着横屏 Dock 收紧的底边走。 */
+@media (pointer: coarse) and (min-width: 768px) and (max-width: 1023px) and (max-height: 500px) {
+  .canvas-style-row {
+    --style-row-bottom: calc(8px + var(--safe-bottom));
+  }
+}
+
+.workspace-surface[data-minimap-collapsed="true"],
+.workspace-surface[data-minimap-collapsed="true"] .react-flow__minimap {
+  --minimap-w: 36px;
+  --minimap-h: 36px;
+}
+
+/*
+ * 缩略图的收起钮（#216）：平时不显示，悬停缩略图（或钮本身）、键盘聚焦时
+ * 才出现在右上角。隐藏时不接指针，那一角照常点得到缩略图；指针一进缩略图
+ * 钮就出现并接指针，指针挪到钮上时由 `.minimap-toggle-panel:hover` 接住。
+ * 触屏没有悬停，常显。收起后的展开钮（`aria-expanded="false"`）始终可见。
+ * `data-reveal` 是展示页定格「悬停时」用的。
+ */
+.canvas-stage .minimap-toggle-panel {
+  pointer-events: none;
+}
+/*
+ * 减少动效下全局把过渡压成 `--dur-fast` 而不是归零（tokens.css），任何没写
+ * `transition` 的元素都会对位置变化做一次 120ms 的 `all` 过渡。缩略图与它的收起钮
+ * 的位置由容器尺寸决定，窗口一变就会被拖着走一小段，所以这两个明确不过渡。
+ */
+@media (prefers-reduced-motion: reduce) {
+  .canvas-stage .react-flow__minimap,
+  .canvas-stage .minimap-toggle-panel {
+    transition: none !important;
+  }
+}
+.canvas-stage .minimap-toggle[aria-expanded="true"] {
+  opacity: 0;
+  pointer-events: none;
+}
+.canvas-stage .minimap-toggle[aria-expanded="false"],
+.canvas-stage
+  .react-flow__minimap:hover
+  ~ .minimap-toggle-panel
+  .minimap-toggle,
+.canvas-stage .minimap-toggle-panel:hover .minimap-toggle,
+.canvas-stage .minimap-toggle:focus-visible,
+.canvas-stage .minimap-toggle[data-reveal="true"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+@media (hover: none), (any-pointer: coarse) {
+  .canvas-stage .minimap-toggle[aria-expanded="true"] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/*
+ * 专注模式（§2.10 的 `focus`）：缩略图与收起钮一起收走，画布上只剩内容
+ * 与 Dock（锁定钮现在在 Dock 里，跟着 Dock 留下）。属性由
+ * `app/use-canvas-preferences.ts` 写在根元素上。
+ *
+ * 归属链接不收：MIT 礼节不看模式（§0 归属标识）。
+ */
+:root[data-canvas-focus="true"] .canvas-stage .react-flow__minimap,
 :root[data-canvas-focus="true"] .canvas-stage .minimap-toggle {
   display: none;
 }

@@ -1,5 +1,4 @@
 import * as React from "react";
-import type { Edge, Node } from "@xyflow/react";
 import type { AgentInfo, Position, Workspace } from "@armadra/shared";
 
 import { ContextMenuContent } from "@/ui/context-menu";
@@ -39,9 +38,12 @@ export type CanvasMenuTarget =
 
 export interface CanvasMenuHandlers {
   onPaneContextMenu: (event: React.MouseEvent | MouseEvent) => void;
-  onNodeContextMenu: (event: React.MouseEvent, node: Node) => void;
-  onEdgeContextMenu: (event: React.MouseEvent, edge: Edge) => void;
-  onSelectionContextMenu: (event: React.MouseEvent, nodes: Node[]) => void;
+  onNodeContextMenu: (event: React.MouseEvent, node: { id: string }) => void;
+  onEdgeContextMenu: (event: React.MouseEvent, edge: { id: string }) => void;
+  onSelectionContextMenu: (
+    event: React.MouseEvent,
+    nodes: { id: string }[],
+  ) => void;
 }
 
 export interface CanvasMenus {

@@ -275,9 +275,8 @@ function BoardWorkspaceInner() {
       const host = (event.target as Element).closest("[data-board-id]");
       const id = host?.getAttribute("data-board-id");
       const edge = id ? null : edgePointer.edgeAt(event.clientX, event.clientY);
-      if (id) menuHandlers.onNodeContextMenu(event, { id } as never);
-      else if (edge)
-        menuHandlers.onEdgeContextMenu(event, { id: edge } as never);
+      if (id) menuHandlers.onNodeContextMenu(event, { id });
+      else if (edge) menuHandlers.onEdgeContextMenu(event, { id: edge });
       else menuHandlers.onPaneContextMenu(event);
     },
     [menuHandlers, edgePointer],
