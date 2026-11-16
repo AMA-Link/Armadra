@@ -10,8 +10,10 @@ import {
   useCanvasStore,
   type CommitOptions,
 } from "@/store/canvas-store";
+import { backZ, frontZ, nextUnderZ } from "./bands";
 import {
   fromItemId,
+  newItemId,
   toItemId,
   type Item,
   type ItemStyle,
@@ -56,14 +58,14 @@ export function selectedItems(): Item[] {
   return itemsByIds(useCanvasStore.getState().selectedItemIds);
 }
 
-/** 下一个对象的 `z`：永远落在最上面。 */
+/** 下一个对象的 `z`：落在下带（缺省遮挡带，见 `bands.ts`）的最上面。 */
 export function nextZ(): number {
-  const items = whiteboardDoc().items;
-  return items.reduce((top, item) => Math.max(top, item.z), 0) + 1;
+  return nextUnderZ(whiteboardDoc().items.map((item) => item.z));
 }
 
+/** 新对象的 id：12 位 base62（见 `model.newItemId`）。 */
 export function createItemId(): string {
-  return crypto.randomUUID();
+  return newItemId();
 }
 
 /* -------------------------------- 写 -------------------------------------- */
@@ -173,8 +175,9 @@ export interface ItemBox {
 /**
  * resize 一条对象。
  *
- * 墨迹与直线的点集要跟着缩，否则线会留在原来的大小里；缩放比例由旧尺寸
- * 与新尺寸算，宽或高为 0 时按 1 处理（`ink.scaleInk` 自己兜底）。
+ * 墨迹不重写点集：记下落成时的原始盒 `origin`，画出来时按「现在的盒 / 原始盒」
+ * 缩放（`board/whiteboard/kinds`）——实时板上改一次大小只写几个字节，不是把整条
+ * 点集再写一遍。直线的折点是整数且很少，跟着盒子按比例重算。
  */
 export function resizeItem(
   id: string,
@@ -197,21 +200,17 @@ export function resizeItem(
 }
 
 function resized(item: Item, box: ItemBox): Item {
-  const scaleX = item.w > 0 ? box.w / item.w : 1;
-  const scaleY = item.h > 0 ? box.h / item.h : 1;
   const base = { ...item, x: box.x, y: box.y, w: box.w, h: box.h };
   if (item.kind === "ink") {
     return {
       ...base,
       kind: "ink",
-      points: item.points.map(([x, y, pressure]) => [
-        x * scaleX,
-        y * scaleY,
-        pressure,
-      ]),
+      origin: item.origin ?? { w: item.w, h: item.h },
     } as Item;
   }
   if (item.kind === "line") {
+    const scaleX = item.w > 0 ? box.w / item.w : 1;
+    const scaleY = item.h > 0 ? box.h / item.h : 1;
     return {
       ...base,
       kind: "line",
@@ -296,7 +295,7 @@ export function discardItem(id: string): void {
   removeItems([id], fresh ? { history: "ignore" } : {});
 }
 
-/** 置顶 / 置底（`z` 就是 React Flow 的 `zIndex`）。 */
+/** 置顶 = 换到上带（盖在节点上面），置底 = 下带最底（`bands.ts`）。 */
 export function reorder(
   ids: readonly string[],
   to: "front" | "back",
@@ -308,14 +307,15 @@ export function reorder(
     (doc) => {
       const others = doc.items.filter((item) => !moved.has(item.id));
       if (others.length === doc.items.length) return null;
-      const top = others.reduce((max, item) => Math.max(max, item.z), 0);
-      const bottom = others.reduce((min, item) => Math.min(min, item.z), 0);
+      const zs = others.map((item) => item.z);
+      const top = frontZ(zs);
+      const bottom = backZ(zs);
       let index = 0;
       const items = doc.items.map((item) =>
         moved.has(item.id)
           ? {
               ...item,
-              z: to === "front" ? top + 1 + index++ : bottom - 1 - index++,
+              z: to === "front" ? top + index++ : bottom - index++,
             }
           : item,
       );

@@ -57,7 +57,7 @@ export const DEFAULT_SIZE: StrokeSize = "m";
 export const DEFAULT_DASH: Dash = "solid";
 export const DEFAULT_FILL: Fill = "none";
 
-export interface ItemStyle {
+export type ItemStyle = {
   color: Color;
   size: StrokeSize;
   /** 缺省 `solid`，值为缺省时不出现。 */
@@ -65,14 +65,14 @@ export interface ItemStyle {
   /** 缺省 `none`，值为缺省时不出现。 */
   fill?: Fill;
   align?: Align;
-}
+};
 
 /** Agent 回复输出到画板时记下来自哪个节点；只用于显示与跳回。 */
-export interface ItemMeta {
+export type ItemMeta = {
   source?: { nodeId: string; sessionId: string; messageId?: string };
-}
+};
 
-interface ItemBase {
+type ItemBase = {
   /** 12 位 base62 随机串。 */
   id: string;
   kind: ItemKind;
@@ -86,58 +86,58 @@ interface ItemBase {
   parentId?: string;
   style: ItemStyle;
   meta?: ItemMeta;
-}
+};
 
-export interface InkItem extends ItemBase {
+export type InkItem = ItemBase & {
   kind: "ink";
   highlight?: boolean;
   /** 相对对象原点，位于落成时的原始盒内；画出来时按 `w / origin.w`、`h / origin.h` 缩放。 */
   points: InkPoint[];
   /** 落成时的原始盒 `[w0, h0]`；缺省按当前 `w`、`h`（即未缩放过）。 */
   origin?: { w: number; h: number };
-}
+};
 
-export interface TextItem extends ItemBase {
+export type TextItem = ItemBase & {
   kind: "text";
   text: string;
-}
+};
 
-export interface ShapeItem extends ItemBase {
+export type ShapeItem = ItemBase & {
   kind: "shape";
   geo: Geo;
   label?: string;
-}
+};
 
-export interface ImageItem extends ItemBase {
+export type ImageItem = ItemBase & {
   kind: "image";
   /** 工作区相对路径（`.armadra/assets/…`）。 */
   assetPath: string;
   alt?: string;
-}
+};
 
-export interface LineItem extends ItemBase {
+export type LineItem = ItemBase & {
   kind: "line";
   /** 折点 `[x, y]`，整数，相对对象原点，至少两个。 */
   points: [number, number][];
   arrowStart?: boolean;
   arrowEnd?: boolean;
-}
+};
 
 export type Item = InkItem | TextItem | ShapeItem | ImageItem | LineItem;
 
 /** 白板对象 → Agent 的内容引用；`id` 仍是 uuid（它是 `ContextLink.id` 与导出文件名）。 */
-export interface Reference {
+export type Reference = {
   id: string;
   itemId: string;
   nodeId: string;
-}
+};
 
-export interface BoardDoc {
+export type BoardDoc = {
   engine: typeof BOARD_ENGINE;
   version: typeof BOARD_VERSION;
   items: Item[];
   references: Reference[];
-}
+};
 
 export type DecodeResult<T> =
   { ok: true; value: T } | { ok: false; error: string };

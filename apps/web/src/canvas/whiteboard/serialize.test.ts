@@ -12,7 +12,7 @@ import { parseWhiteboard, serializeWhiteboard } from "./serialize";
 /**
  * `whiteboard_json` 的读写（React Flow 计划 T04）。
  *
- * 只认 v2：其它一切按空白板处理，下一次保存直接覆盖（§3.2，用户决定不迁移
+ * 只认 v3：其它一切按空白板处理，下一次保存直接覆盖（§3.2，用户决定不迁移
  * 旧数据）。这一条是数据安全的边界，所以正反两面都钉住。
  */
 
@@ -28,12 +28,11 @@ function doc(patch: Partial<WhiteboardDoc> = {}): WhiteboardDoc {
         w: 210,
         h: 96,
         z: 3,
-        parentId: null,
         style: { color: "black", size: "m" },
-        highlight: false,
+        origin: { w: 210, h: 96 },
         points: [
           [0, 0, 0.5],
-          [3.2, 1.1, 0.6],
+          [3.2, 1.1, 1],
         ],
       },
       {
@@ -44,12 +43,12 @@ function doc(patch: Partial<WhiteboardDoc> = {}): WhiteboardDoc {
         w: 160,
         h: 120,
         z: 5,
-        style: { color: "blue", size: "m", dash: "solid", fill: "semi" },
+        style: { color: "blue", size: "m", fill: "semi" },
         geo: "rectangle",
         label: "",
       },
     ],
-    references: [{ id: "ref-1", itemId: "3f", nodeId: "node-1" }],
+    references: [{ id: "ref-1", itemId: "wb:3f", nodeId: "node-1" }],
     ...patch,
   };
 }
@@ -69,23 +68,39 @@ describe("serializeWhiteboard ↔ parseWhiteboard", () => {
 
   it("序列化的头两个字段就是引擎与版本（打包壳的验收按它断言）", () => {
     expect(serializeWhiteboard(emptyWhiteboard())).toMatch(
-      /^\{"engine":"armadra-flow","version":2/u,
+      /^\{"engine":"armadra-board","version":3/u,
     );
   });
 
-  it("转换记账位 `legacy` 存在时原样带过去", () => {
-    const source = doc({
-      legacy: { engine: "unknown", sha256: "abc", bytes: 12 },
+  it("v3 线上格式：短键、墨迹点集压成串、缺省样式不写", () => {
+    const wire = JSON.parse(serializeWhiteboard(doc())) as {
+      items: Record<string, unknown>[];
+    };
+    const [ink, shape] = wire.items;
+    expect(ink).toMatchObject({
+      id: "3f",
+      k: "ink",
+      b: [120, 80, 210, 96],
+      o: [210, 96],
     });
-    expect(parseWhiteboard(serializeWhiteboard(source)).doc.legacy).toEqual({
-      engine: "unknown",
-      sha256: "abc",
-      bytes: 12,
+    expect(typeof ink!.pt).toBe("string");
+    expect(ink).not.toHaveProperty("s");
+    expect(shape).toMatchObject({
+      k: "shape",
+      g: "rectangle",
+      s: { c: "blue", f: "semi" },
     });
+  });
+
+  it("坐标取整：存的是整数，读回的是整数", () => {
+    const source = doc();
+    source.items[1] = { ...source.items[1]!, x: 10.6, w: 99.4 } as never;
+    const back = parseWhiteboard(serializeWhiteboard(source)).doc.items[1]!;
+    expect(back).toMatchObject({ x: 11, w: 99 });
   });
 });
 
-describe("只认 v2", () => {
+describe("只认 v3", () => {
   const rejected: Record<string, string | null | undefined> = {
     空串: "",
     null: null,
@@ -96,39 +111,34 @@ describe("只认 v2", () => {
       store: { "shape:x": { typeName: "shape", type: "draw" } },
       schema: { schemaVersion: 2 },
     }),
+    "上一代 v2 白板": JSON.stringify({
+      engine: "armadra-flow",
+      version: 2,
+      items: [],
+      references: [],
+    }),
     引擎名对不上: JSON.stringify({
       engine: "somebody-else",
-      version: 2,
+      version: WHITEBOARD_VERSION,
       items: [],
       references: [],
     }),
     更高的版本: JSON.stringify({
       engine: WHITEBOARD_ENGINE,
-      version: 3,
+      version: 4,
       items: [],
       references: [],
     }),
     对象缺字段: JSON.stringify({
       engine: WHITEBOARD_ENGINE,
       version: WHITEBOARD_VERSION,
-      items: [{ id: "x", kind: "text" }],
+      items: [{ id: "x", k: "text" }],
       references: [],
     }),
     未知的对象类型: JSON.stringify({
       engine: WHITEBOARD_ENGINE,
       version: WHITEBOARD_VERSION,
-      items: [
-        {
-          id: "x",
-          kind: "cloud",
-          x: 0,
-          y: 0,
-          w: 1,
-          h: 1,
-          z: 0,
-          style: { color: "black", size: "m" },
-        },
-      ],
+      items: [{ id: "x", k: "cloud", b: [0, 0, 1, 1], z: 0 }],
       references: [],
     }),
   };

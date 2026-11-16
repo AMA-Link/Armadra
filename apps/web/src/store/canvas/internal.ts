@@ -4,7 +4,10 @@ import {
   type Position,
 } from "@armadra/shared";
 import { usePreferencesStore } from "../../app/preferences-store";
-import { emptyWhiteboard } from "../../canvas/whiteboard/model";
+import {
+  emptyWhiteboard,
+  type WhiteboardDoc,
+} from "../../canvas/whiteboard/model";
 import { isCompactLayout, isPhoneLandscape } from "../../platform/layout";
 import { diffSnapshots, record, type CommitOptions } from "./history";
 import { markPatch } from "./pending";
@@ -18,7 +21,7 @@ import {
 
 export const emptyBoardState = {
   document: null,
-  whiteboard: emptyWhiteboard(),
+  whiteboard: emptyWhiteboard() as WhiteboardDoc,
   selectedNodeIds: [] as string[],
   selectedEdgeIds: [] as string[],
   selectedItemIds: [] as string[],

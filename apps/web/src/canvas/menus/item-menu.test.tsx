@@ -140,7 +140,7 @@ describe("ItemMenuContent", () => {
     open("wb:a");
     fireEvent.click(screen.getByText("复制"));
     const copies = addItems.mock.calls[0]![0];
-    expect(copies[0]!.parentId).toBeNull();
+    expect(copies[0]!.parentId).toBeUndefined();
   });
 
   it("「转成便签」建一个 sticky 节点并删掉原对象", () => {

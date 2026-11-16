@@ -59,7 +59,7 @@ describe("签名识别", () => {
   it("对象字段不合法时整段拒绝，不做部分恢复", () => {
     const text = JSON.stringify({
       armadra: CLIPBOARD_SIGNATURE,
-      items: [{ id: "x", kind: "text" }],
+      items: [{ id: "x", k: "text" }],
       nodes: [],
       references: [],
     });
@@ -141,7 +141,7 @@ describe("粘贴落点", () => {
       [],
     );
     const moved = relocateClipboard(payload, { at: { x: 10, y: 10 }, newId });
-    expect(moved.items[0]!.parentId).toBeNull();
+    expect(moved.items[0]!.parentId).toBeUndefined();
   });
 
   it("节点跟着一起搬，尺寸参与包围盒", () => {
@@ -197,5 +197,33 @@ describe("外部内容分流", () => {
     expect(routePaste({ text: "flowchart LR\n A-->B", hasImage: true })).toBe(
       "image",
     );
+  });
+});
+
+describe("v3 线上格式与新 id", () => {
+  it("载荷里的对象是 v3 的短键串，粘回来逐项解码", () => {
+    const item = makeItem("ink", { id: "abc", points: [[0, 0, 0.5]] } as never);
+    const text = serializeClipboard(buildClipboard([item], []));
+    const wire = JSON.parse(text) as { items: Record<string, unknown>[] };
+    expect(wire.items[0]).toMatchObject({ id: "abc", k: "ink" });
+    expect(typeof wire.items[0]!.pt).toBe("string");
+    expect(parseClipboard(text)!.items[0]).toMatchObject({
+      id: "abc",
+      kind: "ink",
+    });
+  });
+
+  it("粘贴出来的对象 id 是 12 位 base62，引用 id 仍是 uuid", () => {
+    const item = makeItem("shape", { id: "s1" });
+    const node = makeNode("sticky", { id: "n1" });
+    const payload = buildClipboard(
+      [item],
+      [node],
+      [{ id: "r1", itemId: "s1", nodeId: "n1" }],
+    );
+    const moved = relocateClipboard(payload, { at: { x: 0, y: 0 } });
+    expect(moved.items[0]!.id).toMatch(/^[0-9A-Za-z]{12}$/);
+    expect(moved.references[0]!.id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(moved.references[0]!.itemId).toBe(moved.items[0]!.id);
   });
 });

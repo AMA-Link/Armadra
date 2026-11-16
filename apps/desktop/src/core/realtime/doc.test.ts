@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { BOARD_FORMAT } from "@armadra/shared";
 import * as Y from "yjs";
 
 import { canonicalJson, loadBoard, saveBoard } from "../canvas/documents";
@@ -11,11 +12,13 @@ import {
   applyDocument,
   composeWhiteboard,
   createBoardDoc,
+  metaOf,
   nodesOf,
   normalizeWhiteboard,
   projectDoc,
   replaceText,
   splitWhiteboard,
+  stampBoardFormat,
 } from "./doc";
 import { materialize } from "./materialize";
 import { type BoardFixture, boardFixture } from "./realtime.fixture";
@@ -298,5 +301,16 @@ describe("白板外壳", () => {
       }
     ).items;
     expect(items.map((item) => item.x)).toEqual([9, 9]);
+  });
+});
+
+describe("stampBoardFormat", () => {
+  it("种出来的文档落下当前格式号，已有的号不改", () => {
+    const doc = createBoardDoc();
+    stampBoardFormat(doc, "seed");
+    expect(metaOf(doc).get("boardFormat")).toBe(BOARD_FORMAT);
+    metaOf(doc).set("boardFormat", BOARD_FORMAT + 1);
+    stampBoardFormat(doc, "seed");
+    expect(metaOf(doc).get("boardFormat")).toBe(BOARD_FORMAT + 1);
   });
 });

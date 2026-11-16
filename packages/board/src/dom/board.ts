@@ -1,5 +1,6 @@
 // 门面：把场景、相机、渲染、输入路由与种类表装成一个 Board（设计 §2.2）。
 import { createMemoryScene, type CameraState, type EntityId } from "../core";
+import type { Layer, Vec } from "../core";
 import { createCamera } from "./camera";
 import {
   createSelectTool,
@@ -9,6 +10,7 @@ import {
 import { drawFeedback } from "./feedback";
 import {
   createInputRouter,
+  createResolveTarget,
   type BoardSelectors,
   type InputRouter,
 } from "./input";
@@ -39,6 +41,8 @@ export interface CreateBoardOptions<D> extends Partial<BoardOptions> {
   tool?: Tool;
   /** 颜色名 → CSS 颜色（点阵色叫 `dot`）；绘制与导出共用。 */
   color?(name: string): string;
+  /** 资源位图；没到位返回 undefined，到位后调 `invalidate()`。 */
+  image?(key: string): CanvasImageSource | undefined;
   /** 应用补充的可编辑区 / 自滚区选择器（沿用节点体已有的类名约定）。 */
   selectors?: BoardSelectors;
   /** 应用自己弹右键菜单：引擎只发事件，不拦原生 contextmenu。 */
@@ -57,6 +61,8 @@ export type DomBoard<D = unknown> = Board<D> & {
   readonly gestureDeps: GestureDeps;
   /** 挂载后的叠加层插槽；没挂载为 null。 */
   slots(): BoardSlots | null;
+  /** 画布层标脏重绘。 */
+  invalidate(): void;
   /** 只拆 DOM 与输入，保留场景、相机与监听；可以再 `mount`（React 严格模式的卸载重挂）。 */
   unmount(): void;
 };
@@ -69,6 +75,7 @@ export function createBoard<D = unknown>(
     camera: start,
     tool: first,
     color,
+    image,
     selectors,
     nativeContextMenu,
     ...rest
@@ -125,6 +132,7 @@ export function createBoard<D = unknown>(
     scene,
     gestureDeps,
     unmount,
+    invalidate: () => mounted?.renderer.painter.invalidate(),
     slots() {
       const layers = mounted?.renderer.layers;
       return layers
@@ -146,20 +154,28 @@ export function createBoard<D = unknown>(
           dots: options.dots,
           selected: (id) => selection.has(id),
           ...(color && { color }),
+          ...(image && { image }),
         },
       });
+      const hitAt = (w: Vec, layers: Layer[]) => {
+        const e = scene.hit(w, { tolerance: 4 / camera.get().zoom, layers });
+        return e ? ({ type: "entity", id: e.id, part: "body" } as const) : null;
+      };
+      const base = createResolveTarget(
+        (world) => hitAt(world, ["canvas-under", "canvas-over"]),
+        selectors,
+      );
       const router = createInputRouter(container, {
         board: board as unknown as Board,
         tool: () => tool,
         modifiers: () => mods,
         inputDevice: () => options.inputDevice,
-        hitCanvas: (world) => {
-          const e = scene.hit(world, {
-            tolerance: 4 / camera.get().zoom,
-            layers: ["canvas-under", "canvas-over"],
-          });
-          return e ? { type: "entity", id: e.id, part: "body" } : null;
-        },
+        // 「置顶」的 Canvas 对象盖在节点上面：先于 DOM 命中（叠加层里的把手、输入框除外）。
+        resolveTarget: (el, world) =>
+          (el instanceof Element &&
+          el.closest('[data-board-layer="overlay-screen"]')
+            ? null
+            : hitAt(world, ["canvas-over"])) ?? base(el, world),
         gestureDeps,
         ...(selectors && { selectors }),
         ...(nativeContextMenu && { nativeContextMenu }),

@@ -60,7 +60,7 @@ export type LegacyKanbanArchive = Readonly<
 >;
 
 /**
- * Whiteboard snapshot cap — docs/design/canvas-react-flow.md §3.1. Images
+ * Whiteboard snapshot cap — docs/design/board-engine.md §3. Images
  * never live inside the snapshot (they go through the asset endpoint), so this
  * is only ink, shapes and text; 8 MiB is far beyond anything a hand can draw.
  */
@@ -74,7 +74,7 @@ export const boardSchema = z.object({
   viewport: viewportSchema.default(DEFAULT_VIEWPORT),
   /**
    * Opaque whiteboard document (JSON string) holding the whiteboard-native
-   * objects only — canvas-react-flow plan §3.1. Neither the runtime nor the
+   * objects only (v3 wire format, docs/design/board-engine.md §3.2). Neither the runtime nor the
    * host looks inside it; only the web client parses it. Empty string = no
    * whiteboard content. Defaulted so a document written before migration 0009
    * still parses.

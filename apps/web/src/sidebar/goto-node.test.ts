@@ -3,6 +3,7 @@ import type { BoardDocument } from "@armadra/shared";
 
 import { CENTER_NODE_EVENT } from "../canvas/flow/flow-context";
 import { emptyWhiteboard } from "../canvas/whiteboard/model";
+import { serializeWhiteboard } from "../canvas/whiteboard/serialize";
 import { useCanvasStore } from "../store/canvas-store";
 import { CENTER_RETRY_DELAYS, gotoItem } from "./goto-node";
 
@@ -21,7 +22,7 @@ const documentOf = (boardId: string, whiteboard: string): BoardDocument => ({
   nodes: [],
   edges: [],
 });
-const withItem = JSON.stringify({
+const withItem = serializeWhiteboard({
   ...emptyWhiteboard(),
   items: [
     {

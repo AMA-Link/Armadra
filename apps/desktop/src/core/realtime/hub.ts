@@ -14,7 +14,12 @@ import * as Y from "yjs";
 
 import { readBoard } from "../canvas/documents";
 import { DomainError } from "../workspaces/support";
-import { type BoardProjection, applyDocument, createBoardDoc } from "./doc";
+import {
+  type BoardProjection,
+  applyDocument,
+  createBoardDoc,
+  stampBoardFormat,
+} from "./doc";
 import { CORE_ORIGIN, materialize, sanitizeDoc } from "./materialize";
 import {
   appendUpdate,
@@ -172,6 +177,7 @@ export class RealtimeHub {
   ): LiveBoard {
     const doc = createBoardDoc();
     applyDocument(doc, boardId, seed, CORE_ORIGIN);
+    stampBoardFormat(doc, CORE_ORIGIN);
     markRealtime(
       this.database,
       boardId,

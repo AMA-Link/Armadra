@@ -161,10 +161,12 @@ function commitInk(draft: InkDraft, id: string): InkItem | null {
     w: box.w,
     h: box.h,
     z: 0,
-    parentId: null,
+    parentId: undefined,
     style: draft.style,
     highlight: draft.highlight,
     points: translatePoints(simplified, -box.x, -box.y),
+    // 落成时的原始盒：之后缩放只改 w / h，点集不动（v3）。
+    origin: { w: box.w, h: box.h },
   };
 }
 
@@ -184,7 +186,7 @@ function commitShape(draft: ShapeDraft, id: string): ShapeItem {
     w: rect.w,
     h: rect.h,
     z: 0,
-    parentId: null,
+    parentId: undefined,
     style: draft.style,
     geo: draft.geo,
     label: "",
@@ -206,7 +208,7 @@ function commitLine(draft: LineDraft, id: string): LineItem | null {
     w: Math.max(box.w, 1),
     h: Math.max(box.h, 1),
     z: 0,
-    parentId: null,
+    parentId: undefined,
     style: draft.style,
     points: points.map(([x, y]) => [x - box.x, y - box.y] as LinePoint),
     arrowStart: false,
@@ -225,7 +227,7 @@ export function textItemAt(at: Position, id: string): TextItem {
     w: CLICK_TEXT_WIDTH,
     h: 24,
     z: 0,
-    parentId: null,
+    parentId: undefined,
     style: { color: next.color, size: next.size, align: "start" },
     text: "",
   };

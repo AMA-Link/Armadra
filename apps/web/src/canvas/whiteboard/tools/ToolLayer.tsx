@@ -1,16 +1,14 @@
 import * as React from "react";
 import { useStoreApi } from "@xyflow/react";
 
-import { usePreferencesStore } from "@/app/preferences-store";
-import { setDefaultStyle, useTool } from "../../interaction/tool-store";
+import { useTool } from "../../interaction/tool-store";
 import { trackPointer } from "../../interaction/pointer";
-import { registerCanvasCommands } from "../../commands";
-import { isCanvasLocked } from "../../canvas-lock";
-import { openMermaidImport, useMermaidDialogOpen } from "../mermaid/open";
+import { useMermaidDialogOpen } from "../mermaid/open";
 import { DraftPreview } from "./DraftPreview";
 import { useClipboardCommands } from "./use-clipboard";
 import { useDoubleClickText } from "./use-double-click-text";
 import { useItemDrag } from "./use-item-drag";
+import { useDefaultStyle, useMermaidCommand } from "./use-tool-commands";
 import { useToolPointer } from "./use-tool-pointer";
 
 /**
@@ -90,34 +88,6 @@ export function ToolLayer() {
       ) : null}
     </>
   );
-}
-
-/** ⌘⇧M / 加号菜单的「导入 Mermaid…」；锁住的画布上不响应。 */
-function useMermaidCommand(): void {
-  React.useEffect(
-    () =>
-      registerCanvasCommands({
-        "canvas.importMermaid": () => {
-          if (isCanvasLocked()) return;
-          openMermaidImport();
-        },
-      }),
-    [],
-  );
-}
-
-/**
- * 「默认颜色 / 粗细」偏好 → 下一个对象的样式（§2.10）。
- *
- * 单向：偏好改了就推一次。样式面板改的是 `nextStyle`，不写回偏好——
- * 否则「这一笔想画红的」会永久改掉默认值。
- */
-function useDefaultStyle(): void {
-  const color = usePreferencesStore((state) => state.whiteboard.defaultColor);
-  const size = usePreferencesStore((state) => state.whiteboard.defaultSize);
-  React.useEffect(() => {
-    setDefaultStyle({ color, size });
-  }, [color, size]);
 }
 
 export default ToolLayer;

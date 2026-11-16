@@ -17,6 +17,7 @@ export * from "./contract/index.js";
 export * from "./join-link.js";
 export * from "./connect-link.js";
 export * from "./feature-flags.js";
+export * from "./board-format.js";
 export * from "./pairing-pake.js";
 export * from "./traffic-categories.js";
 export * from "./human-need.js";

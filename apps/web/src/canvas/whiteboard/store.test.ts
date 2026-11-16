@@ -38,6 +38,7 @@ vi.mock("@/nodes/registry", () => {
 
 const { useCanvasStore, resetHistory } = await import("@/store/canvas-store");
 const { emptyWhiteboard } = await import("./model");
+const { isOverBand } = await import("./bands");
 const store = await import("./store");
 
 const timestamp = "2026-09-06T00:00:00.000Z";
@@ -77,7 +78,7 @@ function shape(overrides: Record<string, unknown> = {}) {
     w: 100,
     h: 100,
     z: 0,
-    parentId: null,
+    parentId: undefined,
     style: { color: "black" as const, size: "m" as const },
     geo: "rectangle" as const,
     label: "",
@@ -140,7 +141,11 @@ describe("updateItems / moveItems / resizeItem", () => {
     expect(state().saveState).toBe("saved");
   });
 
-  it("resize 一条墨迹会把点集一起缩", () => {
+  it("resize 一条墨迹不重写点集：记下原始盒，缩放比由 w / h 与原始盒之比给出", () => {
+    const points = [
+      [0, 0, 0.5],
+      [100, 100, 0.5],
+    ] as const;
     store.addItems([
       {
         id: "ink",
@@ -150,21 +155,44 @@ describe("updateItems / moveItems / resizeItem", () => {
         w: 100,
         h: 100,
         z: 0,
-        parentId: null,
         style: { color: "black", size: "m" },
-        points: [
-          [0, 0, 0.5],
-          [100, 100, 0.5],
-        ],
+        points: points as never,
       },
     ]);
     store.resizeItem("ink", { x: 0, y: 0, w: 200, h: 50 });
     expect(items()[0]).toMatchObject({
       w: 200,
       h: 50,
+      origin: { w: 100, h: 100 },
+      points,
+    });
+    // 再缩一次：原始盒仍是落成时的那个
+    store.resizeItem("ink", { x: 0, y: 0, w: 300, h: 80 });
+    expect(items()[0]).toMatchObject({ origin: { w: 100, h: 100 } });
+  });
+
+  it("resize 一条直线：折点按比例重算", () => {
+    store.addItems([
+      {
+        id: "line",
+        kind: "line",
+        x: 0,
+        y: 0,
+        w: 100,
+        h: 100,
+        z: 0,
+        style: { color: "black", size: "m" },
+        points: [
+          [0, 0],
+          [100, 100],
+        ],
+      },
+    ]);
+    store.resizeItem("line", { x: 0, y: 0, w: 200, h: 50 });
+    expect(items()[0]).toMatchObject({
       points: [
-        [0, 0, 0.5],
-        [200, 50, 0.5],
+        [0, 0],
+        [200, 50],
       ],
     });
   });
@@ -208,6 +236,22 @@ describe("reorder", () => {
     expect(items().find((item) => item.id === "a")!.z).toBe(top());
     store.reorder(["a"], "back");
     expect(items().find((item) => item.id === "a")!.z).toBe(bottom());
+  });
+});
+
+describe("遮挡带", () => {
+  it("置顶换到上带，之后新建的对象仍在下带，置底回下带", () => {
+    store.addItems([shape({ id: "a" }), shape({ id: "b" })]);
+    store.reorder(["a"], "front");
+    expect(isOverBand(items().find((i) => i.id === "a")!.z)).toBe(true);
+    store.addItems([shape({ id: "c" })]);
+    expect(isOverBand(items().find((i) => i.id === "c")!.z)).toBe(false);
+    store.reorder(["b"], "front");
+    const z = (id: string) => items().find((i) => i.id === id)!.z;
+    expect(z("b")).toBeGreaterThan(z("a"));
+    store.reorder(["a"], "back");
+    expect(isOverBand(z("a"))).toBe(false);
+    expect(z("a")).toBeLessThan(z("c"));
   });
 });
 
@@ -282,7 +326,7 @@ describe("discardItem", () => {
     w: 120,
     h: 24,
     z: 0,
-    parentId: null,
+    parentId: undefined,
     style: {
       color: "black" as const,
       size: "m" as const,

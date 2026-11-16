@@ -217,8 +217,8 @@ describe("autosave", () => {
     expect(saveBoard).toHaveBeenCalledTimes(1);
     const sent = saveBoard.mock.calls[0]?.[2] as BoardDocument;
     const whiteboard = JSON.parse(sent.board.whiteboard);
-    expect(whiteboard.engine).toBe("armadra-flow");
-    expect(whiteboard.version).toBe(2);
+    expect(whiteboard.engine).toBe("armadra-board");
+    expect(whiteboard.version).toBe(3);
     expect(whiteboard.items[0].id).toBe("ink");
     expect(useCanvasStore.getState().saveState).toBe("saved");
   });

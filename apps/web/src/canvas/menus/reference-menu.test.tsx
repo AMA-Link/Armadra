@@ -102,7 +102,7 @@ const item = {
   w: 100,
   h: 100,
   z: 0,
-  parentId: null,
+  parentId: undefined,
   style: { color: "black" as const, size: "m" as const },
   geo: "rectangle" as const,
 };

@@ -1,12 +1,9 @@
 import { z } from "zod";
 import type { CanvasNode, Position } from "@armadra/shared";
 
-import {
-  itemSchema,
-  referenceSchema,
-  type Item,
-  type Reference,
-} from "./model";
+import { codec } from "@armadra/board/core";
+
+import { newItemId, type Item, type Reference } from "./model";
 import { itemsBounds } from "./geometry";
 import { looksLikeMermaid } from "./mermaid/detect";
 
@@ -41,9 +38,36 @@ const clipboardNodeSchema = z.object({
 
 export type ClipboardNode = z.infer<typeof clipboardNodeSchema>;
 
+/**
+ * 对象走 v3 的线上形状（短键、墨迹点集压缩，与存储同一份编解码）：载荷体积小，
+ * 读回时逐条校验，任何一条认不出就整段拒绝（与旧版一致）。
+ */
+const itemsSchema = z
+  .array(z.unknown())
+  .default([])
+  .transform((list, ctx): Item[] => {
+    const items: Item[] = [];
+    for (const raw of list) {
+      const decoded = codec.itemFromWire(raw);
+      if (!decoded.ok) {
+        // 整段拒绝，不做部分恢复：缺一块的画布内容比没有更难排查。
+        ctx.addIssue({ code: "custom", message: decoded.error });
+        return z.NEVER;
+      }
+      items.push(decoded.value);
+    }
+    return items;
+  });
+
+const referenceSchema = z.object({
+  id: z.string().min(1),
+  itemId: z.string().min(1),
+  nodeId: z.string().min(1),
+});
+
 export const canvasClipboardSchema = z.object({
   armadra: z.literal(CLIPBOARD_SIGNATURE),
-  items: z.array(itemSchema).default([]),
+  items: itemsSchema,
   nodes: z.array(clipboardNodeSchema).default([]),
   references: z.array(referenceSchema).default([]),
 });
@@ -87,7 +111,10 @@ export function buildClipboard(
 }
 
 export function serializeClipboard(payload: CanvasClipboard): string {
-  return JSON.stringify(payload);
+  return JSON.stringify({
+    ...payload,
+    items: payload.items.map(codec.itemToWire),
+  });
 }
 
 /* -------------------------------- 读 -------------------------------------- */
@@ -143,8 +170,10 @@ export function clipboardBounds(
 export interface RelocateOptions {
   /** 粘贴落点（画布坐标）；内容的中心对齐到这里。 */
   at: Position;
-  /** 新对象 id 的生成器；测试里换成可预测的序列。 */
+  /** 新引用 id（uuid）的生成器；测试里换成可预测的序列。 */
   newId?: () => string;
+  /** 新对象 id 的生成器；缺省沿用 `newId`（测试），再缺省是 12 位 base62。 */
+  newItemId?: () => string;
 }
 
 /**
@@ -157,18 +186,21 @@ export interface RelocateOptions {
  */
 export function relocateClipboard(
   payload: CanvasClipboard,
-  { at, newId = () => crypto.randomUUID() }: RelocateOptions,
+  options: RelocateOptions,
 ): CanvasClipboard {
+  const { at } = options;
+  const newId = options.newId ?? (() => crypto.randomUUID());
   const bounds = clipboardBounds(payload);
   const dx = bounds ? at.x - (bounds.x + bounds.w / 2) : at.x;
   const dy = bounds ? at.y - (bounds.y + bounds.h / 2) : at.y;
   const itemIds = new Map<string, string>();
+  const nextItemId = options.newItemId ?? (options.newId ? newId : newItemId);
   const items = payload.items.map((item) => {
-    const id = newId();
+    const id = nextItemId();
     itemIds.set(item.id, id);
     // 组员的坐标相对 Frame，而粘贴出来的东西一律落在页面级：连同
     // `parentId` 一起丢掉，坐标才和落点是同一个坐标系。
-    return { ...item, id, parentId: null, x: item.x + dx, y: item.y + dy };
+    return { ...item, id, parentId: undefined, x: item.x + dx, y: item.y + dy };
   });
   const nodes = payload.nodes.map((node) => ({
     ...node,

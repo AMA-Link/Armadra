@@ -10,7 +10,8 @@ import { fileURLToPath } from "node:url";
 /** 子入口目录 → 行数上限；`total` 是整包上限。 */
 export const BUDGET = {
   core: 4500,
-  dom: 2740,
+  // B5 起 2740 → 2750：createBoard 加 `image` / `invalidate` 与「置顶对象先于 DOM 命中」。
+  dom: 2750,
   react: 500,
   total: 7600,
 };

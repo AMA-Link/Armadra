@@ -64,9 +64,7 @@ const {
 } = await import("./content-links");
 const { frameSource } = await import("./frame-reference");
 
-type Item = import("zod").infer<
-  (typeof import("./whiteboard/model"))["itemSchema"]
->;
+type Item = import("./whiteboard/model").Item;
 
 const stamp = "2026-09-06T00:00:00.000Z";
 const label = (key: string) => key;
@@ -106,7 +104,7 @@ function shape(overrides: Record<string, unknown> = {}): Item {
     w: 100,
     h: 100,
     z: 0,
-    parentId: null,
+    parentId: undefined,
     style: { color: "black" as const, size: "m" as const },
     geo: "rectangle" as const,
     ...overrides,
