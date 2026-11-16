@@ -102,7 +102,11 @@ export function DeliveryQueueBadge({
         record.outcome !== "queued",
     )
     .slice(0, RECENT_LIMIT);
-  const nodes = useCanvasStore((state) => state.document?.nodes);
+  // 标题只在浮层里用：只在打开时订节点表。常驻时订它会让任何一个节点的改动
+  // （会话状态跳动也算）把每个终端上的这枚徽标都重渲一遍。
+  const nodes = useCanvasStore((state) =>
+    open ? state.document?.nodes : undefined,
+  );
   const titleOf = (id: string) =>
     nodes?.find((node) => node.id === id)?.title ?? id;
 

@@ -20,10 +20,13 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Folder, MoreHorizontal, SquarePen } from "lucide-react";
 import type { WorkspaceSummary } from "@armadra/shared";
 
-import { useSessions } from "../agent/sessions";
+import { mergeSessions, sessionsQuery } from "../agent/sessions";
+import { useAgentStatusStore } from "../agent/status-store";
+import { useProgramStatusStore } from "../agent/program-status-store";
 import { useT, usePreferencesStore } from "../app/preferences-store";
 import { WorkspaceGroups } from "./SourceGroups";
 import { useOpenWorkspace } from "../app/workspace-actions";
@@ -314,9 +317,20 @@ function BoardSignalsFeed({
   workspaceId: string | null;
   store: ReturnType<typeof createSignalStore>;
 }): null {
-  const { sessions } = useSessions(workspaceId);
-  const next = useMemo(() => boardSignals(sessions), [sessions]);
-  useEffect(() => store.set(next), [store, next]);
+  const data = useQuery(sessionsQuery(workspaceId)).data;
+  const statuses = useAgentStatusStore((state) => state.statuses);
+  const programs = useProgramStatusStore((state) => state.programs);
+  // 「处于该状态多久」要随时间走，但节拍不进渲染：计时器在副作用里重算，
+  // 结果没变（`store.set` 比较过）就不会有任何订阅者被叫醒，也不会多一次 commit。
+  useEffect(() => {
+    const publish = () =>
+      store.set(
+        boardSignals(mergeSessions(data ?? [], statuses, Date.now(), programs)),
+      );
+    publish();
+    const timer = setInterval(publish, 5_000);
+    return () => clearInterval(timer);
+  }, [store, data, statuses, programs]);
   return null;
 }
 
