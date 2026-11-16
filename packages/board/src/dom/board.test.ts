@@ -211,6 +211,13 @@ describe("createBoard", () => {
     expect(seen).not.toHaveBeenCalled();
   });
 
+  it("gestureDeps 暴露给应用工具：选项实时生效、种类表可查", () => {
+    const { board } = setup();
+    expect(board.gestureDeps.kind?.("card")?.layer).toBe("world");
+    board.setOptions({ grid: 8 });
+    expect(board.gestureDeps.options?.().grid).toBe(8);
+  });
+
   it("rasterize 空集合报错", async () => {
     const { board } = setup();
     await expect(board.rasterize([])).rejects.toThrow("nothing to rasterize");

@@ -1,7 +1,11 @@
 // 门面：把场景、相机、渲染、输入路由与种类表装成一个 Board（设计 §2.2）。
 import { createMemoryScene, type CameraState, type EntityId } from "../core";
 import { createCamera } from "./camera";
-import { createSelectTool, type GestureFeedback } from "./gestures";
+import {
+  createSelectTool,
+  type GestureDeps,
+  type GestureFeedback,
+} from "./gestures";
 import { drawFeedback } from "./feedback";
 import { createInputRouter, type InputRouter } from "./input";
 import { rasterize, browserRasterEnv } from "./raster";
@@ -33,9 +37,14 @@ export interface CreateBoardOptions<D> extends Partial<BoardOptions> {
   color?(name: string): string;
 }
 
+/** 门面多暴露一项：应用自定义工具建手势时要用的依赖（选项、种类表、反馈）。 */
+export type DomBoard<D = unknown> = Board<D> & {
+  readonly gestureDeps: GestureDeps;
+};
+
 export function createBoard<D = unknown>(
   init: CreateBoardOptions<D> = {},
-): Board<D> {
+): DomBoard<D> {
   const { kinds: initial, camera: start, tool: first, color, ...rest } = init;
   const kinds = new Map(Object.entries(initial ?? {}));
   const kind = (name: string) => kinds.get(name) as DomKindSpec | undefined;
@@ -82,9 +91,10 @@ export function createBoard<D = unknown>(
   };
   const stopCamera = camera.subscribe((state) => board.emit("camera", state));
 
-  const board: Board<D> = {
+  const board: DomBoard<D> = {
     camera,
     scene,
+    gestureDeps,
     mount(container) {
       unmount();
       const renderer = createRenderer(container, {
