@@ -20,6 +20,7 @@ function fakeResult(scale) {
       fps: 200 / scale,
       p50Ms: 5 * scale,
       p95Ms: 8 * scale,
+      latencyMs: 30 * scale,
       slowestMs: 20 * scale,
       over33: 0,
       longTasks: 0,

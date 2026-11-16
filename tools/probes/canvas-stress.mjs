@@ -10,11 +10,13 @@
 // 超过 33.4 ms 的帧数、长任务数、主线程脚本+布局+样式耗时、任务总耗时、JS 堆与
 // DOM 节点数。
 //
+// 手势段另记输入到出帧的延迟（每个 pointermove / wheel 到它引起的舞台变动上屏
+// 那一帧），这是比较用的响应指标；fps 只记录（不封顶时它数的是每个输入出了几帧）。
 // 默认不封顶：Chrome 带 `--disable-gpu-vsync --disable-frame-rate-limit`，rAF 不再
-// 被 60 Hz 卡住，fps 与帧时才有判别力；主线程耗时与刷新率无关。`CANVAS_BENCH_CAPPED=1`
+// 被 60 Hz 卡住，帧时才有判别力；主线程耗时与刷新率无关。`CANVAS_BENCH_CAPPED=1`
 // 退回旧的 60 Hz 封顶。每段的输入是固定步数（不是固定时长），两个引擎吃到同一串输入。
 // 对比：`canvas-bench-aggregate.mjs` 取多次中位数做基线，`canvas-bench-compare.mjs`
-// 逐项比较（任一项未严格优于基线即退出码 1）。
+// 逐项比较（未严格优于基线即退出码 1；floor / 持平 / 波动内三类例外见 lib）。
 // 另外单独量一次「一次会话状态跳动引发多少个组件重渲」：注入 React DevTools
 // 的 hook 垫片（React 只有在 hook 在它之前就位时才给 fiber 打开 ProfileMode），
 // 用 DevTools Profiler 自己那条 `didFiberRender` 判据数 fiber。
@@ -55,6 +57,7 @@ import {
   diffPerformance,
   metricsMap,
   summarizeFrames,
+  summarizeLatency,
 } from "./canvas-bench-lib.mjs";
 import { isolatedEnv, probeHome } from "./probe-home.mjs";
 
@@ -134,11 +137,62 @@ async function freePort() {
 const INSTRUMENT = `
 (() => {
   const frames = { on: false, times: [] };
+  // 输入到出帧的延迟：每个 pointermove / wheel 记下事件时间戳，等到画布舞台里
+  // 第一次有相关的 DOM 变动，算到**那一变动上屏的那一帧**的 rAF 时间。变动发生在
+  // 某一帧的 rAF 回调里（这个计时器的 rAF 永远排在页面的前面，先登记帧开始），就
+  // 记这一帧；发生在帧外（输入回调、帧后的 React commit），就记下一帧。旧引擎在
+  // 帧后提交、再补一帧才上屏，新引擎在同一帧里写完——fps 数的是帧数，这个数的是
+  // 用户看到响应要等多久。
+  const latency = {
+    on: false,
+    stage: null,
+    pending: [],
+    values: [],
+    frameTime: 0,
+    inFrame: false,
+    outside: false,
+  };
+  const settle = (time) => {
+    for (const stamp of latency.pending) latency.values.push(time - stamp);
+    latency.pending.length = 0;
+  };
+  const frameEnd = new MessageChannel();
+  frameEnd.port1.onmessage = () => {
+    latency.inFrame = false;
+  };
   const tick = (now) => {
     if (frames.on) frames.times.push(now);
+    if (latency.on) {
+      latency.frameTime = now;
+      latency.inFrame = true;
+      if (latency.outside) {
+        latency.outside = false;
+        settle(now);
+      }
+      frameEnd.port2.postMessage(0);
+    }
     requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
+  const onInput = (event) => {
+    if (latency.on) latency.pending.push(event.timeStamp);
+  };
+  addEventListener("pointermove", onInput, { capture: true, passive: true });
+  addEventListener("wheel", onInput, { capture: true, passive: true });
+  new MutationObserver((records) => {
+    if (!latency.on || latency.pending.length === 0) return;
+    const relevant = records.some(
+      (record) =>
+        record.target.nodeType === 1 && record.target.closest(latency.stage),
+    );
+    if (!relevant) return;
+    if (latency.inFrame) settle(latency.frameTime);
+    else latency.outside = true;
+  }).observe(document, {
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["style", "transform", "x", "y", "width", "height", "d"],
+  });
 
   const PERFORMED_WORK = 0b1;
   const RENDERING_TAGS = new Set([0, 1, 9, 11, 14, 15]); // Function/Class/ContextConsumer/ForwardRef/Memo/SimpleMemo
@@ -244,19 +298,29 @@ const INSTRUMENT = `
   } catch {}
 
   window.__armadraProbe = {
-    startFrames() {
+    startFrames(stage) {
       frames.times.length = 0;
+      latency.stage = stage;
+      latency.pending.length = 0;
+      latency.values.length = 0;
+      latency.outside = false;
+      latency.on = true;
       longTasks.count = 0;
       longTasks.on = true;
       frames.on = true;
     },
     stopFrames() {
       frames.on = false;
+      latency.on = false;
       if (longTaskObserver && longTasks.on) {
         longTasks.count += longTaskObserver.takeRecords().length;
       }
       longTasks.on = false;
-      return { times: frames.times.slice(), longTasks: longTasks.count };
+      return {
+        times: frames.times.slice(),
+        longTasks: longTasks.count,
+        latencies: latency.values.slice(),
+      };
     },
     startProfiler() {
       profiler.commits = 0;
@@ -773,7 +837,9 @@ async function main() {
     const reactProfiled = reactSegments.includes(name);
     if (reactProfiled)
       await evaluate(`window.__armadraProbe.startProfiler(); return 1;`);
-    await evaluate(`window.__armadraProbe.startFrames(); return 1;`);
+    await evaluate(
+      `window.__armadraProbe.startFrames(${JSON.stringify(dom.stage)}); return 1;`,
+    );
     await action();
     const raw = await evaluate(`return window.__armadraProbe.stopFrames();`);
     if (traced) {
@@ -820,6 +886,7 @@ async function main() {
         `return document.querySelector(${JSON.stringify(dom.viewport)})?.style.transform ?? null;`,
       ),
       ...frames,
+      ...summarizeLatency(raw.latencies),
       longTasks: raw.longTasks,
       ...diffPerformance(before, after),
       wallMs: elapsed,
@@ -834,7 +901,7 @@ async function main() {
     };
     step(
       `段：${name}`,
-      `${frames.fps} fps，p95 ${frames.p95Ms} ms，最慢 ${frames.slowestMs} ms，主线程 ${report.segments[name].mainThreadMs} ms，长任务 ${raw.longTasks}`,
+      `${frames.fps} fps，输入延迟 p50 ${report.segments[name].latencyMs ?? "—"} ms，p95 ${frames.p95Ms} ms，最慢 ${frames.slowestMs} ms，主线程 ${report.segments[name].mainThreadMs} ms，长任务 ${raw.longTasks}`,
     );
   };
 

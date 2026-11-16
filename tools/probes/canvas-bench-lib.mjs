@@ -27,6 +27,8 @@ export const ENGINES = {
     selected: ".react-flow__node.selected",
     dragHandle: ".drag-handle",
     idAttr: "data-id",
+    /** 输入延迟只认这块舞台里的变动（视口、节点、框选框）。 */
+    stage: ".react-flow",
   },
   next: {
     node: '[data-board-layer="world"] > [data-board-id]',
@@ -35,6 +37,7 @@ export const ENGINES = {
       '[data-board-layer="world"] > [data-board-id] [data-slot="node-shell"][data-selected="true"]',
     dragHandle: ".drag-handle",
     idAttr: "data-board-id",
+    stage: ":has(> [data-board-layer])",
   },
 };
 
@@ -52,18 +55,31 @@ export const SEGMENTS = [
 /**
  * 逐段指标的定义。`higher` 为 true 表示越大越好，否则越小越好。
  * `floor`：计数类指标，基线已是 0 时无法「严格更优」，持平记为通过（表里标 floor）。
+ * `noise`：受 GC、帧心跳量化左右、两个引擎谁快会在轮与轮之间翻转的指标；候选
+ * 中位数不超过基线 7 次里最差的一次即过（表里标「波动内」），见 `compareMetrics`。
+ * `record`：只写进 result.json，不进比较。
  */
 export const SEGMENT_METRICS = [
-  { key: "fps", label: "平均帧率 fps", higher: true },
+  // 平均帧率只记录不比较：不封顶后它数的是「每个输入出了几帧」。旧引擎在帧后
+  // 提交、每个输入要补 2–3 帧，新引擎同一帧写完只出一帧——帧多是白画，不是更顺。
+  // 判别改用输入到出帧的延迟（用户看到响应要等多久）。
+  { key: "fps", label: "平均帧率 fps", higher: true, record: true },
   // p50 / p95 帧时写进 result.json 但不进比较：不封顶后帧时是双峰的（输入合并出的
   // 毫秒级帧 + 压在 17.7 ms 上的 60 Hz 心跳帧），p95 在旧引擎上就贴着 17.7 ms，
-  // 新引擎再快也只能打平，没有判别力。判别用 fps、最慢帧、超 33.4 ms 帧数与 CPU。
-  { key: "slowestMs", label: "最慢一帧 ms", higher: false },
-  { key: "over33", label: "超 33.4 ms 帧数", higher: false, floor: true },
+  // 新引擎再快也只能打平，没有判别力。
+  { key: "latencyMs", label: "输入到出帧延迟 p50 ms", higher: false },
+  { key: "slowestMs", label: "最慢一帧 ms", higher: false, noise: true },
+  {
+    key: "over33",
+    label: "超 33.4 ms 帧数",
+    higher: false,
+    floor: true,
+    noise: true,
+  },
   { key: "longTasks", label: "长任务数 >50 ms", higher: false, floor: true },
   { key: "mainThreadMs", label: "主线程脚本+布局+样式 ms", higher: false },
   { key: "taskMs", label: "主线程任务总耗时 ms", higher: false },
-  { key: "heapMb", label: "JS 堆 MB", higher: false },
+  { key: "heapMb", label: "JS 堆 MB", higher: false, noise: true },
   { key: "domNodes", label: "DOM 节点数", higher: false },
 ];
 
@@ -71,19 +87,29 @@ export const SEGMENT_METRICS = [
  * 输入节奏决定帧数的段：空闲没有任何变化，输入段被固定的 25 ms 打字间隔
  * 限住，帧率与帧时反映的是 Chrome 无损伤时的 60 Hz 心跳，不是引擎。这两段
  * 的帧指标照常写进 result.json，但不进比较，只比 CPU、长任务、堆与 DOM 节点。
+ * 空闲段什么都不做，CPU 只是后台定时器的抖动，整段按 `noise` 判。
  */
 export const PACED_SEGMENTS = ["idle", "typing"];
-export const FRAME_KEYS = ["fps", "slowestMs", "over33"];
+export const FRAME_KEYS = ["fps", "latencyMs", "slowestMs", "over33"];
+export const NOISY_SEGMENTS = ["idle"];
 
 /** 非逐段的指标。 */
 export const GLOBAL_METRICS = [
   { key: "rerender.rendered", label: "会话状态跳动重渲组件数", higher: false },
   { key: "rerender.commits", label: "会话状态跳动 commit 数", higher: false },
-  { key: "typing.commits", label: "输入 100 字符 commit 数", higher: false },
+  // `tie`：两边持平即过。打字每个字符一次 commit 已是下限；白板字节同一提交上
+  // 两个引擎存的是同一份 v3 内容（旧格式 v2 是 581,414 字节，见基线报告）。
+  {
+    key: "typing.commits",
+    label: "输入 100 字符 commit 数",
+    higher: false,
+    tie: true,
+  },
   {
     key: "inkBoard.whiteboardBytes",
     label: "300 条墨迹白板字节数",
     higher: false,
+    tie: true,
   },
 ];
 
@@ -95,6 +121,7 @@ export function metricList() {
         continue;
       list.push({
         ...metric,
+        ...(NOISY_SEGMENTS.includes(segment) ? { noise: true } : {}),
         key: `${segment}.${metric.key}`,
         label: `${segment} ${metric.label}`,
       });
@@ -126,6 +153,19 @@ export function summarizeFrames(times) {
     p95Ms: round(at(0.95), 2),
     slowestMs: round(sorted[sorted.length - 1], 2),
     over33: deltas.filter((delta) => delta > 33.4).length,
+  };
+}
+
+/** 每个输入到出帧的延迟（ms）→ p50 / p95 / 样本数。没有样本返回空对象。 */
+export function summarizeLatency(values) {
+  if (!Array.isArray(values) || values.length === 0) return {};
+  const sorted = [...values].sort((a, b) => a - b);
+  const at = (q) =>
+    sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
+  return {
+    latencyMs: round(at(0.5), 2),
+    latencyP95Ms: round(at(0.95), 2),
+    latencyInputs: sorted.length,
   };
 }
 
@@ -284,6 +324,7 @@ export function aggregate(results) {
   const metrics = {};
   const spread = {};
   const range = {};
+  const bounds = {};
   for (const { key } of metricList()) {
     const values = flats
       .map((flat) => flat[key])
@@ -297,8 +338,9 @@ export function aggregate(results) {
       mid === 0 ? (x === 0 ? 0 : null) : round(x / Math.abs(mid), 3);
     spread[key] = rel(iqr);
     range[key] = rel(full);
+    bounds[key] = [Math.min(...values), Math.max(...values)];
   }
-  return { metrics, spread, range, runs: results.length };
+  return { metrics, spread, range, bounds, runs: results.length };
 }
 
 /** 读 result.json 或基线文件，统一成指标表。 */
@@ -308,30 +350,52 @@ export function loadMetrics(json) {
     : flatten(json);
 }
 
+/** 基线文件里每项 7 次运行的 [最小, 最大]；单次 result.json 没有就是空表。 */
+export function loadBounds(json) {
+  return json?.bounds && typeof json.bounds === "object" ? json.bounds : {};
+}
+
 /**
- * 逐项比较。严格更优才算过；`floor` 指标基线为 0 时，候选也为 0 记「floor」
- * （已在下限，无法更优）算过。缺失任一侧一律判不过。
+ * 逐项比较。严格更优才算过，以下例外：
+ * - `floor` 指标基线为 0 时，候选也为 0 记「floor」（已在下限，无法更优）；
+ * - `tie` 指标持平记「持平」算过；
+ * - `noise` 指标候选不超过基线运行里最差的一次（`bounds`）记「波动内」算过。
+ * `record` 指标不进比较。缺失任一侧一律判不过。
  */
-export function compareMetrics(baseline, candidate) {
-  const rows = metricList().map((metric) => {
-    const base = baseline[metric.key];
-    const next = candidate[metric.key];
-    if (typeof base !== "number" || typeof next !== "number") {
-      return { ...metric, base, next, status: "missing", pass: false };
-    }
-    const better = metric.higher ? next > base : next < base;
-    if (better) return { ...metric, base, next, status: "better", pass: true };
-    if (metric.floor && base === 0 && next === 0) {
-      return { ...metric, base, next, status: "floor", pass: true };
-    }
-    return {
-      ...metric,
-      base,
-      next,
-      status: next === base ? "equal" : "worse",
-      pass: false,
-    };
-  });
+export function compareMetrics(baseline, candidate, bounds = {}) {
+  const rows = metricList()
+    .filter((metric) => !metric.record)
+    .map((metric) => {
+      const base = baseline[metric.key];
+      const next = candidate[metric.key];
+      if (typeof base !== "number" || typeof next !== "number") {
+        return { ...metric, base, next, status: "missing", pass: false };
+      }
+      const better = metric.higher ? next > base : next < base;
+      if (better)
+        return { ...metric, base, next, status: "better", pass: true };
+      if (metric.floor && base === 0 && next === 0) {
+        return { ...metric, base, next, status: "floor", pass: true };
+      }
+      if (metric.tie && next === base) {
+        return { ...metric, base, next, status: "tie", pass: true };
+      }
+      const worst = bounds[metric.key]?.[metric.higher ? 0 : 1];
+      if (
+        metric.noise &&
+        typeof worst === "number" &&
+        (metric.higher ? next >= worst : next <= worst)
+      ) {
+        return { ...metric, base, next, status: "noise", pass: true };
+      }
+      return {
+        ...metric,
+        base,
+        next,
+        status: next === base ? "equal" : "worse",
+        pass: false,
+      };
+    });
   return { rows, pass: rows.every((row) => row.pass) };
 }
 
@@ -346,6 +410,8 @@ export function renderComparison({ rows }) {
   const mark = {
     better: "更优",
     floor: "floor",
+    tie: "持平",
+    noise: "波动内",
     equal: "持平",
     worse: "更差",
     missing: "缺失",
