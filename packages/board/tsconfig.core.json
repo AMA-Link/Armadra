@@ -1,0 +1,10 @@
+{
+  "$comment": "core 的类型环境不含 DOM 与 Node：写了 document、window、setTimeout 之类的全局会直接编译失败。测试文件在 tsconfig.json 里检查。",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": ["src/core"],
+  "exclude": ["src/**/*.test.ts"]
+}
