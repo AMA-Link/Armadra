@@ -47,7 +47,23 @@ export function setFlow(flow: FlowHandle | null): void {
 
 /** 画布容器（`.react-flow` 的宿主）。最大化与 fitView 要量它的像素尺寸。 */
 export function setFlowContainer(element: HTMLElement | null): void {
+  if (container === element) return;
   container = element;
+  for (const listener of [...containerListeners]) listener();
+}
+
+const containerListeners = new Set<() => void>();
+
+/** 订阅舞台元素（光标、评论钉要往它上面挂指针监听）。 */
+export function useFlowContainer(): HTMLElement | null {
+  return React.useSyncExternalStore(
+    (listener) => {
+      containerListeners.add(listener);
+      return () => containerListeners.delete(listener);
+    },
+    getFlowContainer,
+    () => null,
+  );
 }
 
 export function getFlowContainer(): HTMLElement | null {

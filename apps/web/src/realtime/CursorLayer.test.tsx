@@ -9,9 +9,10 @@ import {
 } from "vitest";
 import { act, cleanup, render } from "@testing-library/react";
 import * as React from "react";
-import { useStoreApi } from "@xyflow/react";
 
 import { TestProviders, installDomPolyfills } from "@/app/test-harness";
+import { setFlow, setFlowContainer } from "@/canvas/flow/flow-context";
+import { publishStageView } from "@/canvas/flow/stage-view";
 import { emptyWhiteboard, type Item } from "@/canvas/whiteboard/model";
 import { useCanvasStore } from "@/store/canvas-store";
 import type { Peer } from "./awareness";
@@ -29,29 +30,27 @@ import { useRealtimeStore } from "./session";
  * 成员光标与选区（设计系统 §4、§5.6）。
  */
 
-/** React Flow 实例换成桩：只看跟随往相机发了什么。 */
+/** 画布句柄换成桩：只看跟随往相机发了什么。 */
 const flow = vi.hoisted(() => ({
   setCenter: vi.fn(() => Promise.resolve(true)),
-  getZoom: vi.fn(() => 0.8),
+  getViewport: vi.fn(() => ({ x: 0, y: 0, zoom: 0.8 })),
   screenToFlowPosition: vi.fn((point: { x: number; y: number }) => point),
 }));
-vi.mock("@xyflow/react", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@xyflow/react")>()),
-  useReactFlow: () => flow,
-}));
 
-/** 给 React Flow 的 store 一个根元素（跟随描边挂在它上面）。 */
+/** 给画布登记一个舞台元素（跟随描边挂在它上面）并推一份视口。 */
 function WithDomNode({ children }: { children: React.ReactNode }) {
-  const api = useStoreApi();
   const [ready, setReady] = React.useState(false);
   React.useLayoutEffect(() => {
     const root = document.createElement("div");
     root.dataset.testid = "flow-root";
     document.body.appendChild(root);
-    api.setState({ domNode: root as HTMLDivElement });
+    setFlowContainer(root);
     setReady(true);
-    return () => root.remove();
-  }, [api]);
+    return () => {
+      setFlowContainer(null);
+      root.remove();
+    };
+  }, []);
   return ready ? <>{children}</> : null;
 }
 
@@ -119,10 +118,14 @@ describe("<CursorLayer />", () => {
     const store = useCanvasStore.getState();
     store.selectBoard(BOARD.id);
     store.setDocument(boardDocument([terminal(ONE, 0), terminal(TWO, 400)]));
+    setFlow(flow as never);
+    publishStageView({ x: 0, y: 0, zoom: 1, width: 1000, height: 600 });
   });
 
   afterEach(() => {
     cleanup();
+    setFlow(null);
+    publishStageView(null);
     vi.useRealTimers();
     flow.setCenter.mockClear();
     useRealtimeStore.setState({

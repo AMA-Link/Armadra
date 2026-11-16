@@ -1,11 +1,16 @@
 import * as React from "react";
-import { useReactFlow, useStore } from "@xyflow/react";
 import { MessageSquarePlus } from "lucide-react";
 import { toast } from "@/ui/toast";
 import type { BoardComment, CanvasNode, CommentAnchor } from "@armadra/shared";
 
 import { useAccess } from "@/app/use-access";
 import { usePreferencesStore, useT } from "@/app/preferences-store";
+import {
+  getFlow,
+  useFlowContainer,
+  useFlowHandle,
+} from "@/canvas/flow/flow-context";
+import { useStageView } from "@/canvas/flow/stage-view";
 import { nodeBox } from "@/canvas/geometry";
 import { MAX_ZOOM } from "@/canvas/zoom";
 import type { Item } from "@/canvas/whiteboard/model";
@@ -230,7 +235,7 @@ function Comments({
   boardId: string;
 }) {
   const t = useT();
-  const flow = useReactFlow();
+  const flow = useFlowHandle();
   const access = useAccess();
   const comments = useCommentsStore((state) => state.comments);
   const people = useCommentsStore((state) => state.people);
@@ -241,8 +246,8 @@ function Comments({
   const offline = useRealtimeStore((view) => view.status === "offline");
   const nodes = useCanvasStore((state) => state.document?.nodes ?? NO_NODES);
   const items = useCanvasStore((state) => state.whiteboard.items);
-  const zoom = useStore((state) => state.transform[2]);
-  const domNode = useStore((state) => state.domNode);
+  const { zoom } = useStageView();
+  const domNode = useFlowContainer();
 
   const canWrite = access.can("canvas:write", workspaceId);
   const isOwner = !access.member;
@@ -263,10 +268,11 @@ function Comments({
       event.preventDefault();
       event.stopPropagation();
       if (!canWrite) return;
-      const point = flow.screenToFlowPosition({
+      const point = getFlow()?.screenToFlowPosition({
         x: event.clientX,
         y: event.clientY,
       });
+      if (!point) return;
       const state = useCanvasStore.getState();
       startDraft(
         anchorAt(point, state.document?.nodes ?? [], state.whiteboard.items),
@@ -284,7 +290,7 @@ function Comments({
       window.removeEventListener("keydown", key);
       target.style.cursor = cursor;
     };
-  }, [mode, domNode, flow, canWrite]);
+  }, [mode, domNode, canWrite]);
 
   const run = React.useCallback(
     async (work: () => Promise<unknown>) => {
@@ -384,7 +390,9 @@ function Comments({
           return (
             <div
               key={cluster.key}
-              // 钉上的按下不该变成画布的框选或拖动。
+              // 钉上的按下不该变成画布的框选或拖动：旧引擎靠停止冒泡，
+              // 自研引擎的输入路由在容器上听原生事件，靠 `data-board-editable` 放手。
+              data-board-editable=""
               onPointerDown={(event) => event.stopPropagation()}
               // React Flow 的视口层是 `pointer-events: none`（会继承）：钉要
               // 自己接回指针，否则点击穿过钉落到下面的节点或白板对象上。
@@ -406,7 +414,7 @@ function Comments({
                   const center = pointsCenter(cluster.points);
                   const animate =
                     usePreferencesStore.getState().whiteboard.animation;
-                  void flow.setCenter(center.x, center.y, {
+                  void flow?.setCenter(center.x, center.y, {
                     zoom: zoomTo,
                     duration: animate ? SEPARATE_DURATION_MS : 0,
                   });

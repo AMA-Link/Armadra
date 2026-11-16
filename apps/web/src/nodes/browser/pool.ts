@@ -1,6 +1,5 @@
 import * as React from "react";
 import type { CanvasNode } from "@armadra/shared";
-import type { XYPosition } from "@xyflow/react";
 
 import type { ArmadraFlowNode, CanvasFlowNode } from "@/canvas/sync/project";
 
@@ -159,7 +158,10 @@ function isBrowserNode(node: CanvasFlowNode): node is ArmadraFlowNode {
  * 范围。零面积的点不会被画出来；放在 `anchor`（当前画布里已有的一个点）上，
  * 也就不会把范围撑到别处去。条目里留着活着时的投影，复活时尺寸照旧。
  */
-function ghostOf(node: ArmadraFlowNode, anchor: XYPosition): ArmadraFlowNode {
+function ghostOf(
+  node: ArmadraFlowNode,
+  anchor: { x: number; y: number },
+): ArmadraFlowNode {
   const { parentId: _parentId, ...rest } = node;
   return {
     ...rest,
@@ -256,7 +258,10 @@ export function applyWebviewPool(
  * 坐标），一个都没有就原点。这个点本来就在内容范围里，零面积的 ghost 放在
  * 这里不会改变缩略图与「适应」的范围。
  */
-function ghostAnchor(nodes: readonly CanvasFlowNode[]): XYPosition {
+function ghostAnchor(nodes: readonly CanvasFlowNode[]): {
+  x: number;
+  y: number;
+} {
   const top = nodes.find((node) => !node.parentId);
   return top ? { x: top.position.x, y: top.position.y } : { x: 0, y: 0 };
 }

@@ -13,6 +13,8 @@ export const realtime: MessageModule = {
     "realtime.readOnly": "只读",
     "realtime.cursors": "成员光标",
     "realtime.setting": "实时协同",
+    "realtime.formatMismatch":
+      "这块板的数据格式与当前版本不同，没有加入实时协同。请把各端更新到同一版本后再打开",
     "comments.title": "评论",
     "comments.mode": "评论",
     "comments.onlyOpen": "只看未解决",
@@ -50,6 +52,8 @@ export const realtime: MessageModule = {
     "realtime.readOnly": "Read-only",
     "realtime.cursors": "Cursors",
     "realtime.setting": "Real-time collaboration",
+    "realtime.formatMismatch":
+      "This board uses a different data format than this version, so real-time collaboration did not start. Update every device to the same version and reopen it",
     "comments.title": "Comments",
     "comments.mode": "Comment",
     "comments.onlyOpen": "Unresolved only",

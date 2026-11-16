@@ -8,6 +8,7 @@ import {
 } from "@xyflow/react";
 
 import { useT } from "@/app/preferences-store";
+import { useCanvasReadOnly } from "@/store/canvas/presence";
 import { useIsBoardHost } from "../../board/host-context";
 
 /**
@@ -148,9 +149,35 @@ function ConnectionHandlesInner({
 }
 
 /**
- * 自研引擎的宿主里没有 React Flow 的节点上下文：连线把手由 B4 的新连线层接管，
- * 这里什么都不画（`Handle` 在节点之外会报错）。
+ * 自研引擎宿主里的起笔把手：四边中点各一个，引擎按 `data-board-handle` 认它们
+ * （`dom/input/target.ts`），拖出来发 `connect` 事件（`board/use-board-connect.tsx`）。
+ * 落点不需要把手：引擎按指针下的实体判落点，整块节点体都算。分组与白板对象只作
+ * 落点，什么都不画；只读时不画（引擎也不会起手势）。
+ */
+function BoardHandles({ dropOnly }: ConnectionHandlesProps) {
+  const t = useT();
+  const readOnly = useCanvasReadOnly();
+  if (dropOnly || readOnly) return null;
+  return SIDES.map(([side]) => (
+    <span
+      key={side}
+      aria-label={t("node.linkHandle")}
+      className="board-connection-handle"
+      data-board-handle={side}
+      data-slot="connection-handle"
+      data-side={side}
+    />
+  ));
+}
+
+/**
+ * 两种引擎各画各的：React Flow 的 `Handle` 在节点之外会报错，宿主里用上面的
+ * 普通元素。两者都不是（手机焦点页直接渲染节点体，`ReactFlowProvider` 只在
+ * 旧引擎的画布里）就不画把手：`useNodeId` 只读节点上下文，不需要 provider。
+ * B6 删掉 React Flow 后只剩 `BoardHandles`。
  */
 export function ConnectionHandles(props: ConnectionHandlesProps = {}) {
-  return useIsBoardHost() ? null : <ConnectionHandlesInner {...props} />;
+  const inFlowNode = useNodeId() !== null;
+  if (useIsBoardHost()) return <BoardHandles {...props} />;
+  return inFlowNode ? <ConnectionHandlesInner {...props} /> : null;
 }

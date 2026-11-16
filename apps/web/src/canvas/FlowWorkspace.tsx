@@ -4,6 +4,7 @@ import {
   BackgroundVariant,
   ConnectionMode,
   ReactFlow,
+  ReactFlowProvider,
   ViewportPortal,
   useReactFlow,
 } from "@xyflow/react";
@@ -57,6 +58,7 @@ import {
 } from "./interaction/keyboard";
 import { useCanvasMenus } from "./menus/CanvasMenus";
 import { Minimap } from "./flow/Minimap";
+import { FlowStagePublisher } from "./flow/FlowStagePublisher";
 import { CanvasOverlays } from "./flow/overlays/CanvasOverlays";
 import { CanvasStylePanel } from "./StylePanel";
 import { ToolLayer } from "./whiteboard/tools/ToolLayer";
@@ -101,7 +103,14 @@ const ATTRIBUTION = { hideAttribution: true } as const;
  * 它一个 prop 都不收，所以 `memo` 是一道干净的墙：壳自己重渲多少次都到此为
  * 止，画布只在它订阅的 store 真的变了的时候重画。
  */
-export const FlowWorkspace = React.memo(FlowWorkspaceInner);
+export const FlowWorkspace = React.memo(function FlowWorkspace() {
+  // provider 跟着旧引擎走（`useReactFlow` 要它），不在应用根上（B4：外面不再认 React Flow）。
+  return (
+    <ReactFlowProvider>
+      <FlowWorkspaceInner />
+    </ReactFlowProvider>
+  );
+});
 
 function FlowWorkspaceInner() {
   const t = useT();
@@ -285,6 +294,7 @@ function FlowWorkspaceInner() {
                 `<ViewportPortal>` 已经替我们做完相机变换（F07）。 */}
             {/* 状态缩略图（F20，B1）。它是 `<Panel>`，位置在 canvas.css 里。 */}
             <Minimap />
+            <FlowStagePublisher />
             <ViewportPortal>
               <CanvasOverlays />
               {/* 实时板上别人的光标与选区（补全架构 §6.4）；非实时板不画。 */}
