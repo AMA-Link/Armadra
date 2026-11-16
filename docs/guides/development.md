@@ -132,24 +132,24 @@ TOKEN / SECRET / PASSWORD / CREDENTIAL 字样一律拒绝。
 
 从仓库根执行，按改动涉及的模块选择：
 
-| 范围               | 命令                                                                                                                  |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| 仓库规则           | `pnpm repo:check`（秒级）、`pnpm repo:test`                                                                           |
-| 本机等价 CI        | `pnpm verify`＝libs 构建 → 静态检查并行 → web/desktop 构建 → 受影响的测试；`--full` 全量，`--base <ref>` 换基点       |
-| 一次过静态检查     | `pnpm check`＝libs 构建 + format:check + lint + typecheck + repo:check + ci:workflows + release:check + notices:check |
-| lint               | `pnpm lint`（ESLint，只有 error 失败）；`pnpm exec eslint <路径>` 只看一处                                            |
-| 未用代码与依赖     | `pnpm knip`（只出报告，退出码恒为 0；不在 check 里）                                                                  |
-| 覆盖率             | `pnpm test:coverage`（web、desktop、server，报告在各包 `coverage/`）                                                  |
-| 前端               | `pnpm --filter @armadra/web test`、`pnpm --filter @armadra/web typecheck`                                             |
-| 共享模型           | `pnpm --filter @armadra/shared test`                                                                                  |
-| core 与桌面壳      | `pnpm --filter @armadra/desktop test`（vitest + `node --test scripts/*.test.mjs`）                                    |
-| 服务器壳           | `pnpm --filter @armadra/server test`、`pnpm --filter @armadra/server typecheck`                                       |
-| 全部包             | `pnpm test`                                                                                                           |
-| 格式 / 类型        | `pnpm format:check`、`pnpm typecheck`                                                                                 |
-| 发布与 CI 脚本     | `pnpm release:test`、`pnpm ci:workflows`、`pnpm release:check`（三端版本一并查）                                      |
-| 手机壳             | `pnpm --filter @armadra/mobile test`；版本与构建号 `node apps/mobile/scripts/app-version.mjs print`（CI 与发布 §2.8） |
-| 桌面构建（不打包） | `pnpm --filter @armadra/desktop build`                                                                                |
-| 桌面打包           | `pnpm --filter @armadra/desktop dist`                                                                                 |
+| 范围               | 命令                                                                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| 仓库规则           | `pnpm repo:check`（秒级）、`pnpm repo:test`                                                                                          |
+| 本机等价 CI        | `pnpm verify`＝libs 构建 → 静态检查并行 → web/desktop 构建 → 受影响的测试；`--full` 全量，`--base <ref>` 换基点                      |
+| 一次过静态检查     | `pnpm check`＝libs 构建 + format:check + lint + typecheck + repo:check + board:budget + ci:workflows + release:check + notices:check |
+| lint               | `pnpm lint`（ESLint，只有 error 失败）；`pnpm exec eslint <路径>` 只看一处                                                           |
+| 未用代码与依赖     | `pnpm knip`（只出报告，退出码恒为 0；不在 check 里）                                                                                 |
+| 覆盖率             | `pnpm test:coverage`（web、desktop、server，报告在各包 `coverage/`）                                                                 |
+| 前端               | `pnpm --filter @armadra/web test`、`pnpm --filter @armadra/web typecheck`                                                            |
+| 共享模型           | `pnpm --filter @armadra/shared test`                                                                                                 |
+| core 与桌面壳      | `pnpm --filter @armadra/desktop test`（vitest + `node --test scripts/*.test.mjs`）                                                   |
+| 服务器壳           | `pnpm --filter @armadra/server test`、`pnpm --filter @armadra/server typecheck`                                                      |
+| 全部包             | `pnpm test`                                                                                                                          |
+| 格式 / 类型        | `pnpm format:check`、`pnpm typecheck`                                                                                                |
+| 发布与 CI 脚本     | `pnpm release:test`、`pnpm ci:workflows`、`pnpm release:check`（三端版本一并查）                                                     |
+| 手机壳             | `pnpm --filter @armadra/mobile test`；版本与构建号 `node apps/mobile/scripts/app-version.mjs print`（CI 与发布 §2.8）                |
+| 桌面构建（不打包） | `pnpm --filter @armadra/desktop build`                                                                                               |
+| 桌面打包           | `pnpm --filter @armadra/desktop dist`                                                                                                |
 
 身份域的端到端在 `apps/desktop/src/core/identity/accounts.integration.test.ts`：真起 core，走完取票、配对、重放被拒、撤销。
 `tools/probes/` 下的探针跑的也是真的 core（`apps/desktop/out/core/main.js`）：终端的冒烟、
