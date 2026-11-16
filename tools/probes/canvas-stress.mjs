@@ -5,8 +5,16 @@
 // document → 全量重投影」这条链上（Armadra 画布初步分析；实测修正见 docs/status/canvas-performance-baseline.md §5.2）。
 // 这个脚本把那一列补上：每个终端节点都真的连着一个 Runtime PTY 会话。
 //
-// 量四段：空闲 / 手形平移 / 拖一个节点 / 在一张便签里连续输入 100 字符。
-// 每段记平均 fps、p50、p95 帧时、最慢一帧、超过 33.4 ms 的帧数与 JS 堆。
+// 量七段：空闲 / 手形平移 / 拖一个节点 / ctrl+滚轮缩放 / 框选 / 在一张便签里连续
+// 输入 100 字符 / 300 条墨迹白板板上平移。每段记平均 fps、p50、p95 帧时、最慢一帧、
+// 超过 33.4 ms 的帧数、长任务数、主线程脚本+布局+样式耗时、任务总耗时、JS 堆与
+// DOM 节点数。
+//
+// 默认不封顶：Chrome 带 `--disable-gpu-vsync --disable-frame-rate-limit`，rAF 不再
+// 被 60 Hz 卡住，fps 与帧时才有判别力；主线程耗时与刷新率无关。`CANVAS_BENCH_CAPPED=1`
+// 退回旧的 60 Hz 封顶。每段的输入是固定步数（不是固定时长），两个引擎吃到同一串输入。
+// 对比：`canvas-bench-aggregate.mjs` 取多次中位数做基线，`canvas-bench-compare.mjs`
+// 逐项比较（任一项未严格优于基线即退出码 1）。
 // 另外单独量一次「一次会话状态跳动引发多少个组件重渲」：注入 React DevTools
 // 的 hook 垫片（React 只有在 hook 在它之前就位时才给 fiber 打开 ProfileMode），
 // 用 DevTools Profiler 自己那条 `didFiberRender` 判据数 fiber。
@@ -38,6 +46,14 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import {
+  SCHEMA,
+  SELECTORS,
+  buildInkWhiteboardV2,
+  diffPerformance,
+  metricsMap,
+  summarizeFrames,
+} from "./canvas-bench-lib.mjs";
 import { isolatedEnv, probeHome } from "./probe-home.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
@@ -45,10 +61,18 @@ const output = resolve(process.argv[2] ?? join(root, "target/canvas-stress"));
 const terminalCount = Number(process.argv[3] ?? 30);
 mkdirSync(output, { recursive: true });
 
+const PAN_STEPS = 900;
+const DRAG_STEPS = 540;
+const ZOOM_STEPS = 24;
+const SELECT_STEPS = 240;
+
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const cleanups = [];
+const capped = process.env.CANVAS_BENCH_CAPPED === "1";
 const report = {
+  schema: SCHEMA,
   status: "failed",
+  capped,
   terminals: terminalCount,
   liveSessions: 0,
   segments: {},
@@ -184,31 +208,29 @@ const INSTRUMENT = `
     writable: false,
   });
 
+  const longTasks = { on: false, count: 0 };
+  let longTaskObserver = null;
+  try {
+    longTaskObserver = new PerformanceObserver((list) => {
+      if (longTasks.on) longTasks.count += list.getEntries().length;
+    });
+    longTaskObserver.observe({ entryTypes: ["longtask"] });
+  } catch {}
+
   window.__armadraProbe = {
     startFrames() {
       frames.times.length = 0;
+      longTasks.count = 0;
+      longTasks.on = true;
       frames.on = true;
     },
     stopFrames() {
       frames.on = false;
-      const deltas = [];
-      for (let i = 1; i < frames.times.length; i += 1) {
-        deltas.push(frames.times[i] - frames.times[i - 1]);
+      if (longTaskObserver && longTasks.on) {
+        longTasks.count += longTaskObserver.takeRecords().length;
       }
-      if (deltas.length === 0) return null;
-      const sorted = [...deltas].sort((a, b) => a - b);
-      const at = (q) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))];
-      const span = frames.times[frames.times.length - 1] - frames.times[0];
-      const round = (value) => Math.round(value * 10) / 10;
-      return {
-        seconds: round(span / 1000),
-        frames: deltas.length,
-        fps: round((deltas.length * 1000) / span),
-        p50Ms: round(at(0.5)),
-        p95Ms: round(at(0.95)),
-        slowestMs: round(sorted[sorted.length - 1]),
-        over33: deltas.filter((delta) => delta > 33.4).length,
-      };
+      longTasks.on = false;
+      return { times: frames.times.slice(), longTasks: longTasks.count };
     },
     startProfiler() {
       profiler.commits = 0;
@@ -439,6 +461,8 @@ async function main() {
       "--no-default-browser-check",
       "--disable-background-networking",
       "--hide-scrollbars",
+      // 不封顶：关垂直同步与帧率限制，rAF 才能跑过 60 Hz（CANVAS_BENCH_CAPPED=1 关掉）。
+      ...(capped ? [] : ["--disable-gpu-vsync", "--disable-frame-rate-limit"]),
       "--remote-debugging-address=127.0.0.1",
       "--remote-debugging-port=0",
       `--user-data-dir=${profile}`,
@@ -647,16 +671,31 @@ async function main() {
       return 1;
     `);
 
-  /** 一段测量：开仪器 → 跑动作 → 停仪器 → 记堆。 */
+  /** 一段测量：开仪器 → 跑动作 → 停仪器 → 记堆、主线程耗时与 DOM 节点数。 */
+  await call("Performance.enable");
+  const perf = async () =>
+    metricsMap((await call("Performance.getMetrics")).metrics);
   const measure = async (name, action) => {
     await sleep(800);
     await resetCounters();
+    const before = await perf();
+    const wall = Date.now();
     await evaluate(`window.__armadraProbe.startFrames(); return 1;`);
     await action();
-    const frames = await evaluate(`return window.__armadraProbe.stopFrames();`);
+    const raw = await evaluate(`return window.__armadraProbe.stopFrames();`);
+    const elapsed = Date.now() - wall;
+    const after = await perf();
+    const frames = summarizeFrames(raw.times);
+    if (!frames) throw new Error(`段 ${name} 没有采到帧`);
     const counted = await counters();
     report.segments[name] = {
+      viewport: await evaluate(
+        `return document.querySelector(".react-flow__viewport")?.style.transform ?? null;`,
+      ),
       ...frames,
+      longTasks: raw.longTasks,
+      ...diffPerformance(before, after),
+      wallMs: elapsed,
       heapMb: await heapMb(),
       ...(counted
         ? {
@@ -668,7 +707,7 @@ async function main() {
     };
     step(
       `段：${name}`,
-      `${frames.fps} fps，p95 ${frames.p95Ms} ms，最慢 ${frames.slowestMs} ms`,
+      `${frames.fps} fps，p95 ${frames.p95Ms} ms，最慢 ${frames.slowestMs} ms，主线程 ${report.segments[name].mainThreadMs} ms，长任务 ${raw.longTasks}`,
     );
   };
 
@@ -686,12 +725,12 @@ async function main() {
   await sleep(500);
 
   await measure("pan", async () => {
-    // 画布空白处按下，画 10 秒的圆——真实的连续平移，不是一步到位。
+    // 画布空白处按下，固定 900 步画圆——真实的连续平移，不是一步到位；
+    // 固定步数让两个引擎吃到同一串输入（不封顶时按时长算步数会不可比）。
     const centre = { x: 720, y: 460 };
     await mouse("mousePressed", centre.x, centre.y);
-    const start = Date.now();
     let angle = 0;
-    while (Date.now() - start < 10_000) {
+    for (let i = 0; i < PAN_STEPS; i += 1) {
       angle += 0.12;
       await mouse(
         "mouseMoved",
@@ -753,10 +792,9 @@ async function main() {
     // 先走一小步越过 React Flow 的起拖阈值，再开始画圆。
     await mouse("mouseMoved", header.x + 6, header.y + 6);
     await sleep(40);
-    const start = Date.now();
     let angle = 0;
     let last = { x: header.x + 6, y: header.y + 6 };
-    while (Date.now() - start < 6000) {
+    for (let i = 0; i < DRAG_STEPS; i += 1) {
       angle += 0.12;
       last = {
         x: header.x + Math.cos(angle) * 120,
@@ -783,12 +821,105 @@ async function main() {
     throw new Error("拖拽那一段节点没动：测到的不是拖拽，是静止画面");
   }
 
+  /* --------------------------- ctrl+滚轮连续缩放 -------------------------- */
+
+  const zoomOf = () =>
+    evaluate(`
+      const element = document.querySelector(".react-flow__viewport");
+      const match = element && /scale\\(([-0-9.e]+)\\)/.exec(element.style.transform);
+      return match ? Number(match[1]) : null;
+    `);
+  const zoomBefore = await zoomOf();
+  await measure("zoom", async () => {
+    const at = { x: 720, y: 460 };
+    // 先放大再缩小，同样的步数与力度，视口回到起点附近，后面的段还能找到节点。
+    // d3-zoom 对 ctrl+滚轮每步乘 e^(-deltaY×0.01)：24 步 ±5 约 3.3 倍，不撞缩放上下限。
+    for (const deltaY of [-5, 5]) {
+      for (let i = 0; i < ZOOM_STEPS; i += 1) {
+        await call("Input.dispatchMouseEvent", {
+          type: "mouseWheel",
+          x: at.x,
+          y: at.y,
+          deltaX: 0,
+          deltaY,
+          modifiers: 2,
+        });
+        await sleep(12);
+      }
+    }
+    await sleep(300);
+  });
+  const zoomAfter = await zoomOf();
+  if (zoomBefore === null || Math.abs(zoomAfter - zoomBefore) > 0.05) {
+    throw new Error(`缩放段没有回到起点：${zoomBefore} → ${zoomAfter}`);
+  }
+  // 中途缩放确实发生过：用一次探测滚动确认缩放响应了（否则测到的是静止画面）。
+  await call("Input.dispatchMouseEvent", {
+    type: "mouseWheel",
+    x: 720,
+    y: 460,
+    deltaX: 0,
+    deltaY: -60,
+    modifiers: 2,
+  });
+  await sleep(400);
+  const zoomProbe = await zoomOf();
+  report.zoomResponds = zoomProbe > zoomAfter;
+  if (!report.zoomResponds) {
+    throw new Error("ctrl+滚轮没有缩放画布：测到的不是缩放，是静止画面");
+  }
+  await call("Input.dispatchMouseEvent", {
+    type: "mouseWheel",
+    x: 720,
+    y: 460,
+    deltaX: 0,
+    deltaY: 60,
+    modifiers: 2,
+  });
+  await sleep(400);
+
+  /* ---------------------------------- 框选 -------------------------------- */
+
+  const selectedCount = () =>
+    evaluate(
+      `return document.querySelectorAll(".react-flow__node.selected").length;`,
+    );
+  await measure("select", async () => {
+    // 右下空白处按下（避开右下角的小地图，按在小地图上拖的是视口），向左上拖出
+    // 一个大框，固定步数。
+    const from = { x: 1330, y: 660 };
+    const to = { x: 330, y: 110 };
+    await mouse("mousePressed", from.x, from.y);
+    for (let i = 1; i <= SELECT_STEPS; i += 1) {
+      const t = i / SELECT_STEPS;
+      const wobble = Math.sin(t * Math.PI * 4) * 0.08 + 1;
+      await mouse(
+        "mouseMoved",
+        from.x + (to.x - from.x) * t * wobble,
+        from.y + (to.y - from.y) * t * wobble,
+      );
+      await sleep(8);
+    }
+    report.selectedNodes = await selectedCount();
+    await mouse("mouseReleased", to.x, to.y, { buttons: 0 });
+    await sleep(300);
+  });
+  if (!report.selectedNodes || report.selectedNodes < 5) {
+    await capture("select-failed");
+    throw new Error(
+      `框选段只选中 ${report.selectedNodes} 个节点：测到的不是框选`,
+    );
+  }
+  // 取消选择：点画布空白处。
+  await click(1330, 660);
+  await sleep(300);
+
   /* ----------------------- 便签里连续输入 100 字符 ------------------------ */
 
-  // 点的是便签正文那块（`role="button"`，点了才切成 textarea），不是节点
+  // 点的是便签正文那块（`data-slot="sticky-markdown"`，点了才切成 textarea），不是节点
   // 正中——正中可能落在底栏或者被平移、拖拽之后叠上来的终端上。
   const sticky = await evaluate(`
-    const body = document.querySelector('[data-slot="sticky-node"] [role="button"]');
+    const body = document.querySelector(${JSON.stringify(SELECTORS.stickyBody)});
     if (!body) return null;
     body.scrollIntoView({ block: "center", inline: "center" });
     const rect = body.getBoundingClientRect();
@@ -801,7 +932,7 @@ async function main() {
   if (sticky.covered) {
     report.stickyCovered = true;
     await evaluate(
-      `document.querySelector('[data-slot="sticky-node"] [role="button"]').click(); return 1;`,
+      `document.querySelector(${JSON.stringify(SELECTORS.stickyBody)}).click(); return 1;`,
     );
   } else {
     await click(sticky.x, sticky.y);
@@ -811,11 +942,11 @@ async function main() {
   // 排在便签前面。不限的话字符打进的是第一个终端的 PTY（每一下还会续一次
   // 驱动租约、广播一帧 `terminal.lease`），量到的根本不是便签。
   await evaluate(
-    `const area = document.querySelector('[data-slot="sticky-node"] textarea'); if (area) area.focus(); return 1;`,
+    `const area = document.querySelector(${JSON.stringify(SELECTORS.stickyInput)}); if (area) area.focus(); return 1;`,
   );
   if (
     !(await evaluate(
-      `return document.querySelector('[data-slot="sticky-node"] textarea') ? 1 : 0;`,
+      `return document.querySelector(${JSON.stringify(SELECTORS.stickyInput)}) ? 1 : 0;`,
     ))
   ) {
     throw new Error("便签没有进入编辑态");
@@ -848,7 +979,7 @@ async function main() {
   );
 
   const typed = await evaluate(
-    `const area = document.querySelector('[data-slot="sticky-node"] textarea'); return area ? area.value.length : -1;`,
+    `const area = document.querySelector(${JSON.stringify(SELECTORS.stickyInput)}); return area ? area.value.length : -1;`,
   );
   report.typing = {
     chars: text.length,
@@ -861,7 +992,7 @@ async function main() {
   }
   // 失焦提交：整段输入应当只形成一条历史。
   await evaluate(
-    `const area = document.querySelector('[data-slot="sticky-node"] textarea'); if (area) area.blur(); return 1;`,
+    `const area = document.querySelector(${JSON.stringify(SELECTORS.stickyInput)}); if (area) area.blur(); return 1;`,
   );
   await sleep(1500);
   step(
@@ -900,6 +1031,88 @@ async function main() {
   // `sessionId` 写入 + 便签那一条）。
   report.undoDepth = await countUndo(evaluate);
   step("撤销栈", `深 ${report.undoDepth}`);
+
+  /* ----------------------- 300 条墨迹白板板上平移 ------------------------ */
+
+  // 另开一张板，白板数据直接写进 `whiteboard`（v2；新引擎 B5 之后在
+  // canvas-bench-lib.mjs 换成 v3 生成器）。视口罩住 4000×3000 的墨迹范围。
+  const inkDoc = buildInkWhiteboardV2();
+  const inkSnapshot = JSON.stringify(inkDoc);
+  const inkBoard = await api(`/api/workspaces/${created.id}/boards`, {
+    method: "POST",
+    body: JSON.stringify({ name: "ink" }),
+  });
+  const inkCurrent = await api(
+    `/api/workspaces/${created.id}/boards/${inkBoard.id}/document`,
+  );
+  const inkSticky = seedNodes(inkBoard.id, 0);
+  await api(`/api/workspaces/${created.id}/boards/${inkBoard.id}/document`, {
+    method: "PUT",
+    body: JSON.stringify({
+      expectedUpdatedAt: inkCurrent.board.updatedAt,
+      nodes: inkSticky,
+      edges: [],
+      viewport: { x: 300, y: 60, zoom: 0.3 },
+      whiteboard: inkSnapshot,
+    }),
+  });
+  const inkStored = await api(
+    `/api/workspaces/${created.id}/boards/${inkBoard.id}/document`,
+  );
+  report.inkBoard = {
+    items: inkDoc.items.length,
+    pointsPerItem: inkDoc.items[0].points.length,
+    whiteboardBytes: Buffer.byteLength(
+      inkStored.board.whiteboard ?? "",
+      "utf8",
+    ),
+  };
+  if (report.inkBoard.whiteboardBytes === 0) {
+    throw new Error("墨迹白板没有存进文档");
+  }
+  await call("Page.navigate", {
+    url: `http://127.0.0.1:${port}/?workspace=${created.id}&board=${inkBoard.id}`,
+  });
+  await sleep(1500);
+  for (let attempt = 0; attempt < 240; attempt += 1) {
+    const ready = await evaluate(
+      `return document.querySelectorAll(".react-flow__node").length;`,
+    );
+    const splash = await evaluate(
+      `return document.getElementById("splash-root") ? 1 : 0;`,
+    );
+    if (ready >= 1 && !splash) break;
+    await sleep(500);
+  }
+  await sleep(2000);
+  await capture("ink");
+  const inkHand = await boxOf(
+    'button[aria-label="手形"], button[aria-label="Hand"]',
+  );
+  if (!inkHand) throw new Error("墨迹板里找不到手形工具");
+  await click(inkHand.x, inkHand.y);
+  await sleep(500);
+  await measure("inkPan", async () => {
+    const centre = { x: 720, y: 460 };
+    await mouse("mousePressed", centre.x, centre.y);
+    let angle = 0;
+    for (let i = 0; i < PAN_STEPS; i += 1) {
+      angle += 0.12;
+      await mouse(
+        "mouseMoved",
+        centre.x + Math.cos(angle) * 180,
+        centre.y + Math.sin(angle) * 110,
+      );
+      await sleep(8);
+    }
+    await mouse("mouseMoved", centre.x, centre.y);
+    await mouse("mouseReleased", centre.x, centre.y, { buttons: 0 });
+    await sleep(300);
+  });
+  step(
+    "墨迹白板",
+    `${report.inkBoard.items} 条，${report.inkBoard.whiteboardBytes} 字节`,
+  );
 
   report.saves = saves.length;
   report.status = "ok";
