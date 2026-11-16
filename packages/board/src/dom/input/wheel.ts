@@ -3,7 +3,7 @@
 // 缩放手势不看焦点，只看事件自己的修饰键（对应旧 wheel-zoom.ts）。
 import { MAX_WHEEL_DELTA, wheelZoomFactor } from "../../core";
 import type { Camera, InputDevice } from "../types";
-import { selectorOf, type BoardSelectors } from "./target";
+import { createLocal, selectorOf, type BoardSelectors } from "./target";
 
 const LINE = 16;
 const PAGE = 400;
@@ -19,10 +19,7 @@ export function createWheelHandler(
     [selectors.editable, selectors.nowheel].filter(Boolean).join(",") ||
       undefined,
   );
-  const local = (e: { clientX: number; clientY: number }) => {
-    const r = container.getBoundingClientRect();
-    return { x: e.clientX - r.left, y: e.clientY - r.top };
-  };
+  const local = createLocal(container);
   return (e: WheelEvent): void => {
     const zoom = e.ctrlKey || e.metaKey || inputDevice() === "mouse";
     const inside = e.target instanceof Element && e.target.closest(own);
@@ -48,6 +45,7 @@ export function attachSafariGestures(
   camera: Camera,
 ): () => void {
   type G = Event & { scale: number; clientX: number; clientY: number };
+  const local = createLocal(container);
   let base = 1;
   const on = (name: string, fn: (e: G) => void) => {
     const listener = (e: Event) => {
@@ -61,11 +59,7 @@ export function attachSafariGestures(
     on("gesturestart", () => void (base = camera.get().zoom)),
     on("gesturechange", (e) => {
       if (camera.locked) return;
-      const r = container.getBoundingClientRect();
-      camera.zoomAround(
-        { x: e.clientX - r.left, y: e.clientY - r.top },
-        base * e.scale,
-      );
+      camera.zoomAround(local(e), base * e.scale);
     }),
   ];
   return () => offs.forEach((off) => off());

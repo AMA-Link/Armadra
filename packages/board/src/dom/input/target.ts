@@ -49,3 +49,15 @@ export function createResolveTarget(
     return hitCanvas?.(world) ?? { type: "blank" };
   };
 }
+
+/** 容器内坐标；矩形在连续事件间共用（每次重量都会强制结算样式与布局），隔 200 ms 重量。 */
+export function createLocal(container: HTMLElement) {
+  let rect: DOMRect | undefined;
+  let at = 0;
+  return (e: { clientX: number; clientY: number; timeStamp: number }): Vec => {
+    if (!rect || e.timeStamp - at > 200)
+      rect = container.getBoundingClientRect();
+    at = e.timeStamp;
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
+}

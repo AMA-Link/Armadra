@@ -101,8 +101,11 @@ export function createMinimap(el: HTMLElement, deps: MinimapDeps): Minimap {
     y: p.y / view.scale + view.origin.y,
   });
 
+  let stale = true; // 尺寸只在 ResizeObserver 报过之后才量，免得每帧提前结算布局
+
   function measure(): number {
-    size = { width: el.clientWidth, height: el.clientHeight };
+    if (stale) size = { width: el.clientWidth, height: el.clientHeight };
+    stale = false;
     const dpr = env.dpr();
     const [w, h] = [
       Math.max(1, Math.round(size.width * dpr)),
@@ -113,8 +116,13 @@ export function createMinimap(el: HTMLElement, deps: MinimapDeps): Minimap {
     return dpr;
   }
 
+  // 缩略图是辅助视图，最多 30 Hz：平移 / 拖动 / 缩放时不在每一帧里重画。
+  let drawn = -Infinity;
+  const tick = (): void => {
+    pending = performance.now() - drawn < 32 ? env.raf(tick) : (frame(), null);
+  };
   function frame(): void {
-    pending = null;
+    drawn = performance.now();
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const dpr = measure();
@@ -169,7 +177,7 @@ export function createMinimap(el: HTMLElement, deps: MinimapDeps): Minimap {
   }
 
   const invalidate = (): void => {
-    pending ??= env.raf(frame);
+    pending ??= env.raf(tick);
   };
 
   const navigate = (center: Vec): void =>
@@ -216,7 +224,10 @@ export function createMinimap(el: HTMLElement, deps: MinimapDeps): Minimap {
   const stops = [
     camera.subscribe(invalidate),
     scene.subscribe(invalidate),
-    env.observe(el, invalidate),
+    env.observe(el, () => {
+      stale = true;
+      invalidate();
+    }),
   ];
   invalidate();
 
@@ -224,6 +235,7 @@ export function createMinimap(el: HTMLElement, deps: MinimapDeps): Minimap {
     invalidate,
     flush() {
       if (pending !== null) env.caf(pending);
+      pending = null;
       frame();
     },
     destroy() {

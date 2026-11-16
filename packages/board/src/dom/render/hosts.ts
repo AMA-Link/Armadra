@@ -56,8 +56,10 @@ export function createWorldHosts(deps: WorldHostsDeps): WorldHosts {
       z: prev?.z ?? 0,
     };
     placed.set(id, next);
-    if (prev?.x !== next.x) host.style.left = `${next.x}px`;
-    if (prev?.y !== next.y) host.style.top = `${next.y}px`;
+    // 位置用 transform 而不是 left / top：拖动只触发合成，不再每步重排宿主里的终端。
+    if (prev?.x !== next.x || prev?.y !== next.y) {
+      host.style.transform = `translate(${next.x}px, ${next.y}px)`;
+    }
     if (prev?.w !== next.w) host.style.width = `${next.w}px`;
     if (prev?.h !== next.h) host.style.height = `${next.h}px`;
   }
@@ -81,7 +83,7 @@ export function createWorldHosts(deps: WorldHostsDeps): WorldHosts {
         host = document.createElement("div");
         host.dataset.boardId = id;
         host.dataset.boardKind = entity.kind;
-        host.style.position = "absolute";
+        host.style.cssText = "position:absolute;left:0;top:0";
         hosts.set(id, host);
         world.append(host);
         added.push(id);
