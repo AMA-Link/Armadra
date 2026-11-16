@@ -2,14 +2,14 @@ import * as React from "react";
 import type { ConnectionLineComponentProps, Node } from "@xyflow/react";
 
 import type { Box } from "../../geometry";
-import { CORNER_RADIUS, routeFor, STROKE_WIDTH } from "./link-visual";
-import { roundedPath } from "./route";
+import { roundedPath, routeFor } from "@armadra/board/core/route";
+import { CORNER_RADIUS, STROKE_WIDTH } from "./link-visual";
 
 /**
  * 拖线时的预览（React Flow 计划 §2.5 第三条，归属 B1）。
  *
  * 和落成后的 `LinkEdge` 是**同一种线**：起点是起笔节点朝向指针那一侧的
- * 边中点，横平竖直、圆角拐弯（`link-visual.routeFor`，#318）。预览不绕障碍
+ * 边中点，横平竖直、圆角拐弯（`core/route 的 routeFor`，#318）。预览不绕障碍
  * ——指针每动一下都要画，松手后路由器再给出绕开节点的那一条。
  *
  * 指针还没落到任何节点上时，把指针本身当成一个零尺寸的矩形喂进去：

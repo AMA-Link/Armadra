@@ -390,6 +390,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@armadra/board':
+        specifier: workspace:*
+        version: link:../../packages/board
       '@armadra/platform-protocol':
         specifier: file:../../tools/vendor/armadra-platform-protocol-0.18.0.tgz
         version: file:tools/vendor/armadra-platform-protocol-0.18.0.tgz(@opentelemetry/api@1.9.1)(zod@4.6.7)

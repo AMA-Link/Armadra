@@ -3,7 +3,7 @@ import type { Edge, InternalNode, Node, ReactFlowState } from "@xyflow/react";
 
 import type { Box } from "../../geometry";
 import { EdgeRouter, type EdgeLayout, type LayoutParams } from "./edge-router";
-import { cornerCuts, MIN_CUT } from "./smooth";
+import { cornerCuts, MIN_CUT } from "@armadra/board/core/route";
 import type { Position } from "@armadra/shared";
 
 /**

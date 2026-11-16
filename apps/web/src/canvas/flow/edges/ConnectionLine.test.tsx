@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 import { Position, type ConnectionLineComponentProps } from "@xyflow/react";
 
-import { CORNER_RADIUS, routeFor } from "./link-visual";
-import { roundedPath } from "./route";
+import { roundedPath, routeFor } from "@armadra/board/core/route";
+import { CORNER_RADIUS } from "./link-visual";
 import { ConnectionLine } from "./ConnectionLine";
 
 /**
