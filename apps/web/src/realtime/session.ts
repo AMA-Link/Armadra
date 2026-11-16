@@ -7,7 +7,9 @@ import { currentSource, type Source } from "../api/source";
 import { sourceApi } from "../sources/source-api";
 import { containerSize, getFlow } from "../canvas/flow/flow-context";
 import { readableOpeningViewport } from "../canvas/opening-viewport";
+import { t } from "../app/preferences-store";
 import { useCanvasStore } from "../store/canvas-store";
+import { toast } from "../ui/toast";
 import { presenceClientId, presenceDeviceName } from "../store/canvas/presence";
 import {
   peersOf,
@@ -17,6 +19,7 @@ import {
   type PresenceViewport,
 } from "./awareness";
 import { bindStore, type Binding } from "./binding";
+import { checkFormat, stampFormat } from "./format";
 import {
   RealtimeClient,
   type ClientStatus,
@@ -279,6 +282,14 @@ export function startRealtime(options: StartOptions): () => void {
   const mine = live;
 
   function onFirstSync() {
+    // 格式闸：这块板的文档与本客户端不是同一种格式，就不加入（不写任何东西）。
+    const verdict = checkFormat(doc);
+    if (verdict === "mismatch") {
+      stopRealtime(boardId, sourceId);
+      toast.error(t("realtime.formatMismatch"), { id: "realtime-format" });
+      return;
+    }
+    if (verdict === "stamp" && !readOnly) stampFormat(doc);
     binding.flush();
     if (!readOnly) mine.undo = installUndo(doc, binding.origin);
     const state = useCanvasStore.getState();
