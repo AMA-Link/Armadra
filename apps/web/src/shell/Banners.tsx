@@ -64,7 +64,8 @@ export const SAVE_RETRY_EVENT = "armadra:save-retry";
  */
 export function Banners() {
   const t = useT();
-  const saveState = useCanvasStore((state) => state.saveState);
+  // 只关心「保存失败」：订整个 `saveState` 会让每次自动保存的 dirty / saving / saved 都重渲一遍。
+  const saveFailed = useCanvasStore((state) => state.saveState === "error");
   const setPanel = useCanvasStore((state) => state.setPanel);
   const setSettingsSection = usePreferencesStore(
     (state) => state.setLastSettingsSection,
@@ -233,7 +234,7 @@ export function Banners() {
     );
   }
 
-  if (saveState === "error" && !dismissed.includes("save")) {
+  if (saveFailed && !dismissed.includes("save")) {
     items.push(
       <Banner
         key="save"

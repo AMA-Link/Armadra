@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { BoardDocument } from "@armadra/shared";
 import { runtimeApi } from "../api/client";
 import { watchBoardPresence } from "../api/board-presence";
 import { onWorkspaceEvent } from "../api/events";
-import { useDraftsActive } from "../canvas/flow/drafts";
+import { hasDrafts, subscribeDrafts } from "../canvas/flow/drafts";
 import { LEASE_LOST_EVENT, flushBoardSaves } from "../save/autosave";
 import { SAVE_RETRY_EVENT } from "../shell/Banners";
 import { useCanvasStore } from "../store/canvas-store";
@@ -82,8 +82,23 @@ export function useBoardSync() {
   const mergeRemoteDocument = useCanvasStore(
     (state) => state.mergeRemoteDocument,
   );
-  // 手势进行中不合远端改动（见下面的「文档载入」）。
-  const dragging = useDraftsActive();
+  // 手势进行中不合远端改动（见下面的「文档载入」）。**不订阅**「有没有手势」这个布尔量：
+  // 它在每次手势的开始与结束各变一次，订阅它等于让整个应用壳跟着重渲两次（开发构建下
+  // 一次近两百毫秒）。只有「有改动被手势挡住了」才在手势结束时叫醒合并 effect 一次。
+  const deferredMerge = useRef(false);
+  const [gestureEnded, endGesture] = useReducer(
+    (count: number) => count + 1,
+    0,
+  );
+  useEffect(
+    () =>
+      subscribeDrafts(() => {
+        if (!deferredMerge.current || hasDrafts()) return;
+        deferredMerge.current = false;
+        endGesture();
+      }),
+    [],
+  );
   const openWorkspaceTab = usePreferencesStore(
     (state) => state.openWorkspaceTab,
   );
@@ -234,8 +249,8 @@ export function useBoardSync() {
    *  - **同一份响应只合一次**。合并会换掉 `document`，而 `document` 是这个
    *    effect 的依赖；不记住合过哪一份就是一个自激循环。
    *  - **手势进行中先不合**。拖动中把节点对象换掉会让 d3-drag 当场错位，
-   *    所以等 `drafts` 清空——那一刻这个 effect 会因为 `dragging` 变 false
-   *    重新跑一次，把攒着的那份合进来。
+   *    所以等 `drafts` 清空——那一刻 `deferredMerge` 叫醒这个 effect 重新跑一次，
+   *    把攒着的那份合进来。
    */
   const mergedRef = useRef<BoardDocument | null>(null);
   useEffect(() => {
@@ -247,7 +262,11 @@ export function useBoardSync() {
       setDocument(board.data);
       return;
     }
-    if (dragging || mergedRef.current === board.data) return;
+    if (mergedRef.current === board.data) return;
+    if (hasDrafts()) {
+      deferredMerge.current = true;
+      return;
+    }
     mergedRef.current = board.data;
     // 实时板的真相是 `Y.Doc`，HTTP 读回来的物化表不往回合（补全架构 §6.4）。
     if (realtimeActive(board.data.board.id)) return;
@@ -256,7 +275,7 @@ export function useBoardSync() {
     board.data,
     boardId,
     documentBoardId,
-    dragging,
+    gestureEnded,
     mergeRemoteDocument,
     setDocument,
     workspace,
