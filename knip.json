@@ -51,7 +51,8 @@
         "src/react/index.ts",
         "src/**/*.test.{ts,tsx}"
       ],
-      "project": ["src/**/*.{ts,tsx}"]
+      "project": ["src/**/*.{ts,tsx}"],
+      "ignoreDependencies": ["react", "@types/react"]
     },
     "packages/shared": {
       "entry": ["src/index.ts", "src/**/*.test.ts", "test/**/*.ts"],
