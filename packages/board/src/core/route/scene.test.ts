@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { InternalNode, Node } from "@xyflow/react";
-
-import { sameScene, sceneOf, SCENE_MARGIN } from "./edge-scene";
+import type { SceneNode } from "./scene";
+import { sameScene, sceneOf, SCENE_MARGIN } from "./scene";
 
 /** 一条边路由时看的那一小块画布（#318）。 */
+
+const PASS_THROUGH = new Set(["group", "wb.ink", "wb.line"]);
 
 function node(
   id: string,
@@ -12,17 +13,22 @@ function node(
   width = 100,
   height = 100,
   type = "armadra",
-): [string, InternalNode<Node>] {
+): [string, SceneNode] {
   return [
     id,
     {
-      id,
-      type,
-      position: { x, y },
-      data: {},
-      measured: { width, height },
-      internals: { positionAbsolute: { x, y }, z: 0, userNode: {} as Node },
-    } as InternalNode<Node>,
+      // 画布侧的取整：量到的尺寸为 0 时没有矩形。
+      box:
+        width > 0 && height > 0
+          ? {
+              x: Math.round(x),
+              y: Math.round(y),
+              width: Math.round(width),
+              height: Math.round(height),
+            }
+          : null,
+      obstacle: !PASS_THROUGH.has(type),
+    },
   ];
 }
 

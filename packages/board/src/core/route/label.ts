@@ -1,6 +1,6 @@
-import type { Position } from "@armadra/shared";
+import type { Vec } from "../types";
 
-import type { Box } from "../../geometry";
+import type { Box } from "./anchor";
 
 /**
  * 连线上那枚关系标签放在哪（纯函数，#318）。
@@ -100,7 +100,7 @@ export interface Stroke {
 export interface LabelLine {
   edge: string;
   bundle: string;
-  points: readonly Position[];
+  points: readonly Vec[];
   /** 每个内部顶点的切入距离（曲线占掉的那一截不能放标签）。 */
   cuts?: readonly { before: number; after: number }[] | undefined;
 }
@@ -116,7 +116,7 @@ export interface LabelPlacement extends LabelBox {
  * `obstacles` 要包括两端自己：标签挂在端点附近时最容易压住的就是它们。
  */
 export function placeLabel(
-  points: readonly Position[],
+  points: readonly Vec[],
   text: string,
   fontSize: number,
   obstacles: readonly Box[],
@@ -189,8 +189,8 @@ function placeAt(
   interface Candidate {
     line: LabelLine;
     k: number;
-    a: Position;
-    b: Position;
+    a: Vec;
+    b: Vec;
     horizontal: boolean;
     at: number;
     /** 可放标签中心的区间（沿段的坐标）。 */

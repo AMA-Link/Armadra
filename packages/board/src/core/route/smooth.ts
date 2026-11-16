@@ -1,6 +1,6 @@
-import type { Position } from "@armadra/shared";
+import type { Vec } from "../types";
 
-import type { Box } from "../../geometry";
+import type { Box } from "./anchor";
 
 /**
  * 正交折线的平滑（纯函数，#397）。
@@ -33,19 +33,19 @@ export const MIN_CUT = 6;
 /** 连着端点的那段线，拐角最多占它的这个比例（留一截直线给箭头）。 */
 const END_SHARE = 0.75;
 
-function length(a: Position, b: Position): number {
+function length(a: Vec, b: Vec): number {
   return Math.hypot(b.x - a.x, b.y - a.y);
 }
 
 /** 某一段在某一端最多能让出多少给拐角：与另一个拐角平分，连着端点的段让出大头。 */
-function available(points: readonly Position[], segment: number): number {
+function available(points: readonly Vec[], segment: number): number {
   const len = length(points[segment]!, points[segment + 1]!);
   const anchored = segment === 0 || segment === points.length - 2;
   // 另一头也是端点（只有一个拐角的两段折线的两段各有一端是端点）。
   return anchored && points.length > 2 ? len * END_SHARE : len / 2;
 }
 
-function pointAt(a: Position, b: Position, distance: number): Position {
+function pointAt(a: Vec, b: Vec, distance: number): Vec {
   const len = length(a, b);
   return {
     x: a.x + ((b.x - a.x) / len) * distance,
@@ -55,9 +55,9 @@ function pointAt(a: Position, b: Position, distance: number): Position {
 
 /** 曲线上几个采样点是否进入某个障碍外扩 {@link CURVE_MARGIN} 的范围。 */
 function crowds(
-  from: Position,
-  corner: Position,
-  to: Position,
+  from: Vec,
+  corner: Vec,
+  to: Vec,
   obstacles: readonly Box[],
 ): boolean {
   for (const t of [0.25, 0.5, 0.75]) {
@@ -91,7 +91,7 @@ export interface Cut {
  * `obstacles` 是要避让的矩形（调用方去掉两端自己：连着端点的那段线本来就贴着它）。
  */
 export function cornerCuts(
-  points: readonly Position[],
+  points: readonly Vec[],
   obstacles: readonly Box[] = [],
   radius: number = SOFT_RADIUS,
 ): Cut[] {
@@ -149,7 +149,7 @@ function round(value: number): number {
 
 /** 折线加切入距离 → SVG 路径（拐角是二次曲线）。 */
 export function smoothPath(
-  points: readonly Position[],
+  points: readonly Vec[],
   cuts: readonly Cut[],
 ): string {
   if (points.length === 0) return "";
@@ -175,7 +175,7 @@ export function smoothPath(
 
 /** 平滑后的路径：一步到位（拖线预览、测试用）。 */
 export function softPath(
-  points: readonly Position[],
+  points: readonly Vec[],
   obstacles: readonly Box[] = [],
   radius: number = SOFT_RADIUS,
 ): string {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { Position } from "@armadra/shared";
 
-import type { Box } from "../../geometry";
+import type { Box } from "./anchor";
+import type { Vec } from "../types";
 import {
   cornerCuts,
   CURVE_MARGIN,
@@ -15,7 +15,7 @@ import {
  * 正交折线的平滑（#397）：没有尖角、半径随间距自适应、避开拐角内侧的节点。
  */
 
-const P = (x: number, y: number): Position => ({ x, y });
+const P = (x: number, y: number): Vec => ({ x, y });
 
 /** 路径里的二次曲线数；每个内部拐角必须各有一段，没有直接的 `L` 折角。 */
 function curves(d: string): number {

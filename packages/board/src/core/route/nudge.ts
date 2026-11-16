@@ -1,6 +1,6 @@
-import type { Position } from "@armadra/shared";
+import type { Vec } from "../types";
 
-import type { Box, Side } from "../../geometry";
+import type { Box, Side } from "./anchor";
 import { ROUTE_CLEARANCE } from "./route";
 
 /**
@@ -34,7 +34,7 @@ export interface NudgeInput {
   bundle: string;
   /** 越小越靠中线。 */
   priority: number;
-  points: readonly Position[];
+  points: readonly Vec[];
   /** 这条线要避开的矩形（含两端）。 */
   obstacles: readonly Box[];
   source: NudgeEnd;
@@ -70,9 +70,9 @@ function clear(
 }
 
 /** 返回错开后的折线；没被挪的线不在结果里。 */
-export function nudge(inputs: readonly NudgeInput[]): Map<string, Position[]> {
-  const result = new Map<string, Position[]>();
-  const pointsOf = (input: NudgeInput): Position[] => {
+export function nudge(inputs: readonly NudgeInput[]): Map<string, Vec[]> {
+  const result = new Map<string, Vec[]>();
+  const pointsOf = (input: NudgeInput): Vec[] => {
     let points = result.get(input.id);
     if (!points) {
       points = input.points.map((point) => ({ ...point }));
@@ -199,8 +199,8 @@ function alongX(side: Side): boolean {
 
 function spreadPorts(
   inputs: readonly NudgeInput[],
-  pointsOf: (input: NudgeInput) => Position[],
-  result: Map<string, Position[]>,
+  pointsOf: (input: NudgeInput) => Vec[],
+  result: Map<string, Vec[]>,
 ): void {
   interface Port {
     input: NudgeInput;

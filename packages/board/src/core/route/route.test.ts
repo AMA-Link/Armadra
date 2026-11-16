@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { Position } from "@armadra/shared";
 
-import { anchorPoint, type Box } from "../../geometry";
-import { routeFor } from "./link-visual";
+import { anchorPoint, type Box } from "./anchor";
+import type { Vec } from "../types";
+import { routeFor } from "./link";
 import {
   midpointOf,
   roundedPath,
@@ -28,7 +28,7 @@ const box = (x: number, y: number, width = 100, height = 100): Box => ({
 });
 
 /** 横竖线段是否进入矩形外扩 `pad` 后的内部。 */
-function hits(a: Position, b: Position, rect: Box, pad: number): boolean {
+function hits(a: Vec, b: Vec, rect: Box, pad: number): boolean {
   const l = rect.x - pad;
   const t = rect.y - pad;
   const r = rect.x + rect.width + pad;

@@ -3,7 +3,11 @@ import { useStore, useStoreApi } from "@xyflow/react";
 
 import { useT } from "@/app/preferences-store";
 import { useLayoutDirection } from "@/canvas/layout-direction";
-import { labelFontSize, LABEL_MIN_ZOOM, type LabelBox } from "./edge-label";
+import {
+  labelFontSize,
+  LABEL_MIN_ZOOM,
+  type LabelBox,
+} from "@armadra/board/core";
 import { routerFor, type EdgeLayout } from "./edge-router";
 
 /**

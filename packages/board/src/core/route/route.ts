@@ -1,6 +1,6 @@
-import type { Position } from "@armadra/shared";
+import type { Vec } from "../types";
 
-import { anchorPoint, type Box, type Side } from "../../geometry";
+import { anchorPoint, type Box, type Side } from "./anchor";
 import { SOFT_RADIUS, softPath } from "./smooth";
 
 /**
@@ -72,7 +72,7 @@ export interface RouteRequest {
 
 export interface Route {
   /** 折线顶点（画布坐标），首尾是两端的锚点，已去掉共线的中间点。 */
-  points: Position[];
+  points: Vec[];
   sourceSide: Side;
   targetSide: Side;
 }
@@ -193,8 +193,8 @@ class Heap {
 }
 
 /** 去掉共线的中间点与重复点。 */
-export function simplify(points: readonly Position[]): Position[] {
-  const out: Position[] = [];
+export function simplify(points: readonly Vec[]): Vec[] {
+  const out: Vec[] = [];
   for (const point of points) {
     const last = out[out.length - 1];
     if (last && last.x === point.x && last.y === point.y) continue;
@@ -314,7 +314,7 @@ export function routeEdge(request: RouteRequest): Route {
 
   interface Anchor {
     side: Side;
-    point: Position;
+    point: Vec;
     dir: number;
     cost: number;
   }
@@ -555,7 +555,7 @@ export function routeEdge(request: RouteRequest): Route {
   // —— 回溯 ——
   const endState = parent[sink]!;
   const endAnchor = ends[endState - endBase]!;
-  const trail: Position[] = [endAnchor.point];
+  const trail: Vec[] = [endAnchor.point];
   let state = parent[endState]!;
   let first = state;
   while (state >= 0) {
@@ -587,10 +587,10 @@ export const JOG_LIMIT = 12;
  * 路线在节点边缘处换一次线，这一下换线在屏幕上只是一个难看的小台阶。
  */
 export function smoothJogs(
-  input: readonly Position[],
-  hits: (a: Position, b: Position, skip: number) => boolean,
-  score: (a: Position, b: Position) => number = () => 0,
-): Position[] {
+  input: readonly Vec[],
+  hits: (a: Vec, b: Vec, skip: number) => boolean,
+  score: (a: Vec, b: Vec) => number = () => 0,
+): Vec[] {
   let points = input.map((point) => ({ ...point }));
   for (let pass = 0; pass < 4; pass += 1) {
     let changed = false;
@@ -612,7 +612,7 @@ export function smoothJogs(
       const firstFixed = k - 1 === 0;
       const lastFixed = k + 2 === points.length - 1;
       // 两种拉法：把 a-b 挪到 c-d 的线上，或反过来；挑合并后贴边罚更小的。
-      let best: { next: Position[]; score: number } | null = null;
+      let best: { next: Vec[]; score: number } | null = null;
       for (const moveFirst of [true, false]) {
         if (moveFirst ? firstFixed : lastFixed) continue;
         const next = points.map((point) => ({ ...point }));
@@ -655,7 +655,7 @@ export function smoothJogs(
  * `obstacles` 给了就让弧避开拐角内侧的节点。
  */
 export function roundedPath(
-  points: readonly Position[],
+  points: readonly Vec[],
   radius: number = SOFT_RADIUS,
   obstacles: readonly Box[] = [],
 ): string {
@@ -663,7 +663,7 @@ export function roundedPath(
 }
 
 /** 折线上按弧长取一半处的点。 */
-export function midpointOf(points: readonly Position[]): Position {
+export function midpointOf(points: readonly Vec[]): Vec {
   let length = 0;
   for (let k = 1; k < points.length; k += 1) {
     length += Math.hypot(

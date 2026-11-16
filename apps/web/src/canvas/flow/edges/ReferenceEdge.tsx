@@ -10,7 +10,7 @@ import { removeContentReference } from "../../create-content-reference";
 import type { ReferenceFlowEdge } from "../../sync/project";
 import { EdgeLabel, useEdgeLayout } from "./EdgeLabel";
 import { arrowHead, INTERACTION_WIDTH, STROKE_WIDTH } from "./link-visual";
-import { midpointOf } from "./route";
+import { midpointOf } from "@armadra/board/core";
 
 /**
  * 内容引用边（React Flow 计划 §2.3 / F29，归属 B5）。

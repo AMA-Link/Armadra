@@ -1,14 +1,16 @@
 import type { CanvasEdgeRole, Position } from "@armadra/shared";
 
 import {
-  facingSides,
+  roundedPath,
+  routeFor,
+  SOFT_RADIUS,
   type Box,
   type LinkAnchor,
-  type Side,
-} from "../../geometry";
+  type Route,
+  type SidePair,
+} from "@armadra/board/core";
+
 import { edgeArrowheads, edgeLabelKey } from "../../sync/project";
-import { roundedPath, routeEdge, type Route, type SidePair } from "./route";
-import { SOFT_RADIUS } from "./smooth";
 
 /**
  * 一条上下文连线画成什么样（纯函数，`LinkEdge.tsx` 与单测共用）。
@@ -31,8 +33,6 @@ const ARROW_SPREAD = 0.45;
 
 /** 拐角基准半径（画布单位）；窄处按间距自适应（`smooth.ts`）。 */
 export const CORNER_RADIUS = SOFT_RADIUS;
-
-const ALL_SIDES: readonly Side[] = ["top", "right", "bottom", "left"];
 
 export interface LinkView {
   route: Route;
@@ -73,30 +73,6 @@ export function linkColor({
 
 /** 派发线的标签。 */
 export const DISPATCH_LABEL_KEY = "edge.role.dispatch";
-
-/**
- * 一条线允许从哪些边出入：派发线顺布局方向只有一对；`free` 四边都行，
- * 正对的那一对优先（`route.ts` 给其余的边加代价）。
- */
-export function routeFor(
-  source: Box,
-  target: Box,
-  obstacles: readonly Box[] = [],
-  anchor: LinkAnchor = "free",
-  previous?: SidePair,
-): Route {
-  const facing = facingSides(source, target, anchor);
-  const fixed = anchor !== "free";
-  return routeEdge({
-    source,
-    target,
-    obstacles,
-    sourceSides: fixed ? [facing.source] : ALL_SIDES,
-    targetSides: fixed ? [facing.target] : ALL_SIDES,
-    preferred: facing,
-    previous: fixed ? undefined : previous,
-  });
-}
 
 /**
  * 两端的矩形、节点类型与边的角色 → 画一条线需要的全部信息（ui-wave2 §3.2）。

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { Box } from "../../geometry";
+import type { Box } from "./anchor";
 import {
   labelFontSize,
   placeLabelOn,
@@ -9,8 +9,8 @@ import {
   LABEL_SCREEN_FONT,
   placeLabel,
   textWidth,
-} from "./edge-label";
-import { routeFor } from "./link-visual";
+} from "./label";
+import { routeFor } from "./link";
 
 /** 关系标签的字号与摆放（#318）。 */
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { Position } from "@armadra/shared";
 
-import type { Box, Side } from "../../geometry";
+import type { Box, Side } from "./anchor";
+import type { Vec } from "../types";
 import { LANE_GAP, nudge, PORT_GAP, type NudgeInput } from "./nudge";
 
 /** 分道与分端口（#318）。 */
@@ -12,7 +12,7 @@ const B: Box = { x: 600, y: 0, width: 200, height: 100 };
 function input(
   id: string,
   bundle: string,
-  points: Position[],
+  points: Vec[],
   ends: { source?: [string, Side, Box]; target?: [string, Side, Box] } = {},
   priority = 1,
 ): NudgeInput {
@@ -30,7 +30,7 @@ function input(
 }
 
 // 两条 U 形线，中间那段都走 y = 200。
-const U = (x0: number, x1: number): Position[] => [
+const U = (x0: number, x1: number): Vec[] => [
   { x: x0, y: 100 },
   { x: x0, y: 200 },
   { x: x1, y: 200 },
