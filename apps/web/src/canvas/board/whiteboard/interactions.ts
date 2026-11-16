@@ -44,17 +44,30 @@ export function itemAtEvent(
   return pick("canvas-under");
 }
 
-/** 长按（触屏识别器发的 `context-menu`）没有原生 `contextmenu`：合成一次，让应用的菜单照常打开。 */
-function bridgeLongPress(board: Board, container: HTMLElement): () => void {
+/** 最近一次按下是不是触屏 / 笔：触屏双击等于「在那一点右键」，鼠标双击才是新建文字。 */
+interface TouchMenu {
+  stop(): void;
+  isTouch(): boolean;
+}
+
+/**
+ * 触屏没有原生 `contextmenu`（iOS 长按不发）：长按与空白处双击都合成一次，
+ * 让应用的菜单照常打开，目标与落点按手指处解析（与旧画布的 `touch-create` 同一行为）。
+ */
+function bridgeTouchMenu(board: Board, container: HTMLElement): TouchMenu {
   // 原生（鼠标 / Android 系统长按）的 contextmenu 会先经过这里的捕获监听：
   // 同一时刻引擎发的 `context-menu` 事件不再重复合成。
   let nativeAt = -Infinity;
+  let touch = false;
   const mark = (event: Event) => {
     nativeAt = event.timeStamp;
   };
+  const track = (event: PointerEvent) => {
+    touch = event.pointerType !== "mouse";
+  };
   container.addEventListener("contextmenu", mark, true);
-  const stop = board.on("context-menu", ({ screen }) => {
-    if (performance.now() - nativeAt < 100) return;
+  container.addEventListener("pointerdown", track, true);
+  const open = (screen: { x: number; y: number }) => {
     const rect = container.getBoundingClientRect();
     const point = { x: rect.left + screen.x, y: rect.top + screen.y };
     const at = document.elementFromPoint(point.x, point.y) ?? container;
@@ -68,10 +81,24 @@ function bridgeLongPress(board: Board, container: HTMLElement): () => void {
         clientY: point.y,
       }),
     );
-  });
-  return () => {
-    stop();
-    container.removeEventListener("contextmenu", mark, true);
+  };
+  const stops = [
+    board.on("context-menu", ({ screen }) => {
+      if (performance.now() - nativeAt < 100) return;
+      open(screen);
+    }),
+    board.on("double-click", ({ target, world }) => {
+      if (!touch || target.type !== "blank" || isCanvasLocked()) return;
+      open(board.camera.worldToScreen(world));
+    }),
+  ];
+  return {
+    isTouch: () => touch,
+    stop() {
+      for (const stop of stops) stop();
+      container.removeEventListener("contextmenu", mark, true);
+      container.removeEventListener("pointerdown", track, true);
+    },
   };
 }
 
@@ -80,9 +107,10 @@ export function installWhiteboardInteractions(
   container: HTMLElement,
   readOnly: () => boolean,
 ): () => void {
+  const menu = bridgeTouchMenu(board, container);
   const stops = [
     trackPointer(container),
-    bridgeLongPress(board, container),
+    menu.stop,
     board.on("double-click", ({ target, world }) => {
       if (isCanvasLocked() || readOnly()) return;
       if (target.type === "entity" && isItemId(target.id)) {
@@ -96,7 +124,9 @@ export function installWhiteboardInteractions(
         return;
       }
       // 空白处双击 = 新建文字并直接进编辑（只在选择工具下；绘图工具的双击是两笔）。
+      // 触屏上同一下是「在这一点右键」，已由 `bridgeTouchMenu` 出新建菜单。
       if (target.type !== "blank" || getTool() !== "select") return;
+      if (menu.isTouch()) return;
       const { snap, gridSize } = usePreferencesStore.getState().whiteboard;
       createBoardText(snapToGrid(world, gridSize, snap));
     }),

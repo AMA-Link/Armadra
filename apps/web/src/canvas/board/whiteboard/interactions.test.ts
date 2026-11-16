@@ -141,6 +141,39 @@ describe("双击与长按", () => {
     readOnly();
   });
 
+  it("触屏空白处双击：出新建菜单（合成 contextmenu），不建文字；鼠标双击仍建文字", () => {
+    const off = installWhiteboardInteractions(
+      board as never,
+      container,
+      () => false,
+    );
+    document.elementFromPoint = () => container;
+    const seen: MouseEvent[] = [];
+    container.addEventListener("contextmenu", (e) => seen.push(e));
+    const press = (pointerType: string) =>
+      container.dispatchEvent(
+        Object.assign(new Event("pointerdown", { bubbles: true }), {
+          pointerType,
+        }),
+      );
+    press("touch");
+    board.emit("double-click", {
+      target: { type: "blank" },
+      world: { x: 40, y: 50 },
+    });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ clientX: 40, clientY: 50 });
+    expect(state().whiteboard.items).toHaveLength(0);
+    press("mouse");
+    board.emit("double-click", {
+      target: { type: "blank" },
+      world: { x: 40, y: 50 },
+    });
+    expect(seen).toHaveLength(1);
+    expect(state().whiteboard.items).toHaveLength(1);
+    off();
+  });
+
   it("触屏长按（引擎的 context-menu 事件）合成一次 contextmenu；原生的不重复", () => {
     const off = installWhiteboardInteractions(
       board as never,
