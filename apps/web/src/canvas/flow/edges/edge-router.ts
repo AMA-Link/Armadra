@@ -1,25 +1,15 @@
 import type { InternalNode, Node, ReactFlowState } from "@xyflow/react";
-import type { CanvasEdgeRole, CanvasNode } from "@armadra/shared";
-import {
-  dispatchAnchor,
-  EdgeLayoutEngine,
-  roundedPath,
-  routeFor,
-  type EdgeLayout as CoreLayout,
-  type EdgePlan,
-  type LinkAnchor,
-  type SceneNode,
-  type SidePair,
-  type EdgeScene,
-} from "@armadra/board/core";
+import type { CanvasNode } from "@armadra/shared";
+import { EdgeLayoutEngine, type SceneNode } from "@armadra/board/core";
 
 import { getDrafts } from "../drafts";
 import {
-  ARROW_SIZE,
-  CORNER_RADIUS,
-  linkView,
-  type LinkView,
-} from "./link-visual";
+  PASS_THROUGH,
+  planOf,
+  type EdgeLayout,
+  type LayoutParams,
+} from "./edge-plan";
+import { ARROW_SIZE, type LinkView } from "./link-visual";
 
 /**
  * 一张画布上所有连线的布局（#318）：路线、分道、标签，一处算、按边取。
@@ -30,17 +20,7 @@ import {
  * 一个 React Flow 实例一个路由器（按 store 挂在 WeakMap 上）。
  */
 
-export type EdgeLayout = CoreLayout<LinkView>;
-
-export interface LayoutParams {
-  direction: "vertical" | "horizontal";
-  /** 标签字号（画布单位）；0 表示不画标签。 */
-  fontSize: number;
-  t: (key: string) => string;
-}
-
-/** 不当障碍的节点：分组框（线本来就要穿进穿出）、墨迹与直线（形状不规则）。 */
-const PASS_THROUGH = new Set(["group", "wb.ink", "wb.line"]);
+export type { EdgeLayout, LayoutParams };
 
 type StoreLike = {
   getState: () => ReactFlowState;
@@ -166,65 +146,10 @@ export class EdgeRouter {
       fontSize: params.fontSize,
       tipSize: ARROW_SIZE,
       translate: params.t,
-      plan: (edge, scene) => planOf(edge, scene, nodeLookup, params),
+      plan: (edge, scene) =>
+        planOf(edge, scene, (id) => typeOf(nodeLookup.get(id)), params),
     });
   }
-}
-
-/** 一条边怎么画：两端一动就重新选边（#211），派发线同束、先摆标签。 */
-function planOf(
-  edge: LinkEdge,
-  scene: EdgeScene,
-  nodeLookup: ReadonlyMap<string, InternalNode<Node>>,
-  params: LayoutParams,
-): EdgePlan<LinkView> {
-  const reference = edge.type === "reference";
-  const role = reference
-    ? undefined
-    : (edge.data as { role?: CanvasEdgeRole } | undefined)?.role;
-  const sourceType = typeOf(nodeLookup.get(edge.source));
-  const targetType = typeOf(nodeLookup.get(edge.target));
-  const supervises = role === "supervises";
-  // 对等线就近边；派发线子在下游时按布局方向，被拖到主的上方 / 左侧时也改走就近边。
-  const anchor: LinkAnchor = supervises
-    ? dispatchAnchor(scene.source, scene.target, params.direction)
-    : "free";
-  return {
-    key: `${edge.type}|${role ?? ""}|${sourceType ?? ""}|${targetType ?? ""}|${anchor}`,
-    // 同一个主派出去的线共用主干，不必错开。
-    bundle: supervises ? `dispatch:${edge.source}` : `edge:${edge.id}`,
-    priority: supervises ? 0 : reference ? 2 : 1,
-    view: (previous) =>
-      reference
-        ? referenceView(scene, previous)
-        : linkView(
-            scene.source,
-            scene.target,
-            sourceType,
-            targetType,
-            role,
-            anchor,
-            { obstacles: scene.obstacles, previous },
-          ),
-  };
-}
-
-/** 引用线：与上下文线同一套路由，箭头只指向节点，标签「引用」。 */
-function referenceView(scene: EdgeScene, previous?: SidePair): LinkView {
-  const route = routeFor(
-    scene.source,
-    scene.target,
-    scene.obstacles,
-    "free",
-    previous,
-  );
-  return {
-    route,
-    d: roundedPath(route.points, CORNER_RADIUS, scene.obstacles),
-    labelKey: "edge.reference",
-    arrowStart: false,
-    arrowEnd: true,
-  };
 }
 
 const routers = new WeakMap<object, EdgeRouter>();

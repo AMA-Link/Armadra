@@ -1,10 +1,15 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { useReactFlow, useStore } from "@xyflow/react";
 import { MousePointer2 } from "lucide-react";
 import type { CanvasNode } from "@armadra/shared";
 
 import { useT } from "@/app/preferences-store";
+import {
+  getFlow,
+  useFlowContainer,
+  useFlowHandle,
+} from "@/canvas/flow/flow-context";
+import { useStageView } from "@/canvas/flow/stage-view";
 import { nodeBox, type Box } from "@/canvas/geometry";
 import { isItemId, toItemId, type Item } from "@/canvas/whiteboard/model";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -81,14 +86,10 @@ function Cursors() {
   const peers = offline ? NO_PEERS : allPeers;
   const following = useRealtimeStore((view) => view.following);
   const follow = useRealtimeStore((view) => view.follow);
-  const zoom = useStore((state) => state.transform[2]);
+  const { x: panX, y: panY, zoom, width, height } = useStageView();
   const nodes = useCanvasStore((state) => state.document?.nodes);
   const items = useCanvasStore((state) => state.whiteboard.items);
-  const flow = useReactFlow();
-  const panX = useStore((state) => state.transform[0]);
-  const panY = useStore((state) => state.transform[1]);
-  const width = useStore((state) => state.width);
-  const height = useStore((state) => state.height);
+  const flow = useFlowHandle();
 
   const [shown, setShown] = React.useState<Map<number, Shown>>(new Map());
   React.useEffect(() => {
@@ -113,14 +114,16 @@ function Cursors() {
   }, [leavingKey]);
 
   // 自己的指针 → awareness。
-  const domNode = useStore((state) => state.domNode);
+  const domNode = useFlowContainer();
   React.useEffect(() => {
     const target = domNode;
     if (!target) return;
     const move = (event: PointerEvent) => {
-      broadcastCursor(
-        flow.screenToFlowPosition({ x: event.clientX, y: event.clientY }),
-      );
+      const point = getFlow()?.screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
+      if (point) broadcastCursor(point);
     };
     const leave = () => broadcastCursor(null);
     target.addEventListener("pointermove", move);
@@ -130,7 +133,7 @@ function Cursors() {
       target.removeEventListener("pointerleave", leave);
       broadcastCursor(null);
     };
-  }, [domNode, flow]);
+  }, [domNode]);
 
   // 自己的视口 → awareness（中心的画布坐标 + 缩放）。
   React.useEffect(() => {
@@ -155,9 +158,9 @@ function Cursors() {
       follow(null);
       return;
     }
-    if (targetX === undefined || targetY === undefined) return;
+    if (targetX === undefined || targetY === undefined || !flow) return;
     void flow.setCenter(targetX, targetY, {
-      zoom: targetKind === "viewport" ? targetZoom : flow.getZoom(),
+      zoom: targetKind === "viewport" ? targetZoom : flow.getViewport().zoom,
       duration: FOLLOW_DURATION_MS,
     });
   }, [

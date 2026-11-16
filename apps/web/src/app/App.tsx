@@ -4,7 +4,6 @@ import {
   QueryClientProvider,
   useQueryClient,
 } from "@tanstack/react-query";
-import { ReactFlowProvider } from "@xyflow/react";
 import { useAgentStatusHydration } from "../agent/hydration";
 import { useWorkspaceEvents } from "../api/events";
 import { CanvasSkeleton } from "../canvas/CanvasSkeleton";
@@ -70,24 +69,21 @@ function createQueryClient() {
 }
 
 /**
- * `<ReactFlowProvider>` 包住整棵树（React Flow 计划 §2.9）。
+ * 应用根：查询客户端、提示层、身份门。
  *
- * Dock 的缩放档位用 `useViewport()`，命令面板与侧栏用 `flow-context` 的
- * 树外句柄；provider 在最外层，两条路才都走得通。它自己不渲染任何东西，
- * 也不要求下面真的有一个 `<ReactFlow>`——没有工作空间时画布不挂载，
- * `useViewport()` 读到的就是 `{0,0,1}`。
+ * 画布引擎自己的 provider 不在这里：旧引擎的 `<ReactFlowProvider>` 由
+ * `FlowWorkspace` 自己带，Dock 的缩放档位读 `canvas/flow/stage-view`，命令面板
+ * 与侧栏用 `flow-context` 的树外句柄，都不依赖哪一种引擎。
  */
 export function App() {
   const [queryClient] = useState(createQueryClient);
   return (
     <QueryClientProvider client={queryClient}>
-      <ReactFlowProvider>
-        <TooltipProvider delayDuration={500}>
-          <IdentityGate>
-            <AppShell />
-          </IdentityGate>
-        </TooltipProvider>
-      </ReactFlowProvider>
+      <TooltipProvider delayDuration={500}>
+        <IdentityGate>
+          <AppShell />
+        </IdentityGate>
+      </TooltipProvider>
     </QueryClientProvider>
   );
 }

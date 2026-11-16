@@ -310,67 +310,86 @@ export function MinimapToggle({
   onToggle: () => void;
   reveal?: boolean;
 }) {
+  return (
+    <Panel
+      position="bottom-right"
+      className="minimap-toggle-panel"
+      style={minimapToggleStyle(collapsed)}
+    >
+      <MinimapToggleButton
+        collapsed={collapsed}
+        onToggle={onToggle}
+        reveal={reveal}
+      />
+    </Panel>
+  );
+}
+
+/** 收起钮所在容器的位置：展开时贴缩略图右上角，收起后原地当展开入口。 */
+export function minimapToggleStyle(collapsed: boolean): React.CSSProperties {
+  return collapsed
+    ? {
+        margin: 0,
+        right: "calc(14px + var(--surface-inset-right, 0px))",
+        bottom: "var(--navigation-bottom)",
+      }
+    : {
+        margin: 0,
+        right: "calc(18px + var(--surface-inset-right, 0px))",
+        bottom: "calc(var(--navigation-bottom) + var(--minimap-h) - 28px)",
+      };
+}
+
+/** 收起 / 展开钮本体（两种引擎共用；容器由各自的画布给）。 */
+export function MinimapToggleButton({
+  collapsed,
+  onToggle,
+  reveal = false,
+}: {
+  collapsed: boolean;
+  onToggle: () => void;
+  reveal?: boolean;
+}) {
   const t = useT();
   const label = t(
     collapsed ? "canvas.expandMinimap" : "canvas.collapseMinimap",
   );
   return (
-    <Panel
-      position="bottom-right"
-      className="minimap-toggle-panel"
-      style={
-        collapsed
-          ? {
-              margin: 0,
-              right: "calc(14px + var(--surface-inset-right, 0px))",
-              bottom: "var(--navigation-bottom)",
-            }
-          : {
-              margin: 0,
-              right: "calc(18px + var(--surface-inset-right, 0px))",
-              bottom:
-                "calc(var(--navigation-bottom) + var(--minimap-h) - 28px)",
-            }
-      }
-    >
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <IconButton
-            size={collapsed ? "cluster" : "inline"}
-            data-slot="minimap-toggle"
-            data-reveal={reveal ? "true" : undefined}
-            className={
-              collapsed
-                ? "minimap-toggle border border-border-strong bg-panel/90 backdrop-blur-[12px]"
-                : "minimap-toggle bg-panel/90 hover:bg-hover hover:text-foreground"
-            }
-            label={label}
-            aria-expanded={!collapsed}
-            onClick={onToggle}
-          >
-            {collapsed ? <Map /> : <Minus />}
-          </IconButton>
-        </TooltipTrigger>
-        <TooltipContent side="top">{label}</TooltipContent>
-      </Tooltip>
-    </Panel>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <IconButton
+          size={collapsed ? "cluster" : "inline"}
+          data-slot="minimap-toggle"
+          data-reveal={reveal ? "true" : undefined}
+          className={
+            collapsed
+              ? "minimap-toggle border border-border-strong bg-panel/90 backdrop-blur-[12px]"
+              : "minimap-toggle bg-panel/90 hover:bg-hover hover:text-foreground"
+          }
+          label={label}
+          aria-expanded={!collapsed}
+          onClick={onToggle}
+        >
+          {collapsed ? <Map /> : <Minus />}
+        </IconButton>
+      </TooltipTrigger>
+      <TooltipContent side="top">{label}</TooltipContent>
+    </Tooltip>
   );
 }
 
 /** 点一下缩略图里的节点：把它居中，缩放不变（旧引擎同款）。 */
 const CENTER_DURATION = 200;
 
-export function Minimap() {
-  const t = useT();
-  const flow = useReactFlow();
-  const { collapsed, setCollapsed } = useMinimapPreferences();
-  // 状态每变一次都要重刷描边色，所以订阅整张表而不是某一个节点。
+/**
+ * 节点 id → 它的状态光晕。状态每变一次都要重刷描边色，所以订阅整张表；程序自报
+ * （契约 §53）与上报按节点头同一条规则合并，描边色才和节点头一致。
+ */
+export function useGlowOf(): (nodeId: string) => AgentGlow | undefined {
   const statuses = useAgentStatusStore((state) => state.statuses);
-  // 程序自报（契约 §53）与上报按节点头同一条规则合并，描边色才和节点头一致。
   const programs = useProgramStatusStore((state) => state.programs);
   const seen = useProgramStatusStore((state) => state.seen);
-
-  const glowOf = React.useCallback(
+  return React.useCallback(
     (nodeId: string) => {
       const key = scoped(nodeId);
       const status = statuses[key];
@@ -383,6 +402,13 @@ export function Minimap() {
     },
     [statuses, programs, seen],
   );
+}
+
+export function Minimap() {
+  const t = useT();
+  const flow = useReactFlow();
+  const { collapsed, setCollapsed } = useMinimapPreferences();
+  const glowOf = useGlowOf();
 
   const families = useFamilies();
 
