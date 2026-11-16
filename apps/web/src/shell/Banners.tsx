@@ -86,9 +86,8 @@ export function Banners() {
   const belowPresence = usePresenceBarVisible() || shared;
   // 标题在渲染通知时现读：订阅节点表会让每次拖动、改名都重渲整条横幅。
   const nodeTitle = (nodeId: string) =>
-    useCanvasStore
-      .getState()
-      .document?.nodes.find((node) => node.id === nodeId)?.title ?? nodeId;
+    useCanvasStore.getState().document?.nodes.find((node) => node.id === nodeId)
+      ?.title ?? nodeId;
 
   const health = useQuery({
     queryKey: ["health"],

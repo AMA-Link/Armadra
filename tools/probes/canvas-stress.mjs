@@ -530,7 +530,14 @@ async function main() {
       // 而不是把整个基准挂上几十分钟。
       const timer = setTimeout(() => {
         pending.delete(id);
-        fail(new Error(`CDP ${method} 120 s 没有应答`));
+        // 取证：页面脚本死循环时 `Debugger.pause` 能打断它，把调用栈留下来。
+        socket.send(
+          JSON.stringify({ id: 9_000_001, method: "Debugger.enable" }),
+        );
+        socket.send(
+          JSON.stringify({ id: 9_000_002, method: "Debugger.pause" }),
+        );
+        setTimeout(() => fail(new Error(`CDP ${method} 120 s 没有应答`)), 3000);
       }, 120_000);
       pending.set(id, (message) => {
         clearTimeout(timer);
@@ -588,6 +595,16 @@ async function main() {
     }
   });
   report.console = console_;
+  socket.addEventListener("message", (event) => {
+    const message = JSON.parse(event.data);
+    if (message.method !== "Debugger.paused") return;
+    report.hungStack = message.params.callFrames
+      .slice(0, 12)
+      .map(
+        (f) =>
+          `${f.functionName || "(anon)"} ${f.url.split("/").slice(-2).join("/")}:${f.location.lineNumber}`,
+      );
+  });
   socket.addEventListener("message", (event) => {
     const message = JSON.parse(event.data);
     if (message.method === "Tracing.dataCollected") {
