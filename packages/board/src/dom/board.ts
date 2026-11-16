@@ -57,6 +57,8 @@ export type DomBoard<D = unknown> = Board<D> & {
   readonly gestureDeps: GestureDeps;
   /** 挂载后的叠加层插槽；没挂载为 null。 */
   slots(): BoardSlots | null;
+  /** 只拆 DOM 与输入，保留场景、相机与监听；可以再 `mount`（React 严格模式的卸载重挂）。 */
+  unmount(): void;
 };
 
 export function createBoard<D = unknown>(
@@ -122,6 +124,7 @@ export function createBoard<D = unknown>(
     camera,
     scene,
     gestureDeps,
+    unmount,
     slots() {
       const layers = mounted?.renderer.layers;
       return layers
