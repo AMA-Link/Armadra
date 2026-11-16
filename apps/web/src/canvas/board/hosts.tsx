@@ -8,7 +8,7 @@ import { CardContent } from "../flow/nodes/ArmadraNode";
 import { GroupFrame } from "../flow/nodes/GroupNode";
 import { useNodeEntering } from "../flow/node-enter";
 import { BoardHostProvider } from "./host-context";
-import type { BoardEntity } from "./model";
+import { GHOST_KIND, type BoardEntity } from "./model";
 
 /**
  * 节点与分组的宿主内容（设计 §2.8）：位置与尺寸由引擎写宿主元素的 style，
@@ -52,6 +52,7 @@ export const CardHost = React.memo(function CardHost({
 }) {
   const node: CanvasNode = entity.data;
   const selected = useSelected(entity.id);
+  const ghost = entity.kind === GHOST_KIND;
   const dragging = usePreviewing(entity.id);
   const entering = useNodeEntering();
   const focused = useCanvasStore((state) => state.focusNodeId === entity.id);
@@ -63,9 +64,11 @@ export const CardHost = React.memo(function CardHost({
         data-slot="node-host"
         data-dragging={dragging ? "true" : undefined}
         data-entering={entering ? "true" : undefined}
+        // ghost：`display:none` 让 `<webview>` 留在 DOM 里、页面不重载，只是看不见。
+        style={ghost ? { display: "none" } : undefined}
         className="contents"
       >
-        {selected ? (
+        {selected && !ghost ? (
           <ResizeHandles widthOnly={node.collapsed === true} />
         ) : null}
         <CardContent node={node} selected={selected} focused={focused} />

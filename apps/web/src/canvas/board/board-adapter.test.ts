@@ -34,13 +34,22 @@ vi.mock("@/nodes/registry", () => {
   };
 });
 
+const platform = vi.hoisted(() => ({ desktop: false }));
+vi.mock("@/platform", async (original) => ({
+  ...(await original<typeof import("@/platform")>()),
+  isDesktop: () => platform.desktop,
+}));
+
 const { COLLAPSED_HEIGHT } = await import("@/store/defaults");
 const { createBoard } = await import("@armadra/board/dom");
 const { useCanvasStore, resetHistory } = await import("@/store/canvas-store");
 const { emptyWhiteboard } = await import("../whiteboard/model");
 const { hasDrafts, clearAllDrafts } = await import("../flow/drafts");
 const { createBoardAdapter } = await import("./board-adapter");
-const { nodeKinds } = await import("./model");
+const { nodeKinds, GHOST_KIND } = await import("./model");
+const { useIsGhost } = await import("@/nodes/browser/pool");
+const { usePreferencesStore } = await import("@/app/preferences-store");
+const { act, renderHook } = await import("@testing-library/react");
 
 const stamp = "2026-11-15T00:00:00.000Z";
 const workspace = {
@@ -350,6 +359,91 @@ describe("销毁", () => {
     state().addNode("sticky", { select: false });
     expect(stage.scene.size).toBe(1);
     stage.emit("select", { ids: [], additive: false });
+    expect(state().selectedNodeIds).toEqual([]);
+  });
+});
+
+describe("网页节点保活（桌面壳）", () => {
+  const otherBoard = { ...board, id: "019ff7d1-7419-74df-89e2-b1619d36ea7e" };
+  const openOther = (list: CanvasNode[]) =>
+    state().setDocument({
+      board: otherBoard,
+      nodes: list,
+      edges: [],
+    } as BoardDocument);
+
+  beforeEach(() => {
+    platform.desktop = true;
+  });
+  afterEach(() => {
+    platform.desktop = false;
+  });
+
+  it("换板：网页节点留成 ghost（同一个 id、零面积、不可命中），换回来原条目复活", () => {
+    const page = make("browser", { position: { x: 30, y: 40 } });
+    const card = make("sticky", { position: { x: 5, y: 6 } });
+    load([page, card]);
+    start();
+    const ghost = renderHook(() => useIsGhost(page.id));
+    expect(ghost.result.current).toBe(false);
+
+    const next = make("sticky", { boardId: otherBoard.id });
+    act(() => openOther([next]));
+    expect(stage.scene.has(card.id)).toBe(false);
+    expect(stage.scene.get(page.id)).toMatchObject({
+      kind: GHOST_KIND,
+      w: 0,
+      h: 0,
+      x: next.position.x,
+      y: next.position.y,
+    });
+    expect(stage.scene.hit({ x: 0, y: 0 }, { tolerance: 20 })?.id).not.toBe(
+      page.id,
+    );
+    expect(ghost.result.current).toBe(true);
+
+    act(() => load([page, card]));
+    expect(stage.scene.get(page.id)).toMatchObject({
+      kind: "browser",
+      x: 30,
+      y: 40,
+    });
+    expect(ghost.result.current).toBe(false);
+  });
+
+  it("同一块板里删网页节点：条目直接拆掉，不留 ghost", () => {
+    const page = make("browser");
+    load([page, make("sticky")]);
+    start();
+    state().removeNodes([page.id]);
+    expect(stage.scene.has(page.id)).toBe(false);
+  });
+
+  it("非桌面壳：换板照常拆掉", () => {
+    platform.desktop = false;
+    const page = make("browser");
+    load([page]);
+    start();
+    openOther([]);
+    expect(stage.scene.has(page.id)).toBe(false);
+  });
+
+  it("ghost 不进选区；超过上限逐出最先退休的", () => {
+    usePreferencesStore.setState((current) => ({
+      browser: { ...current.browser, backgroundMax: 0 },
+    }));
+    const pages = Array.from({ length: 10 }, (_, index) =>
+      make("browser", { position: { x: index, y: 0 } }),
+    );
+    load(pages);
+    start();
+    openOther([]);
+    const alive = pages.filter((page) => stage.scene.has(page.id));
+    // 上限 = 后台页数 0 + 条目余量 8，最先退休（先消失）的两个被逐出
+    expect(alive.map((page) => page.id)).toEqual(
+      pages.slice(2).map((page) => page.id),
+    );
+    stage.emit("select", { ids: [pages[9]!.id], additive: false });
     expect(state().selectedNodeIds).toEqual([]);
   });
 });

@@ -8,7 +8,9 @@ import { COLLAPSED_HEIGHT } from "@/store/defaults";
 import { NODE_META } from "@/nodes/registry";
 import { clearDrafts, setDrafts } from "../flow/drafts";
 import { isItemId } from "../whiteboard/model";
-import { entityOf, type BoardEntity } from "./model";
+import { isDesktop } from "@/platform";
+import { ghostEntryMax, setGhostIds } from "@/nodes/browser/pool";
+import { entityOf, ghostOf, type BoardEntity } from "./model";
 
 /**
  * `canvas-store` ↔ 引擎场景（docs/design/board-engine.md §2.2，B3 只接节点与分组）。
@@ -47,7 +49,18 @@ export function createBoardAdapter(
   store: Store = useCanvasStore,
 ): BoardAdapter {
   const known = new Map<EntityId, { node: CanvasNode; entity: BoardEntity }>();
+  /** 切走的板上还活着的网页节点（有序：先退休的在前，超限逐出最先的）。 */
+  const ghosts = new Map<EntityId, BoardEntity>();
   let lastNodes: readonly CanvasNode[] | undefined;
+
+  /**
+   * 网页节点从投影里消失：同一块板还开着，那是被删了，宿主随之拆掉；换了板 / 工作空间，
+   * 页面还得留着（来回切不重载），所以场景里换成一个 ghost 条目。
+   */
+  const retires = (node: CanvasNode): boolean =>
+    isDesktop() &&
+    node.type === "browser" &&
+    node.boardId !== store.getState().document?.board.id;
 
   function syncNodes(nodes: readonly CanvasNode[]): void {
     if (nodes === lastNodes) return;
@@ -58,18 +71,45 @@ export function createBoardAdapter(
       if (known.get(node.id)?.node === node) continue;
       const entity = entityOf(node, byId);
       known.set(node.id, { node, entity });
+      ghosts.delete(node.id);
       changed.push(entity);
     }
     const gone = [...known.keys()].filter((id) => !byId.has(id));
-    for (const id of gone) known.delete(id);
-    if (changed.length === 0 && gone.length === 0) return;
+    const anchor = nodes.find((node) => !node.parentId)?.position ?? {
+      x: 0,
+      y: 0,
+    };
+    const evicted: EntityId[] = [];
+    for (const id of gone) {
+      const { node } = known.get(id)!;
+      known.delete(id);
+      if (retires(node)) {
+        const ghost = ghostOf(node, anchor);
+        ghosts.set(id, ghost);
+        changed.push(ghost);
+      } else {
+        evicted.push(id);
+      }
+    }
+    // 超过上限就逐出最先退休的 ghost（`ghostEntryMax` 与 `./background` 的上限同一个设置）。
+    while (ghosts.size > ghostEntryMax()) {
+      const [oldest] = ghosts.keys();
+      ghosts.delete(oldest!);
+      evicted.push(oldest!);
+    }
+    if (changed.length === 0 && evicted.length === 0) return;
     board.scene.transact(
       (draft) => {
-        for (const entity of changed) draft.set(entity as Entity<CanvasNode>);
-        for (const id of gone) draft.remove(id);
+        for (const entity of changed) {
+          if (!evicted.includes(entity.id)) {
+            draft.set(entity as Entity<CanvasNode>);
+          }
+        }
+        for (const id of evicted) draft.remove(id);
       },
       { history: "ignore" },
     );
+    setGhostIds(new Set(ghosts.keys()));
     // 选区里已经不存在的节点要从引擎选区里去掉。
     pushSelection(store.getState().selectedNodeIds);
   }
@@ -93,10 +133,12 @@ export function createBoardAdapter(
 
   const onSelect = ({ ids }: BoardEvents["select"]): void => {
     // 引擎的选区是整体：点空白或换选一个，连线与白板对象的选区一并清掉。
+    // ghost 是零面积的点，框选可能碰到它，不进选区。
+    const live = ids.filter((id) => !ghosts.has(id));
     store.getState().setSelection({
-      nodes: ids.filter((id) => !isItemId(id)),
+      nodes: live.filter((id) => !isItemId(id)),
       edges: [],
-      items: ids.filter(isItemId),
+      items: live.filter(isItemId),
     });
   };
 
@@ -187,6 +229,7 @@ export function createBoardAdapter(
   return {
     destroy() {
       for (const stop of stops) stop();
+      setGhostIds(new Set());
       clearDrafts([GESTURE_DRAFT]);
     },
   };

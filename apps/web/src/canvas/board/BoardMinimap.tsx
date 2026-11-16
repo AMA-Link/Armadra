@@ -21,6 +21,7 @@ import {
 } from "../flow/Minimap";
 import { useFamilies } from "../family";
 import { edgeDataOf, isEdgeEntity } from "./edge-model";
+import { GHOST_KIND } from "./model";
 
 /**
  * 状态缩略图（自研引擎，B4）：用引擎的 `createMinimap`，配色与旧引擎同一套纯函数
@@ -117,6 +118,8 @@ function MinimapView({ board }: { board: DomBoard<CanvasNode> }) {
           // 引用不是 Agent 之间的关系，缩略图里不画。
           return edgeDataOf(entity).type === "link" ? link(entity) : null;
         }
+        // 切走的板上留着的网页节点是零面积的点，不画。
+        if (entity.kind === GHOST_KIND) return null;
         const item = minimapItemOf(
           {
             id: entity.id,
