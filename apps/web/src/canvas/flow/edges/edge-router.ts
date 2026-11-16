@@ -11,7 +11,7 @@ import {
   type SceneNode,
   type SidePair,
   type EdgeScene,
-} from "@armadra/board/core/route";
+} from "@armadra/board/core";
 
 import { getDrafts } from "../drafts";
 import {

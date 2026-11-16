@@ -8,7 +8,7 @@ import {
   type LinkAnchor,
   type Route,
   type SidePair,
-} from "@armadra/board/core/route";
+} from "@armadra/board/core";
 
 import { edgeArrowheads, edgeLabelKey } from "../../sync/project";
 

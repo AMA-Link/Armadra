@@ -2,7 +2,7 @@ import * as React from "react";
 import type { ConnectionLineComponentProps, Node } from "@xyflow/react";
 
 import type { Box } from "../../geometry";
-import { roundedPath, routeFor } from "@armadra/board/core/route";
+import { roundedPath, routeFor } from "@armadra/board/core";
 import { CORNER_RADIUS, STROKE_WIDTH } from "./link-visual";
 
 /**

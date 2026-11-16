@@ -8,7 +8,7 @@ import {
   facingSides,
   type LinkAnchor,
   type Side,
-} from "@armadra/board/core/route";
+} from "@armadra/board/core";
 
 // 取边规则住在引擎 core 的连线路由里；这里转出，画布其余代码照旧从 geometry 取。
 export { anchorPoint, centerOf, dispatchAnchor, facingSides };

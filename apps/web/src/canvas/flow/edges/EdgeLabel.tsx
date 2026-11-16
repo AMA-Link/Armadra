@@ -7,7 +7,7 @@ import {
   labelFontSize,
   LABEL_MIN_ZOOM,
   type LabelBox,
-} from "@armadra/board/core/route";
+} from "@armadra/board/core";
 import { routerFor, type EdgeLayout } from "./edge-router";
 
 /**

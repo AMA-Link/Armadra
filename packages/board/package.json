@@ -9,10 +9,6 @@
       "types": "./src/core/index.ts",
       "default": "./src/core/index.ts"
     },
-    "./core/route": {
-      "types": "./src/core/route/index.ts",
-      "default": "./src/core/route/index.ts"
-    },
     "./dom": {
       "types": "./src/dom/index.ts",
       "default": "./src/dom/index.ts"
