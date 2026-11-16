@@ -2,7 +2,9 @@
 # 标签本身已建在仓库里（颜色与描述见 CONTRIBUTING）；这里只管路径到标签的映射。
 web:
   - changed-files:
-      - any-glob-to-any-file: "apps/web/**"
+      - any-glob-to-any-file:
+          - "apps/web/**"
+          - "packages/board/**"
 
 i18n:
   - changed-files:

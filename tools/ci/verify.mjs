@@ -89,6 +89,13 @@ export const PACKAGES = [
     runs: [{ id: "mobile", cmd: ["exec", "vitest", "run"] }],
   },
   {
+    // 画板引擎纯 Node 单测，包很小，改动就整包跑。
+    name: "board",
+    dir: "packages/board/",
+    full: [/./],
+    runs: [{ id: "board", cmd: ["exec", "vitest", "run"] }],
+  },
+  {
     name: "push-relay",
     dir: "apps/push-relay/",
     full: [/./],
@@ -224,6 +231,7 @@ async function main(argv) {
     "release:check",
     "notices:check",
     "repo:test",
+    "board:budget",
     "release:test",
     "plugin:test",
     "controller:real:test",

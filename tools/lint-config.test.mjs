@@ -281,3 +281,61 @@ test("未用变量与丢精度的数字字面量是 error", async () => {
   );
   assert.equal(hits(messages, "no-loss-of-precision")[0]?.severity, 2);
 });
+
+test("画板 core：React、dom、第三方依赖与浏览器全局都是 error", async () => {
+  const messages = await lint(
+    "packages/board/src/core/probe.ts",
+    [
+      `import { useState } from "react";`,
+      `import { input } from "../dom/input";`,
+      `import { nanoid } from "nanoid";`,
+      `export const title = document.title;`,
+      `export const w = window;`,
+      `export { useState, input, nanoid };`,
+    ].join("\n"),
+  );
+  assert.deepEqual(
+    hits(messages, "no-restricted-imports").map((message) => message.line),
+    [1, 1, 2, 3],
+  );
+  assert.deepEqual(
+    hits(messages, "no-restricted-globals").map((message) => message.line),
+    [4, 5],
+  );
+});
+
+test("画板 core：相对路径、语言内置与 Node 也有的全局不误报；测试文件放行", async () => {
+  const clean = await lint(
+    "packages/board/src/core/probe.ts",
+    [
+      `import type { Vec } from "./types";`,
+      `export const timer = setTimeout;`,
+      `export const url = URL;`,
+      `export const v: Vec = { x: 0, y: 0 };`,
+    ].join("\n"),
+  );
+  assert.deepEqual(hits(clean, "no-restricted-imports"), []);
+  assert.deepEqual(hits(clean, "no-restricted-globals"), []);
+  const test = await lint(
+    "packages/board/src/core/probe.test.ts",
+    `import { it } from "vitest";\nexport { it };\n`,
+  );
+  assert.deepEqual(hits(test, "no-restricted-imports"), []);
+});
+
+test("画板 dom：不得 import React 与 react 入口；core 可以", async () => {
+  const messages = await lint(
+    "packages/board/src/dom/probe.ts",
+    [
+      `import { createElement } from "react";`,
+      `import { BoardView } from "../react/board";`,
+      `import type { Vec } from "../core/types";`,
+      `export const el = document.body;`,
+      `export { createElement, BoardView };`,
+      `export type { Vec };`,
+    ].join("\n"),
+  );
+  const found = hits(messages, "no-restricted-imports");
+  assert.deepEqual([...new Set(found.map((message) => message.line))], [1, 2]);
+  assert.deepEqual(hits(messages, "no-restricted-globals"), []);
+});
