@@ -7,7 +7,7 @@ import { onWorkspaceEvent } from "../api/events";
 import { hasDrafts, subscribeDrafts } from "../canvas/flow/drafts";
 import { LEASE_LOST_EVENT, flushBoardSaves } from "../save/autosave";
 import { SAVE_RETRY_EVENT } from "../shell/Banners";
-import { useCanvasStore } from "../store/canvas-store";
+import { useCanvasStore, type CanvasStore } from "../store/canvas-store";
 import { realtimeActive, startRealtime } from "../realtime/session";
 import {
   applyPresence,
@@ -74,7 +74,6 @@ export function useBoardSync() {
    * `getState()` 当场读，避免订阅无关变化。
    */
   const documentBoardId = useCanvasStore((state) => state.document?.board.id);
-  const saveState = useCanvasStore((state) => state.saveState);
   const setWorkspace = useCanvasStore((state) => state.setWorkspace);
   const setBoards = useCanvasStore((state) => state.setBoards);
   const selectBoard = useCanvasStore((state) => state.selectBoard);
@@ -321,21 +320,31 @@ export function useBoardSync() {
   }, []);
 
   /* --------------------------- 有未落盘改动时拦窗 ------------------------- */
+  // 不用 React 状态订阅 `saveState`：自动保存的 dirty / saving / saved 每走一遍，
+  // 整个应用壳（近三千个组件）就要跟着重渲一遍，平移、拖动结束后的那次保存也一样。
   useEffect(() => {
-    if (
-      saveState !== "dirty" &&
-      saveState !== "saving" &&
-      saveState !== "error"
-    ) {
-      return;
-    }
     const guard = (event: BeforeUnloadEvent) => {
       void flushBoardSaves().catch(() => undefined);
       event.preventDefault();
     };
-    window.addEventListener("beforeunload", guard);
-    return () => window.removeEventListener("beforeunload", guard);
-  }, [saveState]);
+    let attached = false;
+    const sync = (state: CanvasStore) => {
+      const unsaved =
+        state.saveState === "dirty" ||
+        state.saveState === "saving" ||
+        state.saveState === "error";
+      if (unsaved === attached) return;
+      attached = unsaved;
+      if (unsaved) window.addEventListener("beforeunload", guard);
+      else window.removeEventListener("beforeunload", guard);
+    };
+    sync(useCanvasStore.getState());
+    const stop = useCanvasStore.subscribe(sync);
+    return () => {
+      stop();
+      window.removeEventListener("beforeunload", guard);
+    };
+  }, []);
 
   /**
    * 画布区是否还在等首批数据：没有工作空间时看工作空间列表，有工作空间时看
