@@ -156,14 +156,15 @@ function BoardWorkspaceInner() {
   }, [board]);
 
   /** 开板一次：视口恢复（`board.id` 变了才算换了一块板）。 */
+  // 只订板 id：订整份 document 会让每次平移（视口回写）都重渲整个画布。
   const boardId = useCanvasStore((state) => state.document?.board.id);
-  const openedDocument = useCanvasStore((state) => state.document);
   const opened = React.useRef<string | null>(null);
   React.useEffect(() => {
-    if (!openedDocument || !boardId || opened.current === boardId) return;
+    const document = useCanvasStore.getState().document;
+    if (!document || !boardId || opened.current === boardId) return;
     opened.current = boardId;
-    applyBoardViewport(openedDocument);
-  }, [boardId, openedDocument]);
+    applyBoardViewport(document);
+  }, [boardId]);
 
   /** 锁上之后正在用的白板工具也要退回选择。 */
   React.useEffect(() => {

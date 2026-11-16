@@ -42,8 +42,25 @@ export function useBoardTick(board: DomBoard<CanvasNode>): number {
   );
 }
 
+/** 选区里有没有白板对象：只在选区变化时重渲，平移 / 缩放不会。 */
+function useHasSelectedItem(board: DomBoard<CanvasNode>): boolean {
+  return React.useSyncExternalStore(
+    React.useCallback((notify) => board.on("selection", notify), [board]),
+    () => [...board.selection()].some(isItemId),
+    () => false,
+  );
+}
+
+/**
+ * 外层只看「有没有选中白板对象」：没有就什么都不订，相机每动一步都不碰 React。
+ * 框的位置跟着相机，所以真有选中的时候才由内层订相机与场景。
+ */
 export function ItemSelection() {
   const board = useBoard<CanvasNode>();
+  return useHasSelectedItem(board) ? <SelectedItems board={board} /> : null;
+}
+
+function SelectedItems({ board }: { board: DomBoard<CanvasNode> }) {
   useBoardTick(board);
   const readOnly = useCanvasReadOnly();
   const locked = useCanvasLocked();

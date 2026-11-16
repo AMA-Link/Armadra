@@ -94,7 +94,9 @@ export function HandoffDialog() {
   const t = useT();
   const client = useQueryClient();
   const workspaceId = useCanvasStore((state) => state.workspace?.id ?? null);
-  const document = useCanvasStore((state) => state.document);
+  // 只订节点与连线：`board.viewport` 每次平移都换 `document` 对象。
+  const nodes = useCanvasStore((state) => state.document?.nodes);
+  const edges = useCanvasStore((state) => state.document?.edges);
   const [source, setSource] = React.useState<HandoffRequestDetail | null>(null);
   const [targetNodeId, setTargetNodeId] = React.useState("");
   const [newAgentId, setNewAgentId] = React.useState("");
@@ -147,8 +149,11 @@ export function HandoffDialog() {
   };
 
   const targets: HandoffTarget[] = React.useMemo(
-    () => (source ? handoffTargets(document, source.nodeId) : []),
-    [document, source],
+    () =>
+      source && nodes && edges
+        ? handoffTargets({ nodes, edges }, source.nodeId)
+        : [],
+    [nodes, edges, source],
   );
 
   // 冻结之后状态还会变（排队 → 写入 → 结果），所以跟着投递事件重取；

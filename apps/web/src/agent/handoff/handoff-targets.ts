@@ -53,7 +53,7 @@ export interface HandoffTarget {
  * Runtime 也认的目标，否则用户填完一整张表才在 `prepare` 时被拒。
  */
 export function handoffTargets(
-  document: BoardDocument | null | undefined,
+  document: Pick<BoardDocument, "nodes" | "edges"> | null | undefined,
   sourceNodeId: string,
 ): HandoffTarget[] {
   if (!document) return [];

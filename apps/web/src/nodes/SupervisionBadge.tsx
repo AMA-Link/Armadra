@@ -14,9 +14,11 @@ import { Badge } from "@/ui/badge";
  */
 export function SupervisionBadge({ node }: { node: CanvasNode }) {
   const t = useT();
-  const document = useCanvasStore((state) => state.document);
+  // 只订两张表：`board.viewport` 每次平移都换 `document` 对象，订整份会让每个节点头跟着重算。
+  const edges = useCanvasStore((state) => state.document?.edges);
+  const nodes = useCanvasStore((state) => state.document?.nodes);
   const badge = supervisionBadge(
-    supervisionFor(node.id, document?.edges ?? [], document?.nodes ?? []),
+    supervisionFor(node.id, edges ?? [], nodes ?? []),
   );
   if (badge === undefined) return null;
   const label =
