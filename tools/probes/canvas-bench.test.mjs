@@ -11,7 +11,9 @@ import {
   SELECTORS,
   SEGMENTS,
   aggregate,
+  ENGINES,
   buildInkWhiteboardV2,
+  buildInkWhiteboardV3,
   compareMetrics,
   diffPerformance,
   flatten,
@@ -117,6 +119,37 @@ test("墨迹白板样本：同种子逐字节相同，形状符合 v2", () => {
   assert.equal(new Set(doc.items.map((item) => item.id)).size, 300);
   const bytes = Buffer.byteLength(JSON.stringify(doc));
   assert.ok(bytes > 400_000 && bytes < 800_000, `字节数 ${bytes}`);
+});
+
+test("墨迹白板样本 v3：与 v2 同一配方，逐条逐点等价", () => {
+  const v2 = buildInkWhiteboardV2(300, 40, 952);
+  const v3 = buildInkWhiteboardV3(300, 40, 952);
+  assert.equal(v3.engine, "armadra-board");
+  assert.equal(v3.version, 3);
+  assert.deepEqual(v3.references, []);
+  assert.equal(v3.items.length, v2.items.length);
+  for (const [index, item] of v3.items.entries()) {
+    const old = v2.items[index];
+    assert.equal(item.kind, "ink");
+    for (const key of ["id", "x", "y", "w", "h", "z", "style", "points"]) {
+      assert.deepEqual(item[key], old[key], `第 ${index} 条的 ${key}`);
+    }
+    assert.equal(item.points.length, 40);
+  }
+});
+
+test("两个引擎的页面选择器都齐全", () => {
+  for (const name of ["current", "next"]) {
+    for (const key of [
+      "node",
+      "viewport",
+      "selected",
+      "dragHandle",
+      "idAttr",
+    ]) {
+      assert.equal(typeof ENGINES[name][key], "string", `${name}.${key}`);
+    }
+  }
 });
 
 test("median 与 aggregate：逐项中位数与波动", () => {
