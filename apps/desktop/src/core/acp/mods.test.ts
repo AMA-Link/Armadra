@@ -82,6 +82,7 @@ async function start(claudeCode: string) {
           launchCmd: "claude",
           // 官方适配器不换程序：表里的 `claude-agent-acp` 经条目的 PATH 找到。
           env: {
+            // portability-ok: start() 只被 win32 跳过的 describe 调用，假适配器是 sh 脚本
             PATH: `${dirname(adapter.program)}:${process.env.PATH ?? ""}`,
           },
           baseAgent: "claude",

@@ -65,12 +65,20 @@ test("锁文件、根配置、shared 变了：所有包全量", () => {
       "server",
       "mobile",
       "push-relay",
+      "shared",
     ]);
     assert.ok(
       plan.runs.every((run) => !run.args.includes("--changed")),
       file,
     );
   }
+});
+
+test("每条测试都在自己的包目录里跑，shared 在 packages/ 下", () => {
+  const plan = planTests(["package.json"], { base: BASE });
+  const dirs = new Map(plan.runs.map((run) => [run.id, run.pkg]));
+  assert.equal(dirs.get("web"), "apps/web");
+  assert.equal(dirs.get("shared"), "packages/shared");
 });
 
 test("拿不到基点或给了 --full：全量", () => {

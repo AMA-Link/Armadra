@@ -1,0 +1,9 @@
+#!/bin/sh
+# 推送前本地把关：规则与说明在 tools/hooks/pre-push.mjs。
+# 临时跳过：git push --no-verify，或 ARMADRA_SKIP_PREPUSH=1 git push。
+[ "${ARMADRA_SKIP_PREPUSH:-}" = 1 ] && exit 0
+if ! command -v node >/dev/null 2>&1; then
+  echo "pre-push：找不到 node，没法检查。装好 Node（mise）后再推，或 git push --no-verify 跳过。" >&2
+  exit 1
+fi
+exec node "$(git rev-parse --show-toplevel)/tools/hooks/pre-push.mjs" "$@"
