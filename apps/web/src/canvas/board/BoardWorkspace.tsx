@@ -5,7 +5,7 @@ import {
   createHandTool,
   createSelectTool,
 } from "@armadra/board/dom";
-import { BoardView, EntityHosts } from "@armadra/board/react";
+import { BoardView, EntityHosts, WorldOverlay } from "@armadra/board/react";
 
 import {
   useT,
@@ -27,9 +27,12 @@ import {
   setFlow,
   setFlowContainer,
 } from "../flow/flow-context";
-import { publishBoardZoom } from "../flow/canvas-zoom";
+import { publishStageView } from "../flow/stage-view";
 import { clearAllDrafts } from "../flow/drafts";
 import { applyBoardViewport, centerOnNode } from "../flow/use-flow-viewport";
+import { CanvasOverlays } from "../flow/overlays/CanvasOverlays";
+import { CursorLayer } from "../../realtime/CursorLayer";
+import { CommentLayer } from "../../realtime/comments/CommentLayer";
 import { setTool, useTool } from "../interaction/tool-store";
 import { useLayoutDirectionSync } from "../layout-direction";
 import { useCanvasMenus } from "../menus/CanvasMenus";
@@ -110,15 +113,31 @@ function BoardWorkspaceInner() {
     const edgeAdapter = createBoardEdgeAdapter(board);
     setFlow(createBoardFlowHandle(board, () => stage.current));
     setFlowContainer(element);
-    publishBoardZoom(board.camera.get().zoom);
-    const stopZoom = board.on("camera", ({ zoom }) => publishBoardZoom(zoom));
+    const publish = () => {
+      const { x, y, zoom } = board.camera.get();
+      publishStageView({
+        x,
+        y,
+        zoom,
+        width: element?.clientWidth ?? 0,
+        height: element?.clientHeight ?? 0,
+      });
+    };
+    publish();
+    const stopZoom = board.on("camera", publish);
+    const resize =
+      element && typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(publish)
+        : null;
+    if (element) resize?.observe(element);
     const offEscape = element
       ? registerEscapeToSelect({ container: element })
       : () => {};
     return () => {
       offEscape();
       stopZoom();
-      publishBoardZoom(null);
+      resize?.disconnect();
+      publishStageView(null);
       adapter.destroy();
       edgeAdapter.destroy();
       setFlow(null);
@@ -292,6 +311,12 @@ function BoardWorkspaceInner() {
             <EntityHosts<CanvasNode> render={renderEntity} />
             <BoardEdges />
             <BoardConnectionLine />
+            {/* 派生层、他人光标与选区、评论钉：世界坐标，跟相机同一个变换。 */}
+            <WorldOverlay>
+              <CanvasOverlays />
+              <CursorLayer />
+              <CommentLayer />
+            </WorldOverlay>
           </BoardView>
           <CanvasStylePanel />
           <CanvasTopBar />

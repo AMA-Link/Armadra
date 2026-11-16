@@ -57,6 +57,7 @@ import {
 } from "./interaction/keyboard";
 import { useCanvasMenus } from "./menus/CanvasMenus";
 import { Minimap } from "./flow/Minimap";
+import { FlowStagePublisher } from "./flow/FlowStagePublisher";
 import { CanvasOverlays } from "./flow/overlays/CanvasOverlays";
 import { CanvasStylePanel } from "./StylePanel";
 import { ToolLayer } from "./whiteboard/tools/ToolLayer";
@@ -285,6 +286,7 @@ function FlowWorkspaceInner() {
                 `<ViewportPortal>` 已经替我们做完相机变换（F07）。 */}
             {/* 状态缩略图（F20，B1）。它是 `<Panel>`，位置在 canvas.css 里。 */}
             <Minimap />
+            <FlowStagePublisher />
             <ViewportPortal>
               <CanvasOverlays />
               {/* 实时板上别人的光标与选区（补全架构 §6.4）；非实时板不画。 */}

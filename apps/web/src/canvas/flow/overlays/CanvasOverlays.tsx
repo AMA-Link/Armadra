@@ -105,6 +105,8 @@ export function CanvasOverlays() {
 function SubagentSlot({ placement }: { placement: SubagentPlacement }) {
   return (
     <div
+      // 自研引擎的输入路由在容器上听原生事件：卡片里的按下归卡片，引擎放手。
+      data-board-editable=""
       className="absolute"
       style={{
         left: placement.x,
