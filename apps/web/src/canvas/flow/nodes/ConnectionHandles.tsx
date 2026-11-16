@@ -172,12 +172,12 @@ function BoardHandles({ dropOnly }: ConnectionHandlesProps) {
 
 /**
  * 两种引擎各画各的：React Flow 的 `Handle` 在节点之外会报错，宿主里用上面的
- * 普通元素。B6 删掉 React Flow 后只剩 `BoardHandles`。
+ * 普通元素。两者都不是（手机焦点页直接渲染节点体，`ReactFlowProvider` 只在
+ * 旧引擎的画布里）就不画把手：`useNodeId` 只读节点上下文，不需要 provider。
+ * B6 删掉 React Flow 后只剩 `BoardHandles`。
  */
 export function ConnectionHandles(props: ConnectionHandlesProps = {}) {
-  return useIsBoardHost() ? (
-    <BoardHandles {...props} />
-  ) : (
-    <ConnectionHandlesInner {...props} />
-  );
+  const inFlowNode = useNodeId() !== null;
+  if (useIsBoardHost()) return <BoardHandles {...props} />;
+  return inFlowNode ? <ConnectionHandlesInner {...props} /> : null;
 }
