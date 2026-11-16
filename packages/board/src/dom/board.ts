@@ -108,10 +108,12 @@ export function createBoard<D = unknown>(
 
   const showFeedback = (fb: GestureFeedback | null): void => {
     if (!mounted) return;
-    mounted.draft?.remove();
-    mounted.draft = fb
-      ? drawFeedback(mounted.renderer.layers.worldSvg, fb, scene, camera)
+    const { draft, renderer } = mounted;
+    const next = fb
+      ? drawFeedback(renderer.layers.worldSvg, fb, scene, camera, draft)
       : null;
+    if (next !== draft) draft?.remove();
+    mounted.draft = next;
   };
 
   const unmount = (): void => {
