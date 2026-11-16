@@ -195,6 +195,20 @@ describe("createPainter", () => {
     ).toBe(false);
   });
 
+  it("没传 color 时点阵按主题取缺省灰，不是黑色", () => {
+    const { layers, painter, ctxs } = setup();
+    painter.configure({ dots: true });
+    painter.flush();
+    expect(ctxs.get(layers.under)!.calls).toContain(
+      "fillStyle=rgba(0,0,0,0.18)",
+    );
+    painter.configure({ theme: "dark" });
+    painter.flush();
+    expect(ctxs.get(layers.under)!.calls).toContain(
+      "fillStyle=rgba(255,255,255,0.18)",
+    );
+  });
+
   it("destroy 取消排队的帧并退订", () => {
     const { scene, painter, run, paints } = setup();
     scene.transact((d) => d.set(make("a")));

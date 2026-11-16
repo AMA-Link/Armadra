@@ -59,7 +59,13 @@ export function createPainter(deps: PainterDeps): Painter {
   let settings: PaintSettings = {
     theme: "light",
     dots: true,
-    color: (name) => name,
+    // 点阵缺省按主题取一档半透明灰；应用想要自己的色就传 `color`。
+    color: (name) =>
+      name === "dot"
+        ? settings.theme === "dark"
+          ? "rgba(255,255,255,0.18)"
+          : "rgba(0,0,0,0.18)"
+        : name,
     image: () => undefined,
     selected: () => false,
     ...deps.settings,

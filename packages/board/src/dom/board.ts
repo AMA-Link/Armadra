@@ -29,12 +29,14 @@ export interface CreateBoardOptions<D> extends Partial<BoardOptions> {
   kinds?: Record<string, DomKindSpec<D>>;
   camera?: CameraState;
   tool?: Tool;
+  /** 颜色名 → CSS 颜色（点阵色叫 `dot`）；绘制与导出共用。 */
+  color?(name: string): string;
 }
 
 export function createBoard<D = unknown>(
   init: CreateBoardOptions<D> = {},
 ): Board<D> {
-  const { kinds: initial, camera: start, tool: first, ...rest } = init;
+  const { kinds: initial, camera: start, tool: first, color, ...rest } = init;
   const kinds = new Map(Object.entries(initial ?? {}));
   const kind = (name: string) => kinds.get(name) as DomKindSpec | undefined;
   const scene = createMemoryScene<D>({ kinds: (name) => kinds.get(name) });
@@ -93,6 +95,7 @@ export function createBoard<D = unknown>(
           theme: options.theme,
           dots: options.dots,
           selected: (id) => selection.has(id),
+          ...(color && { color }),
         },
       });
       const router = createInputRouter(container, {
@@ -149,7 +152,7 @@ export function createBoard<D = unknown>(
         kind,
         ids,
         opts,
-        browserRasterEnv({ theme: options.theme }),
+        browserRasterEnv({ theme: options.theme, color }),
       ),
     emit(event, payload) {
       if (event === "gesture") active = (payload as { active: boolean }).active;
