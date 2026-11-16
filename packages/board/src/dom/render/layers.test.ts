@@ -66,6 +66,15 @@ describe("createLayers", () => {
     expect(listener).toHaveBeenCalledWith({ width: 300, height: 200, dpr: 3 });
   });
 
+  it("尺寸没变时不重写 Canvas 像素尺寸（赋值会清空画面）", () => {
+    const { env, fire } = fakeEnv(2);
+    const layers = createLayers(sized(300, 200), env);
+    const write = vi.spyOn(layers.under, "width", "set");
+    fire();
+    fire();
+    expect(write).not.toHaveBeenCalled();
+  });
+
   it("世界层与世界 SVG 用同一个 transform 跟相机", () => {
     const layers = createLayers(sized(10, 10), fakeEnv().env);
     layers.setCamera({ x: 40, y: -20, zoom: 0.5 });

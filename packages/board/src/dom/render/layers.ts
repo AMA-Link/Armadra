@@ -70,7 +70,8 @@ export function createLayers(
   container.append(under, world, over, overlay);
 
   const listeners = new Set<(size: LayerSize) => void>();
-  let size: LayerSize = { width: 0, height: 0, dpr: 1 };
+  // 起始用 -1：第一次量尺寸一定要写 Canvas 像素尺寸。
+  let size: LayerSize = { width: -1, height: -1, dpr: 1 };
 
   function refresh(): void {
     const next = {
@@ -82,12 +83,15 @@ export function createLayers(
       next.width === size.width &&
       next.height === size.height &&
       next.dpr === size.dpr;
+    // 尺寸没变就不碰像素尺寸：给 canvas 的 width 赋值（哪怕同值）会清空画面，
+    // 而 ResizeObserver 挂上后必会回调一次，那时不会有人再通知重绘。
+    if (same) return;
     size = next;
     for (const canvas of [under, over]) {
       canvas.width = Math.max(1, Math.round(next.width * next.dpr));
       canvas.height = Math.max(1, Math.round(next.height * next.dpr));
     }
-    if (!same) for (const listener of [...listeners]) listener(next);
+    for (const listener of [...listeners]) listener(next);
   }
 
   refresh();
