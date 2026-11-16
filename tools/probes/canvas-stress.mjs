@@ -435,19 +435,12 @@ async function main() {
   /* ---------------------------- Vite 开发服务器 -------------------------- */
 
   const port = await freePort();
+  // 直接起 vite 可执行文件：经 pnpm 起会在临时 HOME 里重新拉一份 pnpm 本身，网络不好时一挂就是几十分钟。
   const vite = spawn(
-    process.platform === "win32" ? "pnpm.exe" : "pnpm",
-    [
-      "--filter",
-      "@armadra/web",
-      "exec",
-      "vite",
-      "--port",
-      String(port),
-      "--strictPort",
-    ],
+    join(root, "apps/web/node_modules/.bin/vite"),
+    ["--port", String(port), "--strictPort"],
     {
-      cwd: root,
+      cwd: join(root, "apps/web"),
       stdio: ["ignore", "pipe", "pipe"],
       env: { ...environment, ARMADRA_DATA_DIR: data },
     },
