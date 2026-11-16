@@ -46,6 +46,15 @@ export function useBoardConnect(
         if (!commitConnection(from, to)) rejectConnection(from, to);
         return;
       }
+      // 落回起笔的节点自己身上：引擎把起笔节点排除在落点之外（得到空白），
+      // 旧画布则当作自连提示一次，这里补上同一句提示，不开派发菜单。
+      const onSelf = board.scene
+        .query({ x: at.x, y: at.y, w: 0, h: 0 })
+        .some((entity) => entity.id === from);
+      if (onSelf) {
+        rejectConnection(from, from);
+        return;
+      }
       // 派发菜单要松手处的屏幕坐标：世界坐标 → 舞台内 → 视口。
       const rect = stage.current?.getBoundingClientRect();
       const screen = board.camera.worldToScreen(at);
