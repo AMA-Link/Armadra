@@ -170,13 +170,24 @@ node tools/probes/canvas-stress.mjs [输出目录] [终端数]
 
 `pnpm libs:build` 不能省：Vite 从 `packages/shared/dist` 解析 `@armadra/shared`，没构建过的工作区只会得到一块 Vite 错误遮罩，而画布一个节点都不挂——脚本会在「挂载情况」那一步报 0 个 RF 节点。
 
-量四段（空闲 3 s / 手形平移 10 s / 拖一个节点 6 s / 便签连续输入 100 字符），每段记平均 fps、p50、p95 帧时、最慢一帧、超过 33.4 ms 的帧数与 JS 堆；另外单独量一次「销毁一个会话」引发多少个组件重渲。重渲计数注入 React DevTools 的 hook 垫片（React 只在 hook 先于它就位时才给 fiber 打开 ProfileMode），判据抄 DevTools 自己的 `didFiberRender`，并且只走这次 commit 真正碰过的子树——React 在高层 bail out 时不克隆子节点，不设这道门会把没渲染的子树全部数进来。
+量七段：空闲 3 s / 手形平移 900 步 / 拖一个节点 540 步 / ctrl+滚轮缩放（放大再缩小 48 步）/ 框选（拖一个盖住全部节点的框 240 步）/ 便签连续输入 100 字符 / 另一张板（300 条 × 40 点 v2 墨迹，白板字节数一并记）上手形平移 900 步。每段记平均 fps、p50、p95、最慢一帧、超过 33.4 ms 的帧数、长任务数（>50 ms）、主线程脚本+布局+样式耗时与任务总耗时（CDP `Performance.getMetrics` 差值，与刷新率无关）、JS 堆与 DOM 节点数；另外单独量一次「销毁一个会话」引发多少个组件重渲。重渲计数注入 React DevTools 的 hook 垫片（React 只在 hook 先于它就位时才给 fiber 打开 ProfileMode），判据抄 DevTools 自己的 `didFiberRender`，并且只走这次 commit 真正碰过的子树——React 在高层 bail out 时不克隆子节点，不设这道门会把没渲染的子树全部数进来。
 
 视口写死在 `zoom 0.35`，30 个终端全部在视口里、React Flow 不裁剪，与既有基线同一个最坏情况。产物默认在 `target/canvas-stress/`：`result.json` 与 `canvas.png` / `mounted.png`。
 
 便签那一段点的是便签正文，找 textarea 也限在 `[data-slot="sticky-node"]` 里：每个终端的 xterm 都挂着一个隐藏的 helper textarea，排在便签前面。2026-09-26 之前的脚本用的是不限范围的 `querySelector("textarea")`，字符其实打进了第一个终端的 PTY——那之前记下的「输入 100 字符」各项数字量的都不是便签。
 
-无头 Chrome 的 rAF 上限是 60 Hz（既有基线在有屏幕的 120 Hz 窗口里跑，所以那张表的 fps 不能和这张直接比）。fps 在这里很快撞顶，**真正有判别力的是重渲组件数与最慢帧**。撤销栈深度放在最后数——数法是一直点到按钮灰掉，那会真的把改动撤回去。
+**默认不封顶**：Chrome 带 `--disable-gpu-vsync --disable-frame-rate-limit`，有画面变化时 rAF 不再卡在 60 Hz（`CANVAS_BENCH_CAPPED=1` 退回封顶）。画面完全不变（空闲）或被固定打字间隔限住（输入）的段，帧指标反映的是 Chrome 无损伤时的 60 Hz 心跳而不是引擎，所以这两段只比 CPU、长任务、堆与 DOM 节点；p50 / p95 帧时不封顶后是双峰的（p95 压在 17.7 ms 上），写进 result.json 但不进比较。每段的输入是固定步数，两个引擎吃到同一串输入。撤销栈深度放在最后数——数法是一直点到按钮灰掉，那会真的把改动撤回去。
+
+### 基准对比
+
+```sh
+# 多次运行取逐项中位数，写成基线（记机器、内存、Chrome、提交号与每项波动）
+node tools/probes/canvas-bench-aggregate.mjs tools/probes/canvas-bench-baseline.json <result1.json> <result2.json> …
+# 候选 result.json（或聚合文件）对基线逐项比较；任一指标没有严格优于基线退出码 1
+node tools/probes/canvas-bench-compare.mjs tools/probes/canvas-bench-baseline.json <候选.json>
+```
+
+每项指标的方向（越大越好 / 越小越好）定义在 `canvas-bench-lib.mjs` 的 `SEGMENT_METRICS` 与 `GLOBAL_METRICS`，表里逐行打印。计数类指标（超 33.4 ms 帧数、长任务数）基线已是 0 时无法更优，候选也是 0 记 `floor` 算过。`tools/probes/canvas-bench-baseline.json` 是旧引擎（`@xyflow/react`，Armadra#952 重写前）在本机上的中位数基线，只能与同一台机器、同一版 Chrome 的结果比较。便签与输入选择器在 `canvas-bench-lib.mjs` 的 `SELECTORS`，`canvas-bench.test.mjs` 会读 `StickyNode.tsx` 断言这些 `data-slot` 仍在（#956）。
 
 ## 画布整理（导入不被打散、主从成簇）
 
