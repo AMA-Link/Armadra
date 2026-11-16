@@ -120,21 +120,47 @@ function BoardWorkspaceInner() {
     const edgeAdapter = createBoardEdgeAdapter(board);
     setFlow(createBoardFlowHandle(board, () => stage.current));
     setFlowContainer(element);
+    // 舞台尺寸只在尺寸变化时量：每个相机事件都读 clientWidth 会把刚写的 transform
+    // 的样式重算提前到输入回调里结算。
+    let width = element?.clientWidth ?? 0;
+    let height = element?.clientHeight ?? 0;
     const publish = () => {
       const { x, y, zoom } = board.camera.get();
-      publishStageView({
-        x,
-        y,
-        zoom,
-        width: element?.clientWidth ?? 0,
-        height: element?.clientHeight ?? 0,
-      });
+      publishStageView({ x, y, zoom, width, height });
     };
     publish();
-    const stopZoom = board.on("camera", publish);
+    // 相机在动时把世界层升成合成层：平移只改合成层的变换，三十个宿主不再每帧按新的
+    // 裁剪区重绘；停手 150 ms 撤掉，缩放后的内容按新比例重栅格化而不发虚。
+    let world: HTMLElement | null | undefined;
+    let settle: ReturnType<typeof setTimeout> | undefined;
+    let lastZoom = board.camera.get().zoom;
+    const lift = () => {
+      // 缩放不升层：合成层按旧比例拉伸会发虚，缩放步里重栅格化也不比重画便宜。
+      const { zoom } = board.camera.get();
+      const panning = zoom === lastZoom;
+      lastZoom = zoom;
+      if (!panning) return;
+      if (!world?.isConnected) {
+        world = element?.querySelector<HTMLElement>(
+          '[data-board-layer="world"]',
+        );
+      }
+      if (!world) return;
+      world.style.willChange = "transform";
+      clearTimeout(settle);
+      settle = setTimeout(() => world && (world.style.willChange = ""), 150);
+    };
+    const stopZoom = board.on("camera", () => {
+      lift();
+      publish();
+    });
     const resize =
       element && typeof ResizeObserver !== "undefined"
-        ? new ResizeObserver(publish)
+        ? new ResizeObserver(() => {
+            width = element.clientWidth;
+            height = element.clientHeight;
+            publish();
+          })
         : null;
     if (element) resize?.observe(element);
     const offEscape = element
@@ -143,6 +169,7 @@ function BoardWorkspaceInner() {
     return () => {
       offEscape();
       stopZoom();
+      clearTimeout(settle);
       resize?.disconnect();
       publishStageView(null);
       adapter.destroy();

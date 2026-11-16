@@ -40,23 +40,27 @@ export function getStageView(): StageView {
   return view;
 }
 
-function subscribe(listener: () => void): () => void {
+export function subscribeStageView(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
 
 export function useStageView(): StageView {
-  return React.useSyncExternalStore(subscribe, getStageView, () => IDLE);
+  return React.useSyncExternalStore(
+    subscribeStageView,
+    getStageView,
+    () => IDLE,
+  );
 }
 
 /**
  * 只关心缩放的订阅者用这个：平移时快照（一个数）不变，组件不重渲。
  * `useStageView()` 每次平移都换对象，Dock 这类只读档位的组件会跟着每一步重渲。
  */
-export function useStageZoom(): number {
+export function useStageZoom(live = true): number {
   return React.useSyncExternalStore(
-    subscribe,
-    () => view.zoom,
+    subscribeStageView,
+    () => (live ? view.zoom : IDLE.zoom),
     () => IDLE.zoom,
   );
 }
@@ -84,7 +88,7 @@ export function useStageZoomReadout(): number {
       setZoom(shown);
     };
     flush();
-    const stop = subscribe(() => {
+    const stop = subscribeStageView(() => {
       if (timer !== null) return;
       flush();
       timer = setTimeout(flush, ZOOM_READOUT_MS);

@@ -246,7 +246,8 @@ function Comments({
   const offline = useRealtimeStore((view) => view.status === "offline");
   const nodes = useCanvasStore((state) => state.document?.nodes ?? NO_NODES);
   const items = useCanvasStore((state) => state.whiteboard.items);
-  const zoom = useStageZoom();
+  // 没有钉也没有草稿时缩放不影响画面：别让每个缩放步都重渲这一层。
+  const zoom = useStageZoom(comments.length > 0 || Boolean(draft));
   const domNode = useFlowContainer();
 
   const canWrite = access.can("canvas:write", workspaceId);
