@@ -46,6 +46,7 @@ import {
 import { createBoardAdapter } from "./board-adapter";
 import { createBoardEdgeAdapter } from "./edge-adapter";
 import { BoardEdges } from "./BoardEdges";
+import { BoardMinimap } from "./BoardMinimap";
 import { useEdgePointer } from "./use-edge-pointer";
 import { BoardConnectionLine } from "./connect-preview";
 import { useBoardConnect } from "./use-board-connect";
@@ -318,6 +319,7 @@ function BoardWorkspaceInner() {
               <CommentLayer />
             </WorldOverlay>
           </BoardView>
+          <BoardMinimap />
           <CanvasStylePanel />
           <CanvasTopBar />
         </div>

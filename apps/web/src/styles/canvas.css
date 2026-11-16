@@ -144,7 +144,8 @@
 
 /* ------------------------------ 浮层与归属 -------------------------------- */
 
-.canvas-stage .react-flow__minimap {
+.canvas-stage .react-flow__minimap,
+.canvas-stage .board-minimap {
   /* `<MiniMap>` 是一个 Panel，自带 15px margin；归零后 14px 才是真的 14px。 */
   margin: 0;
   right: calc(14px + var(--surface-inset-right, 0px));
@@ -294,7 +295,8 @@
 }
 
 @container workspace (max-width: 760px) {
-  .canvas-stage .react-flow__minimap {
+  .canvas-stage .react-flow__minimap,
+  .canvas-stage .board-minimap {
     --minimap-w: 160px;
     --minimap-h: 120px;
   }
@@ -432,7 +434,8 @@
 }
 
 .workspace-surface[data-minimap-collapsed="true"],
-.workspace-surface[data-minimap-collapsed="true"] .react-flow__minimap {
+.workspace-surface[data-minimap-collapsed="true"] .react-flow__minimap,
+.workspace-surface[data-minimap-collapsed="true"] .board-minimap {
   --minimap-w: 36px;
   --minimap-h: 36px;
 }
@@ -454,6 +457,7 @@
  */
 @media (prefers-reduced-motion: reduce) {
   .canvas-stage .react-flow__minimap,
+  .canvas-stage .board-minimap,
   .canvas-stage .minimap-toggle-panel {
     transition: none !important;
   }
@@ -467,6 +471,7 @@
   .react-flow__minimap:hover
   ~ .minimap-toggle-panel
   .minimap-toggle,
+.canvas-stage .board-minimap:hover ~ .minimap-toggle-panel .minimap-toggle,
 .canvas-stage .minimap-toggle-panel:hover .minimap-toggle,
 .canvas-stage .minimap-toggle:focus-visible,
 .canvas-stage .minimap-toggle[data-reveal="true"] {
@@ -488,6 +493,7 @@
  * 归属链接不收：MIT 礼节不看模式（§0 归属标识）。
  */
 :root[data-canvas-focus="true"] .canvas-stage .react-flow__minimap,
+:root[data-canvas-focus="true"] .canvas-stage .board-minimap,
 :root[data-canvas-focus="true"] .canvas-stage .minimap-toggle {
   display: none;
 }
@@ -662,6 +668,22 @@
 .canvas-stage [data-connect-target="valid"] [data-slot="node-shell"] {
   border-radius: var(--r-card);
   box-shadow: 0 0 0 2px var(--brand);
+}
+
+/*
+ * 缩略图（`canvas/board/BoardMinimap.tsx`）：尺寸、边距、边框与收起 / 专注模式的
+ * 规则与 `.react-flow__minimap` 共用上面那几张选择器表；这里补库自己提供的那部分
+ * （绝对定位、层级、底色）与收起钮的容器。
+ */
+.canvas-stage .board-minimap {
+  position: absolute;
+  z-index: 5;
+  background: var(--xy-minimap-background-color);
+  cursor: pointer;
+}
+.canvas-stage .minimap-toggle-panel {
+  position: absolute;
+  z-index: 5;
 }
 
 /* 整理那一下：宿主的位置与尺寸走过渡，结束后 `data-tidying` 被撤掉 */
