@@ -1,5 +1,5 @@
 // 手势与内置工具的共用依赖。Board 契约里读不到选项与种类表，由门面通过这里注入。
-import type { Entity, EntityId, Rect, Vec } from "../../core";
+import type { Entity, EntityId, Rect, Scene, Vec } from "../../core";
 import type { Clock } from "../camera";
 import type {
   Board,
@@ -68,3 +68,36 @@ export const isTouchLike = (input: PointerInput): boolean =>
   input.type !== "mouse";
 
 export type { Gesture };
+
+/** `id` 是否在 `ancestor` 之下（含自身）。 */
+export function within(
+  scene: Scene,
+  id: EntityId,
+  ancestor: EntityId,
+): boolean {
+  for (let at: EntityId | undefined = id; at; at = scene.get(at)?.parent) {
+    if (at === ancestor) return true;
+  }
+  return false;
+}
+
+/** 去掉祖先也在集合里的实体：祖先带着它们走。 */
+export const topLevel = (scene: Scene, ids: readonly EntityId[]): EntityId[] =>
+  ids.filter((id) => {
+    const parent = scene.get(id)?.parent;
+    return !ids.some((o) => o !== id && parent && within(scene, parent, o));
+  });
+
+/** Shift 点选 / 框选后的最终选区：Shift 增减，否则取新的。 */
+export const nextSelection = (
+  current: ReadonlySet<EntityId>,
+  hit: readonly EntityId[],
+  additive: boolean,
+): EntityId[] => {
+  if (!additive) return [...hit];
+  const out = new Set(current);
+  for (const id of hit) {
+    if (!out.delete(id)) out.add(id);
+  }
+  return [...out];
+};
