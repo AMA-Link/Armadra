@@ -49,6 +49,12 @@ test("测试夹具或 vitest 配置变了：整包全量", () => {
   assert.ok(!argsOf(plan, "web").includes("--changed"));
 });
 
+test("改画板包：只跑画板包的测试，在包目录里执行", () => {
+  const plan = planTests(["packages/board/src/core/types.ts"], { base: BASE });
+  assert.deepEqual(ids(plan), ["board"]);
+  assert.equal(plan.runs[0].pkg, "packages/board");
+});
+
 test("锁文件、根配置、shared 变了：所有包全量", () => {
   for (const file of [
     "pnpm-lock.yaml",
@@ -64,6 +70,7 @@ test("锁文件、根配置、shared 变了：所有包全量", () => {
       "desktop-scripts",
       "server",
       "mobile",
+      "board",
       "push-relay",
     ]);
     assert.ok(

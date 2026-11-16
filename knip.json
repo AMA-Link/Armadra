@@ -44,6 +44,15 @@
       "entry": ["src/main.ts", "src/**/*.test.ts", "scripts/*.mjs"],
       "project": ["src/**/*.ts", "scripts/*.mjs"]
     },
+    "packages/board": {
+      "entry": [
+        "src/core/index.ts",
+        "src/dom/index.ts",
+        "src/react/index.ts",
+        "src/**/*.test.{ts,tsx}"
+      ],
+      "project": ["src/**/*.{ts,tsx}"]
+    },
     "packages/shared": {
       "entry": ["src/index.ts", "src/**/*.test.ts", "test/**/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"]

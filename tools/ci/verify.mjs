@@ -89,6 +89,14 @@ export const PACKAGES = [
     runs: [{ id: "mobile", cmd: ["exec", "vitest", "run"] }],
   },
   {
+    // 画板引擎纯 Node 单测，包很小，改动就整包跑。
+    name: "board",
+    root: "packages/board",
+    dir: "packages/board/",
+    full: [/./],
+    runs: [{ id: "board", cmd: ["exec", "vitest", "run"] }],
+  },
+  {
     name: "push-relay",
     dir: "apps/push-relay/",
     full: [/./],
@@ -124,7 +132,7 @@ export function planTests(changed, { full = false, base = null } = {}) {
       const args = [...run.cmd];
       if (run.changed && !whole)
         args.push("--changed", base, "--passWithNoTests");
-      runs.push({ id: run.id, pkg: `apps/${pkg.name}`, args });
+      runs.push({ id: run.id, pkg: pkg.root ?? `apps/${pkg.name}`, args });
     }
   }
   return { full: everything, runs };
@@ -216,6 +224,7 @@ async function main(argv) {
     "release:check",
     "notices:check",
     "repo:test",
+    "board:budget",
     "release:test",
     "plugin:test",
     "controller:real:test",
