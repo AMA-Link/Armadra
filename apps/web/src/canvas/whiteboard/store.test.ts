@@ -38,6 +38,7 @@ vi.mock("@/nodes/registry", () => {
 
 const { useCanvasStore, resetHistory } = await import("@/store/canvas-store");
 const { emptyWhiteboard } = await import("./model");
+const { isOverBand } = await import("./bands");
 const store = await import("./store");
 
 const timestamp = "2026-09-06T00:00:00.000Z";
@@ -208,6 +209,22 @@ describe("reorder", () => {
     expect(items().find((item) => item.id === "a")!.z).toBe(top());
     store.reorder(["a"], "back");
     expect(items().find((item) => item.id === "a")!.z).toBe(bottom());
+  });
+});
+
+describe("遮挡带", () => {
+  it("置顶换到上带，之后新建的对象仍在下带，置底回下带", () => {
+    store.addItems([shape({ id: "a" }), shape({ id: "b" })]);
+    store.reorder(["a"], "front");
+    expect(isOverBand(items().find((i) => i.id === "a")!.z)).toBe(true);
+    store.addItems([shape({ id: "c" })]);
+    expect(isOverBand(items().find((i) => i.id === "c")!.z)).toBe(false);
+    store.reorder(["b"], "front");
+    const z = (id: string) => items().find((i) => i.id === id)!.z;
+    expect(z("b")).toBeGreaterThan(z("a"));
+    store.reorder(["a"], "back");
+    expect(isOverBand(z("a"))).toBe(false);
+    expect(z("a")).toBeLessThan(z("c"));
   });
 });
 
