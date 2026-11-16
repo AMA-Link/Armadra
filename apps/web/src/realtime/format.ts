@@ -1,5 +1,11 @@
 import type * as Y from "yjs";
 
+import {
+  BOARD_FORMAT,
+  BOARD_FORMAT_KEY,
+  LEGACY_BOARD_FORMAT,
+} from "@armadra/shared";
+
 import { edgesOf, itemsOf, metaOf, nodesOf } from "./doc";
 
 /**
@@ -13,9 +19,9 @@ import { edgesOf, itemsOf, metaOf, nodesOf } from "./doc";
  * 没有这个键的文档来自没有闸的旧客户端，它们全是 {@link LEGACY_FORMAT}。
  * 写白板线格式 v3（Armadra#952 B5）的客户端是 3。
  */
-export const BOARD_FORMAT = 3;
-export const LEGACY_FORMAT = 2;
-export const FORMAT_KEY = "boardFormat";
+export { BOARD_FORMAT };
+export const LEGACY_FORMAT = LEGACY_BOARD_FORMAT;
+export const FORMAT_KEY = BOARD_FORMAT_KEY;
 
 /** 落下格式号的事务来源：不在撤销栈追踪的来源之内，撤销不会把它撤掉。 */
 export const FORMAT_ORIGIN = "board-format";
