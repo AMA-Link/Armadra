@@ -1,10 +1,6 @@
 import * as React from "react";
 import type { CanvasNode } from "@armadra/shared";
-import {
-  createBoard,
-  createHandTool,
-  createSelectTool,
-} from "@armadra/board/dom";
+import { createBoard } from "@armadra/board/dom";
 import { BoardView, EntityHosts } from "@armadra/board/react";
 
 import {
@@ -45,6 +41,12 @@ import { createBoardFlowHandle } from "./flow-handle";
 import { renderEntity } from "./hosts";
 import { BOARD_SELECTORS, nodeKinds } from "./model";
 import { useBoardViewportSync } from "./use-board-viewport";
+import { BoardToolLayer } from "./whiteboard/BoardToolLayer";
+import { whiteboardKinds } from "./whiteboard/kinds";
+import { boardColor, boardImage } from "./whiteboard/paint-env";
+import { createWhiteboardSync } from "./whiteboard/sync";
+import { createBoardTool } from "./whiteboard/tools";
+import { itemAtEvent } from "./whiteboard/interactions";
 
 /**
  * 自研画板引擎的画布（`canvas.engine = "next"`，docs/design/board-engine.md §6.1 B3）。
@@ -78,7 +80,9 @@ function BoardWorkspaceInner() {
   const board = React.useMemo(
     () =>
       createBoard<CanvasNode>({
-        kinds: nodeKinds(),
+        kinds: { ...nodeKinds(), ...whiteboardKinds() },
+        color: boardColor,
+        image: boardImage,
         selectors: BOARD_SELECTORS,
         // 右键菜单是应用的（Radix）：引擎只发事件，不拦原生 contextmenu。
         nativeContextMenu: true,
@@ -99,6 +103,8 @@ function BoardWorkspaceInner() {
 
   React.useEffect(() => {
     const element = stage.current;
+    // 白板对象的同步先于节点适配器：二者监听同一个 move 事件，先后顺序决定历史能否合并。
+    const whiteboard = createWhiteboardSync(board);
     const adapter = createBoardAdapter(board);
     setFlow(createBoardFlowHandle(board, () => stage.current));
     setFlowContainer(element);
@@ -112,6 +118,7 @@ function BoardWorkspaceInner() {
       stopZoom();
       publishBoardZoom(null);
       adapter.destroy();
+      whiteboard.destroy();
       setFlow(null);
       setFlowContainer(null);
       clearAllDrafts();
@@ -153,11 +160,7 @@ function BoardWorkspaceInner() {
   }, [board, locked]);
 
   React.useEffect(() => {
-    board.setTool(
-      !locked && tool === "hand"
-        ? createHandTool(board.gestureDeps)
-        : createSelectTool(board.gestureDeps),
-    );
+    board.setTool(createBoardTool(locked ? "select" : tool, board));
   }, [board, locked, tool]);
 
   /** 空格 + 拖动平移：空格是修饰键，由键盘层写给引擎（文字输入里不算）。 */
@@ -239,11 +242,13 @@ function BoardWorkspaceInner() {
   const onContextMenuCapture = React.useCallback(
     (event: React.MouseEvent) => {
       const host = (event.target as Element).closest("[data-board-id]");
-      const id = host?.getAttribute("data-board-id");
+      const id =
+        (stage.current && itemAtEvent(board, event, stage.current)) ??
+        host?.getAttribute("data-board-id");
       if (id) menuHandlers.onNodeContextMenu(event, { id } as never);
       else menuHandlers.onPaneContextMenu(event);
     },
-    [menuHandlers],
+    [board, menuHandlers],
   );
 
   /** 滚轮移动相机就不再跟随别人；锁定时滚轮不动相机，也就不取消。 */
@@ -273,6 +278,7 @@ function BoardWorkspaceInner() {
             data-board-stage=""
           >
             <EntityHosts<CanvasNode> render={renderEntity} />
+            <BoardToolLayer />
           </BoardView>
           <CanvasStylePanel />
           <CanvasTopBar />

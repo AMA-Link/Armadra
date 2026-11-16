@@ -7,6 +7,7 @@ import { absolutePosition } from "@/store/canvas/internal";
 import { COLLAPSED_HEIGHT } from "@/store/defaults";
 import { NODE_META } from "@/nodes/registry";
 import { clearDrafts, setDrafts } from "../flow/drafts";
+import { isItemId } from "../whiteboard/model";
 import { entityOf, type BoardEntity } from "./model";
 
 /**
@@ -74,7 +75,11 @@ export function createBoardAdapter(
   }
 
   function pushSelection(ids: readonly string[]): void {
-    const present = ids.filter((id) => known.has(id));
+    // 选区是节点与白板对象的整体：白板对象在场景里（`wb:` id），不在 `known`。
+    const present = [
+      ...ids.filter((id) => known.has(id)),
+      ...store.getState().selectedItemIds.filter((id) => board.scene.has(id)),
+    ];
     if (sameSet(board.selection(), present)) return;
     board.setSelection(new Set(present));
   }
@@ -88,7 +93,11 @@ export function createBoardAdapter(
 
   const onSelect = ({ ids }: BoardEvents["select"]): void => {
     // 引擎的选区是整体：点空白或换选一个，连线与白板对象的选区一并清掉。
-    store.getState().setSelection({ nodes: ids, edges: [], items: [] });
+    store.getState().setSelection({
+      nodes: ids.filter((id) => !isItemId(id)),
+      edges: [],
+      items: ids.filter(isItemId),
+    });
   };
 
   const onMove = ({ ids, positions, reparent }: BoardEvents["move"]): void => {
@@ -162,7 +171,10 @@ export function createBoardAdapter(
       if (state.document?.nodes !== previous.document?.nodes) {
         syncNodes(state.document?.nodes ?? []);
       }
-      if (state.selectedNodeIds !== previous.selectedNodeIds) {
+      if (
+        state.selectedNodeIds !== previous.selectedNodeIds ||
+        state.selectedItemIds !== previous.selectedItemIds
+      ) {
         pushSelection(state.selectedNodeIds);
       }
     }),
