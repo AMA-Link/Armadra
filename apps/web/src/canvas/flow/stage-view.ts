@@ -60,3 +60,39 @@ export function useStageZoom(): number {
     () => IDLE.zoom,
   );
 }
+
+/** 档位读数的刷新间隔：连续缩放时数字每这么久才换一次。 */
+export const ZOOM_READOUT_MS = 100;
+
+/**
+ * 只用来**显示**缩放档位的订阅（Dock 的百分比）：首次变化立即更新，连续变化
+ * 之间最多每 `ZOOM_READOUT_MS` 换一次，停手后落到最终值。
+ *
+ * 一次滚轮缩放每一步都发相机事件；读数每步都重渲 Dock、还让 `TextSwap` 量一次宽度
+ * （强制同步布局）并起一段淡入淡出，人眼读不出来，主线程却被占满。位置要和
+ * 世界层对得上的订阅者（成员光标、评论钉、浏览器节点）不走这条，仍读实时值。
+ */
+export function useStageZoomReadout(): number {
+  const [zoom, setZoom] = React.useState(() => view.zoom);
+  React.useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let shown = view.zoom;
+    const flush = () => {
+      timer = null;
+      if (view.zoom === shown) return;
+      shown = view.zoom;
+      setZoom(shown);
+    };
+    flush();
+    const stop = subscribe(() => {
+      if (timer !== null) return;
+      flush();
+      timer = setTimeout(flush, ZOOM_READOUT_MS);
+    });
+    return () => {
+      stop();
+      if (timer !== null) clearTimeout(timer);
+    };
+  }, []);
+  return zoom;
+}

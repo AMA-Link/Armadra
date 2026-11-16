@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useCanvasZoom } from "@/canvas/flow/canvas-zoom";
+import { useCanvasZoomReadout } from "@/canvas/flow/canvas-zoom";
 import {
   LayoutGrid,
   Lock,
@@ -114,7 +114,7 @@ export function Dock() {
   const locked = useCanvasLocked();
   // 缩放档位：React Flow 的视口，自研引擎在位时读它的相机（`flow/canvas-zoom`）。
   // 要在 `<ReactFlowProvider>` 之下：Dock 挂在 `App` 里，provider 包着整棵树（§2.9）。
-  const zoom = useCanvasZoom();
+  const zoom = useCanvasZoomReadout();
   const workspace = useCanvasStore((state) => state.workspace);
   // 右侧抽屉是窗口级的固定层，盖在这一行的右端上（§58）。这一行让开它，Dock
   // 就在剩下那块看得见的画布里居中；手机上抽屉铺满整屏，没有可让的。

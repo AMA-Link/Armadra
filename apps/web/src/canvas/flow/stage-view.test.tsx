@@ -1,9 +1,15 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook } from "@testing-library/react";
 
 import { useCanvasZoom } from "./canvas-zoom";
-import { getStageView, publishStageView, useStageView } from "./stage-view";
+import {
+  ZOOM_READOUT_MS,
+  getStageView,
+  publishStageView,
+  useStageView,
+  useStageZoomReadout,
+} from "./stage-view";
 
 afterEach(() => publishStageView(null));
 
@@ -39,5 +45,30 @@ describe("stage-view", () => {
     expect(renders).toBe(before);
     act(() => publishStageView(null));
     expect(getStageView().zoom).toBe(1);
+  });
+
+  it("档位读数：首次变化立即更新，连续变化限频，停手后落到最终值", () => {
+    vi.useFakeTimers();
+    try {
+      let renders = 0;
+      const readout = renderHook(() => {
+        renders += 1;
+        return useStageZoomReadout();
+      });
+      const at = (zoom: number) =>
+        act(() => publishStageView({ x: 0, y: 0, zoom, width: 1, height: 1 }));
+      at(0.5);
+      expect(readout.result.current).toBe(0.5);
+      const before = renders;
+      at(0.6);
+      at(0.7);
+      at(0.8);
+      expect(readout.result.current).toBe(0.5);
+      expect(renders).toBe(before);
+      act(() => void vi.advanceTimersByTime(ZOOM_READOUT_MS));
+      expect(readout.result.current).toBe(0.8);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
