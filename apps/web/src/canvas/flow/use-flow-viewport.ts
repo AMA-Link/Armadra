@@ -1,10 +1,3 @@
-import * as React from "react";
-import {
-  getNodesBounds,
-  getViewportForBounds,
-  useOnViewportChange,
-  type Viewport as FlowViewport,
-} from "@xyflow/react";
 import type { BoardDocument, Size } from "@armadra/shared";
 
 import { useCanvasStore } from "@/store/canvas-store";
@@ -16,9 +9,11 @@ import type { Box } from "../geometry";
 import { fitNewNodeSize } from "../first-display";
 import {
   FIT_PADDING,
+  boundsOfBoxes,
   initialViewportFor,
   isDefaultViewport,
   phoneFitViewport,
+  viewportForBounds,
 } from "../viewport";
 import { readableOpeningViewport } from "../opening-viewport";
 import {
@@ -28,13 +23,18 @@ import {
   ZOOM_STEP,
   clampZoom,
 } from "../zoom";
-import { containerSize, getFlow } from "./flow-context";
+import {
+  containerSize,
+  getFlow,
+  type FlowNode,
+  type FlowViewport,
+} from "./flow-context";
 import { cameraForNewNode } from "./reveal";
 
 /**
  * 视口（React Flow 计划 §1.2 F10 / §2.9，归属 canvas）。
  *
- * 存储值一直是 React Flow 语义（`{x, y, zoom}`，§3.4），所以打开画布就是
+ * 存储值就是相机语义（`{x, y, zoom}`，§3.4），所以打开画布就是
  * `setViewport(board.viewport)`，一行换算都没有。
  *
  * 相机 → 文档是**节流**而不是防抖：连续平移时每 300ms 记一次，松手后最后
@@ -53,13 +53,24 @@ function duration(base: number): number {
   return usePreferencesStore.getState().whiteboard.animation ? base : 0;
 }
 
+/** 一个对象的绝对矩形：有绝对位置用绝对位置，尺寸取量到的、其次文档里的。 */
+function nodeRect(node: FlowNode): Box {
+  const at = node.internals?.positionAbsolute ?? node.position;
+  return {
+    x: at.x,
+    y: at.y,
+    width: node.measured?.width ?? node.width ?? 0,
+    height: node.measured?.height ?? node.height ?? 0,
+  };
+}
+
 /** 画布上所有对象的外包围盒；节点、分组与白板对象都算在内。 */
 export function visibleBounds(): Box | null {
   const flow = getFlow();
   if (!flow) return null;
   const nodes = flow.getNodes();
   if (nodes.length === 0) return null;
-  const rect = getNodesBounds(nodes);
+  const rect = boundsOfBoxes(nodes.map(nodeRect));
   if (!Number.isFinite(rect.width) || !Number.isFinite(rect.height)) {
     return null;
   }
@@ -88,7 +99,7 @@ export function fitView(): void {
       return;
     }
   }
-  const target = getViewportForBounds(
+  const target = viewportForBounds(
     { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
     width,
     height,
@@ -111,7 +122,7 @@ function phoneFitBoxes(flow: NonNullable<ReturnType<typeof getFlow>>) {
     ]),
   );
   return flow.getNodes().map((node) => {
-    const rect = getNodesBounds([node]);
+    const rect = nodeRect(node);
     const type = types.get(node.id);
     return {
       x: rect.x,
@@ -146,7 +157,7 @@ export function centerOnNode(nodeId: string): void {
   if (!flow) return;
   const node = flow.getNode(nodeId);
   if (!node) return;
-  const rect = getNodesBounds([node]);
+  const rect = nodeRect(node);
   const zoom = Math.max(flow.getViewport().zoom, CENTER_MIN_ZOOM);
   void flow.setCenter(rect.x + rect.width / 2, rect.y + rect.height / 2, {
     zoom: clampZoom(zoom),
@@ -164,19 +175,19 @@ export function centerOnNode(nodeId: string): void {
  * 这里只负责量与动。手动新建与 Agent 新建走的是同一个函数，所以两边不会再
  * 分叉。
  *
- * 只在 React Flow **已经量过**这个节点时才动（`getNodesBounds` 给出有效
+ * 只在引擎**已经量过**这个节点时才动（`nodeRect` 给出有效
  * 矩形）。刚 `addNode` 完那一帧投影还没落地，所以按一张很短的时间表重试；
  * 量不出来就一次也不动相机，宁可不动也不要对着一个错的矩形居中。
  */
 /** 等投影落地的重试表（毫秒）；成功一次之后剩下的都空跑。 */
 export const REVEAL_RETRY_DELAYS: readonly number[] = [0, 120, 320];
 
-/** React Flow 量到的节点矩形；没量到（或尺寸不可知）时是 `null`。 */
+/** 引擎量到的节点矩形；没量到（或尺寸不可知）时是 `null`。 */
 function measuredNodeBounds(nodeId: string): Box | null {
   const flow = getFlow();
   const node = flow?.getNode(nodeId);
   if (!node) return null;
-  const rect = getNodesBounds([node]);
+  const rect = nodeRect(node);
   if (!Number.isFinite(rect.width) || !Number.isFinite(rect.height))
     return null;
   if (rect.width <= 0 || rect.height <= 0) return null;
@@ -318,51 +329,6 @@ export function isOpeningCamera(viewport: FlowViewport): boolean {
   // 相机离开了打开时的位置：从这里起都是人动的。
   openingCamera = null;
   return false;
-}
-
-/** 相机 → 文档，节流 300ms。必须在 `<ReactFlow>` 的 provider 之下调用。 */
-export function useViewportSync(): void {
-  const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pending = React.useRef<FlowViewport | null>(null);
-
-  const flush = React.useCallback(() => {
-    timer.current = null;
-    const latest = pending.current;
-    if (!latest) return;
-    if (isOpeningCamera(latest)) return;
-    useCanvasStore.getState().setViewport({
-      x: latest.x,
-      y: latest.y,
-      zoom: clampZoom(latest.zoom),
-    });
-  }, []);
-
-  useOnViewportChange({
-    onChange: React.useCallback(
-      (viewport: FlowViewport) => {
-        pending.current = viewport;
-        if (timer.current) return;
-        timer.current = setTimeout(flush, CAMERA_THROTTLE_MS);
-      },
-      [flush],
-    ),
-    // 松手时立刻落一次：节流窗口里的最后一段位移不该等到下一次平移才写。
-    onEnd: React.useCallback(
-      (viewport: FlowViewport) => {
-        pending.current = viewport;
-        if (timer.current) clearTimeout(timer.current);
-        flush();
-      },
-      [flush],
-    ),
-  });
-
-  React.useEffect(
-    () => () => {
-      if (timer.current) clearTimeout(timer.current);
-    },
-    [],
-  );
 }
 
 export { MAX_ZOOM, MIN_ZOOM };

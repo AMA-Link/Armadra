@@ -22,7 +22,7 @@ import { clampZoom, wheelZoomFactor, zoomAroundPoint } from "../zoom";
  * 自己（A01 的另一半）。
  */
 
-/** 这次滚轮是不是缩放手势（与 `keyboard.ZOOM_ACTIVATION_KEY_CODE` 同一组键）。 */
+/** 这次滚轮是不是缩放手势（⌘ 与 Ctrl 两个键都算）。 */
 export function isZoomWheel(event: {
   metaKey?: boolean;
   ctrlKey?: boolean;

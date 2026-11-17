@@ -160,6 +160,62 @@ export function cameraOnBox(
 /** 适应视图四周留的比例边距。 */
 export const FIT_PADDING = 0.05;
 
+/** 一组矩形的外包围盒；没有矩形（或没有有效矩形）时为零矩形。 */
+export function boundsOfBoxes(
+  boxes: readonly { x: number; y: number; width: number; height: number }[],
+): { x: number; y: number; width: number; height: number } {
+  if (boxes.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  for (const box of boxes) {
+    left = Math.min(left, box.x);
+    top = Math.min(top, box.y);
+    right = Math.max(right, box.x + box.width);
+    bottom = Math.max(bottom, box.y + box.height);
+  }
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+/**
+ * 把 `bounds` 居中放进 `width × height` 的视口：缩放取能放下的最大值并夹在
+ * `[minZoom, maxZoom]`，四周留 `padding`（相对视口尺寸的比例，如 0.05）。
+ * 夹到上下限之后若某一边的留白不足，再把视口推回去，保证至少留到 `padding`。
+ */
+export function viewportForBounds(
+  bounds: { x: number; y: number; width: number; height: number },
+  width: number,
+  height: number,
+  minZoom: number,
+  maxZoom: number,
+  padding: number,
+): Viewport {
+  const padX = Math.floor((width - width / (1 + padding)) * 0.5);
+  const padY = Math.floor((height - height / (1 + padding)) * 0.5);
+  const xZoom = (width - padX * 2) / bounds.width;
+  const yZoom = (height - padY * 2) / bounds.height;
+  const zoom = Math.min(Math.max(Math.min(xZoom, yZoom), minZoom), maxZoom);
+  const x = width / 2 - (bounds.x + bounds.width / 2) * zoom;
+  const y = height / 2 - (bounds.y + bounds.height / 2) * zoom;
+  // 夹过缩放之后实际留出的边距；小于要求的那几边把视口推回去。
+  const left = Math.floor(bounds.x * zoom + x);
+  const top = Math.floor(bounds.y * zoom + y);
+  const right = Math.floor(width - ((bounds.x + bounds.width) * zoom + x));
+  const bottom = Math.floor(height - ((bounds.y + bounds.height) * zoom + y));
+  const offset = {
+    left: Math.min(left - padX, 0),
+    top: Math.min(top - padY, 0),
+    right: Math.min(right - padX, 0),
+    bottom: Math.min(bottom - padY, 0),
+  };
+  return {
+    x: x - offset.left + offset.right,
+    y: y - offset.top + offset.bottom,
+    zoom,
+  };
+}
+
 /** 手机「适应」要的盒子：位置、尺寸、正文字号与是否选中；组员不参与。 */
 export interface FitBox extends OpeningNode {
   selected?: boolean;

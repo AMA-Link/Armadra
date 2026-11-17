@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { getNodesBounds } from "@xyflow/react";
 import { createBoard } from "@armadra/board/dom";
 import type { CanvasNode } from "@armadra/shared";
 
@@ -71,18 +70,13 @@ describe("引擎的视口句柄", () => {
     expect(flow.getViewport()).toEqual({ x: -100, y: -100, zoom: 1 });
   });
 
-  it("getNode：相对坐标、绝对位置与 measured；getNodesBounds 读得懂", () => {
+  it("getNode：相对坐标、绝对位置与 measured", () => {
     const { flow } = setup();
     const node = flow.getNode("c")!;
     expect(node.position).toEqual({ x: 10, y: 20 });
     expect(node.parentId).toBe("g");
     expect(node.measured).toEqual({ width: 200, height: 100 });
-    expect(getNodesBounds([node])).toEqual({
-      x: 110,
-      y: 120,
-      width: 200,
-      height: 100,
-    });
+    expect(node.internals?.positionAbsolute).toEqual({ x: 110, y: 120 });
     expect(flow.getNodes()).toHaveLength(2);
     expect(flow.getNode("nope")).toBeUndefined();
   });

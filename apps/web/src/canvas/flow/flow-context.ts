@@ -1,35 +1,53 @@
 import * as React from "react";
-import type { ReactFlowInstance } from "@xyflow/react";
 import type { Position } from "@armadra/shared";
 
 /**
- * 全局 React Flow 句柄（React Flow 计划 §2.9 / §2.11，归属 canvas）。
+ * 全局画布句柄（归属 canvas）。
  *
- * `FlowWorkspace` 挂载时把 `useReactFlow()` 的实例登记进来、卸载时清掉；
- * Dock / 命令面板 / 侧栏 / store 门面通过这里拿实例，**不许**各自
- * `useReactFlow()`——那个 hook 只能在 `<ReactFlowProvider>` 子树内用，
- * 而这些模块虽然在 provider 之下，却拿不到画布挂载与否的信息。
+ * `BoardWorkspace` 挂载时把引擎的相机与场景适配成这一组方法登记进来
+ * （`board/flow-handle.ts`）、卸载时清掉；Dock / 命令面板 / 侧栏 / store 门面
+ * 通过这里拿句柄，不各自去碰引擎实例。
  *
  * 画布没挂载（启动页、单测）时一律返回 null，调用方必须自己兜底。
  */
 
-/**
- * 画布真正需要的那部分实例接口；测试里造一个假的比造整个实例便宜。
- *
- * 两种引擎都登记进来：React Flow 的实例天然满足它，自研引擎由
- * `board/flow-handle.ts` 按同一组方法适配，外面十几处调用方不必分叉（B4 换成
- * 新 hook 之后这一层随 `@xyflow/react` 一起删）。
- */
-export type FlowHandle = Pick<
-  ReactFlowInstance,
-  | "getViewport"
-  | "setViewport"
-  | "screenToFlowPosition"
-  | "zoomTo"
-  | "setCenter"
-  | "getNode"
-  | "getNodes"
->;
+export interface FlowViewport {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+/** 画布上一个对象（节点、分组、白板对象）的几何；尺寸与文档一致。 */
+export interface FlowNode {
+  id: string;
+  parentId?: string;
+  selected?: boolean;
+  /** 相对父 Frame（顶层相对画布）的位置。 */
+  position: Position;
+  width?: number;
+  height?: number;
+  measured?: { width?: number; height?: number };
+  /** 画布坐标下的绝对位置；没有时 `position` 就是绝对位置。 */
+  internals?: { positionAbsolute: Position; z?: number };
+}
+
+/** 画布真正需要的那部分句柄；测试里造一个假的很便宜。 */
+export interface FlowHandle {
+  getViewport(): FlowViewport;
+  setViewport(
+    viewport: FlowViewport,
+    options?: { duration?: number },
+  ): Promise<boolean>;
+  screenToFlowPosition(point: Position): Position;
+  zoomTo(zoom: number, options?: { duration?: number }): Promise<boolean>;
+  setCenter(
+    x: number,
+    y: number,
+    options?: { zoom?: number; duration?: number },
+  ): Promise<boolean>;
+  getNode(id: string): FlowNode | undefined;
+  getNodes(): FlowNode[];
+}
 
 let current: FlowHandle | null = null;
 let container: HTMLElement | null = null;
@@ -45,7 +63,7 @@ export function setFlow(flow: FlowHandle | null): void {
   for (const listener of listeners) listener();
 }
 
-/** 画布容器（`.react-flow` 的宿主）。最大化与 fitView 要量它的像素尺寸。 */
+/** 画布容器（引擎舞台元素）。最大化与 fitView 要量它的像素尺寸。 */
 export function setFlowContainer(element: HTMLElement | null): void {
   if (container === element) return;
   container = element;
@@ -90,12 +108,7 @@ export function useFlowHandle(): FlowHandle | null {
   return React.useSyncExternalStore(subscribe, getFlow, () => null);
 }
 
-/**
- * 屏幕坐标 → 画布坐标；画布未挂载时原样返回（右键菜单的兜底）。
- *
- * 名字沿用旧引擎的 `screenToPage`：React Flow 把同一件事叫
- * `screenToFlowPosition`，但调用方有十几处，换名字没有收益。
- */
+/** 屏幕坐标 → 画布坐标；画布未挂载时原样返回（右键菜单的兜底）。 */
 export function screenToPage(point: Position): Position {
   const flow = current;
   if (!flow) return point;

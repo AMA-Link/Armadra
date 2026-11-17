@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   INITIAL_VIEWPORT_MARGIN,
+  boundsOfBoxes,
+  viewportForBounds,
   initialViewportFor,
   isDefaultViewport,
   cameraOnBox,
@@ -261,5 +263,64 @@ describe("phoneFitViewport（#730）", () => {
         container: { width: 0, height: 0 },
       }),
     ).toBeNull();
+  });
+});
+
+describe("boundsOfBoxes", () => {
+  it("没有矩形时是零矩形", () => {
+    expect(boundsOfBoxes([])).toEqual({ x: 0, y: 0, width: 0, height: 0 });
+  });
+
+  it("外包围盒覆盖所有矩形", () => {
+    expect(
+      boundsOfBoxes([
+        { x: 10, y: 20, width: 100, height: 50 },
+        { x: -30, y: 40, width: 20, height: 200 },
+      ]),
+    ).toEqual({ x: -30, y: 20, width: 140, height: 220 });
+  });
+});
+
+describe("viewportForBounds", () => {
+  it("缩放夹在上限，内容居中", () => {
+    expect(
+      viewportForBounds(
+        { x: 0, y: 0, width: 100, height: 100 },
+        1200,
+        800,
+        0.5,
+        2,
+        0,
+      ),
+    ).toEqual({ x: 500, y: 300, zoom: 2 });
+  });
+
+  it("四周留比例边距：放得下的最大缩放减去边距", () => {
+    const view = viewportForBounds(
+      { x: 0, y: 0, width: 2000, height: 1000 },
+      1000,
+      500,
+      0.1,
+      1,
+      0.05,
+    );
+    // 边距 floor((1000 - 1000/1.05) / 2) = 23、floor((500 - 500/1.05) / 2) = 11。
+    expect(view.zoom).toBeCloseTo((1000 - 46) / 2000, 6);
+    // 内容中心落在视口中心。
+    expect(view.x + 1000 * view.zoom).toBeCloseTo(500, 6);
+    expect(view.y + 500 * view.zoom).toBeCloseTo(250, 6);
+  });
+
+  it("缩放被下限夹住时内容比视口大，仍然居中", () => {
+    expect(
+      viewportForBounds(
+        { x: 0, y: 0, width: 100, height: 100 },
+        50,
+        50,
+        1,
+        2,
+        0,
+      ),
+    ).toEqual({ x: -25, y: -25, zoom: 1 });
   });
 });
