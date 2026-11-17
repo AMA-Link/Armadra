@@ -10,7 +10,7 @@ import {
   useFlowContainer,
   useFlowHandle,
 } from "@/canvas/flow/flow-context";
-import { useStageView } from "@/canvas/flow/stage-view";
+import { useStageZoom } from "@/canvas/flow/stage-view";
 import { nodeBox } from "@/canvas/geometry";
 import { MAX_ZOOM } from "@/canvas/zoom";
 import type { Item } from "@/canvas/whiteboard/model";
@@ -246,7 +246,8 @@ function Comments({
   const offline = useRealtimeStore((view) => view.status === "offline");
   const nodes = useCanvasStore((state) => state.document?.nodes ?? NO_NODES);
   const items = useCanvasStore((state) => state.whiteboard.items);
-  const { zoom } = useStageView();
+  // 没有钉也没有草稿时缩放不影响画面：别让每个缩放步都重渲这一层。
+  const zoom = useStageZoom(comments.length > 0 || Boolean(draft));
   const domNode = useFlowContainer();
 
   const canWrite = access.can("canvas:write", workspaceId);

@@ -26,7 +26,7 @@ const run = (cmd, args) => {
     return "";
   }
 };
-const { metrics, spread, range, runs } = aggregate(results);
+const { metrics, spread, range, bounds, runs } = aggregate(results);
 const file = {
   schema: SCHEMA,
   commit: run("git", ["rev-parse", "HEAD"]),
@@ -41,6 +41,7 @@ const file = {
   metrics,
   spread,
   range,
+  bounds,
 };
 writeFileSync(output, `${JSON.stringify(file, null, 2)}\n`);
 console.log(

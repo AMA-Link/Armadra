@@ -15,6 +15,8 @@ import { NODE_META } from "../../nodes/registry";
 export type BoardEntity = Entity<CanvasNode>;
 
 export const GROUP_KIND = "group";
+/** 切走的板上还活着的网页节点：场景里留一个零尺寸的条目，宿主与 `<webview>` 原地不动。 */
+export const GHOST_KIND = "browser:ghost";
 
 /** 分组画在普通节点下面（与旧投影的 `GROUP_Z_INDEX` / `NODE_Z_INDEX` 同义）。 */
 const CARD_Z = 1000;
@@ -67,6 +69,23 @@ export function entityOf(
   };
 }
 
+/** ghost 条目：零面积、落在 `anchor`，按活着时的节点原样带着 `data`。 */
+export function ghostOf(
+  node: CanvasNode,
+  anchor: { x: number; y: number },
+): BoardEntity {
+  return {
+    id: node.id,
+    kind: GHOST_KIND,
+    x: anchor.x,
+    y: anchor.y,
+    w: 0,
+    h: 0,
+    z: CARD_Z,
+    data: node,
+  };
+}
+
 /** 全部种类登记：节点体按种类一张表，最小尺寸取 `NODE_META`。 */
 export function nodeKinds(): Record<string, DomKindSpec<CanvasNode>> {
   const kinds: Record<string, DomKindSpec<CanvasNode>> = {};
@@ -88,6 +107,13 @@ export function nodeKinds(): Record<string, DomKindSpec<CanvasNode>> {
       resize: { min, widthOnly: true },
     };
   }
+  // ghost 不可命中、不能起笔也不能作落点。
+  kinds[GHOST_KIND] = {
+    layer: "world",
+    resize: false,
+    hit: () => false,
+    connect: { start: false, end: false },
+  };
   return kinds;
 }
 

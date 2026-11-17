@@ -37,6 +37,19 @@ export function createBoardFlowHandle(
     } as unknown as Node;
   };
 
+  // 指针每动一下就有人换算坐标（成员光标）：连续调用共用一次测量，免得每次都把
+  // 刚写的相机变换的样式重算提前结算；停手超过 200 ms 再量。
+  let measured: { rect: DOMRect; at: number } | null = null;
+  const stageRect = () => {
+    const now = performance.now();
+    if (!measured || now - measured.at > 200) {
+      const rect = container()?.getBoundingClientRect();
+      measured = rect ? { rect, at: now } : null;
+    }
+    if (measured) measured.at = now;
+    return measured?.rect;
+  };
+
   return {
     getViewport: () => ({ ...camera.get() }),
     setViewport: (viewport, options) => {
@@ -44,7 +57,7 @@ export function createBoardFlowHandle(
       return Promise.resolve(true);
     },
     screenToFlowPosition: (point) => {
-      const rect = container()?.getBoundingClientRect();
+      const rect = stageRect();
       return camera.screenToWorld({
         x: point.x - (rect?.left ?? 0),
         y: point.y - (rect?.top ?? 0),

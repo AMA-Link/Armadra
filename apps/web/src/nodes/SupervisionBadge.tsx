@@ -1,4 +1,5 @@
 import type { CanvasNode } from "@armadra/shared";
+import { useShallow } from "zustand/react/shallow";
 
 import { useT } from "@/app/preferences-store";
 import { supervisionBadge, supervisionFor } from "@/canvas/supervision";
@@ -14,9 +15,18 @@ import { Badge } from "@/ui/badge";
  */
 export function SupervisionBadge({ node }: { node: CanvasNode }) {
   const t = useT();
-  const document = useCanvasStore((state) => state.document);
-  const badge = supervisionBadge(
-    supervisionFor(node.id, document?.edges ?? [], document?.nodes ?? []),
+  // 选择器直接算出徽标并做浅比较：`board.viewport` 每次平移、会话状态每次跳动都
+  // 换 `document` / 节点表，订表会让每个节点头跟着重渲，而徽标本身多半没变。
+  const badge = useCanvasStore(
+    useShallow((state) =>
+      supervisionBadge(
+        supervisionFor(
+          node.id,
+          state.document?.edges ?? [],
+          state.document?.nodes ?? [],
+        ),
+      ),
+    ),
   );
   if (badge === undefined) return null;
   const label =

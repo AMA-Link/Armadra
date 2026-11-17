@@ -15,6 +15,8 @@ export interface MinimapStyle {
   fill: string;
   stroke?: string;
   strokeWidth?: number;
+  /** 连线的三次贝塞尔（世界坐标：起点、两个控制点、终点）；缺省是两端中心的直线。 */
+  curve?: [Vec, Vec, Vec, Vec];
 }
 
 export interface MinimapDeps {
@@ -99,8 +101,11 @@ export function createMinimap(el: HTMLElement, deps: MinimapDeps): Minimap {
     y: p.y / view.scale + view.origin.y,
   });
 
+  let stale = true; // 尺寸只在 ResizeObserver 报过之后才量，免得每帧提前结算布局
+
   function measure(): number {
-    size = { width: el.clientWidth, height: el.clientHeight };
+    if (stale) size = { width: el.clientWidth, height: el.clientHeight };
+    stale = false;
     const dpr = env.dpr();
     const [w, h] = [
       Math.max(1, Math.round(size.width * dpr)),
@@ -111,8 +116,13 @@ export function createMinimap(el: HTMLElement, deps: MinimapDeps): Minimap {
     return dpr;
   }
 
+  // 缩略图是辅助视图，最多 30 Hz：平移 / 拖动 / 缩放时不在每一帧里重画。
+  let drawn = -Infinity;
+  const tick = (): void => {
+    pending = performance.now() - drawn < 32 ? env.raf(tick) : (frame(), null);
+  };
   function frame(): void {
-    pending = null;
+    drawn = performance.now();
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     const dpr = measure();
@@ -126,18 +136,17 @@ export function createMinimap(el: HTMLElement, deps: MinimapDeps): Minimap {
     for (const entity of scene.ordered()) {
       const style = deps.colorOf(entity);
       if (!style) continue;
-      const { fill, stroke, strokeWidth } =
+      const { fill, stroke, strokeWidth, curve } =
         typeof style === "string" ? ({ fill: style } as MinimapStyle) : style;
       if (entity.ends) {
         const [a, b] = entity.ends.map((id) => scene.bounds(id));
         if (!a || !b || !stroke) continue;
-        const from = toPx(rectCenter(a));
-        const to = toPx(rectCenter(b));
+        const [p, c, d, q] = (curve ?? [a, a, b, b].map(rectCenter)).map(toPx);
         ctx.strokeStyle = stroke;
         ctx.lineWidth = strokeWidth ?? 1;
         ctx.beginPath();
-        ctx.moveTo(from.x, from.y);
-        ctx.lineTo(to.x, to.y);
+        ctx.moveTo(p!.x, p!.y);
+        ctx.bezierCurveTo(c!.x, c!.y, d!.x, d!.y, q!.x, q!.y);
         ctx.stroke();
         continue;
       }
@@ -168,7 +177,7 @@ export function createMinimap(el: HTMLElement, deps: MinimapDeps): Minimap {
   }
 
   const invalidate = (): void => {
-    pending ??= env.raf(frame);
+    pending ??= env.raf(tick);
   };
 
   const navigate = (center: Vec): void =>
@@ -215,7 +224,10 @@ export function createMinimap(el: HTMLElement, deps: MinimapDeps): Minimap {
   const stops = [
     camera.subscribe(invalidate),
     scene.subscribe(invalidate),
-    env.observe(el, invalidate),
+    env.observe(el, () => {
+      stale = true;
+      invalidate();
+    }),
   ];
   invalidate();
 
@@ -223,6 +235,7 @@ export function createMinimap(el: HTMLElement, deps: MinimapDeps): Minimap {
     invalidate,
     flush() {
       if (pending !== null) env.caf(pending);
+      pending = null;
       frame();
     },
     destroy() {

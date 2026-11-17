@@ -1,6 +1,6 @@
 import * as React from "react";
-import type { CanvasNode } from "@armadra/shared";
-import type { Entity } from "@armadra/board/core";
+import type { CanvasNode, LayoutDirection } from "@armadra/shared";
+import type { Entity, Vec } from "@armadra/board/core";
 import {
   createMinimap,
   type DomBoard,
@@ -20,7 +20,10 @@ import {
   useGlowOf,
 } from "../flow/Minimap";
 import { useFamilies } from "../family";
+import { bezierControls, dispatchAnchor, edgeGeometry } from "../geometry";
+import { layoutDirection } from "../layout-direction";
 import { edgeDataOf, isEdgeEntity } from "./edge-model";
+import { GHOST_KIND } from "./model";
 
 /**
  * 状态缩略图（自研引擎，B4）：用引擎的 `createMinimap`，配色与旧引擎同一套纯函数
@@ -55,6 +58,36 @@ export function createColorResolver(host: HTMLElement): ColorResolver {
     { dispose: () => probe.remove() },
   );
   return resolve;
+}
+
+/**
+ * 缩略图里一条连线的曲线（世界坐标：起点、两个控制点、终点），与画布上同一条
+ * （旧缩略图也是它）：两端矩形相对的边的中点之间的三次贝塞尔，派发线按布局方向
+ * 取边，上下文线就近取边。任一端不在场景里返回 `undefined`（缩略图退回直线）。
+ */
+export function linkCurve(
+  scene: Pick<DomBoard<CanvasNode>["scene"], "bounds">,
+  entity: Entity,
+  supervises: boolean,
+  direction: LayoutDirection = layoutDirection(),
+): [Vec, Vec, Vec, Vec] | undefined {
+  const [from, to] = (entity.ends ?? []).map((id) => {
+    const rect = scene.bounds(id);
+    return rect && { x: rect.x, y: rect.y, width: rect.w, height: rect.h };
+  });
+  if (!from || !to) return undefined;
+  const geometry = edgeGeometry(
+    from,
+    to,
+    supervises ? dispatchAnchor(from, to, direction) : "free",
+  );
+  const { c1, c2 } = bezierControls(geometry);
+  return [
+    { x: geometry.sourceX, y: geometry.sourceY },
+    c1,
+    c2,
+    { x: geometry.targetX, y: geometry.targetY },
+  ];
 }
 
 /** 与 `BoardView` 是兄弟（要贴在舞台右下角），所以板由属性传入，不读 context。 */
@@ -103,6 +136,7 @@ function MinimapView({ board }: { board: DomBoard<CanvasNode> }) {
         fill: "transparent",
         stroke: resolve(color),
         strokeWidth: 1.5,
+        curve: linkCurve(board.scene, entity, supervises),
       };
     };
     const created = createMinimap(host, {
@@ -117,6 +151,8 @@ function MinimapView({ board }: { board: DomBoard<CanvasNode> }) {
           // 引用不是 Agent 之间的关系，缩略图里不画。
           return edgeDataOf(entity).type === "link" ? link(entity) : null;
         }
+        // 切走的板上留着的网页节点是零面积的点，不画。
+        if (entity.kind === GHOST_KIND) return null;
         const item = minimapItemOf(
           {
             id: entity.id,

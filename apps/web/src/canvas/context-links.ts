@@ -131,18 +131,31 @@ export function changedDocuments(
 /** 画布挂一次；文档变化时增量推送。 */
 export function usePublishContextLinks(): void {
   const workspaceId = useCanvasStore((state) => state.workspace?.id);
-  const nodes = useCanvasStore((state) => state.document?.nodes);
-  const edges = useCanvasStore((state) => state.document?.edges);
   const board = useCanvasStore((state) => state.document?.board.id);
   const content = useContentLinks();
   const latest = React.useRef<LinkDocuments>({});
   const kick = React.useRef<(() => void) | null>(null);
 
+  // 节点与连线**不走 React 订阅**：这个 hook 住在画布根组件里，订 `nodes` 等于
+  // 每次节点数据变动（一次会话状态跳动、一步拖动）都让整块画布重渲，而这里只需要
+  // 在变动时重算一份链接文档。
   React.useEffect(() => {
-    const document = useCanvasStore.getState().document;
-    latest.current = document ? buildLinkDocuments(document, content) : {};
-    kick.current?.();
-  }, [content, nodes, edges, board, workspaceId]);
+    let nodes: unknown;
+    let edges: unknown;
+    const refresh = () => {
+      const document = useCanvasStore.getState().document;
+      nodes = document?.nodes;
+      edges = document?.edges;
+      latest.current = document ? buildLinkDocuments(document, content) : {};
+      kick.current?.();
+    };
+    refresh();
+    return useCanvasStore.subscribe((state) => {
+      if (state.document?.nodes === nodes && state.document?.edges === edges)
+        return;
+      refresh();
+    });
+  }, [content, board, workspaceId]);
 
   React.useEffect(() => {
     if (!workspaceId || !board) return;

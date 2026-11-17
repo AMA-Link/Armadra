@@ -8,21 +8,8 @@ import { createPainter, type PaintSettings, type Painter } from "./painter";
 
 export { browserEnv, type RenderEnv } from "./env";
 export { createLayers, type Layers, type LayerSize } from "./layers";
-export {
-  createPainter,
-  dotGap,
-  DOT_GAP,
-  MIN_DOT_PITCH,
-  type PaintSettings,
-  type Painter,
-  type PainterDeps,
-} from "./painter";
-export {
-  createWorldHosts,
-  type HostChange,
-  type WorldHosts,
-  type WorldHostsDeps,
-} from "./hosts";
+export { createPainter, type PaintSettings, type Painter } from "./painter";
+export { createWorldHosts, type WorldHosts } from "./hosts";
 export { layoutText, type MeasureText, type TextLayout } from "./text";
 
 export interface RendererDeps {

@@ -27,6 +27,7 @@ import {
 } from "@/ui/dropdown-menu";
 import { usePreferencesStore, useT } from "@/app/preferences-store";
 import { terminalSchemeAttribute } from "@/terminal/surface/appearance";
+import { nextSurfaceStatus } from "./terminal-surface-status";
 import { useCanAnswer } from "@/app/use-access";
 import { useCanvasStore } from "@/store/canvas-store";
 import { AccountBindingBadge } from "@/agent/account/AccountBindingBadge";
@@ -159,7 +160,7 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
   const bellTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const onStatusChange = React.useCallback((next: TerminalSurfaceStatus) => {
-    setSurface(next);
+    setSurface((current) => nextSurfaceStatus(current, next));
   }, []);
 
   const onBell = React.useCallback(() => {
@@ -228,12 +229,14 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
       : (surface.binding?.sessionId ?? null);
   const generation = surface.binding?.generation ?? null;
   // 只读的会话内容按会话行 id 取时间线；表面卸下了没有绑定时，从会话列表里找。
-  const rows = useQuery({
+  // `select` 只留这一个 id：即使没启用，查询的观察者照样收会话列表的每一次
+  // 更新；整份列表当 `data` 读的话，每次状态跳动都让所有终端节点陪着重渲。
+  const rowSessionId = useQuery({
     ...sessionsQuery(workspaceId),
     enabled: sessionBody && sessionId === null,
+    select: (rows) => rows.find((row) => row.nodeId === id)?.sessionId ?? null,
   }).data;
-  const bodySessionId =
-    sessionId ?? rows?.find((row) => row.nodeId === id)?.sessionId ?? null;
+  const bodySessionId = sessionId ?? rowSessionId ?? null;
   React.useEffect(() => {
     if (!agent || !reported) return;
     void autoNameNode(id, { sessionId, generation });

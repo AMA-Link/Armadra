@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { BoardDocument } from "@armadra/shared";
 import { runtimeApi } from "../api/client";
 import { watchBoardPresence } from "../api/board-presence";
 import { onWorkspaceEvent } from "../api/events";
-import { useDraftsActive } from "../canvas/flow/drafts";
+import { hasDrafts, subscribeDrafts } from "../canvas/flow/drafts";
 import { LEASE_LOST_EVENT, flushBoardSaves } from "../save/autosave";
 import { SAVE_RETRY_EVENT } from "../shell/Banners";
-import { useCanvasStore } from "../store/canvas-store";
+import { useCanvasStore, type CanvasStore } from "../store/canvas-store";
 import { realtimeActive, startRealtime } from "../realtime/session";
 import {
   applyPresence,
@@ -74,7 +74,6 @@ export function useBoardSync() {
    * `getState()` 当场读，避免订阅无关变化。
    */
   const documentBoardId = useCanvasStore((state) => state.document?.board.id);
-  const saveState = useCanvasStore((state) => state.saveState);
   const setWorkspace = useCanvasStore((state) => state.setWorkspace);
   const setBoards = useCanvasStore((state) => state.setBoards);
   const selectBoard = useCanvasStore((state) => state.selectBoard);
@@ -82,8 +81,23 @@ export function useBoardSync() {
   const mergeRemoteDocument = useCanvasStore(
     (state) => state.mergeRemoteDocument,
   );
-  // 手势进行中不合远端改动（见下面的「文档载入」）。
-  const dragging = useDraftsActive();
+  // 手势进行中不合远端改动（见下面的「文档载入」）。**不订阅**「有没有手势」这个布尔量：
+  // 它在每次手势的开始与结束各变一次，订阅它等于让整个应用壳跟着重渲两次（开发构建下
+  // 一次近两百毫秒）。只有「有改动被手势挡住了」才在手势结束时叫醒合并 effect 一次。
+  const deferredMerge = useRef(false);
+  const [gestureEnded, endGesture] = useReducer(
+    (count: number) => count + 1,
+    0,
+  );
+  useEffect(
+    () =>
+      subscribeDrafts(() => {
+        if (!deferredMerge.current || hasDrafts()) return;
+        deferredMerge.current = false;
+        endGesture();
+      }),
+    [],
+  );
   const openWorkspaceTab = usePreferencesStore(
     (state) => state.openWorkspaceTab,
   );
@@ -234,8 +248,8 @@ export function useBoardSync() {
    *  - **同一份响应只合一次**。合并会换掉 `document`，而 `document` 是这个
    *    effect 的依赖；不记住合过哪一份就是一个自激循环。
    *  - **手势进行中先不合**。拖动中把节点对象换掉会让 d3-drag 当场错位，
-   *    所以等 `drafts` 清空——那一刻这个 effect 会因为 `dragging` 变 false
-   *    重新跑一次，把攒着的那份合进来。
+   *    所以等 `drafts` 清空——那一刻 `deferredMerge` 叫醒这个 effect 重新跑一次，
+   *    把攒着的那份合进来。
    */
   const mergedRef = useRef<BoardDocument | null>(null);
   useEffect(() => {
@@ -247,7 +261,11 @@ export function useBoardSync() {
       setDocument(board.data);
       return;
     }
-    if (dragging || mergedRef.current === board.data) return;
+    if (mergedRef.current === board.data) return;
+    if (hasDrafts()) {
+      deferredMerge.current = true;
+      return;
+    }
     mergedRef.current = board.data;
     // 实时板的真相是 `Y.Doc`，HTTP 读回来的物化表不往回合（补全架构 §6.4）。
     if (realtimeActive(board.data.board.id)) return;
@@ -256,7 +274,7 @@ export function useBoardSync() {
     board.data,
     boardId,
     documentBoardId,
-    dragging,
+    gestureEnded,
     mergeRemoteDocument,
     setDocument,
     workspace,
@@ -302,21 +320,31 @@ export function useBoardSync() {
   }, []);
 
   /* --------------------------- 有未落盘改动时拦窗 ------------------------- */
+  // 不用 React 状态订阅 `saveState`：自动保存的 dirty / saving / saved 每走一遍，
+  // 整个应用壳（近三千个组件）就要跟着重渲一遍，平移、拖动结束后的那次保存也一样。
   useEffect(() => {
-    if (
-      saveState !== "dirty" &&
-      saveState !== "saving" &&
-      saveState !== "error"
-    ) {
-      return;
-    }
     const guard = (event: BeforeUnloadEvent) => {
       void flushBoardSaves().catch(() => undefined);
       event.preventDefault();
     };
-    window.addEventListener("beforeunload", guard);
-    return () => window.removeEventListener("beforeunload", guard);
-  }, [saveState]);
+    let attached = false;
+    const sync = (state: CanvasStore) => {
+      const unsaved =
+        state.saveState === "dirty" ||
+        state.saveState === "saving" ||
+        state.saveState === "error";
+      if (unsaved === attached) return;
+      attached = unsaved;
+      if (unsaved) window.addEventListener("beforeunload", guard);
+      else window.removeEventListener("beforeunload", guard);
+    };
+    sync(useCanvasStore.getState());
+    const stop = useCanvasStore.subscribe(sync);
+    return () => {
+      stop();
+      window.removeEventListener("beforeunload", guard);
+    };
+  }, []);
 
   /**
    * 画布区是否还在等首批数据：没有工作空间时看工作空间列表，有工作空间时看

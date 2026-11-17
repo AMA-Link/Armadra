@@ -13,6 +13,7 @@ import type {
 } from "../types";
 import { createTouchRecognizer, ECHO_WINDOW_MS } from "./recognizers";
 import {
+  createLocal,
   createResolveTarget,
   type BoardSelectors,
   type ResolveTarget,
@@ -61,10 +62,7 @@ export function createInputRouter(
   const previousStyle = container.style.touchAction;
   container.style.touchAction = "none";
 
-  const local = (e: { clientX: number; clientY: number }): Vec => {
-    const r = container.getBoundingClientRect();
-    return { x: e.clientX - r.left, y: e.clientY - r.top };
-  };
+  const local = createLocal(container);
   const mods = (e: MouseEvent | PointerEvent): Modifiers => ({
     ...deps.modifiers(),
     shift: e.shiftKey,

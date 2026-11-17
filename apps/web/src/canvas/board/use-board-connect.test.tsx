@@ -191,6 +191,42 @@ describe("connect 事件", () => {
     expect(toast.error).toHaveBeenCalledTimes(1);
   });
 
+  it("落回起笔节点自己身上（引擎给的是空白）：提示自连，不建边", () => {
+    const { stage } = mount();
+    const [a] = state().document!.nodes;
+    stage.scene.transact(
+      (draft) =>
+        draft.set({
+          id: a!.id,
+          kind: "terminal",
+          x: 0,
+          y: 0,
+          w: 200,
+          h: 150,
+          z: 1,
+          data: a!,
+        }),
+      { history: "ignore" },
+    );
+    stage.emit("connect", {
+      from: a!.id,
+      side: "right",
+      to: null,
+      at: { x: 100, y: 75 },
+    });
+    expect(state().document!.edges).toHaveLength(0);
+    expect(toast.error).toHaveBeenCalledTimes(1);
+    // 落在节点外面的空白处不提示
+    toast.error.mockClear();
+    stage.emit("connect", {
+      from: a!.id,
+      side: "right",
+      to: null,
+      at: { x: 900, y: 900 },
+    });
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
   it("落在空白处、起笔不是 Agent 终端：什么都不发生", () => {
     const { stage } = mount();
     const [a] = state().document!.nodes;

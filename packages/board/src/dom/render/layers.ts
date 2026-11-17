@@ -27,8 +27,6 @@ export interface Layers {
   setCamera(camera: CameraState): void;
   /** 容器尺寸或 DPR 变化后调用的回调；返回退订。 */
   onResize(listener: (size: LayerSize) => void): () => void;
-  /** 重新量尺寸与 DPR 并改 Canvas 像素尺寸（DPR 变化没有事件，由外部在合适时机调用）。 */
-  refresh(): void;
   destroy(): void;
 }
 
@@ -124,7 +122,6 @@ export function createLayers(
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    refresh,
     destroy() {
       stopObserving();
       listeners.clear();

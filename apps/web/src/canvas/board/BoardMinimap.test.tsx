@@ -12,7 +12,7 @@ import { createBoard } from "@armadra/board/dom";
 
 import { installDomPolyfills, TestProviders } from "@/app/test-harness";
 import { useMinimapPreferences } from "@/app/minimap-preferences";
-import { BoardMinimap, createColorResolver } from "./BoardMinimap";
+import { BoardMinimap, createColorResolver, linkCurve } from "./BoardMinimap";
 import { edgeEntity, edgeKinds } from "./edge-model";
 
 beforeAll(installDomPolyfills);
@@ -61,6 +61,30 @@ describe("<BoardMinimap />", () => {
     expect(panel.style.bottom).toBe("var(--navigation-bottom)");
     act(() => useMinimapPreferences.getState().setCollapsed(false));
     expect(document.querySelector(".board-minimap")).not.toBeNull();
+  });
+});
+
+describe("缩略图连线", () => {
+  it("曲线与画布上同一条：端点在两侧的中点，控制点沿出边方向离开端点", () => {
+    const stage = board();
+    const entity = stage.scene.get("e")!;
+    const [p, c1, c2, q] = linkCurve(stage.scene, entity, false)!;
+    // a 在 (0,0)–(200,100)，b 在 (500,0)–(700,100)：右侧中点到左侧中点
+    expect(p).toEqual({ x: 200, y: 50 });
+    expect(q).toEqual({ x: 500, y: 50 });
+    expect(c1.x).toBeGreaterThan(p.x);
+    expect(c2.x).toBeLessThan(q.x);
+  });
+
+  it("任一端不在场景里：没有曲线（缩略图退回直线）", () => {
+    const stage = board();
+    expect(
+      linkCurve(
+        stage.scene,
+        { ...stage.scene.get("e")!, ends: ["a", "x"] },
+        false,
+      ),
+    ).toBeUndefined();
   });
 });
 

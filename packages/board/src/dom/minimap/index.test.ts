@@ -112,7 +112,11 @@ describe("createMinimap", () => {
     expect(calls).toContain("lineWidth=2");
     expect(calls).toContain("fillStyle=green");
     expect(calls).toContain("strokeStyle=gray");
-    expect(calls.filter((c) => c.startsWith("lineTo(")).length).toBe(1);
+    // 没给曲线的连线：控制点与端点重合的贝塞尔，即两端中心的直线。
+    const curves = calls.filter((c) => c.startsWith("bezierCurveTo("));
+    expect(curves).toHaveLength(1);
+    const [, , c, d, e, f] = curves[0]!.slice(14, -1).split(",");
+    expect([c, d]).toEqual([e, f]);
     expect(calls.lastIndexOf("fill(evenodd)")).toBeGreaterThan(
       calls.indexOf("fillStyle=green"),
     );

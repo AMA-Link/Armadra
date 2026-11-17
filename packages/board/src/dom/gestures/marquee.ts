@@ -1,4 +1,5 @@
-// 框选：空白处拖出矩形，结束发 select。没拖动的一下等于点空白（清空选区）。
+// 框选：空白处拖出矩形，边拖边发 select（选区变了才发，一次提交只带动少数节点重渲）。
+// 没拖动的一下等于点空白（清空选区）。
 import {
   marquee,
   rectFromPoints,
@@ -26,8 +27,16 @@ export function createMarquee(ctx: GestureCtx, first: PointerInput): Gesture {
   const { board, deps } = ctx;
   const o = optionsOf(ctx);
   const additive = first.mods.shift;
+  const base = board.selection();
   let moved = false;
   let hit: string[] = [];
+  let shown: string | null = null;
+  const emit = () => {
+    const ids = nextSelection(base, hit, additive);
+    if (shown === ids.join()) return;
+    shown = ids.join();
+    board.emit("select", { ids, additive });
+  };
   const update = (input: PointerInput) => {
     if (!moved && vecDist(input.screen, first.screen) < o.dragThreshold) return;
     moved = true;
@@ -38,6 +47,7 @@ export function createMarquee(ctx: GestureCtx, first: PointerInput): Gesture {
       o.marqueeContain ? "contain" : "intersect",
     );
     deps.feedback?.({ type: "marquee", rect });
+    emit();
   };
   return {
     name: "marquee",
@@ -45,8 +55,7 @@ export function createMarquee(ctx: GestureCtx, first: PointerInput): Gesture {
     end(input) {
       update(input);
       deps.feedback?.(null);
-      const ids = nextSelection(board.selection(), hit, additive);
-      board.emit("select", { ids, additive });
+      if (shown === null) emit();
     },
     cancel: () => deps.feedback?.(null),
   };

@@ -17,12 +17,16 @@ import {
   useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Folder, MoreHorizontal, SquarePen } from "lucide-react";
 import type { WorkspaceSummary } from "@armadra/shared";
 
-import { useSessions } from "../agent/sessions";
+import { mergeSessions, sessionsQuery } from "../agent/sessions";
+import { useAgentStatusStore } from "../agent/status-store";
+import { useProgramStatusStore } from "../agent/program-status-store";
 import { useT, usePreferencesStore } from "../app/preferences-store";
 import { WorkspaceGroups } from "./SourceGroups";
 import { useOpenWorkspace } from "../app/workspace-actions";
@@ -167,8 +171,14 @@ export function WorkspaceTree() {
   );
 
   /* 行尾信号点：只有当前工作空间有会话列表，别的工作空间不发这一次请求。 */
-  const { sessions } = useSessions(workspace?.id ?? null);
-  const signals = useMemo(() => boardSignals(sessions), [sessions]);
+  // 会话列表与状态镜像的每一次变化都要重算，但算出来的信号多数时候没变：
+  // 订阅放在不渲染的叶子里，只有信号真的变了才让整棵树重渲。
+  const [signalStore] = useState(createSignalStore);
+  const signals = useSyncExternalStore(
+    signalStore.subscribe,
+    signalStore.get,
+    signalStore.get,
+  );
 
   const pinned = useMemo(
     () =>
@@ -185,6 +195,10 @@ export function WorkspaceTree() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <BoardSignalsFeed
+        workspaceId={workspace?.id ?? null}
+        store={signalStore}
+      />
       <NewBoardRow />
 
       <ScrollArea className="min-h-0 flex-1">
@@ -263,6 +277,61 @@ export function WorkspaceTree() {
       </ScrollArea>
     </div>
   );
+}
+
+type Signals = Record<string, BoardSignal>;
+
+function sameSignals(a: Signals, b: Signals): boolean {
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every(
+    (key) =>
+      b[key] !== undefined &&
+      a[key]?.attention === b[key].attention &&
+      a[key]?.unread === b[key].unread,
+  );
+}
+
+function createSignalStore() {
+  let value: Signals = {};
+  const listeners = new Set<() => void>();
+  return {
+    get: () => value,
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => void listeners.delete(listener);
+    },
+    set(next: Signals) {
+      if (sameSignals(value, next)) return;
+      value = next;
+      for (const listener of [...listeners]) listener();
+    },
+  };
+}
+
+/** 行尾信号点的数据源：只有当前工作空间有会话列表，别的工作空间不发这一次请求。 */
+function BoardSignalsFeed({
+  workspaceId,
+  store,
+}: {
+  workspaceId: string | null;
+  store: ReturnType<typeof createSignalStore>;
+}): null {
+  const data = useQuery(sessionsQuery(workspaceId)).data;
+  const statuses = useAgentStatusStore((state) => state.statuses);
+  const programs = useProgramStatusStore((state) => state.programs);
+  // 「处于该状态多久」要随时间走，但节拍不进渲染：计时器在副作用里重算，
+  // 结果没变（`store.set` 比较过）就不会有任何订阅者被叫醒，也不会多一次 commit。
+  useEffect(() => {
+    const publish = () =>
+      store.set(
+        boardSignals(mergeSessions(data ?? [], statuses, Date.now(), programs)),
+      );
+    publish();
+    const timer = setInterval(publish, 5_000);
+    return () => clearInterval(timer);
+  }, [store, data, statuses, programs]);
+  return null;
 }
 
 function GroupTitle({

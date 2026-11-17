@@ -1,5 +1,12 @@
 // Canvas 绘制：按层收集 KindSpec.paint，只画相机可见区域内的对象，rAF 里重绘。
-import { rectInflate, type EntityId, type Scene } from "../../core";
+// 每层的对象先画进一张比视口四周各大 `PAD` 的离屏位图；只平移相机时整张贴图
+// 挪个位置，不重画对象——墨迹多的板平移不再每帧重算几百条路径。
+import {
+  rectInflate,
+  type Entity,
+  type EntityId,
+  type Scene,
+} from "../../core";
 import type { Camera, DomKindSpec, DomPaintEnv } from "../types";
 import { browserEnv, type RenderEnv } from "./env";
 import type { Layers } from "./layers";
@@ -11,6 +18,18 @@ export const MIN_DOT_PITCH = 10;
 const MAX_DOTS = 20000;
 /** 可见区向外多画一圈（屏幕像素）：描边、阴影超出包围盒时不在边缘突然消失。 */
 const BLEED = 16;
+/** 离屏位图比视口四周各多出的屏幕像素；平移超出这一圈才重画。 */
+export const PAD = 256;
+
+interface LayerCache {
+  surface: HTMLCanvasElement | null;
+  x: number;
+  y: number;
+  zoom: number;
+  width: number;
+  height: number;
+  dpr: number;
+}
 
 export interface PaintSettings {
   theme: "light" | "dark";
@@ -92,12 +111,33 @@ export function createPainter(deps: PainterDeps): Painter {
     ctx.fill();
   }
 
+  const caches = new Map<string, LayerCache>();
+  let dirty = true;
+
+  function fresh(
+    cache: LayerCache | undefined,
+    cam: { x: number; y: number; zoom: number },
+    width: number,
+    height: number,
+    dpr: number,
+  ): boolean {
+    return (
+      !dirty &&
+      !!cache &&
+      cache.zoom === cam.zoom &&
+      cache.dpr === dpr &&
+      cache.width === width &&
+      cache.height === height &&
+      Math.abs(cam.x - cache.x) <= PAD &&
+      Math.abs(cam.y - cache.y) <= PAD
+    );
+  }
+
   function frame(): void {
     pending = null;
     const { width, height, dpr } = layers.size();
     const cam = camera.get();
-    const visible = rectInflate(camera.visible(), BLEED / (cam.zoom || 1));
-    const hits = scene.query(visible);
+    let hits: Entity[] | null = null;
     const paintEnv: DomPaintEnv = {
       zoom: cam.zoom,
       dpr,
@@ -118,38 +158,83 @@ export function createPainter(deps: PainterDeps): Painter {
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         drawDots(ctx, cam, width, height);
       }
-      ctx.setTransform(
-        dpr * cam.zoom,
-        0,
-        0,
-        dpr * cam.zoom,
-        dpr * cam.x,
-        dpr * cam.y,
-      );
-      for (const entity of hits) {
-        const spec = deps.kind(entity.kind);
-        const box = scene.bounds(entity.id);
-        if (spec?.layer !== layer || !spec.paint || !box) continue;
-        ctx.save();
-        // 绘制收到的是绝对世界几何（含预览与父级偏移）。
-        spec.paint(
-          ctx,
-          { ...entity, ...box },
-          {
-            ...paintEnv,
-            selected: settings.selected(entity.id),
-          },
+      let cache = caches.get(layer);
+      if (!fresh(cache, cam, width, height, dpr)) {
+        hits ??= scene.query(
+          rectInflate(camera.visible(), (PAD + BLEED) / (cam.zoom || 1)),
         );
-        ctx.restore();
+        const mine = hits.filter((entity) => {
+          const spec = deps.kind(entity.kind);
+          return spec?.layer === layer && !!spec.paint;
+        });
+        let surface = cache?.surface ?? null;
+        if (mine.length && !surface) surface = document.createElement("canvas");
+        if (!mine.length) surface = null;
+        cache = {
+          surface,
+          x: cam.x,
+          y: cam.y,
+          zoom: cam.zoom,
+          width,
+          height,
+          dpr,
+        };
+        caches.set(layer, cache);
+        const sctx = surface?.getContext("2d");
+        if (surface && sctx) {
+          const w = Math.round((width + 2 * PAD) * dpr);
+          const h = Math.round((height + 2 * PAD) * dpr);
+          if (surface.width !== w || surface.height !== h) {
+            surface.width = w;
+            surface.height = h;
+          } else {
+            sctx.setTransform(1, 0, 0, 1, 0, 0);
+            sctx.clearRect(0, 0, w, h);
+          }
+          sctx.setTransform(
+            dpr * cam.zoom,
+            0,
+            0,
+            dpr * cam.zoom,
+            dpr * (cam.x + PAD),
+            dpr * (cam.y + PAD),
+          );
+          for (const entity of mine) {
+            const box = scene.bounds(entity.id);
+            if (!box) continue;
+            sctx.save();
+            // 绘制收到的是绝对世界几何（含预览与父级偏移）。
+            deps.kind(entity.kind)!.paint!(
+              sctx,
+              { ...entity, ...box },
+              { ...paintEnv, selected: settings.selected(entity.id) },
+            );
+            sctx.restore();
+          }
+        }
       }
+      if (!cache?.surface) continue;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      // 贴图偏移取整到设备像素：不做插值，静止时与重画结果逐像素一致。
+      ctx.drawImage(
+        cache.surface,
+        Math.round(dpr * (cam.x - cache.x - PAD)),
+        Math.round(dpr * (cam.y - cache.y - PAD)),
+      );
     }
+    dirty = false;
   }
 
-  const invalidate = (): void => {
+  const schedule = (): void => {
     pending ??= env.raf(frame);
   };
+  const invalidate = (): void => {
+    dirty = true;
+    schedule();
+  };
   const stops = [
-    camera.subscribe(invalidate),
+    // 只动相机：贴图挪位置，位图过期（缩放变了、平移出圈）时 frame 自己重画。
+    camera.subscribe(schedule),
     scene.subscribe((changed) => {
       // 只有 Canvas 层的实体或已经不存在的实体（可能刚从 Canvas 层移除）才需要重绘。
       for (const id of changed) {
@@ -178,6 +263,7 @@ export function createPainter(deps: PainterDeps): Painter {
       for (const stop of stops) stop();
       if (pending !== null) env.caf(pending);
       pending = null;
+      caches.clear();
     },
   };
 }

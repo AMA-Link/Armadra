@@ -44,8 +44,7 @@ describe("createWorldHosts", () => {
     const host = hosts.hostOf("a")!;
     expect(host.dataset.boardId).toBe("a");
     expect(host.parentElement).toBe(world);
-    expect(host.style.cssText).toContain("left: 10px");
-    expect(host.style.cssText).toContain("top: 21px");
+    expect(host.style.transform).toBe("translate(10px, 21px)");
     expect(host.style.width).toBe("101px");
     expect(host.style.height).toBe("50px");
     expect(hosts.hostOf("i")).toBeUndefined();
@@ -58,18 +57,18 @@ describe("createWorldHosts", () => {
       d.set(make("c", { parent: "g", x: 10, y: 20 }));
     });
     const child = hosts.hostOf("c")!;
-    expect([child.style.left, child.style.top]).toEqual(["110px", "120px"]);
+    expect(child.style.transform).toBe("translate(110px, 120px)");
     scene.transact((d) => d.update("g", { x: 200 }));
-    expect(child.style.left).toBe("210px");
+    expect(child.style.transform).toBe("translate(210px, 120px)");
   });
 
   it("预览中的几何直接写进宿主，清掉预览后回到文档值", () => {
     const { scene, hosts } = setup();
     scene.transact((d) => d.set(make("a")));
     scene.preview(new Map([["a", { x: 50 }]]));
-    expect(hosts.hostOf("a")!.style.left).toBe("50px");
+    expect(hosts.hostOf("a")!.style.transform).toBe("translate(50px, 0px)");
     scene.clearPreview();
-    expect(hosts.hostOf("a")!.style.left).toBe("0px");
+    expect(hosts.hostOf("a")!.style.transform).toBe("translate(0px, 0px)");
   });
 
   it("只追加不重排：改 z 或在中间插入，已有宿主的 DOM 顺序与引用不变，层级靠 z-index", () => {

@@ -1312,8 +1312,7 @@
 /* 整理那一下：宿主的位置与尺寸走过渡，结束后 `data-tidying` 被撤掉 */
 .canvas-stage[data-tidying="true"] [data-board-id] {
   transition:
-    left var(--dur-page) var(--ease-out),
-    top var(--dur-page) var(--ease-out),
+    transform var(--dur-page) var(--ease-out),
     width var(--dur-page) var(--ease-out),
     height var(--dur-page) var(--ease-out);
 }

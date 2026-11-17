@@ -54,17 +54,22 @@ const RIGHT_OFFSET = "right-[60px]";
  * 判据与下面的提前返回逐字一致。
  */
 export function usePresenceBarVisible(): boolean {
-  const presence = useCanvasStore(currentPresence);
-  const realtime = useCanvasStore(isRealtimeBoard);
+  // 选择器直接算出布尔：心跳每几秒换一份在线表对象，订对象会让订阅者
+  // （顶部通知条）在结果没变时也跟着重渲。
+  const visible = useCanvasStore((state) => {
+    if (isRealtimeBoard(state)) return null;
+    const presence = currentPresence(state);
+    if (!presence) return false;
+    const me = presenceClientId();
+    return (
+      presence.writable === false ||
+      presence.clients.some((client) => client.clientId !== me)
+    );
+  });
   const peers = useRealtimeStore((view) => view.peers.length);
   const readOnly = useCanvasStore(isReadOnly);
-  if (realtime) return peers > 0 || readOnly;
-  if (!presence) return false;
-  const me = presenceClientId();
-  return (
-    presence.writable === false ||
-    presence.clients.some((client) => client.clientId !== me)
-  );
+  // `null` 是实时板：看同行的人数与只读。
+  return visible === null ? peers > 0 || readOnly : visible;
 }
 
 export function PresenceBar({ className }: { className?: string } = {}) {

@@ -10,11 +10,13 @@
 // 超过 33.4 ms 的帧数、长任务数、主线程脚本+布局+样式耗时、任务总耗时、JS 堆与
 // DOM 节点数。
 //
+// 手势段另记输入到出帧的延迟（每个 pointermove / wheel 到它引起的舞台变动上屏
+// 那一帧），这是比较用的响应指标；fps 只记录（不封顶时它数的是每个输入出了几帧）。
 // 默认不封顶：Chrome 带 `--disable-gpu-vsync --disable-frame-rate-limit`，rAF 不再
-// 被 60 Hz 卡住，fps 与帧时才有判别力；主线程耗时与刷新率无关。`CANVAS_BENCH_CAPPED=1`
+// 被 60 Hz 卡住，帧时才有判别力；主线程耗时与刷新率无关。`CANVAS_BENCH_CAPPED=1`
 // 退回旧的 60 Hz 封顶。每段的输入是固定步数（不是固定时长），两个引擎吃到同一串输入。
 // 对比：`canvas-bench-aggregate.mjs` 取多次中位数做基线，`canvas-bench-compare.mjs`
-// 逐项比较（任一项未严格优于基线即退出码 1）。
+// 逐项比较（未严格优于基线即退出码 1；floor / 持平 / 波动内三类例外见 lib）。
 // 另外单独量一次「一次会话状态跳动引发多少个组件重渲」：注入 React DevTools
 // 的 hook 垫片（React 只有在 hook 在它之前就位时才给 fiber 打开 ProfileMode），
 // 用 DevTools Profiler 自己那条 `didFiberRender` 判据数 fiber。
@@ -45,20 +47,42 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import {
+  ENGINES,
   SCHEMA,
   SELECTORS,
-  buildInkWhiteboardV2,
+  buildInkWhiteboardV3,
   diffPerformance,
   metricsMap,
   summarizeFrames,
+  summarizeLatency,
 } from "./canvas-bench-lib.mjs";
 import { isolatedEnv, probeHome } from "./probe-home.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
-const output = resolve(process.argv[2] ?? join(root, "target/canvas-stress"));
-const terminalCount = Number(process.argv[3] ?? 30);
+const flags = process.argv.slice(2).filter((arg) => arg.startsWith("--"));
+const positional = process.argv.slice(2).filter((arg) => !arg.startsWith("--"));
+const engineFlag = flags.find((flag) => flag.startsWith("--engine="));
+const engine = engineFlag
+  ? engineFlag.slice("--engine=".length)
+  : process.argv.includes("--engine")
+    ? process.argv[process.argv.indexOf("--engine") + 1]
+    : "current";
+if (!(engine in ENGINES)) {
+  console.error(
+    `--engine 只能是 ${Object.keys(ENGINES).join(" | ")}：${engine}`,
+  );
+  process.exit(2);
+}
+if (process.argv.includes("--engine")) {
+  // 「--engine next」两个词的写法：后一个词不是位置参数。
+  positional.splice(positional.indexOf(engine), 1);
+}
+const dom = ENGINES[engine];
+const output = resolve(positional[0] ?? join(root, "target/canvas-stress"));
+const terminalCount = Number(positional[1] ?? 30);
 mkdirSync(output, { recursive: true });
 
 const PAN_STEPS = 900;
@@ -69,8 +93,13 @@ const SELECT_STEPS = 240;
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const cleanups = [];
 const capped = process.env.CANVAS_BENCH_CAPPED === "1";
+const traceSegments = (process.env.CANVAS_BENCH_TRACE ?? "").split(",");
+const traceEvents = [];
+const reactSegments = (process.env.CANVAS_BENCH_REACT ?? "").split(",");
+const profileSegments = (process.env.CANVAS_BENCH_PROFILE ?? "").split(",");
 const report = {
   schema: SCHEMA,
+  engine,
   status: "failed",
   capped,
   terminals: terminalCount,
@@ -108,11 +137,62 @@ async function freePort() {
 const INSTRUMENT = `
 (() => {
   const frames = { on: false, times: [] };
+  // 输入到出帧的延迟：每个 pointermove / wheel 记下事件时间戳，等到画布舞台里
+  // 第一次有相关的 DOM 变动，算到**那一变动上屏的那一帧**的 rAF 时间。变动发生在
+  // 某一帧的 rAF 回调里（这个计时器的 rAF 永远排在页面的前面，先登记帧开始），就
+  // 记这一帧；发生在帧外（输入回调、帧后的 React commit），就记下一帧。旧引擎在
+  // 帧后提交、再补一帧才上屏，新引擎在同一帧里写完——fps 数的是帧数，这个数的是
+  // 用户看到响应要等多久。
+  const latency = {
+    on: false,
+    stage: null,
+    pending: [],
+    values: [],
+    frameTime: 0,
+    inFrame: false,
+    outside: false,
+  };
+  const settle = (time) => {
+    for (const stamp of latency.pending) latency.values.push(time - stamp);
+    latency.pending.length = 0;
+  };
+  const frameEnd = new MessageChannel();
+  frameEnd.port1.onmessage = () => {
+    latency.inFrame = false;
+  };
   const tick = (now) => {
     if (frames.on) frames.times.push(now);
+    if (latency.on) {
+      latency.frameTime = now;
+      latency.inFrame = true;
+      if (latency.outside) {
+        latency.outside = false;
+        settle(now);
+      }
+      frameEnd.port2.postMessage(0);
+    }
     requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
+  const onInput = (event) => {
+    if (latency.on) latency.pending.push(event.timeStamp);
+  };
+  addEventListener("pointermove", onInput, { capture: true, passive: true });
+  addEventListener("wheel", onInput, { capture: true, passive: true });
+  new MutationObserver((records) => {
+    if (!latency.on || latency.pending.length === 0) return;
+    const relevant = records.some(
+      (record) =>
+        record.target.nodeType === 1 && record.target.closest(latency.stage),
+    );
+    if (!relevant) return;
+    if (latency.inFrame) settle(latency.frameTime);
+    else latency.outside = true;
+  }).observe(document, {
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["style", "transform", "x", "y", "width", "height", "d"],
+  });
 
   const PERFORMED_WORK = 0b1;
   const RENDERING_TAGS = new Set([0, 1, 9, 11, 14, 15]); // Function/Class/ContextConsumer/ForwardRef/Memo/SimpleMemo
@@ -218,19 +298,29 @@ const INSTRUMENT = `
   } catch {}
 
   window.__armadraProbe = {
-    startFrames() {
+    startFrames(stage) {
       frames.times.length = 0;
+      latency.stage = stage;
+      latency.pending.length = 0;
+      latency.values.length = 0;
+      latency.outside = false;
+      latency.on = true;
       longTasks.count = 0;
       longTasks.on = true;
       frames.on = true;
     },
     stopFrames() {
       frames.on = false;
+      latency.on = false;
       if (longTaskObserver && longTasks.on) {
         longTasks.count += longTaskObserver.takeRecords().length;
       }
       longTasks.on = false;
-      return { times: frames.times.slice(), longTasks: longTasks.count };
+      return {
+        times: frames.times.slice(),
+        longTasks: longTasks.count,
+        latencies: latency.values.slice(),
+      };
     },
     startProfiler() {
       profiler.commits = 0;
@@ -409,19 +499,12 @@ async function main() {
   /* ---------------------------- Vite 开发服务器 -------------------------- */
 
   const port = await freePort();
+  // 直接起 vite 可执行文件：经 pnpm 起会在临时 HOME 里重新拉一份 pnpm 本身，网络不好时一挂就是几十分钟。
   const vite = spawn(
-    process.platform === "win32" ? "pnpm.exe" : "pnpm",
-    [
-      "--filter",
-      "@armadra/web",
-      "exec",
-      "vite",
-      "--port",
-      String(port),
-      "--strictPort",
-    ],
+    join(root, "apps/web/node_modules/.bin/vite"),
+    ["--port", String(port), "--strictPort"],
     {
-      cwd: root,
+      cwd: join(root, "apps/web"),
       stdio: ["ignore", "pipe", "pipe"],
       env: { ...environment, ARMADRA_DATA_DIR: data },
     },
@@ -507,11 +590,24 @@ async function main() {
   const call = (method, params = {}) =>
     new Promise((done, fail) => {
       const id = (sequence += 1);
-      pending.set(id, (message) =>
-        message.error
-          ? fail(new Error(message.error.message))
-          : done(message.result),
-      );
+      // 页面卡死（导航被确认框挡住、渲染进程挂起）时 CDP 永远不答：超时就让这一轮失败，
+      // 而不是把整个基准挂上几十分钟。
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        // 取证：页面脚本死循环时 `Debugger.pause` 能打断它，把调用栈留下来。
+        socket.send(
+          JSON.stringify({ id: 9_000_001, method: "Debugger.enable" }),
+        );
+        socket.send(
+          JSON.stringify({ id: 9_000_002, method: "Debugger.pause" }),
+        );
+        setTimeout(() => fail(new Error(`CDP ${method} 120 s 没有应答`)), 3000);
+      }, 120_000);
+      pending.set(id, (message) => {
+        clearTimeout(timer);
+        if (message.error) fail(new Error(message.error.message));
+        else done(message.result);
+      });
       socket.send(JSON.stringify({ id, method, params }));
     });
 
@@ -563,7 +659,35 @@ async function main() {
     }
   });
   report.console = console_;
+  socket.addEventListener("message", (event) => {
+    const message = JSON.parse(event.data);
+    if (message.method !== "Debugger.paused") return;
+    report.hungStack = message.params.callFrames
+      .slice(0, 12)
+      .map(
+        (f) =>
+          `${f.functionName || "(anon)"} ${f.url.split("/").slice(-2).join("/")}:${f.location.lineNumber}`,
+      );
+  });
+  socket.addEventListener("message", (event) => {
+    const message = JSON.parse(event.data);
+    if (message.method === "Tracing.dataCollected") {
+      traceEvents.push(...message.params.value);
+    }
+  });
+  // 离开页面的确认框（未保存的改动）：不接住，导航会永远挂着。记下来，报告里能看到。
+  report.dialogs = [];
+  socket.addEventListener("message", (event) => {
+    const message = JSON.parse(event.data);
+    if (message.method !== "Page.javascriptDialogOpening") return;
+    report.dialogs.push(`${message.params.type}: ${message.params.message}`);
+    void call("Page.handleJavaScriptDialog", { accept: true });
+  });
   await call("Page.addScriptToEvaluateOnNewDocument", { source: INSTRUMENT });
+  // 引擎开关与取证把手（`armadra.diag` 才暴露 `__armadraCanvasStore`，量墨迹条数用）。
+  await call("Page.addScriptToEvaluateOnNewDocument", {
+    source: `try { localStorage.setItem("armadra.canvas.engine", ${JSON.stringify(engine)}); localStorage.setItem("armadra.diag", "1"); } catch {}`,
+  });
   await call("Emulation.setDeviceMetricsOverride", {
     width: 1440,
     height: 900,
@@ -574,7 +698,7 @@ async function main() {
 
   for (let attempt = 0; attempt < 240; attempt += 1) {
     const ready = await evaluate(
-      `return document.querySelectorAll(".react-flow__node").length;`,
+      `return document.querySelectorAll(${JSON.stringify(dom.node)}).length;`,
     );
     if (ready >= terminalCount) break;
     await sleep(500);
@@ -596,7 +720,7 @@ async function main() {
   // `state` 是 agent 状态，没有 agent 的终端一直是 undefined，不能拿来数。
   report.mounted = await evaluate(`
     return {
-      flowNodes: document.querySelectorAll(".react-flow__node").length,
+      flowNodes: document.querySelectorAll(${JSON.stringify(dom.node)}).length,
       terminals: document.querySelectorAll('[data-slot="terminal-surface"]').length,
       xterm: document.querySelectorAll(".xterm").length,
       shells: document.querySelectorAll('[data-slot="node-shell"]').length,
@@ -671,6 +795,12 @@ async function main() {
       return 1;
     `);
 
+  // 诊断：`CANVAS_BENCH_EVAL=<js>` 在测量开始前在页面里跑一段脚本（试一个假设，不进基准）。
+  if (process.env.CANVAS_BENCH_EVAL) {
+    await evaluate(process.env.CANVAS_BENCH_EVAL);
+    await sleep(1000);
+  }
+
   /** 一段测量：开仪器 → 跑动作 → 停仪器 → 记堆、主线程耗时与 DOM 节点数。 */
   await call("Performance.enable");
   const perf = async () =>
@@ -680,9 +810,72 @@ async function main() {
     await resetCounters();
     const before = await perf();
     const wall = Date.now();
-    await evaluate(`window.__armadraProbe.startFrames(); return 1;`);
+    // 诊断：`CANVAS_BENCH_PROFILE=pan,drag` 对这些段录一份 CPU profile（不进基准数字，
+    // 只用来找热点；录制本身有开销，别拿带 profile 的运行当基准）。
+    const profiled = profileSegments.includes(name);
+    if (profiled) {
+      await call("Profiler.enable");
+      await call("Profiler.setSamplingInterval", { interval: 500 });
+      await call("Profiler.start");
+    }
+    // 诊断：`CANVAS_BENCH_TRACE=select` 录 Chrome 时间线（布局与样式重算的原因与元素数）。
+    const traced = traceSegments.includes(name);
+    if (traced) {
+      traceEvents.length = 0;
+      await call("Tracing.start", {
+        traceConfig: {
+          includedCategories: process.env.CANVAS_BENCH_TRACE_CATS
+            ? process.env.CANVAS_BENCH_TRACE_CATS.split(",")
+            : [
+                "devtools.timeline",
+                "disabled-by-default-devtools.timeline.invalidationTracking",
+              ],
+        },
+        transferMode: "ReportEvents",
+      });
+    }
+    const reactProfiled = reactSegments.includes(name);
+    if (reactProfiled)
+      await evaluate(`window.__armadraProbe.startProfiler(); return 1;`);
+    await evaluate(
+      `window.__armadraProbe.startFrames(${JSON.stringify(dom.stage)}); return 1;`,
+    );
     await action();
     const raw = await evaluate(`return window.__armadraProbe.stopFrames();`);
+    if (traced) {
+      const done = new Promise((resolve) => {
+        const onMessage = (event) => {
+          const message = JSON.parse(event.data);
+          if (message.method === "Tracing.tracingComplete") {
+            socket.removeEventListener("message", onMessage);
+            resolve();
+          }
+        };
+        socket.addEventListener("message", onMessage);
+      });
+      await call("Tracing.end");
+      await done;
+      writeFileSync(
+        join(output, `trace-${name}.json`),
+        JSON.stringify(traceEvents),
+      );
+    }
+    if (reactProfiled) {
+      const react = await evaluate(
+        `return window.__armadraProbe.stopProfiler();`,
+      );
+      writeFileSync(
+        join(output, `react-${name}.json`),
+        JSON.stringify(react, null, 1),
+      );
+    }
+    if (profiled) {
+      const { profile } = await call("Profiler.stop");
+      writeFileSync(
+        join(output, `profile-${name}.cpuprofile`),
+        JSON.stringify(profile),
+      );
+    }
     const elapsed = Date.now() - wall;
     const after = await perf();
     const frames = summarizeFrames(raw.times);
@@ -690,9 +883,10 @@ async function main() {
     const counted = await counters();
     report.segments[name] = {
       viewport: await evaluate(
-        `return document.querySelector(".react-flow__viewport")?.style.transform ?? null;`,
+        `return document.querySelector(${JSON.stringify(dom.viewport)})?.style.transform ?? null;`,
       ),
       ...frames,
+      ...summarizeLatency(raw.latencies),
       longTasks: raw.longTasks,
       ...diffPerformance(before, after),
       wallMs: elapsed,
@@ -707,7 +901,7 @@ async function main() {
     };
     step(
       `段：${name}`,
-      `${frames.fps} fps，p95 ${frames.p95Ms} ms，最慢 ${frames.slowestMs} ms，主线程 ${report.segments[name].mainThreadMs} ms，长任务 ${raw.longTasks}`,
+      `${frames.fps} fps，输入延迟 p50 ${report.segments[name].latencyMs ?? "—"} ms，p95 ${frames.p95Ms} ms，最慢 ${frames.slowestMs} ms，主线程 ${report.segments[name].mainThreadMs} ms，长任务 ${raw.longTasks}`,
     );
   };
 
@@ -761,8 +955,8 @@ async function main() {
       // 侧边栏盖住或者移出视口，按下去什么都不会发生。
       const centre = { x: 820, y: 430 };
       let best = null;
-      for (const element of document.querySelectorAll(".react-flow__node")) {
-        const head = element.querySelector(".drag-handle");
+      for (const element of document.querySelectorAll(${JSON.stringify(dom.node)})) {
+        const head = element.querySelector(${JSON.stringify(dom.dragHandle)});
         if (!head) continue;
         const rect = head.getBoundingClientRect();
         if (rect.width < 4 || rect.height < 4) continue;
@@ -774,7 +968,7 @@ async function main() {
           const box = element.getBoundingClientRect();
           best = {
             distance,
-            id: element.getAttribute("data-id"),
+            id: element.getAttribute(${JSON.stringify(dom.idAttr)}),
             x,
             y,
             nodeX: box.left,
@@ -807,7 +1001,7 @@ async function main() {
     await sleep(400);
   });
   const after = await evaluate(`
-    const element = document.querySelector('.react-flow__node[data-id="' + ${JSON.stringify(header.id)} + '"]');
+    const element = document.querySelector(${JSON.stringify(dom.node)} + '[' + ${JSON.stringify(dom.idAttr)} + '="' + ${JSON.stringify(header.id)} + '"]');
     if (!element) return null;
     const box = element.getBoundingClientRect();
     return { nodeX: box.left, nodeY: box.top };
@@ -825,7 +1019,7 @@ async function main() {
 
   const zoomOf = () =>
     evaluate(`
-      const element = document.querySelector(".react-flow__viewport");
+      const element = document.querySelector(${JSON.stringify(dom.viewport)});
       const match = element && /scale\\(([-0-9.e]+)\\)/.exec(element.style.transform);
       return match ? Number(match[1]) : null;
     `);
@@ -882,7 +1076,7 @@ async function main() {
 
   const selectedCount = () =>
     evaluate(
-      `return document.querySelectorAll(".react-flow__node.selected").length;`,
+      `return document.querySelectorAll(${JSON.stringify(dom.selected)}).length;`,
     );
   await measure("select", async () => {
     // 右下空白处按下（避开右下角的小地图，按在小地图上拖的是视口），向左上拖出
@@ -900,9 +1094,10 @@ async function main() {
       );
       await sleep(8);
     }
-    report.selectedNodes = await selectedCount();
     await mouse("mouseReleased", to.x, to.y, { buttons: 0 });
     await sleep(300);
+    // 松手之后再数：自研引擎的框选在松手时才提交选区（React Flow 是边拖边选）。
+    report.selectedNodes = await selectedCount();
   });
   if (!report.selectedNodes || report.selectedNodes < 5) {
     await capture("select-failed");
@@ -1049,8 +1244,11 @@ async function main() {
 
   // 另开一张板，白板数据直接写进 `whiteboard`（v2；新引擎 B5 之后在
   // canvas-bench-lib.mjs 换成 v3 生成器）。视口罩住 4000×3000 的墨迹范围。
-  const inkDoc = buildInkWhiteboardV2();
-  const inkSnapshot = JSON.stringify(inkDoc);
+  // 两个引擎在这个提交上都只认 v3 存储（序列化与渲染互相独立，见设计 §3.1），
+  // 所以两边写同一份 v3 内容；v2 写进去两边都会当空板打开，数字就是作弊。
+  const inkDoc = buildInkWhiteboardV3();
+  const inkSnapshot = (await loadCodec()).encodeDoc(inkDoc);
+  step("v3 墨迹白板已编码", `${inkSnapshot.length} 字节`);
   const inkBoard = await api(`/api/workspaces/${created.id}/boards`, {
     method: "POST",
     body: JSON.stringify({ name: "ink" }),
@@ -1069,6 +1267,7 @@ async function main() {
       whiteboard: inkSnapshot,
     }),
   });
+  step("墨迹板已写入");
   const inkStored = await api(
     `/api/workspaces/${created.id}/boards/${inkBoard.id}/document`,
   );
@@ -1089,7 +1288,7 @@ async function main() {
   await sleep(1500);
   for (let attempt = 0; attempt < 240; attempt += 1) {
     const ready = await evaluate(
-      `return document.querySelectorAll(".react-flow__node").length;`,
+      `return document.querySelectorAll(${JSON.stringify(dom.node)}).length;`,
     );
     const splash = await evaluate(
       `return document.getElementById("splash-root") ? 1 : 0;`,
@@ -1099,6 +1298,17 @@ async function main() {
   }
   await sleep(2000);
   await capture("ink");
+  // 页面真的把 300 条墨迹读进来了：空板（v2 / 版本不符）跑出来的数字是虚高，直接判失败。
+  report.inkBoard.loaded = await evaluate(`
+    const items = globalThis.__armadraCanvasStore?.getState().whiteboard.items;
+    return items ? items.filter((item) => item.kind === "ink").length : -1;
+  `);
+  if (report.inkBoard.loaded !== inkDoc.items.length) {
+    await capture("ink-failed");
+    throw new Error(
+      `墨迹板页面里只有 ${report.inkBoard.loaded}/${inkDoc.items.length} 条墨迹：测到的是空板`,
+    );
+  }
   const inkHand = await boxOf(
     'button[aria-label="手形"], button[aria-label="Hand"]',
   );
@@ -1124,11 +1334,30 @@ async function main() {
   });
   step(
     "墨迹白板",
-    `${report.inkBoard.items} 条，${report.inkBoard.whiteboardBytes} 字节`,
+    `${report.inkBoard.items} 条（页面读入 ${report.inkBoard.loaded}），${report.inkBoard.whiteboardBytes} 字节`,
   );
 
   report.saves = saves.length;
   report.status = "ok";
+}
+
+/**
+ * 白板 v3 编解码：probe 是纯 .mjs，不能直接 import TS 源码，经 esbuild 现场打一份。
+ * 与应用里 `serializeWhiteboard` 是同一个 `codec.encodeDoc`。
+ */
+async function loadCodec() {
+  const require = createRequire(join(root, "apps/server/package.json"));
+  const built = await require("esbuild").build({
+    entryPoints: [join(root, "packages/board/src/core/codec/index.ts")],
+    bundle: true,
+    write: false,
+    format: "esm",
+    platform: "neutral",
+  });
+  const source = built.outputFiles[0].text;
+  return import(
+    `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
+  );
 }
 
 /** 撤销栈深度：Dock 的撤销按钮点几次才灰掉（上限 120，防死循环）。 */

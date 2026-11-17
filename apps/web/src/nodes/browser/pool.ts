@@ -78,7 +78,7 @@ export const BACKGROUND_WEBVIEW_MAX = BROWSER_DEFAULT_BACKGROUND_MAX;
  */
 export const GHOST_ENTRY_HEADROOM = 8;
 
-function ghostEntryMax(): number {
+export function ghostEntryMax(): number {
   return (
     usePreferencesStore.getState().browser.backgroundMax + GHOST_ENTRY_HEADROOM
   );
@@ -124,6 +124,16 @@ const listeners = new Set<() => void>();
 
 function notify(): void {
   for (const listener of listeners) listener();
+}
+
+/**
+ * 自研引擎的 ghost：场景里留着条目（宿主 DOM 与 `<webview>` 就还在），由画布适配器
+ * 报告哪些 id 现在是 ghost；`useIsGhost` 据此让节点体不回写、不算可见性。
+ */
+export function setGhostIds(ids: ReadonlySet<string>): void {
+  if (sameSet(ids, ghostIds)) return;
+  ghostIds = ids;
+  notify();
 }
 
 /** 只给测试用：清空 pool，下一次投影从头来。 */

@@ -8,16 +8,19 @@ const NS = "http://www.w3.org/2000/svg";
 /** SVG 的矩形用 width / height。 */
 const svgRect = (r: Rect) => ({ x: r.x, y: r.y, width: r.w, height: r.h });
 
-/** 把反馈画进 `svg`，返回画出的元素（调用方下次先移除）；画不出就返回 null。 */
+/** 把反馈画进 `svg`；上一帧同种就原地改属性（每步增删节点会让整个应用重算样式）。 */
 export function drawFeedback(
   svg: SVGSVGElement,
   fb: GestureFeedback,
   scene: Scene,
   camera: Camera,
+  prev: SVGElement | null = null,
 ): SVGElement | null {
   const px = 1 / camera.get().zoom;
   const el = (tag: string, attrs: Record<string, string | number>) => {
-    const node = document.createElementNS(NS, tag) as SVGElement;
+    const node = (
+      prev?.localName === tag ? prev : document.createElementNS(NS, tag)
+    ) as SVGElement;
     node.setAttribute("fill", "none");
     node.setAttribute("stroke", "currentColor");
     node.setAttribute("stroke-width", String(1.5 * px));
@@ -50,5 +53,5 @@ export function drawFeedback(
       shape = el("rect", svgRect(d as Rect));
     }
   }
-  return shape ? svg.appendChild(shape) : null;
+  return shape && (shape.parentNode ? shape : svg.appendChild(shape));
 }

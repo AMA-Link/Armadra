@@ -9,7 +9,11 @@ import {
   useFlowContainer,
   useFlowHandle,
 } from "@/canvas/flow/flow-context";
-import { useStageView } from "@/canvas/flow/stage-view";
+import {
+  getStageView,
+  subscribeStageView,
+  useStageZoom,
+} from "@/canvas/flow/stage-view";
 import { nodeBox, type Box } from "@/canvas/geometry";
 import { isItemId, toItemId, type Item } from "@/canvas/whiteboard/model";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -86,7 +90,6 @@ function Cursors() {
   const peers = offline ? NO_PEERS : allPeers;
   const following = useRealtimeStore((view) => view.following);
   const follow = useRealtimeStore((view) => view.follow);
-  const { x: panX, y: panY, zoom, width, height } = useStageView();
   const nodes = useCanvasStore((state) => state.document?.nodes);
   const items = useCanvasStore((state) => state.whiteboard.items);
   const flow = useFlowHandle();
@@ -135,14 +138,19 @@ function Cursors() {
     };
   }, [domNode]);
 
-  // 自己的视口 → awareness（中心的画布坐标 + 缩放）。
+  // 只有画着别人的光标或选区时才跟缩放重渲：平移与独自在场时，相机事件上不该有
+  // React 渲染（它们在输入到出帧的路上）。
+  const zoom = useStageZoom(peers.length > 0 || shown.size > 0);
+  // 自己的视口 → awareness（节流在 `awareness.ts`）：直接订阅舞台视口，不经渲染。
   React.useEffect(() => {
-    const center = viewportCenter(
-      { x: panX, y: panY, zoom },
-      { width, height },
-    );
-    if (center) broadcastViewport(center);
-  }, [panX, panY, zoom, width, height]);
+    const send = () => {
+      const { x, y, zoom, width, height } = getStageView();
+      const center = viewportCenter({ x, y, zoom }, { width, height });
+      if (center) broadcastViewport(center);
+    };
+    send();
+    return subscribeStageView(send);
+  }, []);
   React.useEffect(() => () => broadcastViewport(null), []);
 
   // 跟随：对方的视口（没报就是光标）变了，相机跟过去；人走了就停。

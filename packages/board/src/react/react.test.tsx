@@ -120,11 +120,11 @@ describe("EntityHosts", () => {
     show(<EntityHosts<string> render={render} />);
     const before = calls.length;
     act(() => board.scene.preview(new Map([["a", { x: 50, y: 60 }]])));
-    expect(board.hostOf("a")!.style.left).toBe("50px");
+    expect(board.hostOf("a")!.style.transform).toBe("translate(50px, 60px)");
     act(() => board.scene.clearPreview());
     // 改几何但实体 data 引用不变：同一个实体对象换成新对象会渲染该节点一次，其它节点不动
     put({ ...entity("a", 10, 20), data: "a" });
-    expect(board.hostOf("a")!.style.left).toBe("10px");
+    expect(board.hostOf("a")!.style.transform).toBe("translate(10px, 20px)");
     const rendered = calls.slice(before);
     expect(rendered.every((id) => id === "a")).toBe(true);
     expect(rendered.length).toBeLessThanOrEqual(1);

@@ -4,12 +4,9 @@ import {
   QueryClientProvider,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useAgentStatusHydration } from "../agent/hydration";
 import { useWorkspaceEvents } from "../api/events";
-import { CanvasSkeleton } from "../canvas/CanvasSkeleton";
 import { FlowWorkspace } from "../canvas/FlowWorkspace";
 import { usePreferencesStore } from "./preferences-store";
-import { useSkeletonPhase } from "../loading/use-skeleton-phase";
 // 浮层都在 `./lazy` 里 `React.lazy` 包过，走各自的 chunk（§17 代码分割）；
 // `./Overlays` 是它们的挂载点，也是决定 chunk 什么时候才被取回来的闸门。
 import { Overlays } from "./Overlays";
@@ -32,20 +29,17 @@ import { useCompactLayout } from "@/platform/layout";
 import { TooltipProvider } from "@/ui/tooltip";
 import { useCommandDispatch } from "./commands";
 import { useAgentNotifications } from "./notifications";
-import { useHumanNeedsSync } from "../notifications/use-human-needs";
-import { useHostNeedsSync } from "../notifications/use-host-needs";
 import { useThresholdAlerts } from "../panels/resources/threshold-alerts";
 import { syncDocumentPreferences } from "./preferences-store";
 import { installInstantOverlays } from "../keybindings";
 import { useAppKeybindings } from "./use-app-keybindings";
 import { useFirstScreenEnter } from "./use-first-screen-enter";
 import "./first-screen.css";
-import { useAgentModesMirror } from "./use-agent-modes-mirror";
 import { useLocaleMirror } from "./use-locale-mirror";
-import { useBoardSync } from "./use-board-sync";
+import { AppBackgroundSync } from "./AppBackgroundSync";
+import { CanvasLoadGate } from "./CanvasLoadGate";
 import { useWorkspaceAccessLost } from "./use-access-lost";
 import { useControlNotices } from "./use-control-notices";
-import { useUsagePolicyNotice } from "./use-usage-policy-notice";
 import { useSourceSwitchCacheReset } from "./use-sources-bootstrap";
 import { useCanvasPreferences } from "./use-canvas-preferences";
 import { SharedSessionHost } from "../shared-session/SharedSessionHost";
@@ -127,20 +121,12 @@ function AppShell() {
   useWorkspaceEvents(workspace?.id ?? null, workspaceSource);
   useWorkspaceAccessLost();
   useControlNotices();
-  useUsagePolicyNotice();
   useSourceSwitchCacheReset();
-  // 节点徽标属于画布，不属于侧栏：镜像在这里补齐，与面板开合无关。
-  useAgentStatusHydration(workspace?.id ?? null);
-  useHumanNeedsSync();
-  useHostNeedsSync();
   useAgentNotifications();
   useThresholdAlerts();
-  const { canvasLoading } = useBoardSync();
-  const canvasPhase = useSkeletonPhase(canvasLoading);
   const dispatch = useCommandDispatch();
   useAppKeybindings(dispatch);
   useLocaleMirror();
-  useAgentModesMirror();
 
   return (
     // 根容器只让开顶边的安全区（`--safe-top`，设计系统 §3.1），状态栏下只剩这块
@@ -158,6 +144,9 @@ function AppShell() {
           这一整条加回来，点上去就是拖窗口。z 轴与此无关，那只管页面自己的
           命中。 */}
       <WindowDragLayer />
+      {/* 会话状态镜像、需要处理的清单等只做同步的订阅（节点徽标属于画布，与
+          面板开合无关）；放在叶子里，免得它们的变化重渲整个壳。 */}
+      <AppBackgroundSync />
       <LeftSidebar />
       <main
         className="workspace-surface relative min-w-0 flex-1"
@@ -179,8 +168,8 @@ function AppShell() {
             <Dock />
           </>
         )}
-        {/* 首批数据没到时的画布骨架：200 ms 内不出现，出现后至少停 300 ms。 */}
-        {canvasPhase === "show" && <CanvasSkeleton chrome={!workspace} />}
+        {/* 加载链与首批数据没到时的画布骨架（叶子，见 `CanvasLoadGate`）。 */}
+        <CanvasLoadGate />
         {/* 通知条坐在画布面的顶部标题带里，与工具簇同一层（`shell/Banners`）。 */}
         <Banners />
         {/* 被分享会话的只读查看页（契约 §79）：盖住画布那一块。 */}

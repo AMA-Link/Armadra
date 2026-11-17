@@ -8,6 +8,7 @@ import { createEdgesSlice } from "./canvas/edges";
 import { createViewSlice } from "./canvas/view";
 import { createPresenceSlice } from "./canvas/presence";
 import type { CanvasStore } from "./canvas/types";
+import { diagEnabled } from "@/acp/diag";
 
 export type {
   AddNodeOptions,
@@ -73,3 +74,10 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   ...createViewSlice(set, get),
   ...createPresenceSlice(set, get),
 }));
+
+// 取证用：`armadra.diag` 开着时把 store 交给探针读（墨迹条数等），默认不暴露。
+if (diagEnabled()) {
+  (
+    globalThis as { __armadraCanvasStore?: typeof useCanvasStore }
+  ).__armadraCanvasStore = useCanvasStore;
+}
