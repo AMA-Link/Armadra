@@ -286,17 +286,16 @@ try {
 
   /* ------------------------ 2b. 手指拉伸（#819） ------------------------ */
   // 手机上用手指拉伸节点：松手要提交（A 与 core 收到新尺寸），之后 A 的改动
-  // B 也要照常收到——修之前触摸手势在第一帧就被 React Flow 换绑丢掉，尺寸停在
-  // 第一帧、草稿永远不清，B 从此收不到任何远端改动。
-  // d3-drag 只在绑定那一刻看「能不能触摸」，所以先取消选中、开触摸模拟，再点选
-  // 让把手重新挂上来。
+  // B 也要照常收到（#819：触摸手势一度在第一帧就被丢掉，尺寸停在第一帧、草稿
+  // 永远不清，B 从此收不到任何远端改动）。先取消选中、开触摸模拟，再用手指点选
+  // 让缩放把手挂上来（连线的四个端点一直在，只认缩放把手）。
   const bPaneBox = await b.evaluate(
     `const r = document.querySelector('[data-board-stage]').getBoundingClientRect();
      return { x: r.left + 40, y: r.bottom - 140 };`,
   );
   await b.click(bPaneBox.x, bPaneBox.y);
   await b.until(
-    `return !document.querySelector('[data-board-layer=world] > [data-board-id="${right.id}"] [data-board-handle]')`,
+    `return !document.querySelector('[data-board-layer=world] > [data-board-id="${right.id}"] [data-slot=board-resize-handle]')`,
     "B 取消选中右边的便签",
   );
   await b.call("Emulation.setTouchEmulationEnabled", {
