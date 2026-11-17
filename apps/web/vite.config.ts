@@ -123,11 +123,10 @@ const vendorGroups = [
     test: /[\\/]node_modules[\\/]@xterm[\\/](xterm|addon-fit|addon-unicode11)[\\/]/,
   },
   {
-    name: "xyflow",
+    name: "ink",
     priority: 30,
-    // React Flow 与它的运行时依赖：`@xyflow/system`、d3 的三个手势包、
-    // `classcat`、以及 RF 自带的 zustand 4（与应用的 zustand 5 各自独立）。
-    test: /[\\/]node_modules[\\/](@xyflow|d3-drag|d3-selection|d3-zoom|d3-transition|d3-ease|d3-interpolate|d3-timer|d3-color|d3-dispatch|classcat|perfect-freehand)[\\/]/,
+    // 白板墨迹的笔画外轮廓；只有自研画板引擎的墨迹渲染用它。
+    test: /[\\/]node_modules[\\/]perfect-freehand[\\/]/,
   },
   {
     name: "radix",
