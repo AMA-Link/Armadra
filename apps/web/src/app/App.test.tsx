@@ -50,8 +50,8 @@ vi.mock("../api/identity", async (importOriginal) => {
 });
 
 /** 画布本身在 jsdom 里跑不动，这里只关心它在不在。 */
-vi.mock("../canvas/FlowWorkspace", () => ({
-  FlowWorkspace: () => <div data-testid="canvas" />,
+vi.mock("../canvas/board/BoardWorkspace", () => ({
+  BoardWorkspace: () => <div data-testid="canvas" />,
 }));
 
 import { installDomPolyfills } from "./test-harness";
