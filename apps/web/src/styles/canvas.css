@@ -555,6 +555,8 @@
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: var(--r-panel);
+  /* 半透明面板色：与旧画布缩略图同一个底，叠在点阵与节点上仍分得清 */
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
   box-shadow: var(--shadow-overlay);
   backdrop-filter: blur(12px);
   cursor: pointer;
