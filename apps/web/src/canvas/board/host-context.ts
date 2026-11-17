@@ -1,8 +1,8 @@
 import * as React from "react";
 
 /**
- * 节点组件是不是挂在自研引擎的宿主里。React Flow 的节点上下文在宿主里不存在，
- * 依赖它的那几处（连线把手）据此自己让开；B6 删掉 React Flow 后这个标记一并删。
+ * 节点组件是不是挂在画板引擎的宿主里。手机焦点页直接渲染节点体、不经宿主，
+ * 依赖宿主的那几处（连线把手）据此自己让开。
  */
 const BoardHostContext = React.createContext(false);
 

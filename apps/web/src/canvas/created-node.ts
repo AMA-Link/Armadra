@@ -157,7 +157,7 @@ export function applyPendingReveal(now: number = Date.now()): boolean {
  * 画布挂载期间订阅 `node.created`。
  *
  * 订阅 store 用 `subscribe` 而不是选择器 hook：这个 hook 住在
- * `FlowWorkspace` 里，为了等一个节点让整块画布跟着文档重渲是不划算的。
+ * `BoardWorkspace` 里，为了等一个节点让整块画布跟着文档重渲是不划算的。
  */
 export function useCreatedNodeReveal(): void {
   React.useEffect(() => {

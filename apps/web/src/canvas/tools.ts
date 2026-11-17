@@ -31,7 +31,7 @@ import { GEOS, isItemId, type Geo, type Item } from "./whiteboard/model";
  * 白板工具表（React Flow 计划 F21）。
  *
  * 一份规格驱动三处：Dock 的工具组、`keybindings.ts` 的 `canvas.tool.*`
- * 命令、`FlowWorkspace` 注册的命令实现。工具 id 从旧引擎换成我们自己的
+ * 命令、`BoardWorkspace` 注册的命令实现。工具 id 从旧引擎换成我们自己的
  * （`interaction/tool-store.ts`），集合一个没变，所以这里仍然**没有映射表**。
  *
  * 「引入」不是工具：它在 Dock 上是一个触发文件选择的按钮，落到

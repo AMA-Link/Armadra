@@ -76,8 +76,8 @@ export const CardHost = React.memo(function CardHost({
   const focused = useCanvasStore((state) => state.focusNodeId === entity.id);
   return (
     <BoardHostProvider value>
-      {/* `contents`：与 React Flow 的节点承载一样，只给样式一个挂
-          `data-dragging` 与 `data-entering` 的地方，不生成盒子。 */}
+      {/* `contents`：只给样式一个挂 `data-dragging` 与 `data-entering` 的
+          地方，不生成盒子。 */}
       <div
         data-slot="node-host"
         data-dragging={dragging ? "true" : undefined}

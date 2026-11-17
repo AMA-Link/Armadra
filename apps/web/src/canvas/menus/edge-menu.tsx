@@ -11,7 +11,7 @@ import { isReferenceEdgeId, ReferenceEdgeMenuItems } from "./reference-menu";
  * 画布上有两种边，这个菜单按 id 分流：
  *
  *  - **上下文连线**（`document.edges` 的一行）：改角色，或者删掉它。标签与
- *    对等边的箭头仍由两端节点的类型决定（`sync/project.edgeArrowheads` /
+ *    对等边的箭头仍由两端节点的类型决定（`sync/project-edges.edgeArrowheads` /
  *    `edgeLabelKey`），那些不用人管；要人管的只有**这条线是对等还是主从**
  *    ——它决定对面能不能往这个终端里打字（设计 §2.6），而连线时的那个命名
  *    对话框是可以跳过的，跳过之后这里是唯一能改回来的地方。

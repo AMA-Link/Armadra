@@ -86,7 +86,7 @@ function agentOf(node: CanvasNode): string | undefined {
 /**
  * 「给这些节点起名」的请求通道。
  *
- * 拉完一条线的那一刻（`canvas/flow/use-flow-nodes.onConnect`）与节点菜单里的
+ * 拉完一条线的那一刻（`board/use-board-connect`）与节点菜单里的
  * 「名字…」用同一条：两个入口只有一个对话框，所以「连线时跳过了、回头再起」
  * 与「一开始就起」落在同一段代码上。
  */

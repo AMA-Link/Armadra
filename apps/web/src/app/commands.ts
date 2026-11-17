@@ -104,7 +104,7 @@ export function useCommandDispatch(): CommandDispatch {
           return;
         }
         // 画布偏好的两条快捷键（§偏好菜单）。写的是 `preferences-store`，
-        // 那里是唯一真相：`use-canvas-preferences` 与 `flow-options` 单向
+        // 那里是唯一真相：`use-canvas-preferences` 与 `BoardWorkspace` 单向
         // 读它，所以菜单、设置页、画布三处永远是同一个值。
         case "canvas.toggleGrid":
         case "canvas.toggleFocus": {

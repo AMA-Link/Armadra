@@ -4,7 +4,7 @@ import { type CanvasGet, type CanvasSet, type CanvasStore } from "./types";
  * 选区（React Flow 计划 §2.8）。
  *
  * store 是唯一真相：投影时把 `selected` 写到 React Flow 的节点 / 边上
- * （`sync/project.ts`），用户在画布上改选区时 `onSelectionChange` 调
+ * （`sync/project-edges.ts`），用户在画布上改选区时 `onSelectionChange` 调
  * `setSelection` 一次写三项。旧引擎那条「编辑器 ⇄ store 双向」的
  * 环路整个消失了。
  */

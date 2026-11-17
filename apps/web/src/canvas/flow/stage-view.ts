@@ -3,10 +3,9 @@ import * as React from "react";
 /**
  * 画布舞台的视口（与引擎无关）：平移、缩放与容器像素尺寸。
  *
- * 两种引擎各自把自己的相机推进来——旧引擎由 `FlowStagePublisher`（读 React Flow
- * 的 store）、自研引擎由 `BoardWorkspace`（读 `board.camera`）——外面的 Dock 缩放档位、
- * 浏览器节点的屏幕尺寸、成员光标、评论钉、实时视口广播都只认这一份，不再各自
- * 依赖某个引擎的 hook。画布没挂载时是 `{0, 0, 1}` 与 0 尺寸（与 React Flow 的缺省一致）。
+ * `BoardWorkspace` 把引擎的相机（`board.camera`）推进来；外面的 Dock 缩放档位、
+ * 浏览器节点的屏幕尺寸、成员光标、评论钉、实时视口广播都只认这一份，不依赖引擎
+ * 本身。画布没挂载时是 `{0, 0, 1}` 与 0 尺寸。
  */
 export interface StageView {
   x: number;

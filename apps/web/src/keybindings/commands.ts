@@ -341,7 +341,7 @@ export const COMMANDS = [
     allowWhileTyping: false,
   },
 
-  // 全选：选中画布上的全部节点、白板对象与连线（`FlowWorkspace` 注册的
+  // 全选：选中画布上的全部节点、白板对象与连线（`BoardWorkspace` 注册的
   // `canvas.selectAll`，右键菜单同一条）。输入框、终端、编辑器里的 ⌘A 是
   // 各自的「全选文字」，所以不放行；`canvasFocus` 再把节点内部（编辑器、
   // 浏览器、提交页）挡在外面。

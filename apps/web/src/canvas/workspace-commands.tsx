@@ -37,7 +37,7 @@ import { removeItems, removeReferences } from "./whiteboard/store";
 /**
  * 画布命令表与删除确认（两种引擎共用）。
  *
- * 从 `FlowWorkspace` 原样搬出来：命令只依赖 `canvas-store`、`flow-context` 的
+ * 从 `BoardWorkspace` 原样搬出来：命令只依赖 `canvas-store`、`flow-context` 的
  * 视口句柄与容器，不依赖 React Flow，所以 `next` 引擎的 `BoardWorkspace`
  * 直接复用，不抄一份。
  */

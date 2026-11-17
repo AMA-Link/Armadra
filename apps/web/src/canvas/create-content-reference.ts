@@ -18,7 +18,7 @@ import { addReference, removeReferences } from "./whiteboard/store";
  * 动作）。
  *
  * 两个入口共用这里：右键「引用到 Agent」子菜单（`menus/reference-menu.tsx`）
- * 与从把手拖到白板对象（`flow/use-flow-nodes.onConnect`）。上限与去重的
+ * 与从把手拖到白板对象（`board/use-board-connect`）。上限与去重的
  * 判定在两条路上必须一致，所以判定只写一份。
  */
 
@@ -94,7 +94,7 @@ export type ReferenceOutcome =
  * 设成唯一选区，用户松开菜单就能看见它在哪、并且可以直接删。
  *
  * `toast` 只在**菜单**那条路上响（`notify` 默认 true）。拖线那条路由
- * `use-flow-nodes.onConnectEnd` 统一提示，两处都提示会弹两遍。
+ * `board/use-board-connect` 统一提示，两处都提示会弹两遍。
  */
 export function createContentReference(
   itemId: string,

@@ -25,7 +25,7 @@ import { NodeMenuContent } from "./node-menu";
  * DOM），`setTarget` 与 Radix 的开菜单在同一批里落地，所以菜单展开时读到的
  * 已经是新目标，不会闪一帧上一次的内容。
  *
- * `FlowWorkspace` 只接这一处（§5.3 的 `<CanvasMenus />` 插槽）：
+ * `BoardWorkspace` 只接这一处（§5.3 的 `<CanvasMenus />` 插槽）：
  * `useCanvasMenus()` 吐出的 `handlers` 摊给 `<ReactFlow>`，`menus` 摆在
  * `<ContextMenuTrigger>` 后面。
  */

@@ -58,14 +58,12 @@ import { createBoardTool } from "./whiteboard/tools";
 import { itemAtEvent } from "./whiteboard/interactions";
 
 /**
- * 自研画板引擎的画布（`canvas.engine = "next"`，docs/design/board-engine.md §6.1 B3）。
+ * 画布（自研画板引擎 `@armadra/board`，docs/design/board-engine.md）。
  *
- * 与 `FlowWorkspace` 并存、读写同一个 `canvas-store`，切换不丢数据。B3 只接节点与
- * 分组：宿主、选择、拖动、换父、缩放、视口、锁定、只读、右键菜单；连线、白板对象、
- * 缩略图与协作光标属于 B4 / B5，`next` 下暂不显示。
- *
- * 和旧画布共用的那部分（命令表、删除确认、自动保存、粘贴 / 拖放、右键菜单内容、
- * 新建节点后的相机）原样复用，不抄一份。
+ * 读写 `canvas-store`：节点、分组、连线与白板对象经适配器进场景，宿主、选择、拖动、
+ * 换父、缩放、视口、锁定、只读、右键菜单、缩略图与协作光标都在这里装配。命令表、
+ * 删除确认、自动保存、粘贴 / 拖放、右键菜单内容与新建节点后的相机是画布外共用的
+ * 模块。
  */
 export const BoardWorkspace = React.memo(BoardWorkspaceInner);
 
