@@ -6,6 +6,7 @@ import { useCanvasStore } from "../store/canvas-store";
 import {
   attemptKey,
   canAutoTitle,
+  isFallbackTitle,
   claimAttempt,
   releaseAttempt,
   rememberAutoTitle,
@@ -112,6 +113,11 @@ export async function autoNameNode(
     .document?.nodes.find((node) => node.id === nodeId);
   // 节点没了，或者请求期间被改了名 / 被删了：结果作废。
   if (!after || !canAutoTitle(after) || after.title.trim() === title) return;
+  // 只拿回了默认名（还没有转录时的品牌名）：不换，下一回合再试。
+  if (isFallbackTitle(after, title)) {
+    releaseAttempt(key);
+    return;
+  }
   rememberAutoTitle(nodeId, title);
   useCanvasStore.getState().updateNode(nodeId, { title });
 }

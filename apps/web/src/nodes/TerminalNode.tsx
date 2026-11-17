@@ -32,6 +32,7 @@ import { useCanAnswer } from "@/app/use-access";
 import { useCanvasStore } from "@/store/canvas-store";
 import { AccountBindingBadge } from "@/agent/account/AccountBindingBadge";
 import { agentLabel } from "@/agent/launch";
+import { NodeTypeMark } from "./NodeTypeMark";
 import { useAgentModels } from "../agent/models";
 import { useNodeCapabilities } from "@/agent/capabilities";
 import { PendingLaunchButton } from "@/agent/PendingLaunchButton";
@@ -676,6 +677,7 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
       <NodeShell
         node={node}
         selected={selected}
+        headerMark={<NodeTypeMark agentId={agent?.id} />}
         {...(nodeStatus ? { status: nodeStatus } : {})}
         {...(statusPopover ? { statusPopover } : {})}
         {...(header.glow ? { glow: header.glow } : {})}

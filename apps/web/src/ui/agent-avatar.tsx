@@ -14,6 +14,8 @@ export interface AgentAvatarProps extends Omit<
   /** 内置 id（`claude`…）或 `custom:*`。 */
   agentId: string;
   size?: AgentAvatarSize;
+  /** 头像里的字：缺省是显示名首字母；节点头传两字符类型标记（`agentMark`）。 */
+  text?: string;
 }
 
 /**
@@ -24,11 +26,12 @@ export interface AgentAvatarProps extends Omit<
 export function AgentAvatar({
   agentId,
   size = 24,
+  text,
   className,
   ...props
 }: AgentAvatarProps) {
   const label = agentLabel(agentId);
-  const initial = Array.from(label.trim())[0]?.toUpperCase() ?? "?";
+  const initial = text ?? Array.from(label.trim())[0]?.toUpperCase() ?? "?";
   return (
     <Avatar
       role="img"
