@@ -296,16 +296,17 @@ describe("工具组与缩放百分比", () => {
     );
   });
 
-  it("缩放百分比用 TextSwap 渲染，数字等宽", () => {
+  it("缩放百分比直接换数，不播文字替换动画，数字等宽", () => {
     render(
       <TestProviders>
         <ZoomControls zoom={0.8} />
       </TestProviders>,
     );
     const fit = screen.getByLabelText("适应");
-    expect(fit.querySelector("[data-slot='text-swap']")?.textContent).toBe(
+    expect(fit.querySelector("[data-slot='zoom-readout']")?.textContent).toBe(
       "80%",
     );
+    expect(fit.querySelector("[data-slot='text-swap']")).toBeNull();
     expect(fit.classList.contains("tabular-nums")).toBe(true);
   });
 });

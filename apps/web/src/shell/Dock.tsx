@@ -49,7 +49,6 @@ import { tidySelection } from "@/canvas/tidy-flow";
 import { tidyInDirection } from "@/canvas/layout-direction";
 import { Separator } from "@/ui/separator";
 import { StatusDot, type StatusTone } from "@/ui/status-pill";
-import { TextSwap } from "@/ui/text-swap";
 import { Tooltip, TooltipTrigger } from "@/ui/tooltip";
 import { cn } from "@/lib/cn";
 import { CommandTip } from "./command-tip";
@@ -343,7 +342,9 @@ export function ZoomControls({ zoom }: { zoom: number }) {
                 className="w-[52px] text-caption font-medium tabular-nums"
                 onClick={fitView}
               >
-                <TextSwap>{`${Math.round(zoom * 100)}%`}</TextSwap>
+                {/* 连续缩放时读数每 100ms 一换，不走 TextSwap：淡入淡出与宽度
+                    过渡来不及播完就被下一个数打断，看起来是数字在跳。 */}
+                <span data-slot="zoom-readout">{`${Math.round(zoom * 100)}%`}</span>
               </IconButton>
             </ContextMenuTrigger>
           </TooltipTrigger>
