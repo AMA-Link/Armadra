@@ -70,6 +70,14 @@ export function createInputRouter(
     meta: e.metaKey,
     ctrl: e.ctrlKey,
   });
+  // 触屏 / 笔认接触点：浏览器的触摸校正会把目标挪到附近「可点」的元素上，漏掉小把手。
+  const contact = (e: PointerEvent): EventTarget | null => {
+    const hit =
+      e.pointerType === "mouse"
+        ? null
+        : document.elementFromPoint?.(e.clientX, e.clientY);
+    return hit && container.contains(hit) ? hit : e.target;
+  };
   const input = (e: PointerEvent, target?: HitTarget): PointerInput => {
     const screen = local(e);
     const world = camera.screenToWorld(screen);
@@ -84,7 +92,7 @@ export function createInputRouter(
       world,
       pressure: e.pressure,
       mods: mods(e),
-      target: target ?? resolve(e.target, world),
+      target: target ?? resolve(contact(e), world),
       time: e.timeStamp,
     };
   };
