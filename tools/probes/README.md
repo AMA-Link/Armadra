@@ -181,13 +181,24 @@ node tools/probes/canvas-stress.mjs [输出目录] [终端数]
 ### 基准对比
 
 ```sh
-# 多次运行取逐项中位数，写成基线（记机器、内存、Chrome、提交号与每项波动）
-node tools/probes/canvas-bench-aggregate.mjs tools/probes/canvas-bench-baseline.json <result1.json> <result2.json> …
-# 候选 result.json（或聚合文件）对基线逐项比较；任一指标没有严格优于基线退出码 1
-node tools/probes/canvas-bench-compare.mjs tools/probes/canvas-bench-baseline.json <候选.json>
+# 同一个提交上两个引擎交替各跑 7 次（--engine current | next）
+node tools/probes/canvas-stress.mjs <输出目录> --engine current
+node tools/probes/canvas-stress.mjs <输出目录> --engine next
+# 多次运行取逐项中位数，写成聚合文件（记机器、内存、Chrome、提交号与每项 [最小, 最大]）
+node tools/probes/canvas-bench-aggregate.mjs tools/probes/canvas-bench-baseline.json <current 的 result.json …>
+node tools/probes/canvas-bench-aggregate.mjs tools/probes/canvas-bench-next.json <next 的 result.json …>
+# 逐项比较；任一指标不过退出码 1
+node tools/probes/canvas-bench-compare.mjs tools/probes/canvas-bench-baseline.json tools/probes/canvas-bench-next.json
 ```
 
-每项指标的方向（越大越好 / 越小越好）定义在 `canvas-bench-lib.mjs` 的 `SEGMENT_METRICS` 与 `GLOBAL_METRICS`，表里逐行打印。计数类指标（超 33.4 ms 帧数、长任务数）基线已是 0 时无法更优，候选也是 0 记 `floor` 算过。`tools/probes/canvas-bench-baseline.json` 是旧引擎（`@xyflow/react`，Armadra#952 重写前）在本机上的中位数基线，只能与同一台机器、同一版 Chrome 的结果比较。便签与输入选择器在 `canvas-bench-lib.mjs` 的 `SELECTORS`，`canvas-bench.test.mjs` 会读 `StickyNode.tsx` 断言这些 `data-slot` 仍在（#956）。
+每项指标的方向（越大越好 / 越小越好）定义在 `canvas-bench-lib.mjs` 的 `SEGMENT_METRICS` 与 `GLOBAL_METRICS`，表里逐行打印。默认严格更优才过，例外：
+
+- `floor`：计数类指标（超 33.4 ms 帧数、长任务数）基线已是 0 时无法更优，候选也是 0 算过；
+- `tie`：已在下限或两边存同一份内容的指标（打字 commit 数、白板字节数），持平算过；
+- `noise`：最慢一帧、超 33.4 ms 帧数、长任务数、JS 堆、输入到出帧延迟与整个空闲段，受 GC、帧心跳量化左右，候选中位数不超过基线 7 次里最差的一次（聚合文件的 `bounds`）算过；
+- `record`：平均 fps 只记录。不封顶后它数的是每个输入出了几帧，判别改用输入到出帧延迟。
+
+主线程耗时、任务总耗时、DOM 节点数与重渲计数始终严格更优才过。`tools/probes/canvas-bench-baseline.json`（旧引擎 `@xyflow/react`）与 `canvas-bench-next.json`（自研引擎，Armadra#952）是同一个提交上交替运行的中位数，只能与同一台机器、同一版 Chrome 的结果比较。便签与输入选择器在 `canvas-bench-lib.mjs` 的 `SELECTORS`，`canvas-bench.test.mjs` 会读 `StickyNode.tsx` 断言这些 `data-slot` 仍在（#956）。
 
 ## 画布整理（导入不被打散、主从成簇）
 
