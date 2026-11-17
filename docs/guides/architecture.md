@@ -16,7 +16,7 @@ observed 状态均不能放行依赖。恢复按执行意图对账，unknown 不
 
 > 本文件描述当前实现，不把目标能力提前计入现状。后续规划见[后续规划](../design/product-roadmap.md)，逐项现状见[功能预期总表](../status/feature-roadmap.md)。
 
-> 当前实现的架构。画布层细节见 [画布换成 React Flow](../history/canvas-react-flow.md)，
+> 当前实现的架构。画布层细节见 [自研画板引擎](../design/board-engine.md)，
 > Agent 运行时与接口契约见 [v3-agent-terminal-plan.md](../contracts/v3-agent-terminal-plan.md)。
 > 选型演进的原始讨论见 [ChatGPT 会话归档](../research/chatgpt-conversation-archive.md)。
 
@@ -52,7 +52,7 @@ opencode 等 CLI Agent 作为终端节点放在一块无限画布上，节点之
 └───────────────────────────────┬──────────────────────────────────────┘
                                 │ 加载同一套页面（preload 给出基址与凭据）
 ┌───────────────────────────────▼──────────────────────────────────────┐
-│ apps/web  React 19 + Vite + React Flow 12 + shadcn/ui + Tailwind v4   │
+│ apps/web  React 19 + Vite + @armadra/board + shadcn/ui + Tailwind v4   │
 │ 画布、节点、终端 UI（xterm.js）、编辑器（CodeMirror 6）、设置、会话侧栏 │
 │ 浏览器节点在壳里是进程内 `<webview>`                                  │
 └───────────────────────────────┬──────────────────────────────────────┘
@@ -227,33 +227,35 @@ Agent 在另一台执行主机的 SSH 终端里时，只有它的转录到那台
 同步过去的产物与垫片注入，Hook 经 Worker 的 unix socket 中继回控制端
 （`core/remote/integration.ts`，见[远端画布注入](../design/remote-canvas-injection.md)）。
 
-画布引擎是 React Flow 12（`@xyflow/react`，MIT），白板层自写。
-**`canvas-store` 是画布在内存里的唯一真相**，React Flow 只是受控视图：
-`nodes` / `edges` 由 `document.nodes / edges` 与白板文档投影出来
-（`canvas/sync/project.ts`），用户手势经 `onNodesChange` 等回调翻译成
-`canvas-store` 的动作，没有反向派生。
+画布引擎是自研的 `@armadra/board`（`packages/board`，Armadra#952）：`core` 是纯数据
+（几何、场景与撤销、白板 v3 编解码、连线路由），`dom` 是相机、输入手势与分层渲染，
+`react` 是宿主绑定。**`canvas-store` 是画布在内存里的唯一真相**，引擎场景只是受控视图：
+`canvas/board/board-adapter.ts` 把 `document.nodes` 与分组增量同步进场景（身份保持），
+用户手势经引擎事件（`move` / `resize` / `select` / `connect`）翻译成 `canvas-store`
+的动作，没有反向派生。
 
-- **节点**是 `armadra` 类型的自定义节点（`canvas/flow/nodes/ArmadraNode.tsx`），
-  节点体是普通 React 组件，所以终端、编辑器、iframe 直接渲染在节点里。
-  拖拽只从头部起（`dragHandle`），体内的指针事件归节点体自己。
-- **分组**是 `group` 节点（`canvas/flow/nodes/GroupNode.tsx`），子节点用
-  React Flow 的 `parentId` 子流，坐标相对父级。
-- **上下文链接**是 `link` 类型的边（`canvas/flow/edges/LinkEdge.tsx`）：
-  从两端节点的边中点垂直出线、绕开附近节点的正交折线（`edges/route.ts`），
-  拐角是二次曲线、切入距离随相邻线段的长度自适应、没有尖角（`edges/smooth.ts`）；
-  全画布一个路由器（`edges/edge-router.ts`）按边缓存路线、给同一道缝里的线分道、
+- **节点**由引擎的 DOM 宿主承载（`canvas/board/hosts.tsx`），内容是
+  `canvas/flow/nodes/CardContent.tsx`，节点体是普通 React 组件，所以终端、编辑器、
+  iframe 直接渲染在节点里。拖拽只从头部起（`drag-handle`），体内的指针事件归节点体自己；
+  缩放把手只给单选的节点。
+- **分组**是 `GroupFrame`（`canvas/flow/nodes/GroupFrame.tsx`），场景里子节点
+  坐标相对父级。
+- **上下文链接**是 `link` 连线（`canvas/board/BoardEdges.tsx`，SVG 绘制、几何命中）：
+  从两端节点的边中点垂直出线、绕开附近节点的正交折线（`packages/board/src/core/route/route.ts`），
+  拐角是二次曲线、切入距离随相邻线段的长度自适应、没有尖角（`route/smooth.ts`）；
+  全画布一个路由器（`route/router.ts`）按边缓存路线、给同一道缝里的线分道、
   摆不重叠也不被线穿过的关系标签（派发 / 共享上下文 / 便签…；同一个主派出去的
   派发线共用主干、只摆一枚标签），
   拖动中只重算挂在被拖节点上的线。方向与标签由两端的节点类型和边的角色算出来。
-- **白板内容**（手绘、几何、文字、图片、直线）是 `wb.*` 节点，与节点共用
-  同一套相机、选择和撤销栈；内容引用是 `reference` 边。引用的来源可以是一个
-  白板对象，也可以是一个 Frame——引用 Frame 等于引用它圈住的那一片（成员清单
-  加上成员一起栅格化的图，`canvas/frame-reference.ts`）。
+- **白板内容**（手绘、几何、文字、图片、直线）是场景里的 Canvas 对象
+  （`canvas/board/whiteboard/kinds.ts` 的 paint / hit / resize），分上下两档画在节点
+  两侧，与节点共用同一套相机、选择和撤销栈；存储是白板 v3 编码。内容引用是 `reference`
+  连线。引用的来源可以是一个白板对象，也可以是一个 Frame——引用 Frame 等于引用它圈住的
+  那一片（成员清单加上成员一起栅格化的图，`canvas/frame-reference.ts`）。
 - **撤销 / 重做**是自写的逐实体差异栈（`store/canvas/history.ts`），
   远端在撤销期间新增的实体不受影响。
 - **⌘/Ctrl + 滚轮缩放**由画布自己算（`canvas/interaction/wheel-zoom.ts`），
-  不依赖 React Flow 的按键状态：那份状态由 keydown 落在谁身上决定，终端拿到
-  焦点时并不可靠。
+  不依赖按键状态：那份状态由 keydown 落在谁身上决定，终端拿到焦点时并不可靠。
 
 节点类型共 12 种（`packages/shared/src/domain/primitives.ts` 的 `NODE_TYPES`）：
 `terminal`（含 Agent）、`sticky`、`group`、`editor`、`diff`、`files`、`browser`、

@@ -34,7 +34,7 @@ Armadra 是 local-first 的 AI Coding 画布：把真实 CLI Agent（Claude Code
 | ------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ------------------------------------------------------- |
 | 9 种节点：terminal（含 Agent）、sticky、group、editor、diff、files、browser、automation、agentActivity                                      | ✅   | `packages/shared/src/domain/primitives.ts` `NODE_TYPES` |
 | 上下文链接 `link`（共享上下文 / 派发，事后可改、可反向），派生边不入库                                                                      | ✅   | 进度 §25.3、§26.4、§30                                  |
-| React Flow 画布 + 自写白板层（手绘、几何、直线 / 箭头、文字、图片），与节点共用相机与撤销栈                                                 | ✅   | [设计](../design/canvas-react-flow.md)；进度 §32        |
+| 自研画板引擎 `@armadra/board`（节点、连线、白板对象：手绘、几何、直线 / 箭头、文字、图片），共用相机与撤销栈                                | ✅   | [设计](../design/board-engine.md)；Armadra#952          |
 | 图片内容寻址资产、8 MiB 快照上限、自动保存队列、revision CAS                                                                                | ✅   | [架构](../guides/architecture.md) §5                    |
 | 缩略图、用量球、命令面板                                                                                                                    | ✅   | `canvas/flow/Minimap.tsx`、`shell/`                     |
 | 窄屏右侧抽屉铺满、停在底部导航上沿；Dock 与顶部通知条让开右侧抽屉                                                                           | ✅   | 进度 §58.1–§58.3                                        |
