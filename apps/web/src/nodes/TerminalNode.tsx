@@ -27,6 +27,7 @@ import {
 } from "@/ui/dropdown-menu";
 import { usePreferencesStore, useT } from "@/app/preferences-store";
 import { terminalSchemeAttribute } from "@/terminal/surface/appearance";
+import { nextSurfaceStatus } from "./terminal-surface-status";
 import { useCanAnswer } from "@/app/use-access";
 import { useCanvasStore } from "@/store/canvas-store";
 import { AccountBindingBadge } from "@/agent/account/AccountBindingBadge";
@@ -159,7 +160,7 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
   const bellTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const onStatusChange = React.useCallback((next: TerminalSurfaceStatus) => {
-    setSurface(next);
+    setSurface((current) => nextSurfaceStatus(current, next));
   }, []);
 
   const onBell = React.useCallback(() => {
