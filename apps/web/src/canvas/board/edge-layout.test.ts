@@ -1,21 +1,28 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import type { Edge, InternalNode, Node, ReactFlowState } from "@xyflow/react";
 import type { CanvasNode } from "@armadra/shared";
 import { createBoard } from "@armadra/board/dom";
 import type { Entity } from "@armadra/board/core";
 
 import type { Box } from "../geometry";
-import { EdgeRouter } from "../flow/edges/edge-router";
 import type { LayoutParams } from "../flow/edges/edge-plan";
 import { edgeEntity, edgeKinds } from "./edge-model";
 import { BoardEdgeRouter } from "./edge-layout";
 import { hitEdge } from "./edge-hover";
 
 /**
- * 路由在两种引擎下同一组节点位置给同一条折线（B4 验收）：旧引擎的 `EdgeRouter`
- * 读 React Flow 节点表，新引擎的 `BoardEdgeRouter` 读场景，核心与取边规则相同。
+ * 连线布局：同一组节点位置给出固定的折线（派发扇出分道、绕障碍、横向布局），
+ * 拖动中跟随手势预览，几何命中。折线的期望值取自删除前与旧引擎路由器逐项一致的
+ * 那一版输出。
  */
+
+interface TestEdge {
+  id: string;
+  type: "link" | "reference";
+  source: string;
+  target: string;
+  data?: { role?: "peer" | "supervises" };
+}
 
 const PARAMS: LayoutParams = {
   direction: "vertical",
@@ -30,30 +37,7 @@ interface Spec {
   group?: boolean;
 }
 
-function oldRouter(specs: Spec[], edges: Edge[]) {
-  const nodes = new Map<string, InternalNode<Node>>(
-    specs.map(({ id, box, type = "terminal", group }) => [
-      id,
-      {
-        id,
-        type: group ? "group" : "armadra",
-        position: { x: box.x, y: box.y },
-        data: { type: group ? "group" : type },
-        dragging: false,
-        measured: { width: box.width, height: box.height },
-        internals: {
-          positionAbsolute: { x: box.x, y: box.y },
-          z: 0,
-          userNode: {} as Node,
-        },
-      } as unknown as InternalNode<Node>,
-    ]),
-  );
-  const state = { nodeLookup: nodes, edges } as unknown as ReactFlowState;
-  return new EdgeRouter({ getState: () => state, subscribe: () => () => {} });
-}
-
-function newRouter(specs: Spec[], edges: Edge[]) {
+function newRouter(specs: Spec[], edges: TestEdge[]) {
   const board = createBoard<CanvasNode>({ kinds: edgeKinds() });
   board.scene.transact((draft) => {
     for (const { id, box, type = "terminal", group } of specs) {
@@ -68,39 +52,42 @@ function newRouter(specs: Spec[], edges: Edge[]) {
         data: { type: group ? "group" : type } as unknown as CanvasNode,
       } as Entity<CanvasNode>);
     }
-    for (const edge of edges) draft.set(edgeEntity(edge as never));
+    for (const edge of edges) draft.set(edgeEntity(edge));
   });
   return new BoardEdgeRouter(board);
 }
 
-const link = (id: string, source: string, target: string, role?: string) =>
+const link = (
+  id: string,
+  source: string,
+  target: string,
+  role?: "peer" | "supervises",
+) =>
   ({
     id,
     type: "link",
     source,
     target,
     data: role === undefined ? {} : { role },
-  }) as Edge;
+  }) as TestEdge;
 
 const reference = (id: string, source: string, target: string) =>
-  ({ id, type: "reference", source, target }) as Edge;
+  ({ id, type: "reference", source, target }) as TestEdge;
 
-function same(specs: Spec[], edges: Edge[]) {
-  const before = oldRouter(specs, edges);
-  const after = newRouter(specs, edges);
-  for (const edge of edges) {
-    const a = before.read(edge.id, PARAMS);
-    const b = after.read(edge.id, PARAMS);
-    expect(b, edge.id).not.toBeNull();
-    expect(b!.view.route.points, edge.id).toEqual(a!.view.route.points);
-    expect(b!.view.d, edge.id).toBe(a!.view.d);
-    expect(b!.text, edge.id).toBe(a!.text);
-    expect(b!.label, edge.id).toEqual(a!.label);
-  }
-  return after;
+const pts = (...xy: [number, number][]) => xy.map(([x, y]) => ({ x, y }));
+
+/** 读出一条连线的折线与标签文字。 */
+function read(
+  router: BoardEdgeRouter,
+  id: string,
+  params: LayoutParams = PARAMS,
+) {
+  const layout = router.read(id, params);
+  expect(layout, id).not.toBeNull();
+  return { points: layout!.view.route.points, text: layout!.text };
 }
 
-describe("新旧引擎路由一致", () => {
+describe("连线布局", () => {
   const fan: Spec[] = [
     { id: "coord", box: { x: 660, y: 0, width: 620, height: 390 } },
     { id: "a1", box: { x: 0, y: 420, width: 620, height: 390 } },
@@ -108,17 +95,40 @@ describe("新旧引擎路由一致", () => {
     { id: "a3", box: { x: 1320, y: 420, width: 620, height: 390 } },
   ];
 
-  it("派发扇出 + 上下文线", () => {
-    same(fan, [
+  it("派发扇出 + 上下文线：分道、标签文字", () => {
+    const router = newRouter(fan, [
       link("d1", "coord", "a1", "supervises"),
       link("d2", "coord", "a2", "supervises"),
       link("d3", "coord", "a3", "supervises"),
       link("p1", "a1", "a3"),
     ]);
+    expect(read(router, "d1")).toEqual({
+      points: pts([970, 390], [970, 405], [310, 405], [310, 420]),
+      text: "派发",
+    });
+    expect(read(router, "d2")).toEqual({
+      points: pts([970, 390], [970, 420]),
+      text: "派发",
+    });
+    expect(read(router, "d3")).toEqual({
+      points: pts([970, 390], [970, 405], [1630, 405], [1630, 420]),
+      text: "派发",
+    });
+    expect(read(router, "p1")).toEqual({
+      points: pts(
+        [620, 615],
+        [640, 615],
+        [640, 830],
+        [1300, 830],
+        [1300, 615],
+        [1320, 615],
+      ),
+      text: "共享上下文",
+    });
   });
 
   it("绕障碍、分组、内容节点与引用线", () => {
-    same(
+    const router = newRouter(
       [
         { id: "t", box: { x: 0, y: 0, width: 400, height: 300 } },
         {
@@ -148,15 +158,22 @@ describe("新旧引擎路由一致", () => {
         reference("r1", "frame", "t"),
       ],
     );
+    expect(read(router, "l1").points).toEqual(
+      pts([400, 150], [430, 150], [430, -220], [1020, -220], [1020, 40]),
+    );
+    expect(read(router, "l2").points).toEqual(
+      pts([150, 700], [150, 320], [192, 320], [192, 300]),
+    );
+    expect(read(router, "r1").points).toEqual(
+      pts([600, 600], [600, 520], [208, 520], [208, 300]),
+    );
   });
 
-  it("横向布局下的派发线", () => {
-    const params: LayoutParams = { ...PARAMS, direction: "horizontal" };
-    const before = oldRouter(fan, [link("d1", "coord", "a2", "supervises")]);
-    const after = newRouter(fan, [link("d1", "coord", "a2", "supervises")]);
-    expect(after.read("d1", params)!.view.route.points).toEqual(
-      before.read("d1", params)!.view.route.points,
-    );
+  it("横向布局下子在主正下方时改走就近边（主底 → 子顶）", () => {
+    const router = newRouter(fan, [link("d1", "coord", "a2", "supervises")]);
+    expect(
+      read(router, "d1", { ...PARAMS, direction: "horizontal" }).points,
+    ).toEqual(pts([970, 390], [970, 420]));
   });
 });
 
@@ -179,7 +196,7 @@ describe("拖动中跟随", () => {
           data: { type: "terminal" } as unknown as CanvasNode,
         } as Entity<CanvasNode>);
       }
-      draft.set(edgeEntity(link("e", "a", "b") as never));
+      draft.set(edgeEntity(link("e", "a", "b")));
     });
     const router = new BoardEdgeRouter(board);
     const before = router.read("e", PARAMS)!.view.route.points;

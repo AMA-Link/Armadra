@@ -47,6 +47,7 @@ const { emptyWhiteboard } = await import("../whiteboard/model");
 const { hasDrafts, clearAllDrafts } = await import("../flow/drafts");
 const { createBoardAdapter } = await import("./board-adapter");
 const { nodeKinds, GHOST_KIND } = await import("./model");
+const { frameBindingOf } = await import("../frame-binding");
 const { useIsGhost } = await import("@/nodes/browser/pool");
 const { usePreferencesStore } = await import("@/app/preferences-store");
 const { act, renderHook } = await import("@testing-library/react");
@@ -171,6 +172,26 @@ describe("节点 → 场景", () => {
     load([make("sticky", { size: undefined })]);
     start();
     expect(stage.scene.get(nodes()[0]!.id)).toMatchObject({ w: 240, h: 200 });
+  });
+
+  it("分组的 worktree 绑定跟着 data 进场景，一个字段不掉", () => {
+    const binding = {
+      worktreePath: ".armadra/worktrees/feature",
+      branch: "feature/login",
+      repositoryId: "repo-1",
+      initScript: null,
+      initScriptState: "none",
+      initScriptNodeId: null,
+    };
+    const bound = make("group", {
+      data: { kind: "group", binding },
+    } as Partial<CanvasNode>);
+    const plain = make("group");
+    load([bound, plain]);
+    start();
+    const data = (id: string) => stage.scene.get(id)!.data as CanvasNode;
+    expect(frameBindingOf(data(bound.id))).toEqual(binding);
+    expect(data(plain.id).data).toEqual({ kind: "group" });
   });
 
   it("身份保持：改一个节点，其它实体还是同一个对象", () => {
