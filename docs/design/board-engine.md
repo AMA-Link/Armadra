@@ -3,7 +3,7 @@
 > 状态：**目标设计，实施中**（2026-11-15 定稿；B0–B3 已落地，B5 的 `next` 白板对象与 v3 存储已落地，实测见 §3.2 末尾）。§8 的 Q1–Q12 均已决定，按「决定」列执行；Issue：Armadra#952。
 > 基线：`main` `c2281727d`；体积数据取自 `apps/web/dist`（2026-11-11 构建，已压缩）与 `apps/desktop/out`（2026-11-14 构建，未压缩）。
 > 范围：`apps/web/src/canvas/`、`apps/web/src/store/canvas/`、`apps/web/src/realtime/` 中与画布引擎相关的部分；`boards.whiteboard_json` 的新格式；实施批次与验收。只读了代码，没有运行应用，凡未经运行验证的判断都标了「待核实」。
-> 前置阅读：[React Flow 画布](canvas-react-flow.md)（现行画布设计，§1.2 能力清单、§2 架构、§3 数据、§6 验收口径本文沿用）。
+> 前置阅读：[React Flow 画布](../history/canvas-react-flow.md)（现行画布设计，§1.2 能力清单、§2 架构、§3 数据、§6 验收口径本文沿用）。
 > 约定：本文只在「要移除的现有依赖」语境下提到 `@xyflow/react`、`@dagrejs/dagre`、`perfect-freehand`；新模块一律用自己的名字。
 
 ## 0. 结论
@@ -58,7 +58,7 @@
 | 墨迹 / 形状 / 文字 / 图片 / 直线                       | 数据模型、几何、栅格化自有（`whiteboard/{model,ink,geometry,raster}.ts`）；屏幕显示是 5 个库节点组件 + `ItemFrame`（合计约 625 行）；进行中笔迹靠库的 `ViewportPortal`（`whiteboard/tools/DraftPreview.tsx:1`）；工具指针通道自有，但受库事件相位牵制（`whiteboard/tools/use-tool-pointer.ts:27-38`） | 一半自有       | 屏幕显示改为画布层绘制，与 `raster.ts` 合并成一套                                                                                                                                      |
 | 撤销重做                                               | **全部自有**（`store/canvas/history.ts`，458 行；实时板交给 `Y.UndoManager`，`realtime/undo.ts:9-20`）                                                                                                                                                                                                | 已自有         | 泛化后搬进 `core`，代理接口保留                                                                                                                                                        |
 | 协作光标 / 评论钉                                      | 自有逻辑，靠库的 `ViewportPortal` 做相机变换、读 `transform` 做 `1/zoom` 反缩放（`realtime/CursorLayer.tsx:84-91, 116-122`、`realtime/comments/CommentLayer.tsx:233-266`）                                                                                                                            | 一半自有       | 改挂屏幕坐标的叠加层，不再反缩放                                                                                                                                                       |
-| 可见性 / 性能                                          | 全量渲染；30 终端 + 300 墨迹实测平移 112 fps（`docs/design/canvas-react-flow.md` §6.5，第 714-720 行）；投影按身份缓存（`canvas/sync/project.ts:93-130`）                                                                                                                                             | 已自有         | DOM 节点仍全量挂载；画布层按视口裁剪绘制                                                                                                                                               |
+| 可见性 / 性能                                          | 全量渲染；30 终端 + 300 墨迹实测平移 112 fps（`docs/history/canvas-react-flow.md` §6.5，第 714-720 行）；投影按身份缓存（`canvas/sync/project.ts:93-130`）                                                                                                                                            | 已自有         | DOM 节点仍全量挂载；画布层按视口裁剪绘制                                                                                                                                               |
 | 内嵌网页节点的顺序约束                                 | 库按数组顺序渲染，两个宿主节点对调会触发 `insertBefore` → 页面重载，所以有一整套「池区」排序（`nodes/browser/pool.ts:14-47`），以及「不能用 `hidden`，只能零尺寸」的绕行（`pool.ts:156-157`）                                                                                                         | 补丁           | 引擎的 DOM 层只追加、不重排，层级用 `z-index`；约束由构造保证                                                                                                                          |
 
 ### 1.3 因库行为而存在的补丁（自研后可删）
@@ -543,7 +543,7 @@ useGestureActive(): boolean
 | 数据库迁移                                            | 无                                                                       |
 | `packages/shared/src/domain/boards.ts:62-82`          | 只改注释里的文档出处                                                     |
 | `docs/contracts/core-json-api.md` §16.1               | 若正文写了 `engine` / `version` 的具体取值则同步（待核实）；结构描述不变 |
-| `docs/design/canvas-react-flow.md`                    | 实施完成后移入 `docs/history/`，新设计文档取代                           |
+| `docs/history/canvas-react-flow.md`                   | 实施完成后移入 `docs/history/`，新设计文档取代                           |
 | `apps/web/src/canvas/whiteboard/{model,serialize}.ts` | 常量改 v3；`model.ts:163-181` 的 `legacy` 记账位删除（从未有代码写它）   |
 
 ### 3.5 旧数据

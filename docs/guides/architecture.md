@@ -16,7 +16,7 @@ observed 状态均不能放行依赖。恢复按执行意图对账，unknown 不
 
 > 本文件描述当前实现，不把目标能力提前计入现状。后续规划见[后续规划](../design/product-roadmap.md)，逐项现状见[功能预期总表](../status/feature-roadmap.md)。
 
-> 当前实现的架构。画布层细节见 [画布换成 React Flow](../design/canvas-react-flow.md)，
+> 当前实现的架构。画布层细节见 [画布换成 React Flow](../history/canvas-react-flow.md)，
 > Agent 运行时与接口契约见 [v3-agent-terminal-plan.md](../contracts/v3-agent-terminal-plan.md)。
 > 选型演进的原始讨论见 [ChatGPT 会话归档](../research/chatgpt-conversation-archive.md)。
 

@@ -2,7 +2,7 @@ import { z } from "zod";
 
 /**
  * `POST /api/workspaces/{id}/exports/{exportId}/png` —
- * docs/design/canvas-react-flow.md §2.5.
+ * docs/history/canvas-react-flow.md §2.5.
  *
  * Whatever is being exported — ink, a geo shape or a whole frame — only exists
  * as vectors inside the browser, so the web app is the only party that can

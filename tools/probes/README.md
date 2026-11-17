@@ -160,7 +160,7 @@ node tools/probes/connection-drag.mjs [输出目录] [次数]
 
 ## 画布压力（30 个终端 + 真实会话）
 
-既有基线（[React Flow 画布](../../docs/design/canvas-react-flow.md) §6.5）的 30 个终端节点**没有会话**，量不到用户报的卡顿。这个脚本把那一列补上：每个终端节点都真的连着一个 core 的 PTY。
+既有基线（[React Flow 画布](../../docs/history/canvas-react-flow.md) §6.5）的 30 个终端节点**没有会话**，量不到用户报的卡顿。这个脚本把那一列补上：每个终端节点都真的连着一个 core 的 PTY。
 
 ```sh
 pnpm libs:build

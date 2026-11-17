@@ -1,6 +1,6 @@
 // 画布压力探针：30 个终端节点 + **真实会话**。
 //
-// 现有基线（`docs/design/canvas-react-flow.md` §6.5）的 30 个终端节点没有会话，
+// 现有基线（`docs/history/canvas-react-flow.md` §6.5）的 30 个终端节点没有会话，
 // 所以量不到用户报的卡顿——卡顿正出在「会话状态跳动 → `updateNodeData` → 换一份
 // document → 全量重投影」这条链上（Armadra 画布初步分析；实测修正见 docs/status/canvas-performance-baseline.md §5.2）。
 // 这个脚本把那一列补上：每个终端节点都真的连着一个 Runtime PTY 会话。
@@ -471,7 +471,7 @@ async function main() {
       nodes,
       edges: [],
       // 既有基线的最坏情况：`scale 0.35`，所有节点都在视口里，React Flow
-      // 不裁剪（`docs/design/canvas-react-flow.md` §6.5）。视口直接写进文档，
+      // 不裁剪（`docs/history/canvas-react-flow.md` §6.5）。视口直接写进文档，
       // 不靠 `fitView`——那是个藏在下拉里的菜单项，脚本点不稳。
       viewport: { x: 280, y: 80, zoom: 0.35 },
       whiteboard: "",

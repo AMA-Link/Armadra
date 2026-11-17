@@ -1,6 +1,6 @@
 # v4 方案：画布换成 tldraw，白板与 Agent 节点同一套模型
 
-> 状态：**已被 [canvas-react-flow.md](../design/canvas-react-flow.md) 取代**（2026-09-06）。画布引擎已整体换回 React Flow，白板层自写；本文只作追溯。**§N 编号仍被源码注释引用（`tldraw plan §6.1` / `§6.2` / `§6.3`），不要重排。**  
+> 状态：**已被 [canvas-react-flow.md](canvas-react-flow.md) 取代**（2026-09-06）。画布引擎已整体换回 React Flow，白板层自写；本文只作追溯。**§N 编号仍被源码注释引用（`tldraw plan §6.1` / `§6.2` / `§6.3`），不要重排。**  
 > 取代原因：tldraw 5.4 的 `LicenseProvider` 在非开发来源（打包桌面的 `tauri://localhost`）上没有密钥时，挂载 5 秒后会卸掉整个编辑器，画布与终端 socket 一起消失。详见新文的 §0。  
 > 历史状态：Phase 0–4 已实施（2026-09-04，分支 `main`，未合并）。实现与验证数字见 [implementation-status.md](./implementation-status.md) 的「v4 tldraw 画布」，跨 agent 交接见 [phase1-handoff.md](./phase1-handoff.md)  
 > 基线：分支 `main`，[v3-agent-terminal-plan.md](../contracts/v3-agent-terminal-plan.md) 的 §5（Agent 运行时）、§13（接口契约）、§14（文案与组件原则）、§15（tmux 后端）、§18（终端兼容）继续有效；本文只替换画布层  
