@@ -95,7 +95,7 @@ import { useAgentStatusStore } from "@/agent/status-store";
 import { useWorkflowNodeSteps } from "@/workflow/node-steps";
 import { installDomPolyfills } from "@/app/test-harness";
 import { usePreferencesStore } from "@/app/preferences-store";
-import { renderFlow } from "@/canvas/test-support";
+import { renderNode as renderHosted } from "@/canvas/test-support";
 import { useCanvasStore } from "@/store/canvas-store";
 import { TerminalNode } from "./TerminalNode";
 
@@ -117,7 +117,7 @@ function renderNode(node: CanvasNode) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return renderFlow(
+  return renderHosted(
     <QueryClientProvider client={client}>
       <TerminalNode
         id={node.id}
@@ -127,7 +127,6 @@ function renderNode(node: CanvasNode) {
         focused={false}
       />
     </QueryClientProvider>,
-    { nodeId: node.id },
   );
 }
 

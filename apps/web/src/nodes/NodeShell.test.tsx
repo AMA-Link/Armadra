@@ -35,7 +35,7 @@ vi.mock("@/store/canvas-store", () => {
 });
 
 import { installDomPolyfills } from "@/app/test-harness";
-import { renderFlow } from "@/canvas/test-support";
+import { renderNode } from "@/canvas/test-support";
 import {
   setFlow,
   setFlowContainer,
@@ -73,11 +73,10 @@ function renderShell(
   props: Partial<React.ComponentProps<typeof NodeShell>> = {},
 ) {
   const node = props.node ?? makeNode();
-  return renderFlow(
+  return renderNode(
     <NodeShell node={node} selected={false} {...props}>
       <div>body</div>
     </NodeShell>,
-    { nodeId: node.id },
   );
 }
 
@@ -122,11 +121,10 @@ afterEach(() => {
 describe("NodeShell", () => {
   it("termScheme 写在框（.node-frame）上、不写在外层；不传就没有（#501）", () => {
     const node = makeNode();
-    const view = renderFlow(
+    const view = renderNode(
       <NodeShell node={node} selected={false} termScheme="dark">
         <div />
       </NodeShell>,
-      { nodeId: node.id },
     );
     const shell = () =>
       view.container.querySelector<HTMLElement>('[data-slot="node-shell"]')!;
@@ -155,11 +153,10 @@ describe("NodeShell", () => {
       return <div data-testid="persistent-body" />;
     }
     const node = makeNode();
-    const view = renderFlow(
+    const view = renderNode(
       <NodeShell node={node} selected={false}>
         <Body />
       </NodeShell>,
-      { nodeId: node.id },
     );
     const body = screen.getByTestId("persistent-body");
     expect(
@@ -695,11 +692,10 @@ describe("NodeShell", () => {
   it("zooms the canvas on cmd+wheel over the body and leaves plain wheel to it", () => {
     const flow = mountFlow();
     const node = makeNode();
-    renderFlow(
+    renderNode(
       <NodeShell node={node} selected={false}>
         <div data-testid="terminal-body" />
       </NodeShell>,
-      { nodeId: node.id },
     );
     const surface = screen.getByTestId("terminal-body");
     const inner = vi.fn();

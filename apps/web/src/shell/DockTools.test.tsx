@@ -6,7 +6,6 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import type { ReactFlowInstance } from "@xyflow/react";
 
 import { installDomPolyfills, TestProviders } from "../app/test-harness";
 import {
@@ -14,7 +13,7 @@ import {
   registerCanvasCommands,
   type CanvasCommandId,
 } from "../canvas/commands";
-import { setFlow } from "../canvas/flow/flow-context";
+import { setFlow, type FlowHandle } from "../canvas/flow/flow-context";
 import {
   getTool,
   resetToolStore,
@@ -26,9 +25,9 @@ import { DockTools } from "./DockTools";
 installDomPolyfills();
 
 /** Dock 只问画布「挂上了没有」，不碰实例上的任何方法。 */
-const FAKE_FLOW = {} as ReactFlowInstance;
+const FAKE_FLOW = {} as FlowHandle;
 
-/** 与 `FlowWorkspace` 注册的那一份等价：命令 → `setTool`。 */
+/** 与 `BoardWorkspace` 注册的那一份等价：命令 → `setTool`。 */
 function registerToolCommands() {
   const commands: Partial<Record<CanvasCommandId, () => void>> = {};
   for (const tool of CANVAS_TOOLS) {

@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { ReactFlowInstance } from "@xyflow/react";
 import type { AgentInfo, Workspace } from "@armadra/shared";
 
 const fetchAgents = vi.fn();
@@ -20,7 +19,7 @@ import { usePreferencesStore } from "../app/preferences-store";
 import { useCanvasStore } from "../store/canvas-store";
 import { initialPanels } from "../store/canvas/internal";
 import { MAX_ZOOM, MIN_ZOOM } from "../canvas/zoom";
-import { setFlow } from "../canvas/flow/flow-context";
+import { setFlow, type FlowHandle } from "../canvas/flow/flow-context";
 import { COMPACT_QUERY, PHONE_LANDSCAPE_QUERY } from "../platform/layout";
 import { Dock, TidyButton, ZoomControls } from "./Dock";
 
@@ -285,7 +284,7 @@ describe("工具组与缩放百分比", () => {
   afterEach(() => setFlow(null));
 
   it("画布挂载后工具组里有一块共享指示器", () => {
-    setFlow({} as ReactFlowInstance);
+    setFlow({} as FlowHandle);
     const { container } = render(
       <TestProviders>
         <Dock />
@@ -351,7 +350,7 @@ describe("一行 Dock：手机竖屏、横屏与桌面同序（#766）", () => {
   });
 
   function renderDock() {
-    setFlow({} as ReactFlowInstance);
+    setFlow({} as FlowHandle);
     // 评论钮只在有画板时出现。
     useCanvasStore.setState({ boardId: "board-1" });
     const { container } = render(

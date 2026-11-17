@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
-import { renderFlow } from "@/canvas/test-support";
+import { renderNode } from "@/canvas/test-support";
 import type { CanvasNode } from "@armadra/shared";
 
 const store = vi.hoisted(() => ({
@@ -51,7 +51,7 @@ const node = {
 } as CanvasNode;
 
 function renderFiles() {
-  return renderFlow(
+  return renderNode(
     <FilesNode
       id="f1"
       node={node}
@@ -59,7 +59,6 @@ function renderFiles() {
       collapsed={false}
       focused={false}
     />,
-    { nodeId: "f1" },
   );
 }
 
