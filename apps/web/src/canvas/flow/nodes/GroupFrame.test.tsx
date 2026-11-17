@@ -16,7 +16,7 @@ vi.mock("@/store/canvas-store", () => {
   return { useCanvasStore };
 });
 
-/** GitHub 徽标自己要打接口；这里只关心「宿主是不是 GroupNode」。 */
+/** GitHub 徽标自己要打接口；这里只关心它挂没挂在 Frame 上。 */
 vi.mock("@/panels/github/GithubReferenceBadge", () => ({
   GithubReferenceBadge: ({ nodeId }: { nodeId: string }) => (
     <span data-testid="github-badge">{nodeId}</span>
@@ -30,16 +30,12 @@ vi.mock("../overlays/WorktreeBindingBadge", () => ({
 }));
 
 import { installDomPolyfills } from "@/app/test-harness";
-import { makeNode, renderFlow } from "@/canvas/test-support";
-import { NODE_META } from "@/nodes/registry";
-import { GroupNode } from "./GroupNode";
+import { makeNode, renderNode } from "@/canvas/test-support";
+import { GroupFrame } from "./GroupFrame";
 
 /**
- * 分组 = Frame（React Flow 计划 F05 / F08）。
- *
- * 重点是 F08：worktree 绑定徽章与 GitHub 关联徽标的宿主从派生层
- * （`overlays/CanvasOverlays` 里按页面坐标绝对定位的两层）换成了 Frame
- * 自己。旧引擎那两层的定位测试跟着一起消失，换成这里的「挂在不挂在」。
+ * 分组 = Frame 的框、标题与徽章：worktree 绑定徽章与 GitHub 关联徽标挂在 Frame
+ * 自己身上，只测「挂在不挂在」。
  */
 
 beforeAll(installDomPolyfills);
@@ -64,26 +60,10 @@ function group(patch: Partial<CanvasNode> = {}): CanvasNode {
 }
 
 function renderGroup(node = group(), selected = false) {
-  return renderFlow(
-    <GroupNode
-      id={node.id}
-      type="group"
-      data={node}
-      selected={selected}
-      dragging={false}
-      zIndex={0}
-      isConnectable={false}
-      positionAbsoluteX={0}
-      positionAbsoluteY={0}
-      deletable
-      selectable
-      draggable
-    />,
-    { nodeId: node.id, selected },
-  );
+  return renderNode(<GroupFrame node={node} selected={selected} />);
 }
 
-describe("GroupNode", () => {
+describe("GroupFrame", () => {
   it("标题与色带用节点色", () => {
     const { container } = renderGroup(group({ color: "#ff453a" }));
     const label = container.querySelector(".canvas-group-label") as HTMLElement;
@@ -95,21 +75,23 @@ describe("GroupNode", () => {
     ).toBe("rgb(255, 69, 58)");
   });
 
-  it("没选中不画 resize 把手，选中了按 `NODE_META.group.minSize` 夹住", () => {
+  it("选中态写在框上", () => {
     const plain = renderGroup(group(), false);
     expect(
-      plain.container.querySelectorAll(".react-flow__resize-control"),
-    ).toHaveLength(0);
+      plain.container
+        .querySelector('[data-slot="group-frame"]')
+        ?.hasAttribute("data-selected"),
+    ).toBe(false);
     cleanup();
-
     const picked = renderGroup(group(), true);
     expect(
-      picked.container.querySelectorAll(".react-flow__resize-control").length,
-    ).toBeGreaterThan(0);
-    expect(NODE_META.group.minSize).toEqual({ width: 169, height: 104 });
+      picked.container
+        .querySelector('[data-slot="group-frame"]')
+        ?.getAttribute("data-selected"),
+    ).toBe("true");
   });
 
-  it("GitHub 关联徽标挂在 Frame 上（旧引擎里它在派生层）", () => {
+  it("GitHub 关联徽标挂在 Frame 上", () => {
     const node = group();
     renderGroup(node);
     expect(screen.getByTestId("github-badge").textContent).toBe(node.id);
@@ -131,15 +113,5 @@ describe("GroupNode", () => {
       (badge.parentElement as HTMLElement).classList.contains("nodrag"),
     ).toBe(true);
     expect(container.querySelector('[data-slot="group-frame"]')).not.toBeNull();
-  });
-
-  it("分组没有起笔的圆点，但有落点（§2.3 第四行）", () => {
-    const { container } = renderGroup();
-    expect(
-      container.querySelectorAll('[data-slot="connection-handle"]'),
-    ).toHaveLength(0);
-    expect(
-      container.querySelector('[data-slot="connection-drop"]'),
-    ).not.toBeNull();
   });
 });

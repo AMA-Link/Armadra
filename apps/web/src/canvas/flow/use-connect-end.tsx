@@ -1,5 +1,4 @@
 import * as React from "react";
-import type { FinalConnectionState } from "@xyflow/react";
 import type { BoardDocument, Position } from "@armadra/shared";
 
 import { useEnabledAgents } from "@/app/use-agents";
@@ -24,6 +23,16 @@ import { getFlow } from "./flow-context";
  * 只对 Agent 终端起笔的线生效：从便签、文件等拖到空白处仍然是「取消」。
  */
 
+/** 一次拖线松手的结果（`board/use-board-connect.tsx` 给）。 */
+export interface ConnectDrop {
+  /** 连成了一条线。 */
+  isValid: boolean;
+  /** 松手时指针下的节点；落在空白处为空。 */
+  toNode: { id: string } | null;
+  /** 起笔的节点。 */
+  fromNode: { id: string } | null;
+}
+
 export interface SpawnDrop {
   nodeId: string;
   name: string;
@@ -35,7 +44,9 @@ export interface SpawnDrop {
 }
 
 /** 松手的屏幕坐标；触屏取最后一个离开的手指。 */
-function clientPoint(event: MouseEvent | TouchEvent): Position | null {
+function clientPoint(
+  event: Pick<MouseEvent, "clientX" | "clientY"> | TouchEvent,
+): Position | null {
   if ("changedTouches" in event) {
     const touch = event.changedTouches[0];
     return touch ? { x: touch.clientX, y: touch.clientY } : null;
@@ -48,7 +59,7 @@ function clientPoint(event: MouseEvent | TouchEvent): Position | null {
  * Agent 终端。纯函数，拿得到的话返回起点的 id、名字与 Agent。
  */
 export function spawnSourceOf(
-  connection: Pick<FinalConnectionState, "isValid" | "toNode" | "fromNode">,
+  connection: ConnectDrop,
   document: Pick<BoardDocument, "nodes"> | null | undefined,
 ): { nodeId: string; name: string; agentId: string } | null {
   if (connection.isValid || connection.toNode) return null;
@@ -63,15 +74,18 @@ export function spawnSourceOf(
 
 export function useConnectEndSpawn(): {
   onConnectEnd: (
-    event: MouseEvent | TouchEvent,
-    connection: FinalConnectionState,
+    event: Pick<MouseEvent, "clientX" | "clientY"> | TouchEvent,
+    connection: ConnectDrop,
   ) => void;
   menu: React.ReactNode;
 } {
   const [drop, setDrop] = React.useState<SpawnDrop | null>(null);
 
   const onConnectEnd = React.useCallback(
-    (event: MouseEvent | TouchEvent, connection: FinalConnectionState) => {
+    (
+      event: Pick<MouseEvent, "clientX" | "clientY"> | TouchEvent,
+      connection: ConnectDrop,
+    ) => {
       const state = useCanvasStore.getState();
       const source = spawnSourceOf(connection, state.document);
       if (!source) return;

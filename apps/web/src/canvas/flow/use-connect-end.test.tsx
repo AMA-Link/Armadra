@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CanvasNode } from "@armadra/shared";
 
 import { makeNode } from "../test-support";
-import { spawnSourceOf } from "./use-connect-end";
+import { spawnSourceOf, type ConnectDrop } from "./use-connect-end";
 
 /** 拖线建从（ui-wave2 §6.3）：哪一次松手该弹「派发」菜单。 */
 
@@ -20,13 +20,15 @@ const shell = makeNode("terminal", {
 const note = makeNode("sticky");
 const document = { nodes: [lead, shell, note] };
 
-const drop = (fromId: string, extra: Record<string, unknown> = {}) =>
-  ({
-    isValid: false,
-    toNode: null,
-    fromNode: { id: fromId },
-    ...extra,
-  }) as never;
+const drop = (
+  fromId: string,
+  extra: Partial<ConnectDrop> = {},
+): ConnectDrop => ({
+  isValid: false,
+  toNode: null,
+  fromNode: { id: fromId },
+  ...extra,
+});
 
 describe("spawnSourceOf", () => {
   it("Agent 节点起笔、落在空白处：弹，带上名字与 Agent", () => {

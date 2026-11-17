@@ -15,7 +15,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
 import { removeContentReference } from "../create-content-reference";
 import { useLayoutDirection } from "../layout-direction";
 import { EdgeLabel } from "../flow/edges/EdgeLabel";
-import { deliveryTooltip, supervisionTooltip } from "../flow/edges/LinkEdge";
+import {
+  deliveryTooltip,
+  supervisionTooltip,
+} from "../flow/edges/link-tooltips";
 import {
   arrowHead,
   linkColor,

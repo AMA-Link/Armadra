@@ -14,10 +14,8 @@ import {
 import { CORNER_RADIUS, linkView, type LinkView } from "./link-visual";
 
 /**
- * 一条边「画成什么样」的判断（两种引擎共用）：取边规则、束、标签优先级、路线。
- *
- * 从 `edge-router.ts` 抽出来，不依赖 React Flow：旧引擎的路由器与 `next` 的
- * `board/edge-layout.ts` 都调它，所以同一组节点位置下两边的折线点必然一致。
+ * 一条边「画成什么样」的判断：取边规则、束、标签优先级、路线。
+ * `board/edge-layout.ts` 的路由器调它。
  */
 
 export type EdgeLayout = CoreLayout<LinkView>;

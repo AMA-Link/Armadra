@@ -1,14 +1,11 @@
-import * as React from "react";
-import type { ConnectionLineComponentProps, Node } from "@xyflow/react";
-
 import type { Box } from "../../geometry";
 import { roundedPath, routeFor } from "@armadra/board/core";
 import { CORNER_RADIUS, STROKE_WIDTH } from "./link-visual";
 
 /**
- * 拖线时的预览（React Flow 计划 §2.5 第三条，归属 B1）。
+ * 拖线时的预览。
  *
- * 和落成后的 `LinkEdge` 是**同一种线**：起点是起笔节点朝向指针那一侧的
+ * 和落成后的连线是**同一种线**：起点是起笔节点朝向指针那一侧的
  * 边中点，横平竖直、圆角拐弯（`core/route 的 routeFor`，#318）。预览不绕障碍
  * ——指针每动一下都要画，松手后路由器再给出绕开节点的那一条。
  *
@@ -21,25 +18,11 @@ const VALID_COLOR = "var(--brand)";
 const NEUTRAL_COLOR = "var(--muted-foreground)";
 const INVALID_COLOR = "var(--danger)";
 
-function boxOf(node: {
-  measured: { width?: number; height?: number };
-  width?: number | null;
-  height?: number | null;
-  internals: { positionAbsolute: { x: number; y: number } };
-}): Box {
-  return {
-    x: node.internals.positionAbsolute.x,
-    y: node.internals.positionAbsolute.y,
-    width: node.measured.width ?? node.width ?? 0,
-    height: node.measured.height ?? node.height ?? 0,
-  };
-}
-
 export type ConnectionStatus = "valid" | "invalid" | null | undefined;
 
 /**
- * 预览线本体：两端矩形与状态 → 一条圆角折线加终点圆点。旧引擎的
- * `ConnectionLine` 与自研引擎的连线预览（`board/BoardConnectionLine.tsx`）共用。
+ * 预览线本体：两端矩形与状态 → 一条圆角折线加终点圆点
+ * （`board/connect-preview.tsx` 喂两端的矩形）。
  */
 export function ConnectionPath({
   from,
@@ -82,27 +65,3 @@ export function ConnectionPath({
     </g>
   );
 }
-
-export function ConnectionLine({
-  fromNode,
-  toNode,
-  toX,
-  toY,
-  connectionStatus,
-}: ConnectionLineComponentProps<Node>) {
-  const from = boxOf(fromNode);
-  // 悬停在目标上时用目标的真实矩形，画的就是落成之后那条线。
-  const to: Box = toNode
-    ? boxOf(toNode)
-    : { x: toX, y: toY, width: 0, height: 0 };
-  return (
-    <ConnectionPath
-      from={from}
-      to={to}
-      snapped={toNode !== undefined && toNode !== null}
-      status={connectionStatus}
-    />
-  );
-}
-
-export default React.memo(ConnectionLine);

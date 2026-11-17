@@ -18,7 +18,7 @@ import {
   minimapToggleStyle,
   MinimapToggleButton,
   useGlowOf,
-} from "../flow/Minimap";
+} from "../flow/minimap-style";
 import { useFamilies } from "../family";
 import { bezierControls, dispatchAnchor, edgeGeometry } from "../geometry";
 import { layoutDirection } from "../layout-direction";
@@ -109,7 +109,7 @@ export function BoardMinimap({ board }: { board: DomBoard<CanvasNode> }) {
   );
 }
 
-function MinimapView({ board }: { board: DomBoard<CanvasNode> }) {
+export function MinimapView({ board }: { board: DomBoard<CanvasNode> }) {
   const t = useT();
   const theme = useResolvedTheme();
   const glowOf = useGlowOf();

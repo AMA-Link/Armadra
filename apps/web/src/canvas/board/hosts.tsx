@@ -4,8 +4,8 @@ import { useBoard, useSelected } from "@armadra/board/react";
 
 import { useCanvasStore } from "@/store/canvas-store";
 import { useCanvasReadOnly } from "@/store/canvas/presence";
-import { CardContent } from "../flow/nodes/ArmadraNode";
-import { GroupFrame } from "../flow/nodes/GroupNode";
+import { CardContent } from "../flow/nodes/CardContent";
+import { GroupFrame } from "../flow/nodes/GroupFrame";
 import { useNodeEntering } from "../flow/node-enter";
 import { BoardHostProvider } from "./host-context";
 import { GHOST_KIND, type BoardEntity } from "./model";

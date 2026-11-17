@@ -10,7 +10,7 @@ import {
   type SidePair,
 } from "@armadra/board/core";
 
-import { edgeArrowheads, edgeLabelKey } from "../../sync/project";
+import { edgeArrowheads, edgeLabelKey } from "../../sync/project-edges";
 
 /**
  * 一条上下文连线画成什么样（纯函数，`LinkEdge.tsx` 与单测共用）。
