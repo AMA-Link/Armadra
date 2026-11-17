@@ -36,10 +36,11 @@ describe("缩略图收起钮：悬停才显示（#216）", () => {
       .replace(/\s+/g, " ");
     expect(selectors).toContain('.minimap-toggle[aria-expanded="false"]');
     expect(selectors).toContain(".minimap-toggle:focus-visible");
-    expect(selectors).toContain(
-      ".react-flow__minimap:hover ~ .minimap-toggle-panel .minimap-toggle",
-    );
     expect(selectors).toContain(".minimap-toggle-panel:hover .minimap-toggle");
+    // 悬停缩略图本身（兄弟选择器）也显示钮。
+    expect(
+      block(".board-minimap:hover ~ .minimap-toggle-panel .minimap-toggle {"),
+    ).toMatch(/opacity:\s*1/);
   });
 
   it("触屏没有悬停：常显", () => {
@@ -65,10 +66,20 @@ describe("canvas.css 令牌（设计系统 §2.8 / §2.9 / §8）", () => {
   });
 
   it("小地图：12 圆角、1px 强边、浮层阴影", () => {
-    const minimap = block(".canvas-stage .react-flow__minimap {");
+    const minimap = block(".canvas-stage .board-minimap {");
     expect(minimap).toContain("border: 1px solid var(--border-strong)");
     expect(minimap).toContain("border-radius: var(--r-panel)");
     expect(minimap).toContain("box-shadow: var(--shadow-overlay)");
+  });
+
+  it("不可连接的把手变 --danger 并抖（armadra-handle-shake）", () => {
+    const invalid = block(
+      '.canvas-stage [data-connect-target="invalid"] .board-connection-handle {',
+    );
+    expect(invalid).toContain("background: var(--danger)");
+    expect(invalid).toContain(
+      "animation: armadra-handle-shake var(--dur-slow)",
+    );
   });
 
   it("不再用旧别名 --shadow-pill / --r-sm / --r-xl", () => {
@@ -90,7 +101,7 @@ describe("canvas.css 令牌（设计系统 §2.8 / §2.9 / §8）", () => {
 
   it("减少动效下缩略图与收起钮不过渡（全局压制不归零，位置一变会被拖着走）", () => {
     const at = canvasCss.indexOf(
-      "@media (prefers-reduced-motion: reduce) {\n  .canvas-stage .react-flow__minimap",
+      "@media (prefers-reduced-motion: reduce) {\n  .canvas-stage .board-minimap",
     );
     expect(at).toBeGreaterThanOrEqual(0);
     const media = canvasCss.slice(at, canvasCss.indexOf("}\n}", at));
