@@ -187,6 +187,14 @@
 }
 
 /*
+ * 触屏在空白处长按出新建菜单（#715）：长按不能先被系统接走——iOS 的链接预览与
+ * 长按菜单关掉。只关 callout，不动选字：节点体里的文字仍可选。
+ */
+.canvas-stage [data-board-stage] {
+  -webkit-touch-callout: none;
+}
+
+/*
  * 手机竖屏（≤767px，与 `platform/layout.isCompactLayout` 同一个断点）：底部有一条
  * 导航（`shell/MobileBottomNav`，56px 再加安全区）。Dock 必须坐在它**上面**
  * ——上面那条容器查询给的 38px 会被导航盖掉一截，工具按钮按不到。

@@ -62,7 +62,6 @@ import {
 import { isolatedEnv, probeHome } from "./probe-home.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
-const flags = process.argv.slice(2).filter((arg) => arg.startsWith("--"));
 const positional = process.argv.slice(2).filter((arg) => !arg.startsWith("--"));
 const dom = CANVAS_DOM;
 const output = resolve(positional[0] ?? join(root, "target/canvas-stress"));
