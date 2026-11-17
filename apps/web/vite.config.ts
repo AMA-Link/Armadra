@@ -123,7 +123,7 @@ const vendorGroups = [
     test: /[\\/]node_modules[\\/]@xterm[\\/](xterm|addon-fit|addon-unicode11)[\\/]/,
   },
   {
-    name: "ink",
+    name: "freehand",
     priority: 30,
     // 白板墨迹的笔画外轮廓；只有自研画板引擎的墨迹渲染用它。
     test: /[\\/]node_modules[\\/]perfect-freehand[\\/]/,
