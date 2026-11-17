@@ -1,4 +1,5 @@
 export * from "./agents.js";
+export * from "./node-names.js";
 export * from "./shell.js";
 export * from "./api/index.js";
 export * from "./domain/index.js";

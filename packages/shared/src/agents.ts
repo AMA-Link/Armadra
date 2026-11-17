@@ -91,6 +91,11 @@ export type AgentRole = (typeof AGENT_ROLES)[number];
 export interface AgentDefinition {
   readonly id: BuiltinAgentId;
   readonly label: string;
+  /**
+   * Two-character type mark drawn in the node header (Armadra#969). Initials
+   * alone collide (Claude Code / Codex / Copilot), so each agent names its own.
+   */
+  readonly mark: string;
   /** Brand colour — plan §3.4. */
   readonly color: string;
   /** Program name looked up on the augmented PATH. */
@@ -140,6 +145,7 @@ export const AGENT_REGISTRY: Readonly<Record<BuiltinAgentId, AgentDefinition>> =
     claude: {
       id: "claude",
       label: "Claude Code",
+      mark: "CC",
       color: "#d97757",
       launchCmd: "claude",
       promptMode: "argv",
@@ -168,6 +174,7 @@ export const AGENT_REGISTRY: Readonly<Record<BuiltinAgentId, AgentDefinition>> =
     codex: {
       id: "codex",
       label: "Codex",
+      mark: "CX",
       color: "#10a37f",
       launchCmd: "codex",
       promptMode: "argv",
@@ -194,6 +201,7 @@ export const AGENT_REGISTRY: Readonly<Record<BuiltinAgentId, AgentDefinition>> =
     opencode: {
       id: "opencode",
       label: "OpenCode",
+      mark: "OC",
       color: "#a78bfa",
       launchCmd: "opencode",
       promptMode: "flag-prompt",
@@ -220,6 +228,7 @@ export const AGENT_REGISTRY: Readonly<Record<BuiltinAgentId, AgentDefinition>> =
     pi: {
       id: "pi",
       label: "Pi",
+      mark: "Pi",
       color: "#e8b86d",
       launchCmd: "pi",
       promptMode: "argv",
@@ -252,6 +261,7 @@ export const AGENT_REGISTRY: Readonly<Record<BuiltinAgentId, AgentDefinition>> =
     omp: {
       id: "omp",
       label: "Oh My Pi",
+      mark: "OM",
       color: "#d4a373",
       launchCmd: "omp",
       promptMode: "argv",
@@ -280,6 +290,7 @@ export const AGENT_REGISTRY: Readonly<Record<BuiltinAgentId, AgentDefinition>> =
     copilot: {
       id: "copilot",
       label: "GitHub Copilot",
+      mark: "GH",
       color: "#a371f7",
       launchCmd: "copilot",
       promptMode: "flag-prompt",
@@ -308,6 +319,7 @@ export const AGENT_REGISTRY: Readonly<Record<BuiltinAgentId, AgentDefinition>> =
     ama: {
       id: "ama",
       label: "Armadra Agent",
+      mark: "AM",
       color: "#2f6fed",
       launchCmd: "ama",
       promptMode: "argv",
