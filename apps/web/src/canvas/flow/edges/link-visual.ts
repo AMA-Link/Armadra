@@ -71,9 +71,6 @@ export function linkColor({
   return LINK_CONTEXT_COLOR;
 }
 
-/** 派发线的标签。 */
-export const DISPATCH_LABEL_KEY = "edge.role.dispatch";
-
 /**
  * 两端的矩形、节点类型与边的角色 → 画一条线需要的全部信息（ui-wave2 §3.2）。
  *

@@ -29,6 +29,7 @@ vi.mock("@/nodes/registry", () => {
     browser: meta(800, 560),
   };
   return {
+    NODE_DRAG_HANDLE: ".drag-handle",
     NODE_META: table,
     nodeMeta: (type: keyof typeof table) => table[type],
   };

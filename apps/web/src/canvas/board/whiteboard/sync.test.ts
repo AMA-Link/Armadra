@@ -12,6 +12,7 @@ vi.mock("@/nodes/registry", () => {
     hasBridgeHandles: false,
   };
   return {
+    NODE_DRAG_HANDLE: ".drag-handle",
     NODE_META: { sticky: meta, group: meta },
     nodeMeta: () => meta,
   };

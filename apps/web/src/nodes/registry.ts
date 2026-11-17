@@ -75,8 +75,8 @@ export interface NodeMeta {
 }
 
 /**
- * 头部拖拽把手。这个类名直接就是 React Flow 的 `dragHandle` 选择器
- * （`sync/project-edges.ts` 投影时给的），所以「哪块能拖」只在这里定义一次。
+ * 头部拖拽把手。这个类名就是引擎里节点种类的 `dragHandle` 选择器
+ * （`canvas/board/model.ts` 登记种类时用），所以「哪块能拖」只在这里定义一次。
  */
 export const DRAG_HANDLE_CLASS = "drag-handle";
 export const NODE_DRAG_HANDLE = `.${DRAG_HANDLE_CLASS}`;
