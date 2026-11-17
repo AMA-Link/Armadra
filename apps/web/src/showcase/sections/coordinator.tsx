@@ -1,22 +1,12 @@
 import * as React from "react";
-import {
-  Background,
-  BackgroundVariant,
-  ReactFlow,
-  type Edge,
-  type Node,
-  type NodeProps,
-  type NodeTypes,
-} from "@xyflow/react";
 import type { CanvasNode } from "@armadra/shared";
 
-import "@xyflow/react/dist/style.css";
 import "../../styles/canvas.css";
 import { useT } from "@/app/preferences-store";
 import { agentTreeOf } from "@/agent/agent-tree-model";
 import { displayOfStatus } from "@/agent/display";
 import { agentColorVar } from "@/agent/launch";
-import { edgeTypes } from "@/canvas/flow/edges/edge-types";
+import type { ProjectedEdge } from "@/canvas/sync/project-edges";
 import { DispatchView } from "@/coordinator/DispatchDrawer";
 import { IntakeView } from "@/coordinator/IntakeTab";
 import { SourcesView } from "@/coordinator/SourcesTab";
@@ -26,6 +16,7 @@ import { Badge } from "@/ui/badge";
 import { ColorDot } from "@/ui/color-dot";
 import { DraftCard } from "@/workflow/DraftCard";
 import { WorkflowStepBadge, useWorkflowNodeSteps } from "@/workflow/node-steps";
+import { StaticBoard } from "../static-board";
 import {
   BODY_LINES,
   COORDINATOR_CARDS,
@@ -53,12 +44,10 @@ import {
  * `workflow_propose` 落下的真草案卡。节点体是静态的一行字——真终端要连 core。
  */
 
-type CoordinatorFlowNode = Node<CanvasNode, "member">;
-
 const WIDTH = 1032;
 const HEIGHT = 324;
 
-function MemberNode({ data: node }: NodeProps<CoordinatorFlowNode>) {
+function MemberNode({ node }: { node: CanvasNode }) {
   const t = useT();
   const agentId =
     node.data.kind === "terminal" ? (node.data.agent?.id ?? "") : "";
@@ -93,23 +82,14 @@ function MemberNode({ data: node }: NodeProps<CoordinatorFlowNode>) {
   );
 }
 
-const nodeTypes: NodeTypes = { member: MemberNode };
+const renderMember = (node: CanvasNode) => <MemberNode node={node} />;
 
-const flowNodes: CoordinatorFlowNode[] = COORDINATOR_NODES.map((node) => ({
-  id: node.id,
-  type: "member",
-  position: node.position,
-  data: node,
-  width: node.size?.width,
-  height: node.size?.height,
-  draggable: false,
-  selectable: false,
-}));
-
-const flowEdges: Edge[] = COORDINATOR_EDGES.map((edge) => ({
-  ...edge,
-  data: { ...edge.data },
-  selectable: false,
+const edges: ProjectedEdge[] = COORDINATOR_EDGES.map((edge) => ({
+  id: edge.id,
+  type: "link",
+  source: edge.source,
+  target: edge.target,
+  data: { role: "supervises" },
 }));
 
 export default function CoordinatorSection() {
@@ -152,28 +132,11 @@ export default function CoordinatorSection() {
             transform: scale < 1 ? `scale(${scale})` : undefined,
           }}
         >
-          <ReactFlow
-            nodes={flowNodes}
-            edges={flowEdges}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-            nodesDraggable={false}
-            nodesConnectable={false}
-            elementsSelectable={false}
-            panOnDrag={false}
-            zoomOnScroll={false}
-            zoomOnPinch={false}
-            zoomOnDoubleClick={false}
-            preventScrolling={false}
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background
-              variant={BackgroundVariant.Dots}
-              color="var(--canvas-dot)"
-              gap={20}
-            />
-          </ReactFlow>
+          <StaticBoard
+            nodes={COORDINATOR_NODES}
+            edges={edges}
+            renderNode={renderMember}
+          />
         </div>
       </div>
       <div className="flex min-w-0 flex-wrap items-start gap-6">

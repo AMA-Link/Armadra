@@ -105,8 +105,8 @@ export const DELIVERY = {
 
 export const TERMINAL_LINES = [
   "$ claude",
-  "> 读取 src/canvas/sync/project.ts",
-  "  projectNodes · projectEdges",
+  "> 读取 src/canvas/sync/project-edges.ts",
+  "  projectEdges · edgeLabelKey",
   "> 修改 3 处，等待测试",
   "  ✓ 41 passed",
 ] as const;
@@ -115,7 +115,7 @@ export const EDITOR_LINES = [
   "export function projectEdges(",
   "  document: CanvasTables | null,",
   "  whiteboard: WhiteboardDoc,",
-  "): CanvasFlowEdge[] {",
+  "): ProjectedEdge[] {",
   "  const nodes = new Set();",
 ] as const;
 

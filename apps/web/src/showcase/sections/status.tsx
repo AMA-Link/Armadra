@@ -1,14 +1,6 @@
 import * as React from "react";
-import {
-  ReactFlow,
-  ReactFlowProvider,
-  type Node,
-  type NodeProps,
-  type NodeTypes,
-} from "@xyflow/react";
 import type { BoardDocument, CanvasNode } from "@armadra/shared";
 
-import "@xyflow/react/dist/style.css";
 import "../../styles/canvas.css";
 import { displayOfStatus, lineOf } from "@/agent/display";
 import { useAgentStatusStore, type MirroredStatus } from "@/agent/status-store";
@@ -33,6 +25,7 @@ import {
   TREE_FIXTURES,
   mirroredFor,
 } from "../fixtures/status";
+import { StaticBoard } from "../static-board";
 import { Sample } from "./sample";
 
 /**
@@ -188,32 +181,19 @@ function Trees() {
   );
 }
 
-type ActivityFlowNode = Node<CanvasNode, "activity">;
+const renderActivity = (node: CanvasNode) => (
+  <AgentActivityNode
+    id={node.id}
+    node={node}
+    selected={false}
+    collapsed={false}
+    focused={false}
+  />
+);
 
-function ActivityView({ data: node }: NodeProps<ActivityFlowNode>) {
-  return (
-    <AgentActivityNode
-      id={node.id}
-      node={node}
-      selected={false}
-      collapsed={false}
-      focused={false}
-    />
-  );
-}
-
-const nodeTypes: NodeTypes = { activity: ActivityView };
-const flowNodes: ActivityFlowNode[] = [
-  {
-    id: ACTIVITY_NODE.id,
-    type: "activity",
-    position: { x: 16, y: 16 },
-    data: ACTIVITY_NODE,
-    width: ACTIVITY_NODE.size?.width ?? 300,
-    height: ACTIVITY_NODE.size?.height ?? 232,
-    draggable: false,
-    selectable: false,
-  },
+/** 活动节点放在离画布左上角 16px 的位置（`ACTIVITY_NODE` 自己的位置是原点）。 */
+const activityNodes: CanvasNode[] = [
+  { ...ACTIVITY_NODE, position: { x: 16, y: 16 } },
 ];
 
 function ActivityFlow() {
@@ -225,23 +205,7 @@ function ActivityFlow() {
       className="canvas-stage relative overflow-hidden rounded-panel border border-border"
       style={{ width, height }}
     >
-      <ReactFlowProvider>
-        <ReactFlow
-          nodes={flowNodes}
-          edges={[]}
-          nodeTypes={nodeTypes}
-          defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-          nodesDraggable={false}
-          nodesConnectable={false}
-          elementsSelectable={false}
-          panOnDrag={false}
-          zoomOnScroll={false}
-          zoomOnPinch={false}
-          zoomOnDoubleClick={false}
-          preventScrolling={false}
-          proOptions={{ hideAttribution: true }}
-        />
-      </ReactFlowProvider>
+      <StaticBoard nodes={activityNodes} renderNode={renderActivity} />
     </div>
   );
 }

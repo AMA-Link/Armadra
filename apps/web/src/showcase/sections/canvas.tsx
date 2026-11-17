@@ -1,16 +1,5 @@
 import * as React from "react";
 import {
-  Background,
-  BackgroundVariant,
-  MiniMap,
-  ReactFlow,
-  ReactFlowProvider,
-  type Edge,
-  type Node,
-  type NodeProps,
-  type NodeTypes,
-} from "@xyflow/react";
-import {
   AlertTriangle,
   CheckCircle2,
   Info,
@@ -19,27 +8,17 @@ import {
 } from "lucide-react";
 import type { BoardDocument, CanvasNode } from "@armadra/shared";
 
-import "@xyflow/react/dist/style.css";
 import "../../styles/canvas.css";
 import { useT } from "@/app/preferences-store";
 import { agentColorVar } from "@/agent/launch";
 import { edgeKey, useDeliveryStore } from "@/agent/delivery-store";
-import { edgeTypes } from "@/canvas/flow/edges/edge-types";
-import { useFamilies } from "@/canvas/family";
-import {
-  MinimapNode,
-  MinimapToggle,
-  minimapFill,
-  minimapItemOf,
-  minimapStroke,
-} from "@/canvas/flow/Minimap";
-import type { CanvasFlowNode } from "@/canvas/sync/project";
+import type { ProjectedEdge } from "@/canvas/sync/project-edges";
 import { useCanvasStore } from "@/store/canvas-store";
-import GroupNode from "@/canvas/flow/nodes/GroupNode";
 import { NodeShell } from "@/nodes/NodeShell";
 import { StickyNode } from "@/nodes/StickyNode";
 import { Banner } from "@/shell/Banners";
 import { BoardEngineSpecimen } from "./board-engine";
+import { StaticBoard } from "../static-board";
 import { Badge } from "@/ui/badge";
 import { ColorDot } from "@/ui/color-dot";
 import { memberColorVar } from "@/ui/member-dot";
@@ -64,13 +43,12 @@ import {
 /**
  * `canvas` 分区（设计展示页 §2.1，设计系统 §4）：600×400 的假画布。
  *
- * 节点外壳、状态胶囊、光晕、分组、两种边都是画布上的真组件；节点体换成
+ * 画布本身是真的画板引擎（`../static-board`）：节点外壳、状态胶囊、光晕、分组、
+ * 两种边都是画布上的真组件；节点体换成
  * 静态内容——真终端要连 core，真编辑器要读文件，展示页两样都不碰。
  * 他人光标、选区与评论钉是多人协同（设计系统 §5.6–§5.7）的视觉，按 §4 的
  * 表画在节点之上的一层（`--z-canvas-overlay`）。
  */
-
-type ShowcaseFlowNode = Node<CanvasNode, "showcase" | "group">;
 
 const WIDTH = 600;
 const HEIGHT = 400;
@@ -121,7 +99,7 @@ function peerSelection(id: string): string | undefined {
   return peer ? memberColorVar(peer.member) : undefined;
 }
 
-function ShowcaseNode({ data: node }: NodeProps<ShowcaseFlowNode>) {
+function ShowcaseNode({ node }: { node: CanvasNode }) {
   const t = useT();
   const peer = peerSelection(node.id);
   const body =
@@ -170,29 +148,10 @@ function ShowcaseNode({ data: node }: NodeProps<ShowcaseFlowNode>) {
   );
 }
 
-const nodeTypes: NodeTypes = {
-  showcase: ShowcaseNode,
-  group: GroupNode,
-};
+const renderShowcaseNode = (node: CanvasNode) => <ShowcaseNode node={node} />;
 
-const flowNodes: ShowcaseFlowNode[] = CANVAS_NODES.map((node) => ({
-  id: node.id,
-  type: node.type === "group" ? "group" : "showcase",
-  position: node.position,
-  data: node,
-  width: node.size?.width,
-  height: node.size?.height,
-  zIndex: node.type === "group" ? 0 : 1,
-  draggable: false,
-  selectable: false,
-  dragHandle: ".drag-handle",
-}));
-
-const flowEdges: Edge[] = CANVAS_EDGES.map((edge) => ({
-  ...edge,
-  data: { ...edge.data },
-  selectable: false,
-}));
+/** 画布上的连线：两条上下文线、一条派发线与一条内容引用（固定数据）。 */
+const SHOWCASE_EDGES: readonly ProjectedEdge[] = CANVAS_EDGES;
 
 /** 他人光标：16px 箭头成员色 + 右下名字标签（设计系统 §4）。 */
 function PeerCursor({
@@ -279,7 +238,7 @@ function headerNodeOf(width: number): CanvasNode {
   };
 }
 
-function HeaderSpecimenNode({ data: node }: NodeProps<ShowcaseFlowNode>) {
+function HeaderSpecimenNode({ node }: { node: CanvasNode }) {
   const t = useT();
   return (
     <NodeShell
@@ -310,27 +269,12 @@ function HeaderSpecimenNode({ data: node }: NodeProps<ShowcaseFlowNode>) {
   );
 }
 
-const headerNodeTypes: NodeTypes = { showcase: HeaderSpecimenNode };
+const renderHeaderNode = (node: CanvasNode) => (
+  <HeaderSpecimenNode node={node} />
+);
 
-function headerFlowNodesOf(width: number): ShowcaseFlowNode[] {
-  const node = headerNodeOf(width);
-  return [
-    {
-      id: node.id,
-      type: "showcase",
-      position: { x: 0, y: 0 },
-      data: node,
-      width,
-      height: HEADER_HEIGHT_PX,
-      draggable: false,
-      selectable: false,
-      dragHandle: ".drag-handle",
-    },
-  ];
-}
-
-const headerFlowNodes = new Map<number, ShowcaseFlowNode[]>(
-  HEADER_WIDTHS.map((width) => [width, headerFlowNodesOf(width)]),
+const headerNodes = new Map<number, CanvasNode[]>(
+  HEADER_WIDTHS.map((width) => [width, [headerNodeOf(width)]]),
 );
 
 /** 节点头四段的固定状态：不悬停、不选中，所有控件也都在（设计系统 §4）。 */
@@ -346,24 +290,10 @@ function HeaderSpecimen({ scale, width }: { scale: number; width: number }) {
           transform: scale < 1 ? `scale(${scale})` : undefined,
         }}
       >
-        {/* 自己的 provider：展示页外层那一个归上面的假画布，共用会互相覆盖节点。 */}
-        <ReactFlowProvider>
-          <ReactFlow
-            nodes={headerFlowNodes.get(width) ?? []}
-            edges={[]}
-            nodeTypes={headerNodeTypes}
-            defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-            nodesDraggable={false}
-            nodesConnectable={false}
-            elementsSelectable={false}
-            panOnDrag={false}
-            zoomOnScroll={false}
-            zoomOnPinch={false}
-            zoomOnDoubleClick={false}
-            preventScrolling={false}
-            proOptions={{ hideAttribution: true }}
-          />
-        </ReactFlowProvider>
+        <StaticBoard
+          nodes={headerNodes.get(width) ?? []}
+          renderNode={renderHeaderNode}
+        />
       </div>
     </div>
   );
@@ -373,7 +303,7 @@ function HeaderSpecimen({ scale, width }: { scale: number; width: number }) {
 
 const STATE_HEIGHT = 160;
 
-function StateNodeView({ data: node }: NodeProps<ShowcaseFlowNode>) {
+function StateNodeView({ node }: { node: CanvasNode }) {
   return (
     <div
       data-slot="node-host"
@@ -387,19 +317,7 @@ function StateNodeView({ data: node }: NodeProps<ShowcaseFlowNode>) {
   );
 }
 
-const stateNodeTypes: NodeTypes = { showcase: StateNodeView };
-
-const stateFlowNodes: ShowcaseFlowNode[] = STATE_NODES.map((node) => ({
-  id: node.id,
-  type: "showcase",
-  position: node.position,
-  data: node,
-  width: node.size?.width,
-  height: node.size?.height,
-  draggable: false,
-  selectable: false,
-  dragHandle: ".drag-handle",
-}));
+const renderStateNode = (node: CanvasNode) => <StateNodeView node={node} />;
 
 function StateSpecimen({ scale }: { scale: number }) {
   return (
@@ -413,29 +331,7 @@ function StateSpecimen({ scale }: { scale: number }) {
           transform: scale < 1 ? `scale(${scale})` : undefined,
         }}
       >
-        <ReactFlowProvider>
-          <ReactFlow
-            nodes={stateFlowNodes}
-            edges={[]}
-            nodeTypes={stateNodeTypes}
-            defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-            nodesDraggable={false}
-            nodesConnectable={false}
-            elementsSelectable={false}
-            panOnDrag={false}
-            zoomOnScroll={false}
-            zoomOnPinch={false}
-            zoomOnDoubleClick={false}
-            preventScrolling={false}
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background
-              variant={BackgroundVariant.Dots}
-              color="var(--canvas-dot)"
-              gap={20}
-            />
-          </ReactFlow>
-        </ReactFlowProvider>
+        <StaticBoard nodes={STATE_NODES} renderNode={renderStateNode} />
       </div>
     </div>
   );
@@ -497,7 +393,7 @@ const SHOWCASE_DOCUMENT: BoardDocument = {
   ],
 };
 
-function ClusterNode({ data: node }: NodeProps<ShowcaseFlowNode>) {
+function ClusterNode({ node }: { node: CanvasNode }) {
   return (
     <NodeShell
       node={node}
@@ -515,47 +411,26 @@ function ClusterNode({ data: node }: NodeProps<ShowcaseFlowNode>) {
   );
 }
 
-const clusterNodeTypes: NodeTypes = { armadra: ClusterNode };
+const renderClusterNode = (node: CanvasNode) => <ClusterNode node={node} />;
 
-function specimenNodes(nodes: readonly CanvasNode[]) {
-  return nodes.map((node) => ({
-    id: node.id,
-    type: "armadra" as const,
-    position: node.position,
-    data: node,
-    width: node.size?.width,
-    height: node.size?.height,
-    draggable: false,
-    selectable: false,
-    dragHandle: ".drag-handle",
-  }));
-}
-
-function specimenEdges(edges: typeof CLUSTER_EDGES): Edge[] {
+function specimenEdges(edges: typeof CLUSTER_EDGES): ProjectedEdge[] {
   return edges.map((edge) => ({
     id: edge.id,
     type: "link",
     source: edge.source,
     target: edge.target,
-    data: { role: edge.role },
-    selectable: false,
+    data: edge.role === undefined ? {} : { role: edge.role },
   }));
 }
 
-const clusterFlowNodes = specimenNodes(CLUSTER_NODES);
-const clusterFlowEdges = specimenEdges(CLUSTER_EDGES);
-const followFlowNodes = specimenNodes(FOLLOW_NODES);
-const followFlowEdges = specimenEdges(FOLLOW_EDGES);
-
-const noGlow = () => undefined;
+const clusterEdges = specimenEdges(CLUSTER_EDGES);
+const followEdges = specimenEdges(FOLLOW_EDGES);
 
 /**
  * 两簇 + 独立 Agent + 便签，配一张同色的小地图（设计 ui-wave2 §5.4）。上下文线
  * （便签 ↔ reviewer、reviewer ↔ worker）是专用的品红，派发线是各自的簇色，小地图里
  * 两类线同样分色，锚点与曲线也同画布（#216）。右上角的「−」定格在悬停时那一刻。
  */
-const noop = () => {};
-
 /** 小地图的尺寸与位置变量：真画布的位置规则（`styles/canvas.css`）读它们。 */
 const MINIMAP_VARS = {
   "--minimap-w": "150px",
@@ -564,7 +439,6 @@ const MINIMAP_VARS = {
 } as React.CSSProperties;
 
 function ClusterSpecimen({ scale }: { scale: number }) {
-  const families = useFamilies();
   return (
     <div style={{ height: (CLUSTER_HEIGHT + 2) * scale }}>
       <div
@@ -577,43 +451,12 @@ function ClusterSpecimen({ scale }: { scale: number }) {
           transform: scale < 1 ? `scale(${scale})` : undefined,
         }}
       >
-        <ReactFlowProvider>
-          <ReactFlow
-            nodes={clusterFlowNodes}
-            edges={clusterFlowEdges}
-            nodeTypes={clusterNodeTypes}
-            edgeTypes={edgeTypes}
-            defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-            nodesDraggable={false}
-            nodesConnectable={false}
-            elementsSelectable={false}
-            panOnDrag={false}
-            zoomOnScroll={false}
-            zoomOnPinch={false}
-            zoomOnDoubleClick={false}
-            preventScrolling={false}
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background
-              variant={BackgroundVariant.Dots}
-              color="var(--canvas-dot)"
-              gap={20}
-            />
-            <MiniMap<CanvasFlowNode>
-              // SVG 的尺寸读 width / height；展示页没有 Dock，贴着右下角放一张小的。
-              style={{ width: 150, height: 90 }}
-              nodeColor={(node) =>
-                minimapFill(minimapItemOf(node, noGlow, families))
-              }
-              nodeStrokeColor={(node) =>
-                minimapStroke(minimapItemOf(node, noGlow, families))
-              }
-              nodeComponent={MinimapNode}
-              nodeBorderRadius={3}
-            />
-            <MinimapToggle collapsed={false} onToggle={noop} reveal />
-          </ReactFlow>
-        </ReactFlowProvider>
+        <StaticBoard
+          nodes={CLUSTER_NODES}
+          edges={clusterEdges}
+          renderNode={renderClusterNode}
+          minimap="expanded"
+        />
       </div>
     </div>
   );
@@ -637,31 +480,12 @@ function FollowSpecimen({ scale }: { scale: number }) {
           transform: scale < 1 ? `scale(${scale})` : undefined,
         }}
       >
-        <ReactFlowProvider>
-          <ReactFlow
-            nodes={followFlowNodes}
-            edges={followFlowEdges}
-            nodeTypes={clusterNodeTypes}
-            edgeTypes={edgeTypes}
-            defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-            nodesDraggable={false}
-            nodesConnectable={false}
-            elementsSelectable={false}
-            panOnDrag={false}
-            zoomOnScroll={false}
-            zoomOnPinch={false}
-            zoomOnDoubleClick={false}
-            preventScrolling={false}
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background
-              variant={BackgroundVariant.Dots}
-              color="var(--canvas-dot)"
-              gap={20}
-            />
-            <MinimapToggle collapsed onToggle={noop} />
-          </ReactFlow>
-        </ReactFlowProvider>
+        <StaticBoard
+          nodes={FOLLOW_NODES}
+          edges={followEdges}
+          renderNode={renderClusterNode}
+          minimap="collapsed"
+        />
       </div>
     </div>
   );
@@ -717,28 +541,11 @@ export default function CanvasSection() {
             transform: scale < 1 ? `scale(${scale})` : undefined,
           }}
         >
-          <ReactFlow
-            nodes={flowNodes}
-            edges={flowEdges}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            defaultViewport={{ x: 0, y: 0, zoom: 1 }}
-            nodesDraggable={false}
-            nodesConnectable={false}
-            elementsSelectable={false}
-            panOnDrag={false}
-            zoomOnScroll={false}
-            zoomOnPinch={false}
-            zoomOnDoubleClick={false}
-            preventScrolling={false}
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background
-              variant={BackgroundVariant.Dots}
-              color="var(--canvas-dot)"
-              gap={20}
-            />
-          </ReactFlow>
+          <StaticBoard
+            nodes={CANVAS_NODES}
+            edges={SHOWCASE_EDGES}
+            renderNode={renderShowcaseNode}
+          />
           <div
             className="pointer-events-none absolute inset-0"
             style={{ zIndex: "var(--z-canvas-overlay)" }}
