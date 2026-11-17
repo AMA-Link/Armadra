@@ -257,6 +257,15 @@ test("compareMetrics：tie 持平算过；noise 不超过基线最差一次算�
     row({ ...good, "pan.heapMb": 106 }, "pan.heapMb", bounds).pass,
     false,
   );
+  // 延迟与长任务按 noise 判：持平或不超过基线最差一次算过
+  const slower = { ...good, "zoom.latencyMs": 32, "zoom.longTasks": 1 };
+  const spread = { "zoom.latencyMs": [28, 33], "zoom.longTasks": [0, 1] };
+  assert.equal(row(slower, "zoom.latencyMs", spread).status, "noise");
+  assert.equal(row(slower, "zoom.longTasks", spread).status, "noise");
+  assert.equal(
+    row({ ...good, "zoom.latencyMs": 34 }, "zoom.latencyMs", spread).pass,
+    false,
+  );
   // 主线程耗时不是 noise：在基线波动内也不过
   assert.equal(
     row({ ...good, "pan.mainThreadMs": 950 }, "pan.mainThreadMs", {

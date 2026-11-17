@@ -67,7 +67,14 @@ export const SEGMENT_METRICS = [
   // p50 / p95 帧时写进 result.json 但不进比较：不封顶后帧时是双峰的（输入合并出的
   // 毫秒级帧 + 压在 17.7 ms 上的 60 Hz 心跳帧），p95 在旧引擎上就贴着 17.7 ms，
   // 新引擎再快也只能打平，没有判别力。
-  { key: "latencyMs", label: "输入到出帧延迟 p50 ms", higher: false },
+  // 延迟受 Chrome 把输入对齐到帧心跳左右（两边都在 10 ms 上下），亚毫秒差在轮与
+  // 轮之间翻转，按 `noise` 判：不超过旧引擎 7 次里最差的一次。
+  {
+    key: "latencyMs",
+    label: "输入到出帧延迟 p50 ms",
+    higher: false,
+    noise: true,
+  },
   { key: "slowestMs", label: "最慢一帧 ms", higher: false, noise: true },
   {
     key: "over33",
@@ -76,7 +83,14 @@ export const SEGMENT_METRICS = [
     floor: true,
     noise: true,
   },
-  { key: "longTasks", label: "长任务数 >50 ms", higher: false, floor: true },
+  // 缩放段两边都有一次 Dock 布局的长任务；按 `noise` 判，持平即在波动内。
+  {
+    key: "longTasks",
+    label: "长任务数 >50 ms",
+    higher: false,
+    floor: true,
+    noise: true,
+  },
   { key: "mainThreadMs", label: "主线程脚本+布局+样式 ms", higher: false },
   { key: "taskMs", label: "主线程任务总耗时 ms", higher: false },
   { key: "heapMb", label: "JS 堆 MB", higher: false, noise: true },
