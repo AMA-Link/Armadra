@@ -101,11 +101,11 @@ async function checkBanner(run, page, label, header) {
   `);
   run.check(hit, `${label}：原来被压住的标题栏中段现在按得到`, old);
   const before = await page.evaluate(
-    rectOf(`.react-flow__node[data-id="${header}"]`),
+    rectOf(`[data-board-layer=world] > [data-board-id="${header}"]`),
   );
   await page.drag(old, { x: old.x + 60, y: old.y + 90 }, 14);
   const after = await page.evaluate(
-    rectOf(`.react-flow__node[data-id="${header}"]`),
+    rectOf(`[data-board-layer=world] > [data-board-id="${header}"]`),
   );
   run.check(
     // 画布有吸附，位移不一定逐像素等于拖动距离；方向与量级对就行。

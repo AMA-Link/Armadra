@@ -1335,7 +1335,7 @@ export default async function run() {
         `${stack.web}/?workspace=${workspace.id}&board=${board.id}`,
       );
       await page.settle();
-      const chip = `.react-flow__node[data-id="${lead.id}"] [data-slot="coordinator-members-chip"]`;
+      const chip = `[data-board-layer=world] > [data-board-id="${lead.id}"] [data-slot="coordinator-members-chip"]`;
       await page.waitFor(
         `return !!document.querySelector(${JSON.stringify(chip)});`,
         { what: "协调者节点头部的「N 成员」", timeout: 60_000 },

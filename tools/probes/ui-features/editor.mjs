@@ -77,7 +77,7 @@ async function recordMp4(stack) {
 /** 节点体在视口里的矩形。 */
 const bodyRect = (page, id) =>
   page.evaluate(`
-    const node = document.querySelector('.react-flow__node[data-id="${id}"] [data-slot="node-body"]');
+    const node = document.querySelector('[data-board-layer=world] > [data-board-id="${id}"] [data-slot="node-body"]');
     if (!node) return null;
     const r = node.getBoundingClientRect();
     return { x: r.left, y: r.top, width: r.width, height: r.height };
@@ -86,7 +86,7 @@ const bodyRect = (page, id) =>
 /** 编辑器节点里 CodeMirror 的正文与光标（根 tile 挂在 `.cm-content` 的 cmTile 上，与 EditorView.findFromDOM 同一条路）。 */
 const editorState = (page, id) =>
   page.evaluate(`
-    const content = document.querySelector('.react-flow__node[data-id="${id}"] .cm-content');
+    const content = document.querySelector('[data-board-layer=world] > [data-board-id="${id}"] .cm-content');
     const view = content?.cmTile?.root?.view ?? content?.cmView?.view;
     if (!view) return content ? { text: content.innerText } : null;
     const head = view.state.selection.main.head;
@@ -172,7 +172,7 @@ export default async function editor({ stack, output, report, scenario }) {
 
   /* -------------------------------- 图片 --------------------------------- */
   const imageInfo = await page.until(
-    `const img = document.querySelector('.react-flow__node[data-id="${media.image.id}"] img');
+    `const img = document.querySelector('[data-board-layer=world] > [data-board-id="${media.image.id}"] img');
      return img && img.complete && img.naturalWidth ? { w: img.naturalWidth, bg: getComputedStyle(img).backgroundImage } : null;`,
     "图片载入",
   );
@@ -183,12 +183,12 @@ export default async function editor({ stack, output, report, scenario }) {
   );
   const badge = () =>
     page.evaluate(`
-      const node = document.querySelector('.react-flow__node[data-id="${media.image.id}"]');
+      const node = document.querySelector('[data-board-layer=world] > [data-board-id="${media.image.id}"]');
       return [...node.querySelectorAll('[data-slot="badge"]')].map((b) => b.textContent).find((t) => t.endsWith("%")) ?? null;
     `);
   const fitScale = await badge();
   const viewport = await page.centerOf(
-    `return document.querySelector('.react-flow__node[data-id="${media.image.id}"] [data-testid="image-viewport"]');`,
+    `return document.querySelector('[data-board-layer=world] > [data-board-id="${media.image.id}"] [data-testid="image-viewport"]');`,
     "图片视口",
   );
   for (let tick = 0; tick < 4; tick += 1) {
@@ -209,13 +209,13 @@ export default async function editor({ stack, output, report, scenario }) {
     `${fitScale} → ${zoomed}`,
   );
   const imageRect = await page.evaluate(`
-    const r = document.querySelector('.react-flow__node[data-id="${media.image.id}"] img').getBoundingClientRect();
+    const r = document.querySelector('[data-board-layer=world] > [data-board-id="${media.image.id}"] img').getBoundingClientRect();
     return { x: r.left, y: r.top, width: r.width, height: r.height };
   `);
 
   /* --------------------------------- PDF --------------------------------- */
   await page.until(
-    `return !!document.querySelector('.react-flow__node[data-id="${media.pdf.id}"] iframe[src^="blob:"]')`,
+    `return !!document.querySelector('[data-board-layer=world] > [data-board-id="${media.pdf.id}"] iframe[src^="blob:"]')`,
     "PDF 框架载入",
   );
   // 内置查看器是一个独立的插件进程，给它时间画出第一页。
@@ -223,7 +223,7 @@ export default async function editor({ stack, output, report, scenario }) {
 
   /* ------------------------------ 音视频 -------------------------------- */
   const videoInfo = await page.until(
-    `const v = document.querySelector('.react-flow__node[data-id="${media.video.id}"] video');
+    `const v = document.querySelector('[data-board-layer=world] > [data-board-id="${media.video.id}"] video');
      return v && v.readyState >= 1 ? { controls: v.controls, duration: v.duration, w: v.videoWidth, error: v.error?.code ?? null } : null;`,
     "视频元数据",
   );
@@ -233,7 +233,7 @@ export default async function editor({ stack, output, report, scenario }) {
     videoInfo,
   );
   const audioInfo = await page.until(
-    `const a = document.querySelector('.react-flow__node[data-id="${media.audio.id}"] audio');
+    `const a = document.querySelector('[data-board-layer=world] > [data-board-id="${media.audio.id}"] audio');
      return a && a.readyState >= 1 ? { controls: a.controls, duration: a.duration, error: a.error?.code ?? null } : null;`,
     "音频元数据",
   );
@@ -293,13 +293,13 @@ export default async function editor({ stack, output, report, scenario }) {
   await page.goto(stack.boardUrl(workspace.id, textBoard.id));
   await page.settle();
   await page.until(
-    `return !!document.querySelector('.react-flow__node[data-id="${notes.id}"] .cm-content')`,
+    `return !!document.querySelector('[data-board-layer=world] > [data-board-id="${notes.id}"] .cm-content')`,
     "文本编辑器载入",
   );
 
   // Git 行边标记：app.ts 第 3 行在磁盘上改过。
   const gutter = await page.until(
-    `const node = document.querySelector('.react-flow__node[data-id="${app.id}"]');
+    `const node = document.querySelector('[data-board-layer=world] > [data-board-id="${app.id}"]');
      const marks = [...(node?.querySelectorAll('.cm-git-gutter .cm-gutterElement') ?? [])]
        .filter((element) => element.firstElementChild?.className?.startsWith("cm-git-"));
      if (!marks.length) return null;
@@ -319,7 +319,7 @@ export default async function editor({ stack, output, report, scenario }) {
 
   // 改 notes.txt 不保存。
   await page.clickOn(
-    `const lines = document.querySelectorAll('.react-flow__node[data-id="${notes.id}"] .cm-line'); return lines[1];`,
+    `const lines = document.querySelectorAll('[data-board-layer=world] > [data-board-id="${notes.id}"] .cm-line'); return lines[1];`,
     "notes 第 2 行",
   );
   await page.key("End");
@@ -340,7 +340,7 @@ export default async function editor({ stack, output, report, scenario }) {
   await page.reload();
   await page.settle();
   const restored = await page.until(
-    `const node = document.querySelector('.react-flow__node[data-id="${notes.id}"]');
+    `const node = document.querySelector('[data-board-layer=world] > [data-board-id="${notes.id}"]');
      const toast = [...document.querySelectorAll('[data-sonner-toast]')].map((e) => e.textContent).find((t) => t.includes("草稿"));
      const text = node?.querySelector('.cm-content')?.innerText ?? "";
      return toast && text.includes("（草稿）") ? toast : null;`,
@@ -363,7 +363,7 @@ export default async function editor({ stack, output, report, scenario }) {
     ),
   );
   const bar = await page.until(
-    `const node = document.querySelector('.react-flow__node[data-id="${notes.id}"]');
+    `const node = document.querySelector('[data-board-layer=world] > [data-board-id="${notes.id}"]');
      const bars = [...(node?.querySelectorAll('[role="status"]') ?? [])];
      const bar = bars.find((b) => [...b.querySelectorAll("button")].some((x) => x.textContent.trim() === "合并"));
      return bar ? bar.textContent : null;`,
@@ -372,7 +372,7 @@ export default async function editor({ stack, output, report, scenario }) {
   );
   run.ok("磁盘改动后出现提示条", bar);
   await page.clickOn(
-    `const node = document.querySelector('.react-flow__node[data-id="${notes.id}"]');
+    `const node = document.querySelector('[data-board-layer=world] > [data-board-id="${notes.id}"]');
      return [...node.querySelectorAll('[role="status"] button')].find((b) => b.textContent.trim() === "合并");`,
     "合并按钮",
   );
@@ -396,7 +396,7 @@ export default async function editor({ stack, output, report, scenario }) {
     "应用到草稿",
   );
   const merged = await page.until(
-    `const text = document.querySelector('.react-flow__node[data-id="${notes.id}"] .cm-content')?.innerText ?? "";
+    `const text = document.querySelector('[data-board-layer=world] > [data-board-id="${notes.id}"] .cm-content')?.innerText ?? "";
      return !document.querySelector('[role="dialog"]') && text.includes("（草稿）") && text.includes("磁盘上改的") ? text : null;`,
     "合并结果放回编辑器",
   );
@@ -407,7 +407,7 @@ export default async function editor({ stack, output, report, scenario }) {
 
   /* ------------------------------- 快速打开 ------------------------------ */
   await page.clickOn(
-    `return document.querySelector('.react-flow__pane');`,
+    `return document.querySelector('[data-board-stage]');`,
     "画布空白处",
   );
   // ⌘P（macOS）/ Ctrl+P（其余平台）：CDP 修饰位 4 是 Meta、2 是 Ctrl。
@@ -437,7 +437,7 @@ export default async function editor({ stack, output, report, scenario }) {
     "选中 app.ts",
   );
   const jumped = await page.until(
-    `const content = document.querySelector('.react-flow__node[data-id="${app.id}"] .cm-content');
+    `const content = document.querySelector('[data-board-layer=world] > [data-board-id="${app.id}"] .cm-content');
      const view = content?.cmTile?.root?.view ?? content?.cmView?.view;
      if (!view) return null;
      const head = view.state.selection.main.head;
@@ -454,7 +454,7 @@ export default async function editor({ stack, output, report, scenario }) {
   await phone.goto(url);
   await phone.settle();
   await phone.until(
-    `return document.querySelectorAll(".react-flow__node").length >= 4`,
+    `return document.querySelectorAll("[data-board-layer=world] > [data-board-id]").length >= 4`,
     "手机页画布",
   );
   await sleep(1200);

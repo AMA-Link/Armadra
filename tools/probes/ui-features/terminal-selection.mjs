@@ -14,7 +14,7 @@
 import { makeNode, sleep } from "./harness.mjs";
 
 const nodeQuery = (id) =>
-  `document.querySelector('.react-flow__node[data-id="${id}"]')`;
+  `document.querySelector('[data-board-layer=world] > [data-board-id="${id}"]')`;
 
 const selectionOf = (id) =>
   `const layer = ${nodeQuery(id)}?.querySelector(".xterm-selection");

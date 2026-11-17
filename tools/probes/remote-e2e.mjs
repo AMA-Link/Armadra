@@ -407,7 +407,7 @@ async function scenario(ctx) {
     await page.click("*", "README.md");
     const line = await page.waitFor(
       `
-      const lines = [...document.querySelectorAll(".react-flow__node .cm-line")];
+      const lines = [...document.querySelectorAll("[data-board-layer=world] > [data-board-id] .cm-line")];
       const last = lines.find((node) => node.innerText.includes("第一行"));
       if (!last) return null;
       const rect = last.getBoundingClientRect();
@@ -617,10 +617,13 @@ async function scenario(ctx) {
     await page.click('button[aria-label="源码控制"]');
     await openFile("notes.md");
     await page.waitFor(
-      `return [...document.querySelectorAll(".react-flow__node")].some((node) => node.innerText.startsWith("notes.md") && node.innerText.includes("1 个警告"));`,
+      `return [...document.querySelectorAll("[data-board-layer=world] > [data-board-id]")].some((node) => node.innerText.startsWith("notes.md") && node.innerText.includes("1 个警告"));`,
       { what: "notes.md 的状态栏出现 mock-lsp 的警告", timeout: 30_000 },
     );
-    const range = await page.locate(".react-flow__node .cm-lintRange", null);
+    const range = await page.locate(
+      "[data-board-layer=world] > [data-board-id] .cm-lintRange",
+      null,
+    );
     await page.call("Input.dispatchMouseEvent", {
       type: "mouseMoved",
       x: range.x,
@@ -712,7 +715,7 @@ async function scenario(ctx) {
     const started = Date.now();
     writeFileSync(join(project, "notes.md"), "# 笔记\n\n外部改的一行\n");
     await page.waitFor(
-      `return [...document.querySelectorAll(".react-flow__node")].some((node) => node.innerText.startsWith("notes.md") && node.innerText.includes("外部改的一行"));`,
+      `return [...document.querySelectorAll("[data-board-layer=world] > [data-board-id]")].some((node) => node.innerText.startsWith("notes.md") && node.innerText.includes("外部改的一行"));`,
       { what: "编辑器跟上远端磁盘上的改动", timeout: 15_000 },
     );
     const latency = Date.now() - started;
@@ -854,7 +857,7 @@ async function scenario(ctx) {
     await closeDialogs(page);
     await openFile("main.txt");
     await page.waitFor(
-      `return [...document.querySelectorAll(".react-flow__node")].some((node) => node.innerText.startsWith("main.txt") && node.innerText.includes("切换用的项目"));`,
+      `return [...document.querySelectorAll("[data-board-layer=world] > [data-board-id]")].some((node) => node.innerText.startsWith("main.txt") && node.innerText.includes("切换用的项目"));`,
       { what: "切到远端后经 Worker 读到文件" },
     );
     await page.capture("07b-remote-file");

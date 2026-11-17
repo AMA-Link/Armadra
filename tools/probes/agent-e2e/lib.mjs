@@ -825,7 +825,7 @@ export async function setup(clis) {
       "画布节点渲染",
       () =>
         evaluate(
-          `return document.querySelectorAll(".react-flow__node").length;`,
+          `return document.querySelectorAll("[data-board-layer=world] > [data-board-id]").length;`,
         ),
       { timeout: 90_000 },
     );
@@ -852,7 +852,7 @@ export async function setup(clis) {
       /** 节点里终端区域（或休眠时的节点体）的中心。 */
       async nodePoint(nodeId) {
         return evaluate(`
-          const node = document.querySelector('.react-flow__node[data-id="${nodeId}"]');
+          const node = document.querySelector('[data-board-layer=world] > [data-board-id="${nodeId}"]');
           if (!node) return null;
           const area = node.querySelector('.xterm-screen') ?? node.querySelector('.xterm') ?? node;
           const rect = area.getBoundingClientRect();
@@ -884,7 +884,7 @@ export async function setup(clis) {
             const candidate = await page.nodePoint(nodeId);
             if (!candidate) return undefined;
             const hit = await evaluate(
-              `return document.elementFromPoint(${candidate.x}, ${candidate.y})?.closest(".react-flow__node")?.getAttribute("data-id") ?? null;`,
+              `return document.elementFromPoint(${candidate.x}, ${candidate.y})?.closest("[data-board-layer=world] > [data-board-id]")?.getAttribute("data-board-id") ?? null;`,
             );
             return hit === nodeId ? candidate : undefined;
           },

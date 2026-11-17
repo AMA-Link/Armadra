@@ -93,7 +93,7 @@ const NETWORK_SWITCH = `
 
 const positionOf = (page, id) =>
   page.evaluate(`
-    const node = document.querySelector('.react-flow__node[data-id="${id}"]');
+    const node = document.querySelector('[data-board-layer=world] > [data-board-id="${id}"]');
     if (!node) return null;
     const m = /translate\\(([-\\d.]+)px,\\s*([-\\d.]+)px\\)/.exec(node.style.transform);
     return m ? { x: Number(m[1]), y: Number(m[2]) } : null;
@@ -101,7 +101,7 @@ const positionOf = (page, id) =>
 
 async function headerPoint(page, id) {
   return page.until(
-    `const node = document.querySelector('.react-flow__node[data-id="${id}"]');
+    `const node = document.querySelector('[data-board-layer=world] > [data-board-id="${id}"]');
      const header = node?.querySelector('[data-slot="node-header"]');
      if (!header) return null;
      const r = header.getBoundingClientRect();
@@ -119,7 +119,7 @@ async function dragNode(page, id, dx, dy) {
 /** 等某个节点在这一页上到了 (x, y) 附近。 */
 function waitAt(page, id, x, y, what) {
   return page.until(
-    `const node = document.querySelector('.react-flow__node[data-id="${id}"]');
+    `const node = document.querySelector('[data-board-layer=world] > [data-board-id="${id}"]');
      const m = /translate\\(([-\\d.]+)px,\\s*([-\\d.]+)px\\)/.exec(node?.style.transform ?? "");
      return m && Math.abs(Number(m[1]) - ${x}) < 2 && Math.abs(Number(m[2]) - ${y}) < 2;`,
     what,
@@ -130,8 +130,8 @@ function waitAt(page, id, x, y, what) {
 /** 视口中心的画布坐标与缩放（从 React Flow 视口层的 transform 换算）。 */
 const viewportOf = (page) =>
   page.evaluate(`
-    const flow = document.querySelector('.react-flow');
-    const layer = document.querySelector('.react-flow__viewport');
+    const flow = document.querySelector('[data-board-stage]');
+    const layer = document.querySelector('[data-board-layer=world]');
     if (!flow || !layer) return null;
     const m = /translate\\(([-\\d.e]+)px,\\s*([-\\d.e]+)px\\)\\s*scale\\(([-\\d.e]+)\\)/.exec(layer.style.transform);
     if (!m) return null;
@@ -228,7 +228,7 @@ try {
     await page.goto(url);
     await page.settle();
     await page.until(
-      `return !!document.querySelector('.react-flow__node[data-id="${shared.id}"]')`,
+      `return !!document.querySelector('[data-board-layer=world] > [data-board-id="${shared.id}"]')`,
       `${name} 渲染出画布`,
     );
     await page.until(
@@ -291,12 +291,12 @@ try {
   // d3-drag 只在绑定那一刻看「能不能触摸」，所以先取消选中、开触摸模拟，再点选
   // 让把手重新挂上来。
   const bPaneBox = await b.evaluate(
-    `const r = document.querySelector('.react-flow__pane').getBoundingClientRect();
+    `const r = document.querySelector('[data-board-stage]').getBoundingClientRect();
      return { x: r.left + 40, y: r.bottom - 140 };`,
   );
   await b.click(bPaneBox.x, bPaneBox.y);
   await b.until(
-    `return !document.querySelector('.react-flow__node[data-id="${right.id}"] .react-flow__resize-control')`,
+    `return !document.querySelector('[data-board-layer=world] > [data-board-id="${right.id}"] [data-board-handle]')`,
     "B 取消选中右边的便签",
   );
   await b.call("Emulation.setTouchEmulationEnabled", {
@@ -313,7 +313,7 @@ try {
   await sleep(60);
   await touch("touchEnd");
   const grip = await b.until(
-    `const h = document.querySelector('.react-flow__node[data-id="${right.id}"] .react-flow__resize-control.handle.bottom.right');
+    `const h = document.querySelector('[data-board-layer=world] > [data-board-id="${right.id}"] [data-board-handle=se]');
      if (!h) return null;
      const r = h.getBoundingClientRect();
      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };`,
@@ -321,7 +321,7 @@ try {
   );
   const sizeOf = (page, id) =>
     page.evaluate(`
-      const node = document.querySelector('.react-flow__node[data-id="${id}"]');
+      const node = document.querySelector('[data-board-layer=world] > [data-board-id="${id}"]');
       return node ? { w: parseFloat(node.style.width), h: parseFloat(node.style.height) } : null;`);
   const sizeBefore = await sizeOf(b, right.id);
   await touch("touchStart", grip.x, grip.y);
@@ -343,7 +343,7 @@ try {
     { sizeBefore, sizeAfter },
   );
   await a.until(
-    `const node = document.querySelector('.react-flow__node[data-id="${right.id}"]');
+    `const node = document.querySelector('[data-board-layer=world] > [data-board-id="${right.id}"]');
      return node && Math.abs(parseFloat(node.style.width) - ${sizeAfter.w}) < 1 &&
        Math.abs(parseFloat(node.style.height) - ${sizeAfter.h}) < 1;`,
     "A 看到 B 手指拉伸后的尺寸",
@@ -373,7 +373,7 @@ try {
 
   /* --------------------------- 3. 光标与选区 ---------------------------- */
   const pane = await a.centerOf(
-    `return document.querySelector('.react-flow__pane')`,
+    `return document.querySelector('[data-board-stage]')`,
     "A 的画布",
   );
   for (let step = 0; step < 6; step += 1) {
@@ -387,7 +387,7 @@ try {
   );
   run.ok("一边移动指针，另一边看到成员光标", label);
   await a.clickOn(
-    `return document.querySelector('.react-flow__node[data-id="${right.id}"] [data-slot="node-header"]')`,
+    `return document.querySelector('[data-board-layer=world] > [data-board-id="${right.id}"] [data-slot="node-header"]')`,
     "A 选中右边的便签",
   );
   await b.until(
@@ -400,15 +400,15 @@ try {
   /* ------------------------ 4. 同一便签同时输入 ------------------------- */
   const startEditing = async (page, caret) => {
     await page.clickOn(
-      `return document.querySelector('.react-flow__node[data-id="${shared.id}"] [data-slot="sticky-markdown"]')`,
+      `return document.querySelector('[data-board-layer=world] > [data-board-id="${shared.id}"] [data-slot="sticky-markdown"]')`,
       "便签正文",
     );
     await page.until(
-      `return !!document.querySelector('.react-flow__node[data-id="${shared.id}"] textarea')`,
+      `return !!document.querySelector('[data-board-layer=world] > [data-board-id="${shared.id}"] textarea')`,
       "便签进入编辑",
     );
     await page.evaluate(`
-      const area = document.querySelector('.react-flow__node[data-id="${shared.id}"] textarea');
+      const area = document.querySelector('[data-board-layer=world] > [data-board-id="${shared.id}"] textarea');
       area.focus();
       const at = ${caret === "end" ? "area.value.length" : "0"};
       area.setSelectionRange(at, at);
@@ -421,14 +421,14 @@ try {
   await b.type("B 写的·");
   const blur = (page) =>
     page.evaluate(`
-      document.querySelector('.react-flow__node[data-id="${shared.id}"] textarea')?.blur();
+      document.querySelector('[data-board-layer=world] > [data-board-id="${shared.id}"] textarea')?.blur();
       return true;
     `);
   await Promise.all([blur(a), blur(b)]);
   const expected = "B 写的·中间·A 写的";
   const contentOf = (page) =>
     page.until(
-      `const node = document.querySelector('.react-flow__node[data-id="${shared.id}"] [data-slot="sticky-node"]');
+      `const node = document.querySelector('[data-board-layer=world] > [data-board-id="${shared.id}"] [data-slot="sticky-node"]');
        const text = node?.innerText.trim() ?? "";
        return text.includes(${JSON.stringify(expected)}) ? text : null;`,
       "便签收敛",
@@ -501,7 +501,7 @@ try {
     "A 的评论抽屉打开",
   );
   await a.clickOn(
-    `return document.querySelector('.react-flow__node[data-id="${right.id}"] [data-slot="node-header"]')`,
+    `return document.querySelector('[data-board-layer=world] > [data-board-id="${right.id}"] [data-slot="node-header"]')`,
     "A 在右边的便签上放钉",
   );
   await a.until(
@@ -532,10 +532,19 @@ try {
   await run.shot(b, "realtime-7-comment-pin-b");
 
   /* ------------------- 8. 白板对象上的评论（G5-12） -------------------- */
+  // 白板对象画在 Canvas 上、没有 DOM 宿主：屏幕位置按世界盒 [120, 340, 160, 60]
+  // 与世界层的变换算出来。
+  const shapeRect = `(() => {
+    const world = document.querySelector('[data-board-layer=world]');
+    if (!world) return null;
+    const m = new DOMMatrix(getComputedStyle(world).transform);
+    const origin = world.getBoundingClientRect();
+    const [x, y, w, h] = [120, 340, 160, 60];
+    return { left: origin.left + x * m.a, top: origin.top + y * m.d, right: origin.left + (x + w) * m.a, width: w * m.a, height: h * m.d };
+  })()`;
   const shapeCenter = await a.until(
-    `const node = document.querySelector('.react-flow__node[data-id="wb:${shapeId}"]');
-     if (!node) return null;
-     const r = node.getBoundingClientRect();
+    `const r = ${shapeRect};
+     if (!r || !document.querySelector('[data-board-layer=canvas-under]')) return null;
      return r.width > 0 ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null;`,
     "A 渲染出白板形状",
   );
@@ -596,7 +605,7 @@ try {
   await b.clickOn(
     `return [...document.querySelectorAll('[data-comment-pin]')].find((pin) => {
        const r = pin.getBoundingClientRect();
-       const shape = document.querySelector('.react-flow__node[data-id="wb:${shapeId}"]')?.getBoundingClientRect();
+       const shape = ${shapeRect};
        return shape && Math.abs(r.left + r.width / 2 - shape.right) < 20 && Math.abs(r.top + r.height / 2 - shape.top) < 20;
      })`,
     "B 打开白板对象上的钉",
@@ -675,7 +684,7 @@ try {
   );
   const before = await viewportOf(a);
   const wheelAt = await a.centerOf(
-    `return document.querySelector('.react-flow__pane')`,
+    `return document.querySelector('[data-board-stage]')`,
     "A 的画布",
   );
   const wheel = async (deltaY, modifiers) => {
@@ -732,7 +741,7 @@ try {
   );
   await sleep(400);
   const bPane = await b.centerOf(
-    `return document.querySelector('.react-flow__pane')`,
+    `return document.querySelector('[data-board-stage]')`,
     "B 的画布",
   );
   await b.call("Input.dispatchMouseEvent", {

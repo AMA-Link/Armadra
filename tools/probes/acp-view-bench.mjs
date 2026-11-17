@@ -835,7 +835,7 @@ async function main() {
           }).observe({ type: "longtask", buffered: true });
           const marker = /⟦(\\d+):(\\d+)⟧/g;
           const scan = () => {
-            const node = document.querySelector('.react-flow__node[data-id="${pageNode}"]');
+            const node = document.querySelector('[data-board-layer=world] > [data-board-id="${pageNode}"]');
             if (node && bench.node === undefined) bench.node = performance.now();
             const list = node?.querySelector('[data-slot="timeline-scroller"], [data-slot="acp-messages"]');
             if (!list) return;

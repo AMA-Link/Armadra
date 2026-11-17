@@ -17,28 +17,18 @@ export const SELECTORS = {
 };
 
 /**
- * 两个画布引擎在页面里的 DOM 约定。探针只经这张表找节点、视口与选中态，
- * 两个引擎吃同一串输入、量同一类东西。`current` 是 React Flow，`next` 是自研引擎。
+ * 画布在页面里的 DOM 约定。探针只经这张表找节点、视口与选中态。
+ * （旧引擎的对照基线留在 `canvas-bench-baseline.json`，见 README。）
  */
-export const ENGINES = {
-  current: {
-    node: ".react-flow__node",
-    viewport: ".react-flow__viewport",
-    selected: ".react-flow__node.selected",
-    dragHandle: ".drag-handle",
-    idAttr: "data-id",
-    /** 输入延迟只认这块舞台里的变动（视口、节点、框选框）。 */
-    stage: ".react-flow",
-  },
-  next: {
-    node: '[data-board-layer="world"] > [data-board-id]',
-    viewport: '[data-board-layer="world"]',
-    selected:
-      '[data-board-layer="world"] > [data-board-id] [data-slot="node-shell"][data-selected="true"]',
-    dragHandle: ".drag-handle",
-    idAttr: "data-board-id",
-    stage: ":has(> [data-board-layer])",
-  },
+export const CANVAS_DOM = {
+  node: '[data-board-layer="world"] > [data-board-id]',
+  viewport: '[data-board-layer="world"]',
+  selected:
+    '[data-board-layer="world"] > [data-board-id] [data-slot="node-shell"][data-selected="true"]',
+  dragHandle: ".drag-handle",
+  idAttr: "data-board-id",
+  /** 输入延迟只认这块舞台里的变动（视口、节点、框选框）。 */
+  stage: ":has(> [data-board-layer])",
 };
 
 /** 每段（场景）记录的指标；顺序即表格顺序。 */

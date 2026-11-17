@@ -213,7 +213,7 @@ async function main() {
     );
     await page.settle();
     for (const node of members) {
-      const selector = `.react-flow__node[data-id="${node.id}"] [data-driver]`;
+      const selector = `[data-board-layer=world] > [data-board-id="${node.id}"] [data-driver]`;
       await page.waitFor(
         `return !!document.querySelector(${JSON.stringify(selector)});`,
         { what: `节点 ${node.data.agent.id} 的节点体`, timeout: 60_000 },
@@ -222,7 +222,7 @@ async function main() {
     await sleep(1500);
     return page.evaluate(`
       return ${JSON.stringify(members.map((node) => node.id))}.map((id) => {
-        const body = document.querySelector('.react-flow__node[data-id="' + id + '"] [data-driver]');
+        const body = document.querySelector('[data-board-layer=world] > [data-board-id="' + id + '"] [data-driver]');
         return {
           id,
           driver: body?.dataset.driver,

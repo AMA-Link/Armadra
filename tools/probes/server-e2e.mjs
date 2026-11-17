@@ -777,7 +777,7 @@ await h.run(async () => {
   // 界面上的写：拖动便签。只读时拖不动，也不发保存。
   const stickyBox = () =>
     member.evaluate(`
-      const node = [...document.querySelectorAll(".react-flow__node")]
+      const node = [...document.querySelectorAll("[data-board-layer=world] > [data-board-id]")]
         .find((item) => item.innerText.includes("管理员写的便签"));
       if (!node) return null;
       const rect = node.getBoundingClientRect();
@@ -967,7 +967,7 @@ await h.run(async () => {
   await admin.navigate(`${origin}/?workspace=${shared.id}&board=${board.id}`);
   await admin.settle();
   await admin.waitFor(
-    `return document.querySelectorAll(".react-flow__node").length > 0;`,
+    `return document.querySelectorAll("[data-board-layer=world] > [data-board-id]").length > 0;`,
     {
       what: "画布挂好",
     },
@@ -1127,14 +1127,14 @@ await h.run(async () => {
     throw error;
   });
   await admin.waitFor(
-    `return [...document.querySelectorAll(".react-flow__node")].some((node) => node.querySelector("canvas"));`,
+    `return [...document.querySelectorAll("[data-board-layer=world] > [data-board-id]")].some((node) => node.querySelector("canvas"));`,
     { what: "浏览器节点出现在画布上" },
   );
   // 第一帧是探针页面那片蓝色：取节点里那块 canvas 左上一带的像素（正中是白字）。
   const painted = await admin
     .waitFor(
       `
-    const canvas = [...document.querySelectorAll(".react-flow__node canvas")].find((item) => item.width > 0);
+    const canvas = [...document.querySelectorAll("[data-board-layer=world] > [data-board-id] canvas")].find((item) => item.width > 0);
     if (!canvas) return null;
     const pixel = canvas.getContext("2d").getImageData(Math.round(canvas.width * 0.1), Math.round(canvas.height * 0.2), 1, 1).data;
     const blue = pixel[2] > 180 && pixel[0] < 80;

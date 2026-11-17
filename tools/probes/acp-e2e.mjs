@@ -291,8 +291,8 @@ await h.run(async () => {
     source: `(() => {
       const seen = (window.__acpReady = {});
       const mark = () => {
-        for (const el of document.querySelectorAll(".react-flow__node[data-id]")) {
-          const id = el.getAttribute("data-id");
+        for (const el of document.querySelectorAll("[data-board-layer=world] > [data-board-id]")) {
+          const id = el.getAttribute("data-board-id");
           const entry = (seen[id] ??= { node: performance.now() });
           if (entry.view === undefined && el.querySelector('[data-slot="acp-session-view"]'))
             entry.view = performance.now();
@@ -311,7 +311,7 @@ await h.run(async () => {
   });
   await page.navigate(`${web}/?workspace=${workspace.id}&board=${board.id}`);
   await page.settle();
-  const node = (id) => `.react-flow__node[data-id="${id}"]`;
+  const node = (id) => `[data-board-layer=world] > [data-board-id="${id}"]`;
   const sessionRow = (nodeId) =>
     query(
       "SELECT id, backend_kind, generation, status, termination_intent FROM terminal_sessions WHERE owner_node_id = ? ORDER BY (status = 'running') DESC, generation DESC LIMIT 1",
@@ -656,7 +656,7 @@ await h.run(async () => {
     `generation ${before.generation} → ${asTerminal.generation} → ${backToAcp.generation}`,
   );
   const header = await page.evaluate(
-    `return document.querySelector(${JSON.stringify(`${node(A)} .react-flow__node > div, ${node(A)}`)})?.innerText.split("\\n").slice(0, 3).join(" ") ?? "";`,
+    `return document.querySelector(${JSON.stringify(node(A))})?.innerText.split("\\n").slice(0, 3).join(" ") ?? "";`,
   );
   check(!header.includes("已退出"), "换回之后节点头不再写「已退出」", header);
   await page.capture("07-switched-back");

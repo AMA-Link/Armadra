@@ -50,7 +50,7 @@ import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import {
-  ENGINES,
+  CANVAS_DOM,
   SCHEMA,
   SELECTORS,
   buildInkWhiteboardV3,
@@ -64,23 +64,7 @@ import { isolatedEnv, probeHome } from "./probe-home.mjs";
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const flags = process.argv.slice(2).filter((arg) => arg.startsWith("--"));
 const positional = process.argv.slice(2).filter((arg) => !arg.startsWith("--"));
-const engineFlag = flags.find((flag) => flag.startsWith("--engine="));
-const engine = engineFlag
-  ? engineFlag.slice("--engine=".length)
-  : process.argv.includes("--engine")
-    ? process.argv[process.argv.indexOf("--engine") + 1]
-    : "current";
-if (!(engine in ENGINES)) {
-  console.error(
-    `--engine 只能是 ${Object.keys(ENGINES).join(" | ")}：${engine}`,
-  );
-  process.exit(2);
-}
-if (process.argv.includes("--engine")) {
-  // 「--engine next」两个词的写法：后一个词不是位置参数。
-  positional.splice(positional.indexOf(engine), 1);
-}
-const dom = ENGINES[engine];
+const dom = CANVAS_DOM;
 const output = resolve(positional[0] ?? join(root, "target/canvas-stress"));
 const terminalCount = Number(positional[1] ?? 30);
 mkdirSync(output, { recursive: true });
@@ -99,7 +83,6 @@ const reactSegments = (process.env.CANVAS_BENCH_REACT ?? "").split(",");
 const profileSegments = (process.env.CANVAS_BENCH_PROFILE ?? "").split(",");
 const report = {
   schema: SCHEMA,
-  engine,
   status: "failed",
   capped,
   terminals: terminalCount,
@@ -684,9 +667,9 @@ async function main() {
     void call("Page.handleJavaScriptDialog", { accept: true });
   });
   await call("Page.addScriptToEvaluateOnNewDocument", { source: INSTRUMENT });
-  // 引擎开关与取证把手（`armadra.diag` 才暴露 `__armadraCanvasStore`，量墨迹条数用）。
+  // 取证把手（`armadra.diag` 才暴露 `__armadraCanvasStore`，量墨迹条数用）。
   await call("Page.addScriptToEvaluateOnNewDocument", {
-    source: `try { localStorage.setItem("armadra.canvas.engine", ${JSON.stringify(engine)}); localStorage.setItem("armadra.diag", "1"); } catch {}`,
+    source: `try { localStorage.setItem("armadra.diag", "1"); } catch {}`,
   });
   await call("Emulation.setDeviceMetricsOverride", {
     width: 1440,

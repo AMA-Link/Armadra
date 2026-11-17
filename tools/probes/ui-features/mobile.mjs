@@ -220,7 +220,7 @@ export default async function mobile({ stack, output, report, scenario }) {
 
     await page.viewport(768, 1024, true);
     await page.until(
-      `return !document.querySelector('[data-slot="mobile-focus"]') && !!document.querySelector(".react-flow");`,
+      `return !document.querySelector('[data-slot="mobile-focus"]') && !!document.querySelector("[data-board-stage]");`,
       "平板宽度回到画布（焦点页只在手机布局）",
     );
     await sleep(600);

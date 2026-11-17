@@ -483,7 +483,7 @@ async function main() {
     attempt += 1
   ) {
     mounted = await evaluate(
-      `return document.querySelectorAll(".react-flow__node").length;`,
+      `return document.querySelectorAll("[data-board-layer=world] > [data-board-id]").length;`,
     ).catch(() => 0);
     if (mounted < seeded.nodes.length) await sleep(500);
   }

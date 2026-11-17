@@ -96,7 +96,7 @@ export default async function run7(ctx) {
         `节点头出现「${label}」`,
         () =>
           page.evaluate(`
-            const node = document.querySelector('.react-flow__node[data-id="${asker.id}"]');
+            const node = document.querySelector('[data-board-layer=world] > [data-board-id="${asker.id}"]');
             const button = node?.querySelector('.node-header-approval button[aria-label="${label}"]');
             if (!button) return null;
             const rect = button.getBoundingClientRect();
