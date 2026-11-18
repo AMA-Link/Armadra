@@ -40,11 +40,16 @@ vi.mock("@/store/canvas-store", () => {
 });
 
 import { RuntimeRequestError } from "@/api/client";
-import { chooseOption, optionLabels } from "@/app/test-harness";
 import { resetBlobs } from "@/timeline/blobs";
 import { setTimelineTransportFactory } from "@/timeline/api";
 import { resetTimelines } from "@/timeline/sync";
 import { FakeCore, TIMELINE_ID, user } from "@/timeline/test-support";
+import {
+  modeLabel,
+  modeNames,
+  openModelPopover,
+  pickMode,
+} from "./test-support";
 import { mockLayout } from "@/timeline/view/test-layout";
 import { useAnsweredStore } from "./answered";
 import { SessionView } from "./SessionView";
@@ -101,11 +106,6 @@ function narrow(): () => void {
   };
 }
 
-/** 模式下拉里点一项。 */
-async function pickMode(name: string) {
-  await chooseOption(await screen.findByLabelText("模式"), name);
-}
-
 const REPORTED_MODES = {
   currentModeId: "workspace-write",
   availableModes: [
@@ -119,9 +119,7 @@ describe("model and mode pickers right after creation", () => {
   it("shows both before the agent reports anything", async () => {
     core.emit({ op: "head", head: {} } as never);
     render(<SessionView nodeId="n1" data={existing} />);
-    expect((await screen.findByLabelText("模式")).textContent).toContain(
-      "默认",
-    );
+    expect(await modeLabel()).toContain("默认");
     expect(screen.getByLabelText("模型").textContent).toContain("默认");
   });
 
@@ -131,9 +129,7 @@ describe("model and mode pickers right after creation", () => {
       render(<SessionView nodeId="n1" data={existing} />);
       // 窄屏也直接摆在操作行上，没有「⋯」菜单。
       expect(screen.queryByRole("button", { name: "更多" })).toBeNull();
-      expect(
-        await optionLabels(await screen.findByLabelText("模式")),
-      ).toContain("全自动");
+      expect(await modeNames()).toContain("全自动");
     } finally {
       restore();
     }
@@ -147,7 +143,8 @@ describe("model and mode pickers right after creation", () => {
       />,
     );
     expect(await screen.findByLabelText("模型")).toBeTruthy();
-    expect(screen.queryByLabelText("模式")).toBeNull();
+    const popover = await openModelPopover();
+    expect(popover.querySelector("[data-slot=acp-permissions]")).toBeNull();
   });
 
   it("starts on the node's permission mode and model", async () => {
@@ -165,9 +162,7 @@ describe("model and mode pickers right after creation", () => {
         }}
       />,
     );
-    expect((await screen.findByLabelText("模式")).textContent).toContain(
-      "全自动",
-    );
+    expect(await modeLabel()).toContain("全自动");
     expect(screen.getByLabelText("模型").textContent).toContain("sonnet");
   });
 
@@ -236,13 +231,9 @@ describe("model and mode pickers right after creation", () => {
           },
         },
       } as never);
-      await waitFor(() =>
-        expect(screen.getByLabelText("模式").textContent).toContain("Ask"),
-      );
+      await waitFor(async () => expect(await modeLabel()).toContain("Ask"));
       expect(api.setMode).not.toHaveBeenCalled();
-      expect(await optionLabels(screen.getByLabelText("模式"))).not.toContain(
-        "全自动",
-      );
+      expect(await modeNames()).not.toContain("全自动");
     } finally {
       restore();
     }
@@ -281,10 +272,8 @@ describe("model and mode pickers right after creation", () => {
       await pickMode("Agent");
       await waitFor(() => expect(api.setMode).toHaveBeenCalled());
       expect(store.updateNodeData).not.toHaveBeenCalled();
-      await waitFor(() =>
-        expect(screen.getByLabelText("模式").textContent).toContain(
-          "Workspace",
-        ),
+      await waitFor(async () =>
+        expect(await modeLabel()).toContain("Workspace"),
       );
     } finally {
       restore();

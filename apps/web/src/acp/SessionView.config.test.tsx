@@ -47,6 +47,13 @@ import { resetBlobs } from "@/timeline/blobs";
 import { setTimelineTransportFactory } from "@/timeline/api";
 import { resetTimelines } from "@/timeline/sync";
 import { FakeCore, TIMELINE_ID } from "@/timeline/test-support";
+import {
+  modeLabel,
+  modelTrigger,
+  openModelPopover,
+  optionSwitch,
+  pickLevel,
+} from "./test-support";
 import { mockLayout } from "@/timeline/view/test-layout";
 import { useAnsweredStore } from "./answered";
 import { SessionView } from "./SessionView";
@@ -118,14 +125,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-/** 打开「模型 · 思考强度」菜单（已开着就不再开：fireEvent.click 不触发 Radix 的关闭）。 */
-async function openModel() {
-  if (screen.queryByRole("menu")) return;
-  const trigger = await screen.findByLabelText("模型");
-  fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
-}
-
-/** 操作行上的配置项控件（不含模型 · 强度）。 */
+/** 模型弹层右栏里的配置项控件（不含思考强度）。 */
 const inlineConfig = () =>
   document.querySelectorAll(
     "[data-slot=acp-config-select], [data-slot=acp-config-toggle]",
@@ -140,7 +140,7 @@ describe("config options in the prompt box", () => {
     expect(document.querySelector("[data-slot=acp-effort-value]")).toBeNull();
   });
 
-  it("puts the thinking level in the model picker, shows it at once and follows the head", async () => {
+  it("puts the thinking level in the model popover, shows it at once and follows the head", async () => {
     core.emit({
       op: "head",
       head: { configOptions: [EFFORT, THINK] },
@@ -148,8 +148,7 @@ describe("config options in the prompt box", () => {
     render(<SessionView nodeId="n1" data={existing} />);
     const trigger = await screen.findByLabelText("模型");
     await waitFor(() => expect(trigger.textContent).toContain("Low"));
-    await openModel();
-    fireEvent.click(await screen.findByRole("menuitemradio", { name: "High" }));
+    await pickLevel("High");
     await waitFor(() =>
       expect(api.setConfigOption).toHaveBeenCalledWith(
         TIMELINE_ID,
@@ -162,22 +161,26 @@ describe("config options in the prompt box", () => {
       op: "head",
       head: { configOptions: [{ ...EFFORT, currentValue: "high" }, THINK] },
     } as never);
-    await openModel();
-    expect(
-      (await screen.findByRole("menuitemradio", { name: "High" })).getAttribute(
-        "aria-checked",
-      ),
-    ).toBe("true");
+    await openModelPopover();
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("radio", { name: "High" })
+          .getAttribute("aria-checked"),
+      ).toBe("true"),
+    );
   });
 
-  it("sets a boolean option with a toggle on the action row", async () => {
+  it("sets a boolean option with a switch in the model popover", async () => {
     core.emit({
       op: "head",
       head: { configOptions: [EFFORT, THINK] },
     } as never);
     render(<SessionView nodeId="n1" data={existing} />);
-    const toggle = await screen.findByRole("button", { name: "Think" });
-    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    await screen.findByLabelText("消息");
+    await waitFor(() => expect(modelTrigger().textContent).toContain("Low"));
+    const toggle = await optionSwitch("Think");
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
     fireEvent.click(toggle);
     await waitFor(() =>
       expect(api.setConfigOption).toHaveBeenCalledWith(
@@ -186,15 +189,21 @@ describe("config options in the prompt box", () => {
         true,
       ),
     );
-    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("switch", { name: "Think" })
+          .getAttribute("aria-checked"),
+      ).toBe("true"),
+    );
   });
 
   it("rolls the choice back and says so when the agent refuses it", async () => {
     api.setConfigOption.mockRejectedValue(new Error("acp_config_unavailable"));
     core.emit({ op: "head", head: { configOptions: [EFFORT] } } as never);
     render(<SessionView nodeId="n1" data={existing} />);
-    await openModel();
-    fireEvent.click(await screen.findByRole("menuitemradio", { name: "High" }));
+    await waitFor(() => expect(modelTrigger().textContent).toContain("Low"));
+    await pickLevel("High");
     await waitFor(() =>
       expect(toasts.error).toHaveBeenCalledWith("设置没有生效"),
     );
@@ -221,9 +230,7 @@ describe("config options in the prompt box", () => {
       },
     } as never);
     render(<SessionView nodeId="n1" data={existing} />);
-    await waitFor(() =>
-      expect(screen.getByLabelText("模式").textContent).toContain("Plan"),
-    );
+    await waitFor(async () => expect(await modeLabel()).toContain("Plan"));
     expect(inlineConfig()).toHaveLength(0);
     expect(document.querySelector("[data-slot=acp-effort-value]")).toBeNull();
   });

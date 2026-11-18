@@ -78,6 +78,7 @@ import {
 } from "@/timeline/test-support";
 import { useAnsweredStore } from "./answered";
 import { SessionView } from "./SessionView";
+import { modeLabel, pickModel as pickModelInPopover } from "./test-support";
 import { useAcpStore } from "./store";
 
 /**
@@ -269,10 +270,8 @@ async function pickModel(name: string) {
   })) as typeof window.matchMedia;
   try {
     render(<SessionView nodeId="n1" data={data} />);
-    // 窄屏也没有「⋯」：模型就在操作行上。
-    const trigger = await screen.findByLabelText("模型");
-    fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
-    fireEvent.click(await screen.findByRole("menuitemradio", { name }));
+    // 窄屏也没有「⋯」：模型在操作行的模型弹层里。
+    await pickModelInPopover(name);
   } finally {
     window.matchMedia = original;
   }
@@ -580,7 +579,7 @@ describe("SessionView", () => {
     expect(screen.getByText("hi there")).toBeTruthy();
     expect(screen.getAllByText("write a.ts").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: /^始终允许/ })).toBeTruthy();
-    expect(screen.getByLabelText("模式")).toBeTruthy();
+    expect(await modeLabel()).toBeTruthy();
   });
 
   it("offers a retry when the timeline cannot be opened", async () => {

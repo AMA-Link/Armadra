@@ -19,12 +19,7 @@ import { Progress, progressToneFor } from "@/ui/progress";
 import { Textarea } from "@/ui/textarea";
 import { filesOf } from "@/terminal/file-paste";
 import { acpApi } from "./api";
-import {
-  ConfigControl,
-  ModelEffortPicker,
-  ModePicker,
-} from "./ComposerPickers";
-import { splitConfigOptions } from "./pickers";
+import { ModelPopover } from "./ComposerPickers";
 import {
   AttachmentTray,
   type PromptAttachment,
@@ -238,10 +233,9 @@ function Usage({
  * 提交交还（`release`），Agent 的 `send` 在这段时间排队——与终端模式同一条
  * 规矩，租约本身归 core。
  *
- * 布局是一个输入面上下两行：上面是占满宽度的输入框，下面是操作行（附件、模式、
- * 模型 · 思考强度、其余配置项，右侧是用量与发送 / 停止）。没有「⋯」菜单：窄屏
- * （≤ 767，含手机焦点页）时选择器那一段横向滚动，模式换成下拉、发送只留图标。
- * 模式与模型（契约 §26.2）只在有得选时出现；思考强度与模型是同一个控件。
+ * 布局是一个输入面上下两行：上面是占满宽度的输入框，下面是操作行（附件、模型
+ * 按钮，右侧是用量与发送 / 停止）。模型按钮的弹层里是模型、思考强度、其余配置项、
+ * 速度与权限模式（#970）；窄屏时弹层两栏上下排、发送只留图标。
  */
 export function PromptBox({
   sessionId,
@@ -389,14 +383,6 @@ export function PromptBox({
   };
   const canSend = Boolean(text.trim()) || attachments.items.length > 0;
 
-  const modeChoice = modes && modes.availableModes.length > 1 ? modes : null;
-  // 只有一个模型也画：让人看得见在用哪个（契约 §26.2 只在目录非空时给）。
-  const modelChoice =
-    models && onModel && models.availableModels.length > 0 ? models : null;
-  // 思考强度与模型合进同一个控件；其余配置项直接摆在操作行上。
-  const { effort, rest } = onConfig
-    ? splitConfigOptions(configOptions)
-    : { effort: null, rest: [] };
   // 斜杠命令后面该输入什么（`input.hint`）：刚选中命令、还没输入参数时当占位。
   const hint = commands.find((command) => text === `/${command.name} `)?.hint;
 
@@ -537,46 +523,21 @@ export function PromptBox({
               </Button>
             </>
           )}
-          {/*
-            选择器各自成控件。宽屏放不下时折到下一行（节点只有四五百宽时也看得全，
-            不会挤成一串连读的字，#768）；窄屏一行横向滚动。用量与发送始终在右侧。
-          */}
+          {/* 模型、思考强度、速度、权限与其余配置项都在这一个弹层里（#970）；用量与发送始终在右侧。 */}
           <div
             data-slot="acp-composer-pickers"
-            data-wrap={compact ? undefined : true}
-            className={cn(
-              "flex min-w-0 flex-1 items-center gap-1",
-              compact
-                ? "overflow-x-auto [scrollbar-width:none]"
-                : "flex-wrap gap-y-0.5",
-            )}
+            className="flex min-w-0 flex-1 items-center"
           >
-            {modeChoice && (
-              <ModePicker
-                modes={modeChoice}
-                onMode={onMode}
-                disabled={disabled}
-                compact={compact}
-              />
-            )}
-            <ModelEffortPicker
-              models={modelChoice}
+            <ModelPopover
+              models={models}
               onModel={onModel}
-              effort={effort}
+              modes={modes}
+              onMode={onMode}
+              options={configOptions}
               onConfig={onConfig}
               disabled={disabled}
               compact={compact}
             />
-            {onConfig &&
-              rest.map((option) => (
-                <ConfigControl
-                  key={option.id}
-                  option={option}
-                  onConfig={onConfig}
-                  disabled={disabled}
-                  compact={compact}
-                />
-              ))}
           </div>
           {usage && usage.size > 0 && (
             <Usage
