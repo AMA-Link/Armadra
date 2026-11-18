@@ -1,17 +1,15 @@
-import type { Node } from "@xyflow/react";
 import type { CanvasNode } from "@armadra/shared";
 import type { DomBoard } from "@armadra/board/dom";
 
-import type { FlowHandle } from "../flow/flow-context";
+import type { FlowHandle, FlowNode } from "../flow/flow-context";
 
 /**
- * 自研引擎对 `flow-context` 那组视口方法的适配：`getViewport` / `setViewport` /
+ * 引擎对 `flow-context` 那组视口方法的适配：`getViewport` / `setViewport` /
  * `screenToFlowPosition` / `zoomTo` / `setCenter` / `getNode(s)`。
  *
- * 外面十几处（视口命令、新建节点落点、最大化、整理、拖放坐标）只认这组方法，
- * 所以适配一次，它们对两种引擎都不改。`getNode(s)` 给的是 `getNodesBounds` 能读
- * 的节点形状：`internals.positionAbsolute` 与 `measured` 取自引擎场景（宿主尺寸
- * 就是文档尺寸，没有「量到的」另一份）。
+ * 外面十几处（视口命令、新建节点落点、最大化、整理、拖放坐标）只认这组方法。
+ * `getNode(s)` 的 `internals.positionAbsolute` 与 `measured` 取自引擎场景（宿主
+ * 尺寸就是文档尺寸，没有「量到的」另一份）。
  */
 export function createBoardFlowHandle(
   board: DomBoard<CanvasNode>,
@@ -19,22 +17,20 @@ export function createBoardFlowHandle(
 ): FlowHandle {
   const { camera, scene } = board;
 
-  const nodeOf = (id: string): Node | undefined => {
+  const nodeOf = (id: string): FlowNode | undefined => {
     const entity = scene.get(id);
     const box = scene.bounds(id);
     if (!entity || !box) return undefined;
     const size = { width: entity.w, height: entity.h };
     return {
       id,
-      type: entity.kind,
       position: { x: entity.x, y: entity.y },
       ...(entity.parent ? { parentId: entity.parent } : {}),
       ...size,
       measured: size,
       selected: board.selection().has(id),
-      data: entity.data,
       internals: { positionAbsolute: { x: box.x, y: box.y }, z: entity.z },
-    } as unknown as Node;
+    };
   };
 
   // 指针每动一下就有人换算坐标（成员光标）：连续调用共用一次测量，免得每次都把
@@ -82,13 +78,11 @@ export function createBoardFlowHandle(
       );
       return Promise.resolve(true);
     },
-    getNode: nodeOf as FlowHandle["getNode"],
+    getNode: nodeOf,
     getNodes: () =>
       scene
         .ordered()
         // 连线（带 `ends` 的实体）不是节点。
-        .flatMap((entity) =>
-          entity.ends ? [] : (nodeOf(entity.id) ?? []),
-        ) as ReturnType<FlowHandle["getNodes"]>,
+        .flatMap((entity) => (entity.ends ? [] : (nodeOf(entity.id) ?? []))),
   };
 }

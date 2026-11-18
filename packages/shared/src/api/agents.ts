@@ -361,7 +361,7 @@ export const agentTranscriptSchema = z.object({
 });
 
 /**
- * What a linked whiteboard shape reads as (docs/design/canvas-react-flow.md
+ * What a linked whiteboard shape reads as (docs/history/canvas-react-flow.md
  * §2.5). Only present when `kind === "shape"`: text items carry their text,
  * everything else is rasterised by the client and referenced by a
  * workspace-relative PNG path.
@@ -382,7 +382,7 @@ export const contextLinkSchema = z.object({
   title: z.string().max(160),
   /**
    * A node type, or `"shape"` for whiteboard content
-   * (docs/design/canvas-react-flow.md §2.5).
+   * (docs/history/canvas-react-flow.md §2.5).
    */
   kind: z.string().max(40),
   /**

@@ -26,7 +26,7 @@ import type { WhiteboardDoc } from "../../whiteboard/model";
  *
  * 判定与提示分开：`isValidConnection` 在拖动中每帧都要跑，不能弹 toast；
  * `connectionRejection` 把「为什么不行」翻译成一个 i18n 键，由
- * `use-flow-nodes.onConnectEnd` 在松手那一刻提示一次。
+ * `board/use-board-connect` 在松手那一刻提示一次。
  */
 
 export interface ConnectionEnds {
@@ -137,7 +137,7 @@ function referenceVerdict(
  *
  * B1 只放行 `link`；B5 把 `"reference"` 也放行了——引用边的建立、PNG 导出
  * 与发布状态机都已落地（`create-content-reference.ts`、`content-links.ts`），
- * `use-flow-nodes.onConnect` 按 `verdict.kind` 分流。
+ * `board/use-board-connect` 按 `verdict.kind` 分流。
  */
 export function isValidCanvasConnection(
   connection: ConnectionEnds,

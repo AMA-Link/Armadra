@@ -223,7 +223,7 @@ function resized(item: Item, box: ItemBox): Item {
 /**
  * 删除对象，并把指向它们的引用一起删掉。
  *
- * 引用指向一条不存在的对象时投影不出边来（`sync/project.ts` 会跳过），
+ * 引用指向一条不存在的对象时投影不出边来（`sync/project-edges.ts` 会跳过），
  * 但那条记录会一直留在 `whiteboard_json` 里，撤销时又会连着复活出来，
  * 所以在这里一次清干净。
  */

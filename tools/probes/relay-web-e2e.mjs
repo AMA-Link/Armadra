@@ -151,7 +151,7 @@ async function relayUp(issuer, process_) {
 
 /* ------------------------------ 页面小工具 ------------------------------ */
 
-const nodeAt = (id) => `.react-flow__node[data-id="${id}"]`;
+const nodeAt = (id) => `[data-board-layer=world] > [data-board-id="${id}"]`;
 
 const positionOf = (page, id) =>
   page.evaluate(`

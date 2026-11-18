@@ -13,7 +13,7 @@ import {
   MINIMAP_COLORS,
   minimapItemOf,
   minimapStroke,
-} from "../canvas/flow/Minimap";
+} from "../canvas/flow/minimap-style";
 import { collectNeeds } from "../notifications/needs";
 import { boardSignals } from "../sidebar/board-tree";
 import { scoped } from "../sources/scope";

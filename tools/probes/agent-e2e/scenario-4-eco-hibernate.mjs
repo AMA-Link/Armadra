@@ -112,7 +112,7 @@ export default async function run(ctx) {
         `/api/terminals/${facts[agent].terminalSession}`,
       ).catch((error) => ({ error: error.message }));
       const header = await page.evaluate(
-        `return document.querySelector('.react-flow__node[data-id="${node.id}"]')?.textContent?.slice(0, 200) ?? null;`,
+        `return document.querySelector('[data-board-layer=world] > [data-board-id="${node.id}"]')?.textContent?.slice(0, 200) ?? null;`,
       );
       const dataSession = documentNow.nodes.find(
         (entry) => entry.id === node.id,

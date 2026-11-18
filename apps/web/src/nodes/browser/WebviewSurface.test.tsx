@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
-import { renderFlow } from "@/canvas/test-support";
+import { renderNode } from "@/canvas/test-support";
 import type { CanvasNode } from "@armadra/shared";
 
 /**
@@ -76,7 +76,7 @@ const node = {
 } as CanvasNode;
 
 function paint() {
-  return renderFlow(
+  return renderNode(
     <BrowserNode
       id="b1"
       node={node}
@@ -84,7 +84,6 @@ function paint() {
       collapsed={false}
       focused={false}
     />,
-    { nodeId: "b1" },
   );
 }
 

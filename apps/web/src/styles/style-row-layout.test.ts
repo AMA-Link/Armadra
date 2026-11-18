@@ -152,7 +152,7 @@ const LANDSCAPE_DOCK_ROW = 640;
 describe("左右安全区：画布铺满，浮层各自让开（#766）", () => {
   it("画布面的内缩取安全区，停靠侧栏开着时左边归零", () => {
     // 顶层那条 `.workspace-surface { ... }`（`:has()` 那条另算，后面单独核对）。
-    const surface = /(?:^|\}) \.workspace-surface \{([^}]*)\}/.exec(
+    const surface = /(?:^|\}) +\.workspace-surface \{([^}]*)\}/.exec(
       blocks(null)[0]!,
     )![1]!;
     expect(surface).toContain("--surface-inset-left: var(--safe-left);");
@@ -174,9 +174,7 @@ describe("左右安全区：画布铺满，浮层各自让开（#766）", () => 
       expect(rule.get("right")).toContain("var(--surface-inset-right, 0px)");
     }
     expect(
-      declarations(blocks(null), ".canvas-stage .react-flow__minimap").get(
-        "right",
-      ),
+      declarations(blocks(null), ".canvas-stage .board-minimap").get("right"),
     ).toContain("var(--surface-inset-right, 0px)");
   });
 

@@ -814,7 +814,8 @@ export default async function run12() {
       `${stack.web}/?workspace=${workspace.id}&board=${board.id}`,
     );
     await page.settle();
-    const nodeSelector = (id) => `.react-flow__node[data-id="${nodes[id].id}"]`;
+    const nodeSelector = (id) =>
+      `[data-board-layer=world] > [data-board-id="${nodes[id].id}"]`;
     const center = (id) =>
       page.evaluate(
         `window.dispatchEvent(new CustomEvent("armadra:canvas:center-node", { detail: { nodeId: ${JSON.stringify(nodes[id].id)} } })); return 1;`,

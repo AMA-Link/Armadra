@@ -1,4 +1,3 @@
-import * as React from "react";
 import type { Position, Size } from "@armadra/shared";
 
 /**
@@ -102,10 +101,6 @@ function subscribe(listener: () => void): () => void {
 /** 草稿表一变就回调（非 React 的订阅方用，例如实时绑定等手势结束）。 */
 export function subscribeDrafts(listener: () => void): () => void {
   return subscribe(listener);
-}
-
-export function useDrafts(): DraftMap {
-  return React.useSyncExternalStore(subscribe, getDrafts, () => EMPTY);
 }
 
 /** 有没有手势正在进行。 */

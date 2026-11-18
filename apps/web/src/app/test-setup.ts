@@ -9,9 +9,9 @@
 import { afterAll, beforeEach } from "vitest";
 
 /**
- * React Flow 的容器用 `ResizeObserver` 量自己的尺寸（`useResizeHandler`），
- * jsdom 没有这个类。桩只需要存在并且能被 new / observe / disconnect —— 尺寸
- * 恒为 0，测试里断言的是节点与回调，不是像素。
+ * 画布舞台与节点头用 `ResizeObserver` 量自己的尺寸，jsdom 没有这个类。桩只需要
+ * 存在并且能被 new / observe / disconnect —— 尺寸恒为 0，测试里断言的是节点与
+ * 回调，不是像素。
  */
 if (typeof globalThis.ResizeObserver !== "function") {
   class ResizeObserverStub implements ResizeObserver {
@@ -63,35 +63,6 @@ if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
         removeEventListener: () => undefined,
         dispatchEvent: () => false,
       }) as unknown as MediaQueryList,
-  });
-}
-
-/**
- * `DOMMatrixReadOnly`：React Flow 的 `updateNodeInternals` 用它解析节点的
- * `transform` 取缩放（`getDimensions` → `.m22`）；把手挂上时会补量一次
- * （`ConnectionHandles`），于是任何在真 React Flow 里挂过节点的测试都会走到
- * 这里。jsdom 没有这个类。恒等矩阵：测试里从不断言像素。
- */
-if (
-  typeof window !== "undefined" &&
-  typeof window.DOMMatrixReadOnly !== "function"
-) {
-  class DOMMatrixReadOnlyStub {
-    readonly a = 1;
-    readonly b = 0;
-    readonly c = 0;
-    readonly d = 1;
-    readonly e = 0;
-    readonly f = 0;
-    readonly m11 = 1;
-    readonly m22 = 1;
-    readonly is2D = true;
-    readonly isIdentity = true;
-  }
-  Object.defineProperty(window, "DOMMatrixReadOnly", {
-    writable: true,
-    configurable: true,
-    value: DOMMatrixReadOnlyStub,
   });
 }
 

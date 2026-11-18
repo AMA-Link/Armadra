@@ -80,7 +80,7 @@ const INSTRUMENT = `
       for (const record of records)
         for (const node of record.removedNodes) {
           if (!(node instanceof Element)) continue;
-          if (node.matches(".react-flow, .react-flow__node, .xterm") || node.querySelector(".react-flow__node, .xterm"))
+          if (node.matches("[data-board-stage], [data-board-layer=world] > [data-board-id], .xterm") || node.querySelector("[data-board-layer=world] > [data-board-id], .xterm"))
             log.push({ t: now(), ev: "dom.removed", what: node.className.toString().slice(0, 60) });
         }
     }).observe(document.documentElement, { childList: true, subtree: true });
@@ -195,13 +195,13 @@ try {
     a.evaluate(`
       window.__mark ??= "A-" + Date.now();
       let index = 0;
-      for (const element of document.querySelectorAll('.react-flow__node, .xterm'))
+      for (const element of document.querySelectorAll('[data-board-layer=world] > [data-board-id], .xterm'))
         element.__probeMount ??= "m" + (index += 1) + "-" + Math.random().toString(36).slice(2);
       return {
         mark: window.__mark,
-        mounts: [...document.querySelectorAll('.react-flow__node, .xterm')].map((e) => e.__probeMount ?? null),
+        mounts: [...document.querySelectorAll('[data-board-layer=world] > [data-board-id], .xterm')].map((e) => e.__probeMount ?? null),
         rows: [...document.querySelectorAll('.xterm-rows')].map((r) => [...r.children].map((c) => c.textContent)),
-        viewport: document.querySelector('.react-flow__viewport')?.style.transform ?? "",
+        viewport: document.querySelector('[data-board-layer=world]')?.style.transform ?? "",
         logLength: window.__probeLog.length,
       };
     `);
@@ -211,9 +211,9 @@ try {
     const now = await a.evaluate(`
       return {
         mark: window.__mark ?? null,
-        mounts: [...document.querySelectorAll('.react-flow__node, .xterm')].map((e) => e.__probeMount ?? null),
+        mounts: [...document.querySelectorAll('[data-board-layer=world] > [data-board-id], .xterm')].map((e) => e.__probeMount ?? null),
         rows: [...document.querySelectorAll('.xterm-rows')].map((r) => [...r.children].map((c) => c.textContent)),
-        viewport: document.querySelector('.react-flow__viewport')?.style.transform ?? "",
+        viewport: document.querySelector('[data-board-layer=world]')?.style.transform ?? "",
         log: window.__probeLog.slice(${before.logLength}),
       };
     `);

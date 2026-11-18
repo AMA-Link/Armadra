@@ -3,7 +3,7 @@ import type { DomKindSpec } from "@armadra/board/dom";
 import type { Entity } from "@armadra/board/core";
 
 import { COLLAPSED_HEIGHT, defaultNodeSize } from "../../store/defaults";
-import { NODE_META } from "../../nodes/registry";
+import { NODE_DRAG_HANDLE, NODE_META } from "../../nodes/registry";
 
 /**
  * 节点 ↔ 引擎实体（设计 §2.3 的对应表，B3 只接 `nodes` 表）。
@@ -98,12 +98,12 @@ export function nodeKinds(): Record<string, DomKindSpec<CanvasNode>> {
     }
     kinds[type] = {
       layer: "world",
-      dragHandle: ".drag-handle",
+      dragHandle: NODE_DRAG_HANDLE,
       resize: { min },
     };
     kinds[`${type}:collapsed`] = {
       layer: "world",
-      dragHandle: ".drag-handle",
+      dragHandle: NODE_DRAG_HANDLE,
       resize: { min, widthOnly: true },
     };
   }

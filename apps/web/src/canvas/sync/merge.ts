@@ -21,7 +21,7 @@ import type { WhiteboardDoc } from "../whiteboard/model";
  *    且本地没动过的不复活。
  *
  * **对象身份要留住。** 远端那份是新解出来的 JSON，每个节点都是新对象；
- * 原样灌进 store 会让 `sync/project.ts` 的身份缓存整体失效，一次远端事件
+ * 原样灌进 store 会让 `sync/project-edges.ts` 的身份缓存整体失效，一次远端事件
  * 就把 30 个终端全部重渲一遍。所以逐条比对，内容没变就继续用本地那个对象，
  * 整张表都没变就连数组一起复用——`changed: false` 时调用方干脆不写 store。
  *

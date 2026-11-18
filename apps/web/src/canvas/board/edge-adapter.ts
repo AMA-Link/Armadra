@@ -3,7 +3,7 @@ import type { Entity, EntityId } from "@armadra/board/core";
 import type { DomBoard } from "@armadra/board/dom";
 
 import { useCanvasStore } from "@/store/canvas-store";
-import { projectEdges } from "../sync/project";
+import { projectEdges } from "../sync/project-edges";
 import { edgeEntity, edgeKinds, type BoardEdgeEntity } from "./edge-model";
 
 /**

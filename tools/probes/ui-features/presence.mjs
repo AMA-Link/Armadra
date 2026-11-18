@@ -24,7 +24,7 @@ const MAC_UA =
 /** 节点在画布坐标里的位置：React Flow 把它写在 transform 上。 */
 const positionOf = (page, id) =>
   page.evaluate(`
-    const node = document.querySelector('.react-flow__node[data-id="${id}"]');
+    const node = document.querySelector('[data-board-layer=world] > [data-board-id="${id}"]');
     if (!node) return null;
     const match = /translate\\(([-\\d.]+)px,\\s*([-\\d.]+)px\\)/.exec(node.style.transform);
     return match ? { x: Number(match[1]), y: Number(match[2]) } : null;
@@ -41,7 +41,7 @@ async function dragNode(page, id, dx, dy) {
   // 从标题栏左端起拖：画布顶上居中的提示条（比如旧版接入残留）会盖住标题栏
   // 中段，按在提示条上就成了选中文字。
   const from = await page.until(
-    `const node = document.querySelector('.react-flow__node[data-id="${id}"]');
+    `const node = document.querySelector('[data-board-layer=world] > [data-board-id="${id}"]');
      const header = node?.querySelector('[data-slot="node-header"]');
      if (!header) return null;
      const r = header.getBoundingClientRect();
@@ -87,7 +87,7 @@ export default async function presence({ stack, output, report, scenario }) {
   await first.goto(url);
   await first.settle();
   await first.until(
-    `return !!document.querySelector('.react-flow__node[data-id="${sticky.id}"]')`,
+    `return !!document.querySelector('[data-board-layer=world] > [data-board-id="${sticky.id}"]')`,
     "第一台渲染出便签",
   );
   await sleep(1500);
@@ -95,7 +95,7 @@ export default async function presence({ stack, output, report, scenario }) {
   const start = await positionOf(first, sticky.id);
   await dragNode(first, sticky.id, 120, 0);
   const moved = await first.until(
-    `const node = document.querySelector('.react-flow__node[data-id="${sticky.id}"]');
+    `const node = document.querySelector('[data-board-layer=world] > [data-board-id="${sticky.id}"]');
      const m = /translate\\(([-\\d.]+)px/.exec(node?.style.transform ?? "");
      return m && Number(m[1]) > ${start.x + 60} ? Number(m[1]) : null;`,
     "第一台能拖动节点",
@@ -119,7 +119,7 @@ export default async function presence({ stack, output, report, scenario }) {
   await second.goto(url);
   await second.settle();
   await second.until(
-    `return !!document.querySelector('.react-flow__node[data-id="${sticky.id}"]')`,
+    `return !!document.querySelector('[data-board-layer=world] > [data-board-id="${sticky.id}"]')`,
     "第二台渲染出便签",
   );
   const readOnlyText = await second.until(
@@ -182,7 +182,7 @@ export default async function presence({ stack, output, report, scenario }) {
   const beforeLocal = await positionOf(first, sticky.id);
   await dragNode(first, sticky.id, 0, 160);
   const local = await first.until(
-    `const node = document.querySelector('.react-flow__node[data-id="${sticky.id}"]');
+    `const node = document.querySelector('[data-board-layer=world] > [data-board-id="${sticky.id}"]');
      const m = /translate\\(([-\\d.]+)px,\\s*([-\\d.]+)px/.exec(node?.style.transform ?? "");
      return m && Number(m[2]) > ${beforeLocal.y + 80} ? Number(m[2]) : null;`,
     "第一台本地拖动生效",
@@ -242,7 +242,7 @@ export default async function presence({ stack, output, report, scenario }) {
   const secondBefore = await positionOf(second, sticky.id);
   await dragNode(second, sticky.id, -100, 0);
   await second.until(
-    `const node = document.querySelector('.react-flow__node[data-id="${sticky.id}"]');
+    `const node = document.querySelector('[data-board-layer=world] > [data-board-id="${sticky.id}"]');
      const m = /translate\\(([-\\d.]+)px/.exec(node?.style.transform ?? "");
      return m && Number(m[1]) < ${secondBefore.x - 50};`,
     "第二台接管后能拖动",
@@ -265,7 +265,7 @@ export default async function presence({ stack, output, report, scenario }) {
   const lastBefore = await positionOf(first, sticky.id);
   await dragNode(first, sticky.id, 0, -120);
   await first.until(
-    `const node = document.querySelector('.react-flow__node[data-id="${sticky.id}"]');
+    `const node = document.querySelector('[data-board-layer=world] > [data-board-id="${sticky.id}"]');
      const m = /translate\\(([-\\d.]+)px,\\s*([-\\d.]+)px/.exec(node?.style.transform ?? "");
      return m && Number(m[2]) < ${lastBefore.y - 60};`,
     "第一台重新能拖动",

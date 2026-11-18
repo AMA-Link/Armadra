@@ -10,7 +10,7 @@ import {
   type SidePair,
 } from "@armadra/board/core";
 
-import { edgeArrowheads, edgeLabelKey } from "../../sync/project";
+import { edgeArrowheads, edgeLabelKey } from "../../sync/project-edges";
 
 /**
  * 一条上下文连线画成什么样（纯函数，`LinkEdge.tsx` 与单测共用）。
@@ -70,9 +70,6 @@ export function linkColor({
   if (supervises) return familyColor ?? "var(--brand)";
   return LINK_CONTEXT_COLOR;
 }
-
-/** 派发线的标签。 */
-export const DISPATCH_LABEL_KEY = "edge.role.dispatch";
 
 /**
  * 两端的矩形、节点类型与边的角色 → 画一条线需要的全部信息（ui-wave2 §3.2）。

@@ -234,7 +234,7 @@ export default async function resources({
   await page.goto(stack.boardUrl(workspace.id, board.id));
   await page.settle();
   const hibernatedNode = await page.until(
-    `const node = document.querySelector('.react-flow__node[data-id="${sleeping.id}"]');
+    `const node = document.querySelector('[data-board-layer=world] > [data-board-id="${sleeping.id}"]');
      const header = node?.querySelector('[data-slot="node-header"] [data-slot="status-dot"]')?.getAttribute("aria-label") ?? "";
      const wake = [...(node?.querySelectorAll("button") ?? [])].some((b) => b.textContent.trim() === "唤醒");
      return header.includes("休眠中") && wake ? header.replace(/\\s+/g, " ") : null;`,
@@ -242,7 +242,7 @@ export default async function resources({
   );
   run.ok("休眠节点头显示「休眠中」，体上有「唤醒」", hibernatedNode);
   await page.until(
-    `const node = document.querySelector('.react-flow__node[data-id="${live.id}"]');
+    `const node = document.querySelector('[data-board-layer=world] > [data-board-id="${live.id}"]');
      return !!node?.querySelector(".xterm");`,
     "活着的终端挂上 xterm",
   );

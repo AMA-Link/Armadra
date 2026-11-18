@@ -30,7 +30,7 @@ import { commandKeysLabel, type CommandId } from "@/keybindings";
  *
  * 八个勾选项 + 三个子菜单（主题 / 画布背景 / 输入设备）。每一项都写
  * `preferences-store` 的 `whiteboard` 段，由 `use-canvas-preferences` 与
- * `flow/flow-options.ts` 单向推给画布；快捷键（Q / ⌘' / ⌘.）改的也是同一
+ * `BoardWorkspace` 单向推给画布；快捷键（Q / ⌘' / ⌘.）改的也是同一
  * 处，所以这个菜单的勾选状态与设置 → 白板永远一致。
  *
  * 换引擎删掉的四项（调试面板、增强辅助、缩放方向反转、手绘 / 整洁风格档）

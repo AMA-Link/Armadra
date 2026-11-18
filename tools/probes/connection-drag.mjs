@@ -321,7 +321,7 @@ async function main() {
   // 工作空间、画布文档、两个终端会话——三类读之后才谈得上能拖。
   for (let attempt = 0; attempt < 120; attempt += 1) {
     const ready = await evaluate(
-      `return document.querySelectorAll(".react-flow__node").length;`,
+      `return document.querySelectorAll("[data-board-layer=world] > [data-board-id]").length;`,
     );
     if (ready >= 2) break;
     await sleep(500);
@@ -343,7 +343,7 @@ async function main() {
   /** 起点是源节点右侧那个圆点的中心，终点是目标节点的正中央。 */
   const geometry = async () => {
     return evaluate(`
-      const nodes = [...document.querySelectorAll(".react-flow__node")];
+      const nodes = [...document.querySelectorAll("[data-board-layer=world] > [data-board-id]")];
       const source = nodes.find((node) => node.textContent.includes("source"));
       const target = nodes.find((node) => node.textContent.includes("target"));
       if (!source || !target) return null;
@@ -360,7 +360,7 @@ async function main() {
   };
 
   const edgeCount = () =>
-    evaluate(`return document.querySelectorAll(".react-flow__edge").length;`);
+    evaluate(`return document.querySelectorAll("[data-edge-id]").length;`);
 
   /** 指针底下最上面那个元素长什么样——失败时这就是全部证据。 */
   const under = (x, y) =>

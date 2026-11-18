@@ -1,49 +1,32 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render } from "@testing-library/react";
-import { Position, type ConnectionLineComponentProps } from "@xyflow/react";
 
 import { roundedPath, routeFor } from "@armadra/board/core";
 import { CORNER_RADIUS } from "./link-visual";
-import { ConnectionLine } from "./ConnectionLine";
+import { ConnectionPath } from "./ConnectionPath";
 
 /**
- * 拖线时的预览（React Flow 计划 §2.5 第三条）。
- *
- * 替代旧引擎的 `shapes/NodeArrowShapeUtil.test.tsx`（那一项测的是箭头工具
- * 的预览覆写）。这里只有一条断言值得写：预览与落成后的 `LinkEdge`
- * **必须是同一条曲线**，否则松手那一刻线会突然弹到别处。
+ * 拖线时的预览：预览与落成后的连线**必须是同一条曲线**，否则松手那一刻线会突然
+ * 弹到别处。
  */
 
 afterEach(cleanup);
 
-function internalNode(x: number, y: number) {
-  return {
-    id: `n-${x}`,
-    measured: { width: 100, height: 100 },
-    width: 100,
-    height: 100,
-    internals: { positionAbsolute: { x, y } },
-  };
-}
+const box = (x: number, y: number) => ({ x, y, width: 100, height: 100 });
 
 function renderLine(
-  toNode: ReturnType<typeof internalNode> | null,
+  to: { x: number; y: number; width: number; height: number } | null,
   status: "valid" | "invalid" | null = null,
 ) {
-  const props = {
-    fromNode: internalNode(0, 0),
-    toNode,
-    toX: 300,
-    toY: 50,
-    fromX: 100,
-    fromY: 50,
-    fromPosition: Position.Right,
-    toPosition: Position.Left,
-    connectionStatus: status,
-  } as unknown as ConnectionLineComponentProps;
   return render(
     <svg>
-      <ConnectionLine {...props} />
+      <ConnectionPath
+        from={box(0, 0)}
+        // 悬空时把指针当成零尺寸矩形。
+        to={to ?? { x: 300, y: 50, width: 0, height: 0 }}
+        snapped={to !== null}
+        status={status}
+      />
     </svg>,
   );
 }
@@ -54,9 +37,9 @@ function path(container: HTMLElement): SVGPathElement {
   ) as SVGPathElement;
 }
 
-describe("ConnectionLine", () => {
-  it("落在目标上时画的就是 `LinkEdge` 那种线", () => {
-    const { container } = renderLine(internalNode(300, 0));
+describe("ConnectionPath", () => {
+  it("落在目标上时画的就是落成后那种线", () => {
+    const { container } = renderLine(box(300, 0));
     const expected = routeFor(
       { x: 0, y: 0, width: 100, height: 100 },
       { x: 300, y: 0, width: 100, height: 100 },
@@ -79,18 +62,18 @@ describe("ConnectionLine", () => {
     expect(path(loose.container).getAttribute("stroke-dasharray")).toBe("6 4");
     cleanup();
 
-    const landed = renderLine(internalNode(300, 0));
+    const landed = renderLine(box(300, 0));
     expect(path(landed.container).getAttribute("stroke-dasharray")).toBeNull();
   });
 
   it("合法目标是品牌色，非法目标是危险色，悬空是中性灰", () => {
     const cases: [
       "valid" | "invalid" | null,
-      ReturnType<typeof internalNode> | null,
+      ReturnType<typeof box> | null,
       string,
     ][] = [
-      ["valid", internalNode(300, 0), "var(--brand)"],
-      ["invalid", internalNode(300, 0), "var(--danger)"],
+      ["valid", box(300, 0), "var(--brand)"],
+      ["invalid", box(300, 0), "var(--danger)"],
       [null, null, "var(--muted-foreground)"],
     ];
     for (const [status, toNode, colour] of cases) {
@@ -101,13 +84,13 @@ describe("ConnectionLine", () => {
   });
 
   it("线宽走样式，不写 strokeWidth 属性", () => {
-    const { container } = renderLine(internalNode(300, 0));
+    const { container } = renderLine(box(300, 0));
     expect(path(container).hasAttribute("stroke-width")).toBe(false);
     expect(path(container).style.strokeWidth).toBe("2");
   });
 
   it("吸到目标上的终点圆点标 data-snapped，悬空时不标", () => {
-    const landed = renderLine(internalNode(300, 0), "valid");
+    const landed = renderLine(box(300, 0), "valid");
     expect(
       landed.container.querySelector("circle")?.getAttribute("data-snapped"),
     ).toBe("true");
@@ -119,12 +102,12 @@ describe("ConnectionLine", () => {
   });
 
   it("目标不可连接时终点圆点抖动（anim-shake），其余状态不抖", () => {
-    const invalid = renderLine(internalNode(300, 0), "invalid");
+    const invalid = renderLine(box(300, 0), "invalid");
     expect(
       invalid.container.querySelector("circle")?.getAttribute("class"),
     ).toContain("anim-shake");
     cleanup();
-    const valid = renderLine(internalNode(300, 0), "valid");
+    const valid = renderLine(box(300, 0), "valid");
     expect(
       valid.container.querySelector("circle")?.getAttribute("class") ?? "",
     ).not.toContain("anim-shake");

@@ -127,6 +127,47 @@ describe("输入路由器", () => {
     }
   });
 
+  it("触屏：捕获从按到的子元素交给容器时（子元素的 lostpointercapture）不取消拖动", () => {
+    const s = setup();
+    const touch = { pointerType: "touch" } as const;
+    s.fire("pointerdown", s.q(".a"), { ...touch, clientX: 120, clientY: 120 });
+    s.fire("pointermove", s.container, {
+      ...touch,
+      clientX: 140,
+      clientY: 150,
+    });
+    s.fire("lostpointercapture", s.q(".a"), touch);
+    s.fire("pointermove", s.container, {
+      ...touch,
+      clientX: 160,
+      clientY: 180,
+    });
+    expect(s.scene.gestureActive()).toBe(true);
+    s.fire("pointerup", s.container, { ...touch, clientX: 160, clientY: 180 });
+    const move = s.of("move")[0] as {
+      positions: Map<string, { x: number; y: number }>;
+    };
+    expect(move.positions.get("a")).toEqual({ x: 140, y: 160 });
+  });
+
+  it("触屏按下认接触点下的元素，不认浏览器校正过的目标", () => {
+    const s = setup();
+    const se = s.q(".se");
+    // jsdom 没有 elementFromPoint：装一个只答把手的。
+    document.elementFromPoint = () => se;
+    const touch = { pointerType: "touch" } as const;
+    s.fire("pointerdown", s.q(".a"), { ...touch, clientX: 300, clientY: 300 });
+    s.fire("pointermove", s.container, {
+      ...touch,
+      clientX: 340,
+      clientY: 330,
+    });
+    s.fire("pointerup", s.container, { ...touch, clientX: 340, clientY: 330 });
+    delete (document as { elementFromPoint?: unknown }).elementFromPoint;
+    expect(s.of("resize")).toHaveLength(1);
+    expect(s.of("move")).toEqual([]);
+  });
+
   it("第二根手指：没有 add 的手势被取消，换成 pinch（缩放）", () => {
     const s = setup();
     s.fire("pointerdown", s.q(".a"), {

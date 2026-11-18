@@ -399,7 +399,8 @@ export async function startDockerRelay({
 
 /* --------------------------------- 页面小工具 --------------------------------- */
 
-export const nodeAt = (id) => `.react-flow__node[data-id="${id}"]`;
+export const nodeAt = (id) =>
+  `[data-board-layer=world] > [data-board-id="${id}"]`;
 
 /** 点可见文字等于 `texts` 之一的按钮（取最后一个：对话框在 body 末尾）。 */
 export const buttonByText = (texts, selector = "button") => `

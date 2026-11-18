@@ -247,19 +247,19 @@ export async function runDesktop(ctx) {
       "经中继的工作空间",
     );
     await page.until(
-      `return !!document.querySelector('.react-flow__node[data-id="${terminal.id}"] .xterm')`,
+      `return !!document.querySelector('[data-board-layer=world] > [data-board-id="${terminal.id}"] .xterm')`,
       "打开工作空间，终端挂上 xterm",
       { timeout: 60_000 },
     );
     await page.clickOn(
-      `return document.querySelector('.react-flow__node[data-id="${terminal.id}"] .xterm-screen')`,
+      `return document.querySelector('[data-board-layer=world] > [data-board-id="${terminal.id}"] .xterm-screen')`,
       "终端画面",
     );
     await sleep(300);
     await page.type("echo $((40+2))desktop");
     await page.enter();
     await page.until(
-      `return (document.querySelector('.react-flow__node[data-id="${terminal.id}"] .xterm-rows')?.innerText ?? "").includes("42desktop")`,
+      `return (document.querySelector('[data-board-layer=world] > [data-board-id="${terminal.id}"] .xterm-rows')?.innerText ?? "").includes("42desktop")`,
       "终端回显 42desktop",
       { timeout: 30_000 },
     );

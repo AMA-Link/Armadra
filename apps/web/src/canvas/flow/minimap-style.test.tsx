@@ -1,42 +1,22 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import {
-  ReactFlow,
-  ReactFlowProvider,
-  type Edge,
-  type Node,
-  type NodeTypes,
-} from "@xyflow/react";
 import type { AgentGlow } from "@/agent/display";
 
 import { installDomPolyfills } from "@/app/test-harness";
-import { useMinimapPreferences } from "@/app/minimap-preferences";
 import { toItemId } from "@/canvas/whiteboard/model";
 import { TooltipProvider } from "@/ui/tooltip";
 import {
   MINIMAP_COLORS,
-  Minimap,
+  MinimapToggleButton,
   minimapFill,
   minimapItemOf,
-  firstMinimapNodeId,
   minimapStroke,
   minimapStrokeWidth,
-} from "./Minimap";
+} from "./minimap-style";
 
-/**
- * 状态缩略图（React Flow 计划 F20）。
- *
- * 旧引擎的 `overlays/minimap.test.ts` 有 13 项，其中 9 项是几何与指针换算
- * （`fitPageBounds` / `minimapPointToPage` / `itemAtPoint` …）——那些现在
- * 由 React Flow 的 `<MiniMap>` 负责，我们只剩颜色。另加
- * `CanvasNavigationPanel.test.tsx` 那一项收起开关。
- */
-
-/** DOM 的 `Node` 常量（名字被 React Flow 的 `Node` 类型占了）。 */
-const Node_ = globalThis.Node;
+/** 状态缩略图的配色与收起钮。 */
 
 beforeAll(installDomPolyfills);
-beforeEach(() => useMinimapPreferences.getState().setCollapsed(false));
 afterEach(cleanup);
 
 function flowNode(
@@ -164,146 +144,38 @@ describe("节点 → 上色输入", () => {
   });
 });
 
-describe("收起开关", () => {
-  const renderPanel = () =>
+describe("收起钮", () => {
+  const renderToggle = (collapsed: boolean, onToggle = () => undefined) =>
     render(
       <TooltipProvider>
-        <ReactFlowProvider>
-          <Minimap />
-        </ReactFlowProvider>
+        <MinimapToggleButton collapsed={collapsed} onToggle={onToggle} />
       </TooltipProvider>,
     );
 
-  it("展开时画缩略图，点一下收起后只剩按钮", () => {
-    renderPanel();
-    expect(screen.getByTestId("rf__minimap")).toBeTruthy();
-
-    // 展开时是一个「−」（悬停才显示，`styles/canvas.test.ts` 守 CSS），
-    // 收起后是缩略图图标。
+  it("展开时是一个「−」，点一下通知收起", () => {
+    let toggled = 0;
+    renderToggle(false, () => {
+      toggled += 1;
+    });
     const collapse = screen.getByRole("button", { name: "收起缩略图" });
     expect(collapse.getAttribute("aria-expanded")).toBe("true");
     expect(collapse.querySelector(".lucide-minus")).toBeTruthy();
     fireEvent.click(collapse);
-    expect(screen.queryByTestId("rf__minimap")).toBeNull();
-    const expand = screen.getByRole("button", { name: "展开缩略图" });
-    expect(expand.querySelector(".lucide-map")).toBeTruthy();
+    expect(toggled).toBe(1);
   });
 
-  it("收起钮不带原生 title（说明走 Tooltip），收起后是强边的 cluster 钮", () => {
-    renderPanel();
-    const collapse = screen.getByRole("button", { name: "收起缩略图" });
-    expect(collapse.hasAttribute("title")).toBe(false);
-    fireEvent.click(collapse);
+  it("收起后是缩略图图标，强边的 cluster 钮", () => {
+    renderToggle(true);
     const expand = screen.getByRole("button", { name: "展开缩略图" });
-    expect(expand.hasAttribute("title")).toBe(false);
+    expect(expand.getAttribute("aria-expanded")).toBe("false");
+    expect(expand.querySelector(".lucide-map")).toBeTruthy();
     expect(expand.classList.contains("border-border-strong")).toBe(true);
   });
 
-  it("收起状态记在 `minimap-preferences` 里，重挂之后还在", () => {
-    useMinimapPreferences.getState().setCollapsed(true);
-    renderPanel();
-    expect(screen.queryByTestId("rf__minimap")).toBeNull();
+  it("不带原生 title：说明走 Tooltip", () => {
+    renderToggle(false);
     expect(
-      screen
-        .getByRole("button", { name: "展开缩略图" })
-        .getAttribute("aria-expanded"),
-    ).toBe("false");
-  });
-});
-
-describe("小地图里的连线（#216）", () => {
-  const A = "019ff7d1-0d12-7421-833d-2c5e8d64ee01";
-  const B = "019ff7d1-0d12-7421-833d-2c5e8d64ee02";
-  const C = "019ff7d1-0d12-7421-833d-2c5e8d64ee03";
-  const nodeTypes: NodeTypes = { armadra: () => null };
-  const node = (id: string, x: number, y: number, hidden = false): Node => ({
-    id,
-    type: "armadra",
-    position: { x, y },
-    width: 100,
-    height: 50,
-    hidden,
-    data: {},
-  });
-  const renderFlow = (nodes: Node[], edges: Edge[]) =>
-    render(
-      <TooltipProvider>
-        <ReactFlowProvider>
-          <ReactFlow
-            width={800}
-            height={600}
-            nodeTypes={nodeTypes}
-            nodes={nodes}
-            edges={edges}
-          >
-            <Minimap />
-          </ReactFlow>
-        </ReactFlowProvider>
-      </TooltipProvider>,
-    );
-
-  it("整层连线只画一次，按颜色合并成 path，压在所有节点矩形下面", () => {
-    const { container } = renderFlow(
-      [node(A, 0, 0), node(B, 300, 0), node(C, 0, 300)],
-      [
-        { id: "ab", type: "link", source: A, target: B, data: {} },
-        { id: "bc", type: "link", source: B, target: C, data: {} },
-        {
-          id: "ac",
-          type: "link",
-          source: A,
-          target: C,
-          data: { role: "supervises" },
-        },
-      ],
-    );
-    const svg = container.querySelector(".react-flow__minimap-svg")!;
-    const layers = svg.querySelectorAll('[data-slot="minimap-links"]');
-    expect(layers).toHaveLength(1);
-    const paths = layers[0]!.querySelectorAll("path");
-    expect([...paths].map((p) => p.getAttribute("data-role"))).toEqual([
-      "context",
-      "dispatch",
-    ]);
-    // 两条上下文线合成一条 path；没有逐边的 <line>。
-    expect(paths[0]!.getAttribute("d")!.match(/M/g)).toHaveLength(2);
-    expect(svg.querySelectorAll("line")).toHaveLength(0);
-    // 连线层在第一个节点矩形之前（SVG 后画的在上面）。
-    const first = svg.querySelector("rect.react-flow__minimap-node")!;
-    expect(
-      layers[0]!.compareDocumentPosition(first) &
-        Node_.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-  });
-
-  it("第一个节点隐藏时由下一个节点挂连线层；没有连线就不画", () => {
-    const { container } = renderFlow(
-      [node(A, 0, 0, true), node(B, 300, 0), node(C, 0, 300)],
-      [{ id: "bc", type: "link", source: B, target: C, data: {} }],
-    );
-    expect(
-      container.querySelectorAll('[data-slot="minimap-links"]'),
-    ).toHaveLength(1);
-    cleanup();
-    const empty = renderFlow([node(A, 0, 0), node(B, 300, 0)], []);
-    expect(
-      empty.container.querySelector('[data-slot="minimap-links"]'),
-    ).toBeNull();
-  });
-
-  it("firstMinimapNodeId 跳过隐藏与没量到尺寸的节点", () => {
-    const boxes: Record<
-      string,
-      { x: number; y: number; width: number; height: number }
-    > = {
-      b: { x: 0, y: 0, width: 1, height: 1 },
-    };
-    expect(
-      firstMinimapNodeId(
-        [{ id: "a" }, { id: "h", hidden: true }, { id: "b" }],
-        (id) => boxes[id],
-      ),
-    ).toBe("b");
-    expect(firstMinimapNodeId([], () => undefined)).toBeUndefined();
+      screen.getByRole("button", { name: "收起缩略图" }).hasAttribute("title"),
+    ).toBe(false);
   });
 });

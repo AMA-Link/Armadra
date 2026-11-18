@@ -285,7 +285,7 @@ await h.run(async () => {
   page.drain();
   await page.navigate(`${web}/?workspace=${workspace.id}&board=${board.id}`);
   await page.settle();
-  const node = (id) => `.react-flow__node[data-id="${id}"]`;
+  const node = (id) => `[data-board-layer=world] > [data-board-id="${id}"]`;
   /** 节点里的字，行与行接起来（长路径在终端里会折行）。 */
   const flat = (id) =>
     page.evaluate(

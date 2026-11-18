@@ -246,7 +246,9 @@ try {
   await call("Page.navigate", { url: page });
   await until(
     async () =>
-      (await evaluate("document.querySelectorAll('.react-flow').length")) > 0,
+      (await evaluate(
+        "document.querySelectorAll('[data-board-stage]').length",
+      )) > 0,
     "Canvas did not mount",
     300,
   );
@@ -290,7 +292,7 @@ try {
   await until(
     async () =>
       (await evaluate(
-        "document.querySelectorAll('.react-flow__node').length",
+        "document.querySelectorAll('[data-board-layer=world] > [data-board-id]').length",
       )) === 1,
     "Created node did not arrive through workspace events",
   );

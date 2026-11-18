@@ -42,11 +42,6 @@ import {
   writeStored,
 } from "./preferences/storage";
 import {
-  storedCanvasEngine,
-  writeCanvasEngine,
-  type CanvasEngine,
-} from "./preferences/engine";
-import {
   storedBrowserPreferences,
   BROWSER_KEYS,
   type BrowserPreferences,
@@ -69,7 +64,6 @@ import {
 } from "./preferences/git";
 
 export * from "./preferences/browser";
-export * from "./preferences/engine";
 export * from "./preferences/terminal";
 export * from "./preferences/whiteboard";
 export * from "./preferences/git";
@@ -332,10 +326,8 @@ export interface PreferencesState {
   terminal: TerminalPreferences;
   /** 浏览器节点的内存偏好；`nodes/browser/{discard,pool}.ts` 负责消费。 */
   browser: BrowserPreferences;
-  /** 白板配置；`use-canvas-preferences.ts` 与 `flow-options.ts` 负责消费。 */
+  /** 白板配置；由 `use-canvas-preferences.ts` 与画布负责消费。 */
   whiteboard: WhiteboardPreferences;
-  /** 画布引擎开关（B3）；缺省 `current`，设置页不露出。 */
-  canvasEngine: CanvasEngine;
   /**
    * Git 工具窗口：面板宽高、分支树展开与收藏、日志筛选
    * （Git 工具窗口设计 §3.2）。
@@ -389,7 +381,6 @@ export interface PreferencesState {
     key: K,
     value: TerminalPreferences[K],
   ) => void;
-  setCanvasEngine: (engine: CanvasEngine) => void;
   setBrowserPreference: <K extends keyof BrowserPreferences>(
     key: K,
     value: BrowserPreferences[K],
@@ -461,7 +452,6 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
   terminal: storedTerminalPreferences(),
   browser: storedBrowserPreferences(),
   whiteboard: storedWhiteboardPreferences(),
-  canvasEngine: storedCanvasEngine(),
   git: storedGitPreferences(),
 
   setTheme(theme) {
@@ -657,11 +647,6 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     writeStored(GIT_KEYS[key], serializeGitPreference(value));
     set((state) => ({ git: { ...state.git, [key]: value } }));
   },
-  setCanvasEngine(engine) {
-    if (get().canvasEngine === engine) return;
-    writeCanvasEngine(engine);
-    set({ canvasEngine: engine });
-  },
   setBrowserPreference(key, value) {
     if (get().browser[key] === value) return;
     writeStored(BROWSER_KEYS[key], String(value));
@@ -675,13 +660,6 @@ export const usePreferencesStore = create<PreferencesState>((set, get) => ({
     set((state) => ({ whiteboard: { ...state.whiteboard, [key]: value } }));
   },
 }));
-
-/** 调试把手：不刷新直接切引擎（探针与自己日用）。 */
-(globalThis as { __armadraCanvasEngine?: unknown }).__armadraCanvasEngine = {
-  get: () => usePreferencesStore.getState().canvasEngine,
-  set: (engine: CanvasEngine) =>
-    usePreferencesStore.getState().setCanvasEngine(engine),
-};
 
 /** 组件里用；只有终端外观那一块变化才重渲染。 */
 export function useTerminalPreferences(): TerminalPreferences {

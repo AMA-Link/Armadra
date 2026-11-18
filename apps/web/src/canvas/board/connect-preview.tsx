@@ -5,7 +5,7 @@ import type { DomBoard, GestureFeedback } from "@armadra/board/dom";
 import { useBoard, WorldOverlay } from "@armadra/board/react";
 
 import { useCanvasStore } from "@/store/canvas-store";
-import { ConnectionPath } from "../flow/edges/ConnectionLine";
+import { ConnectionPath } from "../flow/edges/ConnectionPath";
 import { isValidCanvasConnection } from "../flow/edges/connect";
 
 /**

@@ -708,7 +708,7 @@ async function sessionShare({
   run.check(
     await guest.evaluate(
       `return !!document.querySelector('[data-slot="shared-session"] [data-read-only]') &&
-        !document.querySelector('.react-flow');`,
+        !document.querySelector('[data-board-stage]');`,
     ),
     "查看页标着只读，没有画布",
   );

@@ -78,8 +78,8 @@ export type WhiteboardInputMode = (typeof WHITEBOARD_INPUT_MODES)[number];
  * 白板偏好（React Flow 计划 §2.10 的映射表）。
  *
  * 和终端外观一样整块存：`use-canvas-preferences.ts` 写背景变量、专注模式
- * 与工具默认样式，`canvas/flow/flow-options.ts` 把其余各项算成
- * `<ReactFlow>` 的 props，这里是唯一真相。
+ * 与工具默认样式，其余各项由 `canvas/board/BoardWorkspace` 推给引擎选项，
+ * 这里是唯一真相。
  *
  * 旧引擎的四项（调试面板、增强辅助、缩放方向反转、手绘 / 整洁风格档）在
  * React Flow 下没有对应能力，B4 整条删掉——留一个改了没反应的开关比少一个
@@ -91,7 +91,7 @@ export type WhiteboardInputMode = (typeof WHITEBOARD_INPUT_MODES)[number];
  */
 export interface WhiteboardPreferences {
   background: WhiteboardBackground;
-  /** 点阵：画不画 `<Background variant="dots">`（`FlowWorkspace`）。 */
+  /** 点阵：画不画 `<Background variant="dots">`（`BoardWorkspace`）。 */
   grid: boolean;
   gridSize: WhiteboardGridSize;
   /**

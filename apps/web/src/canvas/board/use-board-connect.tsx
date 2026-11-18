@@ -62,14 +62,11 @@ export function useBoardConnect(
         clientX: screen.x + (rect?.left ?? 0),
         clientY: screen.y + (rect?.top ?? 0),
       };
-      onConnectEnd(
-        client as MouseEvent,
-        {
-          isValid: false,
-          toNode: null,
-          fromNode: { id: from },
-        } as never,
-      );
+      onConnectEnd(client, {
+        isValid: false,
+        toNode: null,
+        fromNode: { id: from },
+      });
     });
     return () => {
       stop();

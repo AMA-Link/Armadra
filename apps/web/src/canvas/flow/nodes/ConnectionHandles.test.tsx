@@ -1,134 +1,59 @@
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 
 import { installDomPolyfills } from "@/app/test-harness";
-import { renderFlow } from "@/canvas/test-support";
+import { BoardHostProvider } from "@/canvas/board/host-context";
 import { ConnectionHandles } from "./ConnectionHandles";
 
-const updateNodeInternals = vi.fn();
-vi.mock("@xyflow/react", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@xyflow/react")>()),
-  useUpdateNodeInternals: () => updateNodeInternals,
-}));
-
-/**
- * 节点的连线端口（React Flow 计划 §2.5 / F06）。
- *
- * 重写自旧引擎的 `shapes/ConnectionHandles.test.tsx`（9 项）：那一版测的是
- * 「pointerdown 时切到箭头工具再放行事件」的那套手工起笔，整段被 React Flow
- * 的原生把手手势取代了。剩下要守住的是端口的形状与可达性。
- */
+/** 节点的连线端口：形状与可达性。 */
 
 beforeAll(installDomPolyfills);
 afterEach(cleanup);
 
+function inBoard(node: React.ReactNode) {
+  return render(<BoardHostProvider value>{node}</BoardHostProvider>);
+}
+
 function handles(container: HTMLElement) {
-  return {
-    sources: [
-      ...container.querySelectorAll<HTMLElement>(
-        '[data-slot="connection-handle"]',
-      ),
-    ],
-    drop: container.querySelector<HTMLElement>('[data-slot="connection-drop"]'),
-    anchor: container.querySelector<HTMLElement>(
-      '[data-slot="connection-anchor"]',
+  return [
+    ...container.querySelectorAll<HTMLElement>(
+      '[data-slot="connection-handle"]',
     ),
-  };
+  ];
 }
 
 describe("起笔把手", () => {
-  it("四边各一个 source 把手，命中区样式来自 `styles/nodes.css`", () => {
-    const { container } = renderFlow(<ConnectionHandles />);
-    const { sources } = handles(container);
-    expect(sources.map((node) => node.dataset.side)).toEqual([
+  it("四边各一个，引擎按 `data-board-handle` 认", () => {
+    const { container } = inBoard(<ConnectionHandles />);
+    const found = handles(container);
+    expect(found.map((node) => node.dataset.side)).toEqual([
       "top",
       "right",
       "bottom",
       "left",
     ]);
-    for (const handle of sources) {
-      expect(handle.classList.contains("node-connection-handle")).toBe(true);
-      expect(handle.classList.contains("source")).toBe(true);
-    }
-  });
-
-  it("把手只起笔不落点：线要落在节点体上，不是落在圆点上", () => {
-    const { container } = renderFlow(<ConnectionHandles />);
-    for (const handle of handles(container).sources) {
-      expect(handle.classList.contains("connectablestart")).toBe(true);
-      expect(handle.classList.contains("connectableend")).toBe(false);
+    for (const handle of found) {
+      expect(handle.dataset.boardHandle).toBe(handle.dataset.side);
+      expect(handle.classList.contains("board-connection-handle")).toBe(true);
     }
   });
 
   it("四个把手都有无障碍名字；不分进出，都叫「连线」", () => {
-    const { container } = renderFlow(<ConnectionHandles />);
-    const labels = handles(container).sources.map((handle) =>
-      handle.getAttribute("aria-label"),
+    const { container } = inBoard(<ConnectionHandles />);
+    expect(handles(container).map((h) => h.getAttribute("aria-label"))).toEqual(
+      ["连线", "连线", "连线", "连线"],
     );
-    expect(labels).toEqual(["连线", "连线", "连线", "连线"]);
   });
 });
 
-describe("落点", () => {
-  it("铺满整个节点，而不是 6px 的圆点", () => {
-    const { container } = renderFlow(<ConnectionHandles />);
-    const drop = handles(container).drop!;
-    expect(drop.style.inset).toBe("0px");
-    expect(drop.style.width).toBe("100%");
-    expect(drop.style.height).toBe("100%");
-    expect(drop.classList.contains("target")).toBe(true);
+describe("不画把手的情形", () => {
+  it("只作落点（分组与白板对象）不画起笔把手", () => {
+    const { container } = inBoard(<ConnectionHandles dropOnly />);
+    expect(handles(container)).toHaveLength(0);
   });
 
-  it("没有连线在进行时不接指针事件（终端的点击照常）", () => {
-    const { container } = renderFlow(<ConnectionHandles />);
-    expect(handles(container).drop!.style.pointerEvents).toBe("none");
-  });
-
-  it("落点自己不能起笔", () => {
-    const { container } = renderFlow(<ConnectionHandles />);
-    expect(
-      handles(container).drop!.classList.contains("connectablestart"),
-    ).toBe(false);
-  });
-});
-
-describe("分组（只有落点）", () => {
-  it("不画起笔圆点，但仍然可以作为一条连线的落点", () => {
-    const { container } = renderFlow(<ConnectionHandles dropOnly />);
-    const { sources, drop } = handles(container);
-    expect(sources).toHaveLength(0);
-    expect(drop).not.toBeNull();
-    expect(drop!.classList.contains("connectable")).toBe(true);
-  });
-
-  it("补一个从不参与交互的 source 锚点，否则整条边都画不出来", () => {
-    const { container } = renderFlow(<ConnectionHandles dropOnly />);
-    const anchor = handles(container).anchor!;
-    expect(anchor.classList.contains("source")).toBe(true);
-    expect(anchor.style.pointerEvents).toBe("none");
-    expect(anchor.classList.contains("connectablestart")).toBe(false);
-    expect(anchor.classList.contains("connectableend")).toBe(false);
-  });
-});
-
-describe("挂上以后补量一次", () => {
-  /**
-   * 节点体懒加载，把手随它晚到；RF 只在节点第一次量尺寸时记 `handleBounds`。
-   * 不补量，第一个该种类的节点圆点看得见、拖不出线。
-   */
-  it("把手挂上那一刻让 RF 重新量这个节点", () => {
-    updateNodeInternals.mockClear();
-    renderFlow(<ConnectionHandles />, { nodeId: "late-node" });
-    expect(updateNodeInternals).toHaveBeenCalledWith("late-node");
-  });
-});
-
-describe("不在任何画布里", () => {
-  it("没有 provider 也不在节点里（手机焦点页）：不画把手，也不抛错", () => {
+  it("不在画板宿主里（手机焦点页）：不画把手，也不抛错", () => {
     const { container } = render(<ConnectionHandles />);
-    const { sources, drop, anchor } = handles(container);
-    expect(sources).toHaveLength(0);
-    expect(drop).toBeNull();
-    expect(anchor).toBeNull();
+    expect(handles(container)).toHaveLength(0);
   });
 });

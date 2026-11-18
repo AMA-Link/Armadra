@@ -58,9 +58,7 @@ describe("手机布局里的小地图收起钮", () => {
   it("--navigation-bottom 写在缩略图与收起钮共同的祖先上", () => {
     expect(rule).not.toBeNull();
     // 缩略图本身不再单独覆盖：收起后它不渲染，收起钮读不到那个值。
-    expect(compactBlock()).not.toMatch(
-      /react-flow__minimap \{ --navigation-bottom/,
-    );
+    expect(compactBlock()).not.toMatch(/board-minimap \{ --navigation-bottom/);
   });
 
   it("按一行 Dock 的高度让位，没有两行的 --dock-stack-h（#766）", () => {

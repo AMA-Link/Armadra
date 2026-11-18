@@ -70,6 +70,14 @@ export function createInputRouter(
     meta: e.metaKey,
     ctrl: e.ctrlKey,
   });
+  // 触屏 / 笔认接触点：浏览器的触摸校正会把目标挪到附近「可点」的元素上，漏掉小把手。
+  const contact = (e: PointerEvent): EventTarget | null => {
+    const hit =
+      e.pointerType === "mouse"
+        ? null
+        : document.elementFromPoint?.(e.clientX, e.clientY);
+    return hit && container.contains(hit) ? hit : e.target;
+  };
   const input = (e: PointerEvent, target?: HitTarget): PointerInput => {
     const screen = local(e);
     const world = camera.screenToWorld(screen);
@@ -84,7 +92,7 @@ export function createInputRouter(
       world,
       pressure: e.pressure,
       mods: mods(e),
-      target: target ?? resolve(e.target, world),
+      target: target ?? resolve(contact(e), world),
       time: e.timeStamp,
     };
   };
@@ -176,6 +184,9 @@ export function createInputRouter(
     if (orphans.delete(e.pointerId)) return;
     if (contacts.has(e.pointerId)) cancel();
   };
+  // 只有容器丢了捕获才算取消：触屏按下时隐式捕获在子元素上，移交给容器时子元素收到的是交接。
+  const onLostCapture = (e: PointerEvent) =>
+    void (e.target === container && onCancel(e));
   /** 识别器刚触发过：随后原生的 contextmenu / dblclick / click 算同一下。 */
   const echo = (e: Event) =>
     recognizer.firedAt > 0 && e.timeStamp - recognizer.firedAt < ECHO_WINDOW_MS;
@@ -214,7 +225,7 @@ export function createInputRouter(
     on<PointerEvent>(container, "pointermove", onMove),
     on<PointerEvent>(container, "pointerup", onUp),
     on<PointerEvent>(container, "pointercancel", onCancel),
-    on<PointerEvent>(container, "lostpointercapture", onCancel),
+    on<PointerEvent>(container, "lostpointercapture", onLostCapture),
     on<WheelEvent>(container, "wheel", wheel, { passive: false }),
     on<MouseEvent>(container, "contextmenu", onMouse),
     on<MouseEvent>(container, "dblclick", onMouse),

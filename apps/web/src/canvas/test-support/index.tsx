@@ -1,7 +1,7 @@
 import * as React from "react";
-import { ReactFlow, ReactFlowProvider, type NodeTypes } from "@xyflow/react";
 
 import { TooltipProvider } from "@/ui/tooltip";
+import { BoardHostProvider } from "../board/host-context";
 import { act, render, type RenderResult } from "@testing-library/react";
 import type { CanvasEdge, CanvasNode, CanvasNodeType } from "@armadra/shared";
 
@@ -13,14 +13,7 @@ import {
 } from "../whiteboard/model";
 
 /**
- * 画布单测的共享夹具（React Flow 计划 §5.3 最后一条）。
- *
- * 三样东西：造节点、造白板对象、把组件挂进一个真的 `<ReactFlow>` 里。
- *
- * 第三样不是可有可无的：`<Handle>` 与 `<NodeResizer>` 要的不只是
- * `<ReactFlowProvider>`，还有 React Flow 在**节点包装层**里给的
- * `NodeIdContext` 与 `HandleConfigContext`。所以 `renderFlow` 老老实实
- * 渲一个只有一个节点的画布，把被测组件当成那个节点的内容。
+ * 画布单测的共享夹具：造节点、造白板对象、把节点内容渲进画板宿主。
  */
 
 const STAMP = "2026-09-06T00:00:00.000Z";
@@ -101,85 +94,26 @@ export function makeWhiteboard(items: Item[] = []): WhiteboardDoc {
   return { ...emptyWhiteboard(), items };
 }
 
-export interface RenderFlowOptions {
-  /** 被测组件所在节点的 id；`useNodeId()` 会读到它。 */
-  nodeId?: string;
-  /** 节点尺寸，`NodeResizer` 与折叠断言要用。 */
-  width?: number;
-  height?: number;
-  selected?: boolean;
-}
-
-export interface FlowRenderResult extends RenderResult {
-  /**
-   * 换掉节点内容而**不重挂画布**。
-   *
-   * 不能用 RTL 的 `rerender`：那会造一个新的 `nodeTypes.test` 组件，React
-   * Flow 会把节点整个卸载重建，「折叠时节点体不卸载」这类断言就失去意义。
-   * 所以内容走一个外部小 store，节点组件本身始终是同一个。
-   */
+export interface NodeRenderResult extends RenderResult {
+  /** 换掉节点内容而不重挂：外层组件始终是同一个，状态与 DOM 保留。 */
   rerenderNode: (next: React.ReactNode) => void;
 }
 
 /**
- * 把 `children` 当成一个自定义节点的内容渲进真实画布。
- *
- * jsdom 量不出容器尺寸，所以显式给 `width` / `height`；React Flow 的
- * `onError` 接成空操作，免得它为「容器没有宽高」在每个测试里刷一行警告。
+ * 把 `children` 渲成一个画板宿主里的节点内容：与应用同样有 `TooltipProvider`
+ * （节点里的图标钮用 `Tooltip`），并标明在画板宿主里（连线把手据此才画）。
  */
-export function renderFlow(
-  children: React.ReactNode,
-  options: RenderFlowOptions = {},
-): FlowRenderResult {
-  const nodeId = options.nodeId ?? "test-node";
-  let current = children;
-  const listeners = new Set<() => void>();
-  const subscribe = (listener: () => void) => {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
-  };
-  const Slot = () => (
-    <>
-      {React.useSyncExternalStore(
-        subscribe,
-        () => current,
-        () => current,
-      )}
-    </>
+export function renderNode(children: React.ReactNode): NodeRenderResult {
+  const frame = (content: React.ReactNode) => (
+    <BoardHostProvider value>
+      <TooltipProvider delayDuration={0}>{content}</TooltipProvider>
+    </BoardHostProvider>
   );
-  const nodeTypes: NodeTypes = { test: Slot };
-  // 与 `App` 同样有一个 `TooltipProvider`：节点里的图标钮用 `Tooltip`
-  const result = render(
-    <ReactFlowProvider>
-      <TooltipProvider delayDuration={0}>
-        <ReactFlow
-          width={800}
-          height={600}
-          nodeTypes={nodeTypes}
-          nodes={[
-            {
-              id: nodeId,
-              type: "test",
-              position: { x: 0, y: 0 },
-              width: options.width ?? 240,
-              height: options.height ?? 200,
-              selected: options.selected ?? false,
-              data: {},
-            },
-          ]}
-          edges={[]}
-          onError={() => undefined}
-        />
-      </TooltipProvider>
-    </ReactFlowProvider>,
-  );
+  const result = render(frame(children));
   return {
     ...result,
     rerenderNode(next) {
-      current = next;
-      act(() => {
-        for (const listener of listeners) listener();
-      });
+      act(() => result.rerender(frame(next)));
     },
   };
 }

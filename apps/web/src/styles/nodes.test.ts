@@ -72,10 +72,9 @@ describe("nodes.css 节点壳（设计系统 §4）", () => {
     expect(selected).toContain("var(--shadow-node-lift)");
   });
 
-  it("不可连接的把手变 --danger 并抖（armadra-handle-shake 240ms）", () => {
-    expect(nodesCss).toContain("connectingto:not(.valid)");
-    expect(nodesCss).toContain("background: var(--danger)");
-    expect(nodesCss).toContain("animation: armadra-handle-shake 240ms linear");
-    expect(block("@keyframes armadra-handle-shake {")).toContain("translate");
+  it("把手抖动的关键帧用独立的 translate，不动把手自己定位用的 transform", () => {
+    const shake = block("@keyframes armadra-handle-shake {");
+    expect(shake).toContain("translate");
+    expect(shake).not.toContain("transform");
   });
 });

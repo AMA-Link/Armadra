@@ -1,7 +1,7 @@
 # 实现状态与验证证据
 
 > 更新：2026-09-04  
-> 需求基线：[requirements.md](./requirements.md) · 实施契约：[v3-agent-terminal-plan.md](../contracts/v3-agent-terminal-plan.md)（画布层由 [tldraw-canvas-plan.md](./tldraw-canvas-plan.md) 取代，该文又已被 [canvas-react-flow.md](../design/canvas-react-flow.md) 取代）
+> 需求基线：[requirements.md](./requirements.md) · 实施契约：[v3-agent-terminal-plan.md](../contracts/v3-agent-terminal-plan.md)（画布层由 [tldraw-canvas-plan.md](./tldraw-canvas-plan.md) 取代，该文又已被 [canvas-react-flow.md](canvas-react-flow.md) 取代）
 
 ## v4 tldraw 画布（2026-09-04，分支 `main`，未合并）
 

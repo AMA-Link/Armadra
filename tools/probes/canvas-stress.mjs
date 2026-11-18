@@ -1,6 +1,6 @@
 // 画布压力探针：30 个终端节点 + **真实会话**。
 //
-// 现有基线（`docs/design/canvas-react-flow.md` §6.5）的 30 个终端节点没有会话，
+// 现有基线（`docs/history/canvas-react-flow.md` §6.5）的 30 个终端节点没有会话，
 // 所以量不到用户报的卡顿——卡顿正出在「会话状态跳动 → `updateNodeData` → 换一份
 // document → 全量重投影」这条链上（Armadra 画布初步分析；实测修正见 docs/status/canvas-performance-baseline.md §5.2）。
 // 这个脚本把那一列补上：每个终端节点都真的连着一个 Runtime PTY 会话。
@@ -50,7 +50,7 @@ import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import {
-  ENGINES,
+  CANVAS_DOM,
   SCHEMA,
   SELECTORS,
   buildInkWhiteboardV3,
@@ -62,25 +62,8 @@ import {
 import { isolatedEnv, probeHome } from "./probe-home.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
-const flags = process.argv.slice(2).filter((arg) => arg.startsWith("--"));
 const positional = process.argv.slice(2).filter((arg) => !arg.startsWith("--"));
-const engineFlag = flags.find((flag) => flag.startsWith("--engine="));
-const engine = engineFlag
-  ? engineFlag.slice("--engine=".length)
-  : process.argv.includes("--engine")
-    ? process.argv[process.argv.indexOf("--engine") + 1]
-    : "current";
-if (!(engine in ENGINES)) {
-  console.error(
-    `--engine 只能是 ${Object.keys(ENGINES).join(" | ")}：${engine}`,
-  );
-  process.exit(2);
-}
-if (process.argv.includes("--engine")) {
-  // 「--engine next」两个词的写法：后一个词不是位置参数。
-  positional.splice(positional.indexOf(engine), 1);
-}
-const dom = ENGINES[engine];
+const dom = CANVAS_DOM;
 const output = resolve(positional[0] ?? join(root, "target/canvas-stress"));
 const terminalCount = Number(positional[1] ?? 30);
 mkdirSync(output, { recursive: true });
@@ -99,7 +82,6 @@ const reactSegments = (process.env.CANVAS_BENCH_REACT ?? "").split(",");
 const profileSegments = (process.env.CANVAS_BENCH_PROFILE ?? "").split(",");
 const report = {
   schema: SCHEMA,
-  engine,
   status: "failed",
   capped,
   terminals: terminalCount,
@@ -488,7 +470,7 @@ async function main() {
       nodes,
       edges: [],
       // 既有基线的最坏情况：`scale 0.35`，所有节点都在视口里，React Flow
-      // 不裁剪（`docs/design/canvas-react-flow.md` §6.5）。视口直接写进文档，
+      // 不裁剪（`docs/history/canvas-react-flow.md` §6.5）。视口直接写进文档，
       // 不靠 `fitView`——那是个藏在下拉里的菜单项，脚本点不稳。
       viewport: { x: 280, y: 80, zoom: 0.35 },
       whiteboard: "",
@@ -684,9 +666,9 @@ async function main() {
     void call("Page.handleJavaScriptDialog", { accept: true });
   });
   await call("Page.addScriptToEvaluateOnNewDocument", { source: INSTRUMENT });
-  // 引擎开关与取证把手（`armadra.diag` 才暴露 `__armadraCanvasStore`，量墨迹条数用）。
+  // 取证把手（`armadra.diag` 才暴露 `__armadraCanvasStore`，量墨迹条数用）。
   await call("Page.addScriptToEvaluateOnNewDocument", {
-    source: `try { localStorage.setItem("armadra.canvas.engine", ${JSON.stringify(engine)}); localStorage.setItem("armadra.diag", "1"); } catch {}`,
+    source: `try { localStorage.setItem("armadra.diag", "1"); } catch {}`,
   });
   await call("Emulation.setDeviceMetricsOverride", {
     width: 1440,

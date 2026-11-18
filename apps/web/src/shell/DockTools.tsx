@@ -43,7 +43,7 @@ import { useMenuTooltip } from "./menu-tooltip";
  * Dock 的白板工具组（React Flow 计划 F21）。
  *
  * 高亮跟着 `interaction/tool-store` 走，点击只发画布命令——真正的
- * `setTool` 在 `FlowWorkspace` 里注册，所以快捷键、命令面板、这一排按钮
+ * `setTool` 在 `BoardWorkspace` 里注册，所以快捷键、命令面板、这一排按钮
  * 走的是同一条路径。
  *
  * 当前工具那一格的底块是共享指示器（`ui/indicator`）：切工具时它平移过去，

@@ -12,6 +12,8 @@ import { MOTION_TRANSITION } from "./ui/motion";
 // Tailwind v4 入口；它自己 @import 了 tokens.css，这里不再单独引入
 import "./styles/app.css";
 import "./styles/nodes.css";
+// 画布样式（舞台、宿主、把手、缩略图、连线）。它曾挂在旧画布入口上，入口删掉后要在这里引。
+import "./styles/canvas.css";
 import { applyInitialTheme } from "./app/preferences-store";
 import { mountSplash } from "./splash/mount";
 import { MobileRoot } from "./mobile/MobileRoot";

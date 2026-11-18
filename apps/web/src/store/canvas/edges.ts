@@ -18,7 +18,7 @@ export function createEdgesSlice(
       const to = nodes.find((node) => node.id === target);
       if (!from || !to) return null;
       // 方向按用户拖的来（§21）：任意两个节点都能连，箭头由两端的类型决定
-      // （`sync/project.edgeArrowheads`），文档里只记谁连了谁。
+      // （`sync/project-edges.edgeArrowheads`），文档里只记谁连了谁。
       const duplicate = state.document.edges.some(
         (edge) =>
           (edge.source === from.id && edge.target === to.id) ||

@@ -12,7 +12,7 @@ import { type Item, type WhiteboardDoc } from "./whiteboard/model";
  * 与白板对象那条路完全一样，判定仍在 `create-content-reference.ts`。
  *
  * **成员按几何算，不按 `parentId`。** 节点确实有 `parentId`（拖进 Frame 时
- * `use-flow-nodes.commitDrag` 会写），白板对象却从来没有人给它写过——画笔、
+ * `board/board-adapter` 会写），白板对象却从来没有人给它写过——画笔、
  * 形状、文字、剪贴板落成的对象一律不带 `parentId`（`whiteboard/tools/draft.ts`）。
  * 所以这里两类成员用同一条判据：**中心落在 Frame 的矩形里**，与
  * `geometry.hitTestGroup` 给节点换父时用的是同一条。`parentId` 已经指向这个

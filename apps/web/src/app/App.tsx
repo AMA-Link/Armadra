@@ -1,12 +1,11 @@
-import { Suspense, lazy, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   QueryClient,
   QueryClientProvider,
   useQueryClient,
 } from "@tanstack/react-query";
 import { useWorkspaceEvents } from "../api/events";
-import { FlowWorkspace } from "../canvas/FlowWorkspace";
-import { usePreferencesStore } from "./preferences-store";
+import { BoardWorkspace } from "../canvas/board/BoardWorkspace";
 // 浮层都在 `./lazy` 里 `React.lazy` 包过，走各自的 chunk（§17 代码分割）；
 // `./Overlays` 是它们的挂载点，也是决定 chunk 什么时候才被取回来的闸门。
 import { Overlays } from "./Overlays";
@@ -44,16 +43,6 @@ import { useSourceSwitchCacheReset } from "./use-sources-bootstrap";
 import { useCanvasPreferences } from "./use-canvas-preferences";
 import { SharedSessionHost } from "../shared-session/SharedSessionHost";
 
-/**
- * 自研画板引擎的画布（`canvas.engine = "next"`）单独成块加载：缺省的 `current` 路径
- * 不带它的任何代码（docs/design/board-engine.md §6.1 B3）。
- */
-const BoardWorkspace = lazy(() =>
-  import("../canvas/board/BoardWorkspace").then((module) => ({
-    default: module.BoardWorkspace,
-  })),
-);
-
 function createQueryClient() {
   return new QueryClient({
     defaultOptions: {
@@ -65,9 +54,8 @@ function createQueryClient() {
 /**
  * 应用根：查询客户端、提示层、身份门。
  *
- * 画布引擎自己的 provider 不在这里：旧引擎的 `<ReactFlowProvider>` 由
- * `FlowWorkspace` 自己带，Dock 的缩放档位读 `canvas/flow/stage-view`，命令面板
- * 与侧栏用 `flow-context` 的树外句柄，都不依赖哪一种引擎。
+ * 画布自己的状态不在这里：Dock 的缩放档位读 `canvas/flow/stage-view`，命令面板
+ * 与侧栏用 `flow-context` 的树外句柄。
  */
 export function App() {
   const [queryClient] = useState(createQueryClient);
@@ -92,7 +80,6 @@ export function App() {
  */
 function AppShell() {
   const workspace = useCanvasStore((state) => state.workspace);
-  const canvasEngine = usePreferencesStore((state) => state.canvasEngine);
   const minimapCollapsed = useMinimapPreferences((state) => state.collapsed);
   const compact = useCompactLayout();
   // 开屏刚退场的那一次，侧栏 → 画布 → 工具三块错落入场（`first-screen.css`）
@@ -152,14 +139,7 @@ function AppShell() {
         className="workspace-surface relative min-w-0 flex-1"
         data-minimap-collapsed={minimapCollapsed}
       >
-        {workspace &&
-          (canvasEngine === "next" ? (
-            <Suspense fallback={null}>
-              <BoardWorkspace />
-            </Suspense>
-          ) : (
-            <FlowWorkspace />
-          ))}
+        {workspace && <BoardWorkspace />}
         {!workspace && <NoWorkspaceAccess />}
         {workspace && (
           <>

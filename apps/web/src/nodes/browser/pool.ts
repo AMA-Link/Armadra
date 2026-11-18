@@ -1,54 +1,27 @@
 import * as React from "react";
-import type { CanvasNode } from "@armadra/shared";
-
-import type { ArmadraFlowNode, CanvasFlowNode } from "@/canvas/sync/project";
 
 import {
   BROWSER_DEFAULT_BACKGROUND_MAX,
   usePreferencesStore,
 } from "@/app/preferences-store";
-import { isDesktop } from "@/platform";
-import { useCanvasStore } from "@/store/canvas-store";
 
 /**
- * pool region —— webview 宿主节点在 React Flow `nodes` 数组里的稳定区段
- * （electron-migration.md §4.1，W3.2）。
+ * 浏览器节点的 ghost 池（electron-migration.md §4.1，W3.2）。
  *
- * ## 为什么必须有
+ * 一个已挂载的 `<webview>` 宿主元素一旦被 React 移动（`insertBefore`），guest 当场
+ * 被杀、整页重载。所以切工作空间、折叠分组、节点被丢出场景时，条目不离开场景，
+ * 只变成 **ghost**：同一个 id、`display:none`、零面积、不可命中、不回写。guest
+ * 因此毫发无损，回来时还是同一个进程、同一份页面状态。ghost 数量有上限，逐出
+ * 最久退休的那个。
  *
- * 探针在 Electron 42.10.1
- * 上实测过一遍：拖拽、缩放、平移、在 `nodes` 数组**最前面插入**、**删除兄弟
- * 节点**全部零重载；唯一杀掉 guest 的是**把两个 webview 节点在数组里对调**
- * ——React 对旧索引小于 `lastPlacedIndex` 的那一个调用 `insertBefore`，而
- * `insertBefore` 一个已挂载元素会先 detach，于是整页重载、`webContentsId` 换
- * 号、表单与滚动位置清零。
- *
- * 所以不变量比「只追加」更窄也更准：
- *
- * > **webview 宿主节点之间的相对顺序，在存活期间永不变化。**
- *
- * 插入和删除**不**受限（实测安全），只有「移动」是被禁止的操作。本模块把所
- * 有浏览器节点从常规投影里摘出来、按**首次出现的顺序**排在数组尾部，此后只
- * 追加与删除，从不重排——于是无论上游怎么排序、换父、按选中态调整，React 都
- * 拿不到一个需要移动它们的更新。
- *
- * ## ghost
- *
- * 切工作空间、折叠分组、节点被投影丢掉时，条目不离开 pool，只变成 **ghost**：
- * 同一个 node id、`display:none`、零尺寸、不可拖不可选不可连、不回写。
- * guest 因此毫发无损（`display:none` 是实测安全的那一类），回来时还是同一个
- * 进程、同一份页面状态。ghost 数量有上限，逐出最久退休的那个。
- *
- * ## 代价
- *
- * 未选中的浏览器节点会盖在与它重叠的其他未选中节点之上——它们排在数组尾部，
- * 而 `zIndex` 只在不同层级间分胜负。选中态 `z = 1000` 仍然赢。
+ * 场景条目由画布适配器管（`canvas/board/board-adapter.ts`），这里只留两样：
+ * 上限怎么算，以及「这个节点现在是不是 ghost」的订阅。
  */
 
 /**
  * 后台（ghost）guest 上限的**默认值**。真正生效的是设置里的那一项。
  *
- * 逐出在每一次投影时判一遍，所以读在那时候发生：设置页把上限调小，下一帧
+ * 逐出在每一次同步时判一遍，所以读在那时候发生：设置页把上限调小，下一帧
  * 就把多出来的 ghost 逐掉，不用等应用重启。
  *
  * 同一个上限在 `./background` 里先起一次作用，而且更早：超出上限的隐藏
@@ -67,7 +40,7 @@ export const BACKGROUND_WEBVIEW_MAX = BROWSER_DEFAULT_BACKGROUND_MAX;
  * 里管的是「几个后台节点还在池里」（超出的条目直接消失，回来是一个全新的组
  * 件，标签与地址从文档重新长出来）。
  *
- * 两者一样大的时候，池那一侧**总是先动手**——逐出在每一次投影时判，而回收
+ * 两者一样大的时候，池那一侧**总是先动手**——逐出在每一次同步时判，而回收
  * 的定时器十五秒才醒一次。实测：切走一块有五个浏览器节点的画布，上限 2，
  * 瞬间少掉三个 `<webview>`，而三个「已释放」占位一个都没出现。于是更狠的
  * 那一步永远先发生，温和的那一步形同虚设。
@@ -84,41 +57,6 @@ export function ghostEntryMax(): number {
   );
 }
 
-/**
- * 这个条目是不是**被人删掉了**，而不是只从投影里消失。
- *
- * ghost 存在的前提是「节点还在，只是这一帧没投影出来」——切工作空间、折叠
- * 分组都属于这一类，guest 必须活着。删除不是：文档里那一行没了，再留着
- * guest 就是一个看不见、关不掉、还在吃内存和网络的 Chromium 渲染进程，而它
- * 要等到后面攒够 `backgroundMax` 个 ghost 才被逐出。
- *
- * 判据只有一条能分开这两件事：**同一块画布还开着**（`boardId` 没变），而这
- * 个 id 已经不在它的文档里。切板 / 切工作空间时 `boardId` 变了，这条判据自
- * 动不成立，于是照旧变 ghost。
- */
-function wasDeleted(entry: PoolEntry): boolean {
-  const state = useCanvasStore.getState();
-  if (state.boardId !== entry.boardId) return false;
-  const document = state.document;
-  if (!document) return false;
-  return !document.nodes.some((node) => node.id === entry.id);
-}
-
-interface PoolEntry {
-  id: string;
-  /** 最后一次活着时的投影。ghost 期间照它派生，位置与尺寸不再更新。 */
-  node: ArmadraFlowNode;
-  /** 建这个条目时开着的画布。删除判定要拿它和当前的比。 */
-  boardId: string | null;
-  /** 退休时刻；`null` 表示还活着。 */
-  retiredAt: number | null;
-}
-
-/**
- * 模块级而不是 React state：pool 的存在意义就是「比任何一棵组件树活得久」。
- * 挂在 hook 里的话，`FlowWorkspace` 一次卸载就把它清空了。
- */
-let entries: PoolEntry[] = [];
 let ghostIds: ReadonlySet<string> = new Set();
 const listeners = new Set<() => void>();
 
@@ -127,167 +65,13 @@ function notify(): void {
 }
 
 /**
- * 自研引擎的 ghost：场景里留着条目（宿主 DOM 与 `<webview>` 就还在），由画布适配器
- * 报告哪些 id 现在是 ghost；`useIsGhost` 据此让节点体不回写、不算可见性。
+ * 场景里留着 ghost 条目（宿主 DOM 与 `<webview>` 就还在），由画布适配器报告哪些
+ * id 现在是 ghost；`useIsGhost` 据此让节点体不回写、不算可见性。
  */
 export function setGhostIds(ids: ReadonlySet<string>): void {
   if (sameSet(ids, ghostIds)) return;
   ghostIds = ids;
   notify();
-}
-
-/** 只给测试用：清空 pool，下一次投影从头来。 */
-export function resetWebviewPool(): void {
-  entries = [];
-  ghostIds = new Set();
-  notify();
-}
-
-/** 当前 pool 的 id 顺序。测试用它断言「相对顺序是上一帧的延续」。 */
-export function webviewPoolOrder(): string[] {
-  return entries.map((entry) => entry.id);
-}
-
-function isBrowserNode(node: CanvasFlowNode): node is ArmadraFlowNode {
-  return (
-    node.type === "armadra" && (node.data as CanvasNode).type === "browser"
-  );
-}
-
-/**
- * 把一个活条目降级成 ghost。
- *
- * 五件事缺一不可：`display:none` 让 guest 活着但不可见；去掉 `parentId`（它的
- * 分组可能属于另一个工作空间，React Flow 找不到父节点会算不出子流坐标）；尺寸
- * 归零、落在 `anchor`；三个交互开关全关；`selected` 清掉（否则切回来时选区是
- * 上一个工作空间留下的）。
- *
- * 尺寸归零是为了缩略图与「适应」（#905）：不能用 `hidden`（React Flow 会卸载
- * 节点，guest 当场重载），而 `<MiniMap>` 与 `getNodesBounds` 只认 `hidden`，
- * 一个保留原尺寸的 ghost 会在缩略图里画出一块看不见的矩形，并撑大两边的
- * 范围。零面积的点不会被画出来；放在 `anchor`（当前画布里已有的一个点）上，
- * 也就不会把范围撑到别处去。条目里留着活着时的投影，复活时尺寸照旧。
- */
-function ghostOf(
-  node: ArmadraFlowNode,
-  anchor: { x: number; y: number },
-): ArmadraFlowNode {
-  const { parentId: _parentId, ...rest } = node;
-  return {
-    ...rest,
-    position: anchor,
-    width: 0,
-    height: 0,
-    measured: { width: 0, height: 0 },
-    selected: false,
-    draggable: false,
-    selectable: false,
-    focusable: false,
-    connectable: false,
-    style: { ...(node.style ?? {}), display: "none" },
-  } as ArmadraFlowNode;
-}
-
-/**
- * 投影的最后一道：把浏览器节点搬进 pool region。
- *
- * 非 Electron 壳原样返回——那里根本没有 guest，池规则无事可做，也没有
- * guest 可保，多一层重排只会白白改变现有测试看到的数组。
- */
-export function applyWebviewPool(
-  nodes: CanvasFlowNode[],
-  now: number = Date.now(),
-): CanvasFlowNode[] {
-  if (!isDesktop()) return nodes;
-
-  const rest: CanvasFlowNode[] = [];
-  const live = new Map<string, ArmadraFlowNode>();
-  for (const node of nodes) {
-    if (isBrowserNode(node)) live.set(node.id, node);
-    else rest.push(node);
-  }
-  if (live.size === 0 && entries.length === 0) return nodes;
-
-  const known = new Set(entries.map((entry) => entry.id));
-  const deleted: PoolEntry[] = [];
-  for (const entry of entries) {
-    const current = live.get(entry.id);
-    if (current) {
-      entry.node = current;
-      entry.retiredAt = null;
-    } else if (wasDeleted(entry)) {
-      deleted.push(entry);
-    } else if (entry.retiredAt === null) {
-      entry.retiredAt = now;
-    }
-  }
-  // 删掉的立刻离开 pool：条目一消失，React 卸载那个 `<webview>`，guest 进程
-  // 跟着退出。放进 ghost 队列只会让它多活到下一次逐出。
-  if (deleted.length > 0) {
-    const doomed = new Set(deleted.map((entry) => entry.id));
-    entries = entries.filter((entry) => !doomed.has(entry.id));
-    for (const id of doomed) known.delete(id);
-  }
-  // 新条目**追加在尾部**：已有条目的相对顺序因此不变，React 不会移动任何一
-  // 个已挂载的 guest（探针第 6 条：`[A,B,C] → [A,B,C,X]` 与在最前面插入都是
-  // 零重载，致命的只有对调）。
-  for (const [id, node] of live) {
-    if (!known.has(id)) {
-      entries.push({
-        id,
-        node,
-        boardId: useCanvasStore.getState().boardId,
-        retiredAt: null,
-      });
-    }
-  }
-
-  evictGhosts();
-
-  const nextGhosts = new Set(
-    entries.filter((entry) => entry.retiredAt !== null).map((e) => e.id),
-  );
-  if (!sameSet(nextGhosts, ghostIds)) {
-    ghostIds = nextGhosts;
-    // 渲染期间不能直接叫别的组件重渲。pool 的更新本身就是由一次投影驱动
-    // 的，所以订阅者要的只是「这一帧之后再看一眼」。
-    queueMicrotask(notify);
-  }
-
-  const anchor = ghostAnchor(rest);
-  return [
-    ...rest,
-    ...entries.map((entry) =>
-      entry.retiredAt === null ? entry.node : ghostOf(entry.node, anchor),
-    ),
-  ];
-}
-
-/**
- * ghost 落在哪：当前投影里第一个顶层节点的左上角（它的 `position` 就是画布
- * 坐标），一个都没有就原点。这个点本来就在内容范围里，零面积的 ghost 放在
- * 这里不会改变缩略图与「适应」的范围。
- */
-function ghostAnchor(nodes: readonly CanvasFlowNode[]): {
-  x: number;
-  y: number;
-} {
-  const top = nodes.find((node) => !node.parentId);
-  return top ? { x: top.position.x, y: top.position.y } : { x: 0, y: 0 };
-}
-
-/** 逐出最久退休者，直到 ghost 数量落回上限。活着的永远不动。 */
-function evictGhosts(): void {
-  let retired = entries.filter((entry) => entry.retiredAt !== null);
-  const max = ghostEntryMax();
-  while (retired.length > max) {
-    let oldest = retired[0]!;
-    for (const entry of retired) {
-      if (entry.retiredAt! < oldest.retiredAt!) oldest = entry;
-    }
-    entries = entries.filter((entry) => entry !== oldest);
-    retired = retired.filter((entry) => entry !== oldest);
-  }
 }
 
 function sameSet(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {

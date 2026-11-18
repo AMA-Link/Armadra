@@ -321,7 +321,7 @@ const PAGE_STATE = `
     domElements: document.getElementsByTagName("*").length,
     xtermRowElements: [...document.querySelectorAll(".xterm-rows")].reduce((sum, rows) => sum + rows.childElementCount, 0),
     canvases: document.querySelectorAll(".xterm canvas").length,
-    visibleNodes: [...document.querySelectorAll(".react-flow__node")].filter((node) => {
+    visibleNodes: [...document.querySelectorAll("[data-board-layer=world] > [data-board-id]")].filter((node) => {
       const box = node.getBoundingClientRect();
       return box.right > 0 && box.bottom > 0 && box.left < innerWidth && box.top < innerHeight;
     }).length,
@@ -332,7 +332,7 @@ const PAGE_STATE = `
 const PAGE_SCREENS = `
   return [...document.querySelectorAll('[data-slot="terminal-body"]')].map((body) => {
     const rows = body.querySelector(".xterm-rows");
-    if (!rows) return { nodeId: body.closest(".react-flow__node")?.dataset.id ?? null, rows: 0, lines: [], cursor: null };
+    if (!rows) return { nodeId: body.closest("[data-board-layer=world] > [data-board-id]")?.dataset.boardId ?? null, rows: 0, lines: [], cursor: null };
     const children = [...rows.children];
     let cursor = null;
     const mark = rows.querySelector(".xterm-cursor");
@@ -344,7 +344,7 @@ const PAGE_SCREENS = `
       cursor = { x: range.toString().length, y: row };
     }
     return {
-      nodeId: body.closest(".react-flow__node")?.dataset.id ?? null,
+      nodeId: body.closest("[data-board-layer=world] > [data-board-id]")?.dataset.boardId ?? null,
       rows: children.length,
       lines: children.map((child) => child.textContent.replace(/\\u00a0/g, " ")),
       cursor,
@@ -353,9 +353,9 @@ const PAGE_SCREENS = `
 `;
 
 const anyVisible = `
-  const pane = document.querySelector(".react-flow__pane");
+  const pane = document.querySelector("[data-board-stage]");
   const r = pane.getBoundingClientRect();
-  const anyVisible = () => [...document.querySelectorAll(".react-flow__node")].some((n) => {
+  const anyVisible = () => [...document.querySelectorAll("[data-board-layer=world] > [data-board-id]")].some((n) => {
     const b = n.getBoundingClientRect();
     return b.right > r.left && b.bottom > r.top && b.left < r.right && b.top < r.bottom;
   });
@@ -771,7 +771,7 @@ async function scenario(options, output, report, cleanups, save) {
       throw new Error(`只挂上了 ${mounted} / ${options.terminals} 个终端`);
     return mounted;
   };
-  // 画布的实际大小随侧栏与面板变：先打开一块空板量 `.react-flow__pane`，再写要测的那块板
+  // 画布的实际大小随侧栏与面板变：先打开一块空板量 `[data-board-stage]`，再写要测的那块板
   // （页面打开的板由它持有编辑租约，写不进去，所以量的是另一块）。
   await page.send("Page.enable");
   const measureBoard = await api(`/api/workspaces/${workspace.id}/boards`, {
@@ -785,7 +785,7 @@ async function scenario(options, output, report, cleanups, save) {
   for (let i = 0; i < 60 && !pane; i += 1) {
     await sleep(500);
     pane = await evaluate(`
-      const box = document.querySelector(".react-flow__pane")?.getBoundingClientRect();
+      const box = document.querySelector("[data-board-stage]")?.getBoundingClientRect();
       return box && box.width > 0 ? { width: Math.round(box.width), height: Math.round(box.height) } : null;
     `).catch(() => null);
   }

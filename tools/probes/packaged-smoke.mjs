@@ -693,7 +693,7 @@ async function main() {
     "画布节点渲染",
     () =>
       evaluate(
-        `return document.querySelectorAll(".react-flow__node").length >= 3;`,
+        `return document.querySelectorAll("[data-board-layer=world] > [data-board-id]").length >= 3;`,
       ),
     { timeout: 90_000 },
   );
@@ -704,14 +704,14 @@ async function main() {
     "PDF 框架载入",
     () =>
       evaluate(
-        `return !!document.querySelector('.react-flow__node[data-id="${pdf.id}"] iframe, .react-flow__node[data-id="${pdf.id}"] embed, .react-flow__node[data-id="${pdf.id}"] object');`,
+        `return !!document.querySelector('[data-board-layer=world] > [data-board-id="${pdf.id}"] iframe, [data-board-layer=world] > [data-board-id="${pdf.id}"] embed, [data-board-layer=world] > [data-board-id="${pdf.id}"] object');`,
       ),
     { timeout: 30_000 },
   );
   const videoInfo = await waitSoft(
     () =>
       evaluate(`
-        const v = document.querySelector('.react-flow__node[data-id="${video.id}"] video');
+        const v = document.querySelector('[data-board-layer=world] > [data-board-id="${video.id}"] video');
         return v && (v.readyState >= 1 || v.error) ? { controls: v.controls, duration: v.duration, w: v.videoWidth, h: v.videoHeight, error: v.error?.code ?? null } : null;
       `),
     { timeout: 30_000 },
@@ -723,7 +723,7 @@ async function main() {
   );
   // 播一下，截到的是真解码出来的帧而不是黑的海报。
   await evaluate(`
-    const v = document.querySelector('.react-flow__node[data-id="${video.id}"] video');
+    const v = document.querySelector('[data-board-layer=world] > [data-board-id="${video.id}"] video');
     if (v) { v.muted = true; await v.play().catch(() => {}); await new Promise((d) => setTimeout(d, 600)); v.pause(); }
     return 1;
   `);
@@ -732,7 +732,7 @@ async function main() {
   const image = decodePng(readFileSync(mediaShot));
   const rect = (id, selector) =>
     evaluate(`
-      const el = document.querySelector('.react-flow__node[data-id="${id}"] ${selector}');
+      const el = document.querySelector('[data-board-layer=world] > [data-board-id="${id}"] ${selector}');
       if (!el) return null;
       const r = el.getBoundingClientRect();
       return { x: r.left, y: r.top, width: r.width, height: r.height };
@@ -793,7 +793,7 @@ async function main() {
   };
   const focusCodex = async () => {
     const point = await evaluate(`
-      const node = document.querySelector('.react-flow__node[data-id="${codex.id}"]');
+      const node = document.querySelector('[data-board-layer=world] > [data-board-id="${codex.id}"]');
       const area = node?.querySelector('.xterm-screen') ?? node;
       if (!area) return null;
       const r = area.getBoundingClientRect();
@@ -927,13 +927,13 @@ async function main() {
         "画布节点渲染",
         () =>
           evaluate(
-            `return document.querySelectorAll(".react-flow__node").length >= 3;`,
+            `return document.querySelectorAll("[data-board-layer=world] > [data-board-id]").length >= 3;`,
           ),
         { timeout: 90_000 },
       );
       await sleep(2000);
       const header = await evaluate(
-        `return document.querySelector('.react-flow__node[data-id="${codex.id}"]')?.textContent?.slice(0, 200) ?? null;`,
+        `return document.querySelector('[data-board-layer=world] > [data-board-id="${codex.id}"]')?.textContent?.slice(0, 200) ?? null;`,
       );
       check("回到画布，节点显示休眠中", /休眠/.test(header ?? ""), header);
       await shot("packaged-hibernated");

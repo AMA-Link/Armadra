@@ -85,7 +85,7 @@ async function editWhen(page, command, text) {
 async function canvasFocus(page) {
   // 点一下画布空白处，键盘事件落在画布上而不是某个输入框里。
   await page.clickOn(
-    `return document.querySelector(".react-flow__pane");`,
+    `return document.querySelector("[data-board-stage]");`,
     "画布空白处",
   );
 }

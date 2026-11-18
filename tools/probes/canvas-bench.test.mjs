@@ -11,7 +11,7 @@ import {
   SELECTORS,
   SEGMENTS,
   aggregate,
-  ENGINES,
+  CANVAS_DOM,
   buildInkWhiteboardV2,
   buildInkWhiteboardV3,
   compareMetrics,
@@ -140,18 +140,16 @@ test("墨迹白板样本 v3：与 v2 同一配方，逐条逐点等价", () => {
   }
 });
 
-test("两个引擎的页面选择器都齐全", () => {
-  for (const name of ["current", "next"]) {
-    for (const key of [
-      "node",
-      "viewport",
-      "selected",
-      "dragHandle",
-      "idAttr",
-      "stage",
-    ]) {
-      assert.equal(typeof ENGINES[name][key], "string", `${name}.${key}`);
-    }
+test("画布页面选择器齐全", () => {
+  for (const key of [
+    "node",
+    "viewport",
+    "selected",
+    "dragHandle",
+    "idAttr",
+    "stage",
+  ]) {
+    assert.equal(typeof CANVAS_DOM[key], "string", key);
   }
 });
 
