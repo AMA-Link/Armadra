@@ -2,6 +2,44 @@
 
 每个版本一节，按发布倒序。括号里是合入的 PR 编号（github.com/AMA-Link/Armadra，2026-10-11 前为 Owlbay/Armadra，旧编号照常跳转）。兼容范围以 `tools/release/compatibility.json` 为准，发布说明里的 `armadra-compatibility` 围栏由它渲染。桌面、服务器与手机 / 平板 App 共用一条版本线和一个标签 `vX.Y.Z`（规则见 `docs/guides/ci-release.md`「版本规则」）；有手机端改动的版本，在「手机与平板」小节里写，其余写在「桌面 / 服务器」下。2026-10-10 之前手机端曾单独编号（1.0.0、1.1.0），内容并入对应的 0.2.5、0.2.6。
 
+## 0.20.0（2026-11-17）
+
+版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.20.0。随包 `@armadra/agent` 0.20.0（没有功能改动）与平台协议包 0.20.0（没有形状变化，协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.20.0。本版是功能版：自研画板引擎 `@armadra/board` 完成性能收尾并成为唯一画布，`@xyflow/react` 移除。
+
+Version aligned with armadra-cloud and armadra-agent (all three ship 0.20.0), with `@armadra/agent` 0.20.0 (no functional change) and platform protocol 0.20.0 (no shape changes, still protocol 1.4); matching images `armadra-cloud` / `armadra-relay` 0.20.0. A feature release: the in-house board engine `@armadra/board` finishes its performance pass and becomes the only canvas, and `@xyflow/react` is removed.
+
+### 画布与白板
+
+- 画板引擎性能收尾（B6，#967）：与旧引擎在同一提交上做对比基准，54 项指标都不比旧引擎差；平移主线程耗时降 60%，拖动降 90%，墨迹下平移降 63%；画布层离屏缓存；会话状态变化时减少重渲染；缩放手柄只在单选时出现。
+  Board engine performance pass (B6, #967): a same-commit benchmark against the old engine shows all 54 metrics no worse; main-thread time drops 60% for panning, 90% for dragging and 63% for panning over ink; offscreen canvas-layer cache; fewer re-renders on session status changes; resize handles appear only on a single selection.
+- 新引擎成为唯一画布（B6b，#968，Closes #952）：`canvas.engine` 开关取消，`@xyflow/react` 移除；首屏 JS 由 837 KB 降到 693 KB，CSS 由 251 KB 降到 218 KB。
+  The new engine is the only canvas (B6b, #968, Closes #952): the `canvas.engine` switch is gone and `@xyflow/react` is removed; first-screen JS drops from 837 KB to 693 KB and CSS from 251 KB to 218 KB.
+
+### 修正
+
+- 画布样式表改由应用入口引入（#968）。
+  The canvas stylesheet is now imported from the app entry (#968).
+- iOS 上手指拖动节点：指针捕获交接不再取消拖动（#968）。
+  Dragging nodes with a finger on iOS: the pointer-capture handoff no longer cancels the drag (#968).
+- 触屏按压按接触点命中，较小的缩放手柄也能点到（#968）。
+  Touch presses resolve by contact point, so small resize handles are reachable (#968).
+- 触屏长按不再弹出系统放大镜 / 菜单（#968）。
+  A touch long-press no longer shows the system callout (#968).
+- Dock 的缩放百分比在连续缩放时不再闪烁或卡顿（#968）。
+  The Dock zoom percentage no longer flickers or stutters during continuous zoom (#968).
+
+### 随包 Agent
+
+- `@armadra/agent` 0.20.0：没有功能改动，与统一版本对齐。
+  `@armadra/agent` 0.20.0: no functional change, aligned with the unified version.
+
+### 部署说明
+
+- 无需迁移：旧的 `armadra.canvas.engine` localStorage 键会被直接忽略。没有新的数据库迁移，核心库仍是 0067；核心 JSON API 协议与云端协议（1.4）不变。
+  Nothing to migrate: the old `armadra.canvas.engine` localStorage key is simply ignored. No new database migrations (the core database stays at 0067); the core JSON API protocol and the cloud protocol (1.4) are unchanged.
+- 配套镜像 `ghcr.io/ama-link/armadra-cloud:0.20.0`、`ghcr.io/ama-link/armadra-relay:0.20.0` 与协议包 0.20.0 同号（cloud 侧没有面向用户的改动；控制台页面取自本版服务器壳镜像）；推送中继镜像 `ghcr.io/ama-link/armadra-push-relay:0.20.0` 与服务器壳镜像同号。发版顺序沿用 0.19.0：先打 Armadra `v0.20.0`，等服务器壳镜像推送成功后再打 armadra-cloud `v0.20.0`。
+  Matching images `ghcr.io/ama-link/armadra-cloud:0.20.0` and `ghcr.io/ama-link/armadra-relay:0.20.0` share the number with protocol package 0.20.0 (no user-facing changes on the cloud side; console pages come from this version's server shell image); the push-relay image `ghcr.io/ama-link/armadra-push-relay:0.20.0` shares the number with the server shell image. Release order as in 0.19.0: tag Armadra `v0.20.0` first, then tag armadra-cloud `v0.20.0` once the server shell image has been pushed.
+
 ## 0.19.0（2026-11-16）
 
 版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.19.0。随包 `@armadra/agent` 0.19.0 与平台协议包 0.19.0（没有形状变化，协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.19.0。本版是功能版：自研画板引擎 `@armadra/board`（#952，B0–B5）进入应用，放在 `canvas.engine` 开关后面，缺省仍是现有引擎；白板序列化对两种引擎都切到 v3；随包的 ama 增加本地扩展。
