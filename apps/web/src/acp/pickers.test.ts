@@ -8,7 +8,10 @@ import {
   candidateModes,
   extraConfigOptions,
   isEffortOption,
-  splitConfigOptions,
+  isFastSpeed,
+  isSpeedOption,
+  modeKindOf,
+  splitPopoverOptions,
   firstMessageSent,
   pickModels,
   pickModes,
@@ -216,7 +219,7 @@ describe("extraConfigOptions", () => {
   });
 });
 
-describe("splitConfigOptions", () => {
+describe("splitPopoverOptions", () => {
   const select = (id: string, category?: string) => ({
     id,
     name: id,
@@ -238,21 +241,79 @@ describe("splitConfigOptions", () => {
   it("puts the pi bridge's thought_level into the model picker next to the model", () => {
     const level = select("thought_level", "thought_level");
     const model = select("model", "model");
-    const split = splitConfigOptions(extraConfigOptions([model, level]));
+    const split = splitPopoverOptions(extraConfigOptions([model, level]));
     expect(split.effort?.id).toBe("thought_level");
+    expect(split.speed).toBeNull();
     expect(split.rest).toEqual([]);
   });
 
-  it("takes the first level for the model picker and leaves the rest inline", () => {
+  it("takes the first level for the column, the speed for the footer, and keeps the rest", () => {
     const level = select("effort", "thought_level");
     const other = select("thinking");
     const style = select("style");
-    const { effort, rest } = splitConfigOptions([style, level, other]);
+    const fast = {
+      id: "fast_mode",
+      name: "Fast mode",
+      type: "boolean" as const,
+      currentValue: true,
+      options: [],
+    };
+    const { effort, speed, rest } = splitPopoverOptions([
+      style,
+      fast,
+      level,
+      other,
+    ]);
     expect(effort).toBe(level);
+    expect(speed).toBe(fast);
     expect(rest).toEqual([style, other]);
-    expect(splitConfigOptions([style])).toEqual({
+    expect(splitPopoverOptions([style])).toEqual({
       effort: null,
+      speed: null,
       rest: [style],
     });
+  });
+
+  it("recognises a fast toggle or a service tier as the speed", () => {
+    const toggle = (id: string, on: boolean) => ({
+      id,
+      name: id,
+      type: "boolean" as const,
+      currentValue: on,
+      options: [],
+    });
+    expect(isSpeedOption(toggle("fastMode", false))).toBe(true);
+    expect(isSpeedOption(toggle("verbose", false))).toBe(false);
+    // 同名的 select 不算开关，service_tier 的 boolean 也不算。
+    expect(isSpeedOption(select("fast"))).toBe(false);
+    expect(isSpeedOption(toggle("service_tier", false))).toBe(false);
+    const tier = {
+      ...select("service_tier"),
+      currentValue: "priority",
+      options: [
+        { value: "default", name: "Standard" },
+        { value: "priority", name: "Fast" },
+      ],
+    };
+    expect(isSpeedOption(tier)).toBe(true);
+    expect(isFastSpeed(tier)).toBe(true);
+    expect(isFastSpeed({ ...tier, currentValue: "default" })).toBe(false);
+    expect(isFastSpeed(toggle("fast", true))).toBe(true);
+  });
+});
+
+describe("modeKindOf", () => {
+  it("maps each agent's mode ids to an icon kind", () => {
+    expect(
+      ["default", "acceptEdits", "bypassPermissions", "plan"].map(modeKindOf),
+    ).toEqual(["ask", "edits", "full", "plan"]);
+    expect(
+      ["workspace-write", "agent", "agent-full-access", "read-only"].map(
+        modeKindOf,
+      ),
+    ).toEqual(["ask", "edits", "full", "plan"]);
+    expect(["build", "auto-edit", "full-auto", "yolo"].map(modeKindOf)).toEqual(
+      ["ask", "edits", "full", "full"],
+    );
   });
 });

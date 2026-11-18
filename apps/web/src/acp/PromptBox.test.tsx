@@ -5,13 +5,24 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 
 const api = vi.hoisted(() => ({ drive: vi.fn() }));
 vi.mock("./api", () => ({ acpApi: api }));
 
-import { chooseOption } from "@/app/test-harness";
 import { PromptBox } from "./PromptBox";
+import {
+  modeNames,
+  modelTrigger,
+  openModelPopover,
+  optionSwitch,
+  permissionsTrigger,
+  pickLevel,
+  pickMode,
+  pickModel,
+  pickOption,
+} from "./test-support";
 
 const onSubmit = vi.fn<(text: string) => Promise<boolean>>();
 const onCancel = vi.fn();
@@ -175,32 +186,33 @@ describe("PromptBox", () => {
     ).toBe(true);
   });
 
-  it("offers a mode picker only when there is a choice", () => {
+  it("offers the permission mode only when there is a choice", async () => {
     const { rerender } = renderBox({
       modes: {
         currentModeId: "default",
         availableModes: [{ id: "default", name: "Default" }],
       },
     });
-    expect(screen.queryByLabelText("模式")).toBeNull();
+    expect(modelTrigger()).toBeNull();
     rerender(
       <PromptBox
         sessionId="s1"
         disabled={false}
         streaming={false}
-        modes={{
-          currentModeId: "default",
-          availableModes: [
-            { id: "default", name: "Default" },
-            { id: "plan", name: "Plan" },
-          ],
-        }}
+        modes={MODES}
         onSubmit={onSubmit}
         onCancel={onCancel}
         onMode={onMode}
       />,
     );
-    expect(screen.getByLabelText("模式")).toBeTruthy();
+    // 只有模式时按钮写模式名，弹层只有底栏的权限。
+    expect(modelTrigger().textContent).toContain("Default");
+    const popover = await openModelPopover();
+    expect(popover.querySelector("[data-slot=acp-model-column]")).toBeNull();
+    expect(popover.querySelector("[data-slot=acp-effort-column]")).toBeNull();
+    expect(await modeNames()).toEqual(["Default", "Plan"]);
+    await pickMode("Plan");
+    expect(onMode).toHaveBeenCalledWith("plan");
   });
 
   it("offers a model picker only when the agent gives a catalog", () => {
@@ -223,20 +235,18 @@ describe("PromptBox", () => {
     expect(trigger.textContent).toContain("Small");
   });
 
-  it("keeps mode and model on the action row on a narrow screen, with no more menu", async () => {
+  it("stacks the two columns on a narrow screen and keeps the footer", async () => {
     const restore = narrowViewport();
     try {
       renderBox({ modes: MODES, models: MODELS, onModel });
       expect(screen.queryByRole("button", { name: "更多" })).toBeNull();
-      // 窄屏模式换成下拉，不是分段控件。
-      expect(screen.getByLabelText("模式").getAttribute("data-slot")).toBe(
-        "select-trigger",
-      );
-      const model = screen.getByLabelText("模型");
-      fireEvent.pointerDown(model, { button: 0, pointerType: "mouse" });
-      fireEvent.click(
-        await screen.findByRole("menuitemradio", { name: "Large" }),
-      );
+      const popover = await openModelPopover();
+      const column = popover.querySelector("[data-slot=acp-model-column]")!;
+      expect(column.parentElement!.className).toContain("flex-col");
+      expect(
+        popover.querySelector("[data-slot=acp-permissions]"),
+      ).not.toBeNull();
+      await pickModel("Large");
       expect(onModel).toHaveBeenCalledWith("large");
       // 发送只剩图标。
       expect(
@@ -257,8 +267,9 @@ describe("PromptBox", () => {
     expect(
       input.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(actions.contains(screen.getByLabelText("模式"))).toBe(true);
-    expect(actions.contains(screen.getByLabelText("模型"))).toBe(true);
+    // 操作行上只有一个模型按钮，没有单独的模式控件。
+    expect(actions.contains(modelTrigger())).toBe(true);
+    expect(screen.queryByLabelText("模式")).toBeNull();
     expect(actions.contains(screen.getByRole("button", { name: "发送" }))).toBe(
       true,
     );
@@ -366,39 +377,73 @@ describe("PromptBox", () => {
     };
     const onConfig = vi.fn();
     beforeEach(() => onConfig.mockReset());
-    const openModel = () =>
-      fireEvent.pointerDown(screen.getByLabelText("模型"), {
-        button: 0,
-        pointerType: "mouse",
-      });
 
-    it("folds the thinking level into the model picker as one control", async () => {
+    it("shows model and level on the trigger and lists the levels beside the models", async () => {
       renderBox({ models: MODELS, onModel, configOptions: [EFFORT], onConfig });
       const trigger = screen.getByLabelText("模型");
       expect(trigger.textContent).toContain("Small");
       expect(trigger.textContent).toContain("Low");
       // 没有单独的强度控件。
       expect(screen.queryByLabelText("Effort")).toBeNull();
-      openModel();
-      const high = await screen.findByRole("menuitemradio", { name: "High" });
+      const popover = await openModelPopover();
+      const column = popover.querySelector<HTMLElement>(
+        "[data-slot=acp-effort-column]",
+      )!;
+      // 表头写「思考强度」与当前模型。
+      expect(column.textContent).toContain("思考强度");
+      expect(column.textContent).toContain("Small");
       expect(
-        screen
-          .getByRole("menuitemradio", { name: "Low" })
+        within(column)
+          .getByRole("radio", { name: "Low" })
           .getAttribute("aria-checked"),
       ).toBe("true");
-      fireEvent.click(high);
+      await pickLevel("High");
       expect(onConfig).toHaveBeenCalledWith("effort", "high");
     });
 
-    it("keeps the menu open after picking a model so its level can follow", async () => {
-      renderBox({ models: MODELS, onModel, configOptions: [EFFORT], onConfig });
-      openModel();
-      fireEvent.click(
-        await screen.findByRole("menuitemradio", { name: "Large" }),
-      );
+    it("marks the current model and gives the first nine a shortcut", async () => {
+      renderBox({ models: MODELS, onModel });
+      const popover = await openModelPopover();
+      const options = within(popover).getAllByRole("option");
+      expect(
+        options.map((option) => option.getAttribute("aria-selected")),
+      ).toEqual(["true", "false"]);
+      expect(
+        options.map((option) => option.querySelector("kbd")?.textContent),
+      ).toEqual(["Ctrl+1", "Ctrl+2"]);
+      fireEvent.keyDown(screen.getByLabelText("搜索模型…"), {
+        key: "2",
+        ctrlKey: true,
+      });
       expect(onModel).toHaveBeenCalledWith("large");
-      expect(screen.getByRole("menu")).toBeTruthy();
-      expect(screen.getByRole("menuitemradio", { name: "High" })).toBeTruthy();
+    });
+
+    it("filters the models as you type and picks the highlighted one with Enter", async () => {
+      renderBox({ models: MODELS, onModel });
+      await openModelPopover();
+      const search = screen.getByLabelText("搜索模型…");
+      fireEvent.change(search, { target: { value: "zzz" } });
+      expect(screen.getByText("没有匹配的模型")).toBeTruthy();
+      fireEvent.change(search, { target: { value: "lar" } });
+      expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+        "LargeCtrl+1",
+      ]);
+      fireEvent.keyDown(search, { key: "Enter" });
+      expect(onModel).toHaveBeenCalledWith("large");
+    });
+
+    it("keeps the popover open after picking a model so its level can follow", async () => {
+      renderBox({ models: MODELS, onModel, configOptions: [EFFORT], onConfig });
+      await pickModel("Large");
+      expect(onModel).toHaveBeenCalledWith("large");
+      expect(screen.getByRole("dialog")).toBeTruthy();
+      expect(screen.getByRole("radio", { name: "High" })).toBeTruthy();
+    });
+
+    it("closes after picking a model when there is nothing else to choose", async () => {
+      renderBox({ models: MODELS, onModel });
+      await pickModel("Large");
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     });
 
     it("shows the level alone when there is no model catalog", async () => {
@@ -406,10 +451,9 @@ describe("PromptBox", () => {
       expect(screen.queryByLabelText("模型")).toBeNull();
       const trigger = screen.getByLabelText("思考强度");
       expect(trigger.textContent).toContain("Low");
-      fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
-      fireEvent.click(
-        await screen.findByRole("menuitemradio", { name: "High" }),
-      );
+      const popover = await openModelPopover();
+      expect(popover.querySelector("[data-slot=acp-model-column]")).toBeNull();
+      await pickLevel("High");
       expect(onConfig).toHaveBeenCalledWith("effort", "high");
     });
 
@@ -425,7 +469,7 @@ describe("PromptBox", () => {
       expect(screen.getByLabelText("模型").textContent).toContain("Low");
     });
 
-    it("puts other options straight on the action row: a select and a toggle", async () => {
+    it("lists other options under the levels: a select opens beside, a boolean is a switch", async () => {
       const STYLE = {
         id: "style",
         name: "Style",
@@ -436,27 +480,21 @@ describe("PromptBox", () => {
           { value: "full", name: "Full" },
         ],
       };
-      renderBox({ configOptions: [STYLE, THINK], onConfig });
-      const think = screen.getByRole("button", { name: "Think" });
-      expect(think.getAttribute("aria-pressed")).toBe("false");
+      renderBox({ configOptions: [EFFORT, STYLE, THINK], onConfig });
+      // 操作行上没有单独的配置项控件。
+      expect(screen.queryByLabelText("Style")).toBeNull();
+      const think = await optionSwitch("Think");
+      expect(think.getAttribute("aria-checked")).toBe("false");
       fireEvent.click(think);
       expect(onConfig).toHaveBeenCalledWith("think", true);
-      await chooseOption(screen.getByLabelText("Style"), "Full");
+      const row = screen.getByRole("button", { name: "Style: Brief" });
+      expect(row.textContent).toContain("Style");
+      expect(row.textContent).toContain("Brief");
+      await pickOption("Style", "Full");
       expect(onConfig).toHaveBeenCalledWith("style", "full");
-      expect(screen.queryByRole("button", { name: "更多" })).toBeNull();
     });
 
-    it("draws each option as its own control: Label · value, and a toggle chip (#768)", () => {
-      const COLLAB = {
-        id: "collaboration_mode",
-        name: "Collaboration mode",
-        type: "select" as const,
-        currentValue: "default",
-        options: [
-          { value: "default", name: "Default" },
-          { value: "plan", name: "Plan" },
-        ],
-      };
+    it("puts a fast toggle in the footer as Standard / Fast and marks the trigger", async () => {
       const FAST = {
         id: "fast_mode",
         name: "Fast mode",
@@ -464,49 +502,55 @@ describe("PromptBox", () => {
         currentValue: false,
         options: [],
       };
-      renderBox({ configOptions: [COLLAB, FAST], onConfig });
-      const select = document.querySelector<HTMLElement>(
-        "[data-slot=acp-config-select]",
-      )!;
-      const parts = [...select.children].map((child) => child.textContent);
-      // 项名、分隔点、值各占一段，值不会被项名挤没。
-      expect(parts.slice(0, 3)).toEqual(["Collaboration mode", "·", "Default"]);
-      expect(select.getAttribute("title")).toBe("Collaboration mode · Default");
-      expect(select.className).toContain("shrink-0");
+      const { rerender } = renderBox({
+        models: MODELS,
+        onModel,
+        configOptions: [EFFORT, FAST],
+        onConfig,
+      });
       expect(
-        select.querySelector("[data-slot=acp-config-label]")?.className,
-      ).toContain("truncate");
-      const toggle = screen.getByRole("button", { name: "Fast mode" });
-      expect(toggle.dataset.slot).toBe("acp-config-toggle");
-      expect(toggle.getAttribute("title")).toBe("Fast mode");
-      // 切换胶囊有边框，与相邻的下拉分得开；控件之间有间隔，选择器放不下时换行。
-      expect(toggle.className).toContain("border");
-      expect(toggle.className).toContain("shrink-0");
-      const pickers = document.querySelector<HTMLElement>(
-        "[data-slot=acp-composer-pickers]",
+        modelTrigger().querySelector("[data-slot=acp-fast-bolt]"),
+      ).toBeNull();
+      const popover = await openModelPopover();
+      const speed = popover.querySelector<HTMLElement>(
+        "[data-slot=acp-speed]",
       )!;
-      expect(pickers.className).toContain("gap-1");
-      expect(pickers.dataset.wrap).toBe("true");
-      expect(pickers.className).toContain("flex-wrap");
-    });
-
-    it("keeps everything on the action row on a narrow screen too", () => {
-      const restore = narrowViewport();
-      try {
-        renderBox({
-          modes: MODES,
-          models: MODELS,
-          onModel,
-          configOptions: [EFFORT, THINK],
-          onConfig,
-        });
-        expect(screen.queryByRole("button", { name: "更多" })).toBeNull();
-        expect(screen.getByLabelText("模型").textContent).toContain("Low");
-        expect(screen.getByRole("button", { name: "Think" })).toBeTruthy();
-        expect(screen.getByLabelText("模式")).toBeTruthy();
-      } finally {
-        restore();
-      }
+      expect(
+        popover.querySelector("[data-slot=acp-model-footer]")!.contains(speed),
+      ).toBe(true);
+      // 不进右栏。
+      expect(within(popover).queryByRole("switch")).toBeNull();
+      expect(
+        within(speed)
+          .getAllByRole("radio")
+          .map((radio) => [
+            radio.textContent,
+            radio.getAttribute("aria-checked"),
+          ]),
+      ).toEqual([
+        ["标准", "true"],
+        ["快速", "false"],
+      ]);
+      fireEvent.click(within(speed).getByRole("radio", { name: "快速" }));
+      expect(onConfig).toHaveBeenCalledWith("fast_mode", true);
+      rerender(
+        <PromptBox
+          sessionId="s1"
+          disabled={false}
+          streaming={false}
+          modes={null}
+          models={MODELS}
+          onModel={onModel}
+          configOptions={[EFFORT, { ...FAST, currentValue: true }]}
+          onConfig={onConfig}
+          onSubmit={onSubmit}
+          onCancel={onCancel}
+          onMode={onMode}
+        />,
+      );
+      expect(
+        modelTrigger().querySelector("[data-slot=acp-fast-bolt]"),
+      ).not.toBeNull();
     });
 
     it("draws nothing extra without config options", () => {
@@ -627,38 +671,48 @@ describe("PromptBox", () => {
     expect(stop.querySelector("[data-slot=kbd]")?.textContent).toBe("Esc");
   });
 
-  it("draws the mode as a segmented control when there are few short modes", () => {
-    renderBox({ modes: MODES });
-    const list = screen.getByLabelText("模式");
-    expect(list.getAttribute("data-variant")).toBe("segmented");
-    expect(
-      [...list.querySelectorAll("[role=tab]")].map((tab) => tab.textContent),
-    ).toEqual(["Default", "Plan"]);
-    fireEvent.mouseDown(screen.getByRole("tab", { name: "Plan" }));
-    expect(onMode).toHaveBeenCalledWith("plan");
-    cleanup();
-    // 名字长或模式多：回落到 Select。
+  it("draws the permission modes as an icon row, or a named list when they are many", async () => {
     renderBox({
       modes: {
-        currentModeId: "a",
+        currentModeId: "default",
         availableModes: [
-          { id: "a", name: "Accept edits and run" },
-          { id: "b", name: "Plan" },
+          { id: "default", name: "Ask", description: "Ask before edits" },
+          { id: "acceptEdits", name: "Accept edits" },
+          { id: "bypassPermissions", name: "Full access" },
         ],
       },
     });
-    expect(screen.getByLabelText("模式").getAttribute("data-slot")).toBe(
-      "select-trigger",
+    const trigger = await permissionsTrigger();
+    expect(trigger.textContent).toContain("Ask");
+    expect(trigger.getAttribute("aria-label")).toBe("权限: Ask");
+    fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
+    const section = await waitFor(() =>
+      document.querySelector("[data-slot=acp-permissions-section]")!,
     );
+    // 一排图标，下面写当前模式的名字与说明。
+    expect(section.textContent).toContain("Ask before edits");
+    fireEvent.click(screen.getByRole("menuitemradio", { name: "Full access" }));
+    expect(onMode).toHaveBeenCalledWith("bypassPermissions");
     cleanup();
     renderBox({
       modes: {
         currentModeId: "a",
-        availableModes: ["a", "b", "c", "d"].map((id) => ({ id, name: id })),
+        availableModes: ["a", "b", "c", "d", "e", "f"].map((id) => ({
+          id,
+          name: `Mode ${id}`,
+        })),
       },
     });
-    expect(screen.getByLabelText("模式").getAttribute("data-slot")).toBe(
-      "select-trigger",
-    );
+    fireEvent.pointerDown(await permissionsTrigger(), {
+      button: 0,
+      pointerType: "mouse",
+    });
+    await screen.findAllByRole("menuitemradio");
+    expect(
+      document.querySelector("[data-slot=acp-permissions-section]"),
+    ).toBeNull();
+    expect(
+      screen.getByRole("menuitemradio", { name: "Mode f" }).textContent,
+    ).toBe("Mode f");
   });
 });

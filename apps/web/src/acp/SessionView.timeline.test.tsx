@@ -54,6 +54,7 @@ import {
 import { mockLayout } from "@/timeline/view/test-layout";
 import { useAnsweredStore } from "./answered";
 import { SessionView } from "./SessionView";
+import { modeLabel } from "./test-support";
 import { useAcpStore } from "./store";
 
 const SESSION = TIMELINE_ID;
@@ -148,7 +149,7 @@ describe("SessionView on the timeline", () => {
       },
     } as never);
     await ready();
-    expect(screen.getByLabelText("模式").textContent).toContain("Plan");
+    expect(await modeLabel()).toContain("Plan");
     expect(
       document.querySelector("[data-slot=acp-usage]")?.textContent,
     ).toContain("950");
@@ -419,7 +420,7 @@ describe("SessionView on the timeline", () => {
       },
     } as never);
     await ready();
-    expect(screen.getByLabelText("模式").textContent).toContain("Plan");
+    expect(await modeLabel()).toContain("Plan");
     expect(screen.getByLabelText("模型").textContent).toContain("Small");
   });
 
