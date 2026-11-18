@@ -147,17 +147,64 @@ export function isEffortOption(option: TimelineConfigOption): boolean {
   return EFFORT_IDS.has(option.id.toLowerCase());
 }
 
+/** 速度项的常见 id：boolean 的快速开关，或 select 的服务档位。 */
+const SPEED_BOOLEAN_IDS = new Set([
+  "fast",
+  "fast_mode",
+  "fastmode",
+  "fast-mode",
+]);
+const SPEED_SELECT_IDS = new Set([
+  "service_tier",
+  "servicetier",
+  "service-tier",
+  "speed",
+]);
+
+/** 这一项是不是速度（放在模型弹层底栏左边的「标准 / 快速」）。 */
+export function isSpeedOption(option: TimelineConfigOption): boolean {
+  const id = option.id.toLowerCase();
+  return option.type === "boolean"
+    ? SPEED_BOOLEAN_IDS.has(id)
+    : SPEED_SELECT_IDS.has(id);
+}
+
+/** 速度当前是不是快速档：boolean 打开，或 select 当前值的 id / 名字带 fast。 */
+export function isFastSpeed(option: TimelineConfigOption): boolean {
+  if (option.type === "boolean") return option.currentValue === true;
+  const current = option.options.find(
+    (choice) => choice.value === option.currentValue,
+  );
+  return /fast/i.test(`${String(option.currentValue)} ${current?.name ?? ""}`);
+}
+
 /**
- * 提示框里的配置项分两类：思考强度（与模型放在同一个控件里，取第一项）与其余
- * （直接画在操作行上）。输入是 {@link extraConfigOptions} 的结果。
+ * 模型弹层把配置项分三处：思考强度（右栏上半）、速度（底栏左边）、其余（右栏
+ * 分隔线下）。输入是 {@link extraConfigOptions} 的结果。
  */
-export function splitConfigOptions(options: readonly TimelineConfigOption[]): {
+export function splitPopoverOptions(options: readonly TimelineConfigOption[]): {
   effort: TimelineConfigOption | null;
+  speed: TimelineConfigOption | null;
   rest: TimelineConfigOption[];
 } {
   const effort = options.find(isEffortOption) ?? null;
+  const speed =
+    options.find((option) => option !== effort && isSpeedOption(option)) ??
+    null;
   return {
     effort,
-    rest: options.filter((option) => option !== effort),
+    speed,
+    rest: options.filter((option) => option !== effort && option !== speed),
   };
+}
+
+/** 权限模式的图标类别：从各家的模式 id 认，认不出按「每次询问」。 */
+export type ModeKind = "ask" | "edits" | "full" | "plan";
+
+export function modeKindOf(modeId: string): ModeKind {
+  const id = modeId.toLowerCase();
+  if (/bypass|full|yolo|danger|unsafe/.test(id)) return "full";
+  if (/plan|read[-_]?only/.test(id)) return "plan";
+  if (/accept|edit|^agent$|^auto/.test(id)) return "edits";
+  return "ask";
 }
