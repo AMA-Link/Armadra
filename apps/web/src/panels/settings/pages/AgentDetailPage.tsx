@@ -1,5 +1,10 @@
 import { useQueryClient } from "@tanstack/react-query";
-import type { AgentInfo } from "@armadra/shared";
+import {
+  bareLaunchOf,
+  supportsBareLaunch,
+  type BuiltinAgentId,
+  type AgentInfo,
+} from "@armadra/shared";
 
 import {
   agentIsEnabled,
@@ -21,6 +26,7 @@ import { SettingsGroup } from "../SettingsGroup";
 import { SettingsPageHeader } from "../SettingsPageHeader";
 import { ValueLoadable } from "../SettingsLoadable";
 import { SettingsRow } from "../SettingsRow";
+import { useRuntimeSettings } from "../use-runtime-settings";
 import { useAgentIntegration } from "./integration/use-integration";
 import { AmaKeys } from "./AmaKeys";
 import {
@@ -74,6 +80,41 @@ export function AgentEnabledSwitch({
         setAgentEnabled(agent.id, checked, installed);
       }}
     />
+  );
+}
+
+/**
+ * 零注入开关（主机设置 `agents.<id>.bareLaunch`，契约 §113）：开 = 画布启动这家 CLI
+ * 不带任何 Armadra 的参数，只靠终端信号看状态。只有有注入的内置 Agent 有这一行。
+ */
+export function BareLaunchRow({
+  agent,
+}: {
+  agent: Pick<AgentInfo, "id" | "label">;
+}) {
+  const t = useT();
+  const { settings, save } = useRuntimeSettings({ scope: "local" });
+  if (!supportsBareLaunch(agent.id)) return null;
+  return (
+    <SettingsRow
+      label={t("agents.row.bareLaunch")}
+      footnote={t("agents.bare.reason")}
+    >
+      <ScopeBadge scope="host" />
+      <Switch
+        size="sm"
+        checked={bareLaunchOf(settings.data, agent.id)}
+        disabled={!settings.data || save.isPending}
+        aria-label={`${agent.label} ${t("agents.row.bareLaunch")}`}
+        onCheckedChange={(checked) =>
+          save.mutate({
+            agents: {
+              [agent.id as BuiltinAgentId]: { bareLaunch: checked },
+            },
+          })
+        }
+      />
+    </SettingsRow>
   );
 }
 
@@ -169,6 +210,7 @@ export function AgentDetailPage({ agent }: { agent: AgentInfo }) {
             </Button>
           </SettingsRow>
         )}
+        <BareLaunchRow agent={agent} />
         <SettingsRow label={t("settings.launchCommand")}>
           <ScopeBadge scope="device" />
           <Input

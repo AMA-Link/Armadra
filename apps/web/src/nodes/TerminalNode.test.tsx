@@ -393,6 +393,56 @@ describe("TerminalNode body", () => {
     expect(screen.queryByRole("button", { name: "允许" })).toBeNull();
   });
 
+  it("zero injection: marks the node, and the approval entry is disabled with its reason (#975)", () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    client.setQueryData(["settings"], {
+      agents: { codex: { bareLaunch: true } },
+    });
+    useAgentStatusStore.setState({
+      statuses: {
+        [scoped("n1")]: {
+          nodeId: "n1",
+          workspaceId: "w",
+          agentId: "codex",
+          state: "blocked",
+          pendingId: "p1",
+          unread: false,
+          verified: true,
+          restored: false,
+          alive: true,
+          updatedAt: "2026-10-03T00:00:00.000Z",
+        },
+      } as never,
+    });
+    const node = terminalNode({ kind: "terminal", agent: { id: "codex" } });
+    renderHosted(
+      <QueryClientProvider client={client}>
+        <TerminalNode
+          id={node.id}
+          node={node}
+          selected={false}
+          collapsed={false}
+          focused={false}
+        />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByText("零注入")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "允许" })).toBeNull();
+    const entry = document.querySelector<HTMLButtonElement>(
+      "[data-slot=bare-approval]",
+    );
+    expect(entry?.disabled).toBe(true);
+    expect(entry?.title).toBe("审批、画布工具与协作消息不可用");
+  });
+
+  it("without the switch there is no zero-injection mark (#975)", () => {
+    renderNode(terminalNode({ kind: "terminal", agent: { id: "codex" } }));
+    expect(screen.queryByText("零注入")).toBeNull();
+    expect(document.querySelector("[data-slot=bare-approval]")).toBeNull();
+  });
+
   it("shows who it waits for instead of approval buttons to someone who cannot answer", () => {
     access.canAnswer = false;
     useAgentStatusStore.setState({

@@ -40,6 +40,7 @@ import { ManualRunButton } from "@/agent/ManualRunButton";
 import { useSimpleMode } from "@/acp/simple-mode";
 import { lineOf } from "@/agent/display";
 import { useAgentStatus, useAgentStatusStore } from "@/agent/status-store";
+import { useBareLaunch } from "@/app/use-bare-launch";
 import {
   headerStateFor,
   useProgramSeen,
@@ -115,6 +116,8 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
       data.ssh.hostId)
     : null;
   const agentStatus = useAgentStatus(id);
+  // 零注入（契约 §113）：没有 hook，审批答不了、画布工具与协作消息都没有。
+  const bare = useBareLaunch(agent?.id);
   // 终端程序自报的状态（契约 §53）。普通终端也有：一个跑部署脚本
   // 的 shell 一样会停下来等人。
   const programStatus = useProgramStatus(id);
@@ -288,7 +291,7 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
   const pendingId = agentStatus?.pendingId;
   const canAnswer = useCanAnswer(workspaceId ?? "", sessionId);
   const approval =
-    agent && canAnswer && need === "approval" && pendingId
+    agent && !bare && canAnswer && need === "approval" && pendingId
       ? {
           pendingId,
           onAnswer: (decision: "allow" | "deny") => {
@@ -307,8 +310,21 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
     card?.scrollIntoView({ block: "nearest" });
     card?.querySelector<HTMLElement>("input, button, [role=combobox]")?.focus();
   }, [id]);
+  // 零注入下审批入口留着但禁用，原因在悬停提示里。
+  const bareApproval =
+    agent && bare && (need === "approval" || need === "input") ? (
+      <Button
+        size="xs"
+        variant="outline"
+        disabled
+        title={t("agents.bare.reason")}
+        data-slot="bare-approval"
+      >
+        {t("node.answer")}
+      </Button>
+    ) : null;
   const questionButton =
-    agent && canAnswer && need === "input" && driver === "acp" ? (
+    agent && !bare && canAnswer && need === "input" && driver === "acp" ? (
       <Button
         size="xs"
         variant="outline"
@@ -321,7 +337,10 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
   // 答不了的人看见的是同一个「在等审批」，按钮换成一枚「等待接管」（设计系统
   // §5.8、§5.16 权限态）——否则头部只剩一个胶囊，不知道该等谁。
   const awaitingDriver =
-    agent && !canAnswer && (need === "approval" || need === "input") ? (
+    agent &&
+    !bare &&
+    !canAnswer &&
+    (need === "approval" || need === "input") ? (
       <Badge variant="outline" size="sm" data-slot="awaiting-driver">
         {t("node.awaitingDriver")}
       </Badge>
@@ -406,6 +425,16 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
    */
   const headerChips = (
     <>
+      {agent && bare && (
+        <Badge
+          variant="outline"
+          size="sm"
+          title={t("agents.bare.reason")}
+          data-slot="bare-launch"
+        >
+          {t("agents.bare.badge")}
+        </Badge>
+      )}
       {agent && <AccountBindingBadge agent={agent} nodeId={id} />}
       {agent && <HandoffBadge nodeId={id} />}
       {/* 看门狗的标记（契约 §91）；没有标记不画。 */}
@@ -688,6 +717,7 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
           simple ? (
             <>
               {awaitingDriver}
+              {bareApproval}
               {questionButton}
             </>
           ) : (
@@ -700,6 +730,7 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
               {/* 工作项的阶段：要人处理或排队时（契约 §90.4）。 */}
               <ItemStageBadge nodeId={id} />
               {awaitingDriver}
+              {bareApproval}
               {questionButton}
             </>
           )

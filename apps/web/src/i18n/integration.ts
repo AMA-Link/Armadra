@@ -28,6 +28,9 @@ export const integration: MessageModule = {
     "agents.row.mode": "启用",
     "agents.row.account": "账号",
     "agents.row.attach": "接管会话",
+    "agents.row.bareLaunch": "零注入启动",
+    "agents.bare.badge": "零注入",
+    "agents.bare.reason": "审批、画布工具与协作消息不可用",
     "agents.attach.pick": "选择…",
     "agents.row.artifacts": "Hook 与技能", // i18n-exempt
     "agents.sessions.indexed": "已索引会话",
@@ -119,6 +122,10 @@ export const integration: MessageModule = {
     "agents.row.mode": "Enabled",
     "agents.row.account": "Account",
     "agents.row.attach": "Attach a session",
+    "agents.row.bareLaunch": "Bare launch",
+    "agents.bare.badge": "Bare",
+    "agents.bare.reason":
+      "Approvals, canvas tools and collaboration messages are unavailable",
     "agents.attach.pick": "Choose…",
     "agents.row.artifacts": "Hooks & skill",
     "agents.sessions.indexed": "Indexed sessions",
