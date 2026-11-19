@@ -173,6 +173,8 @@ export const gitRepository = {
           .nullish(),
         cursor: z.string().nullish(),
         limit: z.number().optional(),
+        /** `date`（缺省）或 `topo`，自协议 1.52（#976）；不认识的值由域答 `bad_request`。 */
+        order: z.string().optional(),
       }),
     )
     .output(gitLogPageSchema)

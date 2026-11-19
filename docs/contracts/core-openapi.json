@@ -59562,6 +59562,9 @@
                   },
                   "limit": {
                     "type": "number"
+                  },
+                  "order": {
+                    "type": "string"
                   }
                 },
                 "required": ["workspaceId"]
