@@ -1,5 +1,6 @@
 import {
   parseCustomAgents,
+  parseBareLaunch,
   parseDisabledAgents,
 } from "../settings/custom-agents";
 import { settingsDomain } from "../settings";
@@ -125,6 +126,8 @@ export function install(context: CoreContext): CollabContext {
         parseCustomAgents(settingsDomain()?.settings.snapshot() ?? {}),
       disabledAgents: () =>
         parseDisabledAgents(settingsDomain()?.settings.snapshot() ?? {}),
+      bareLaunch: (agentId) =>
+        parseBareLaunch(settingsDomain()?.settings.snapshot() ?? {}, agentId),
     },
     publish: (workspaceId, event) => {
       context.bus.emit("workspace.event", { workspaceId, event });

@@ -25,8 +25,13 @@ export const SKILLS_REVISION = 26;
  * contract §57): the generated hooks module, its manifest and the
  * PermissionRequest-only settings beside it. Bump it whenever the generated
  * source changes, so a launcher written for the old module is not trusted.
+ *
+ * The launchers have no revision of their own, so a change to what they do
+ * also bumps this one (4: the `ARMADRA_BARE` branch, contract §113): the hook
+ * revision is the event contract and must not move for it, and the skill
+ * revision is pinned to the skill package.
  */
-export const MOD_REVISION = 3;
+export const MOD_REVISION = 4;
 
 /**
  * One number for "is this CLI integrated, and is it current" — the hook

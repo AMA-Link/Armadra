@@ -25,6 +25,7 @@ import {
 } from "@armadra/shared";
 
 import { agentSupportsCoordinator } from "@/agent/launch";
+import { useBareLaunch } from "@/app/use-bare-launch";
 import { useAgentStatus } from "@/agent/status-store";
 import { useT } from "@/app/preferences-store";
 import {
@@ -67,6 +68,8 @@ export function AgentSettingsDialog() {
   // 进程活着就有状态行（`terminal.exit` 时删掉）：这时改角色不会生效。
   const status = useAgentStatus(nodeId ?? "");
   const running = status !== undefined && status.alive !== false;
+  // 零注入（契约 §113）：收件箱、投递与转录共享都靠 hook 与画布工具，开关停用。
+  const bare = useBareLaunch(agent?.id);
 
   return (
     <ResponsiveDialog
@@ -80,6 +83,14 @@ export function AgentSettingsDialog() {
           </ResponsiveDialogTitle>
         </ResponsiveDialogHeader>
         <div className="flex flex-col gap-(--space-block)">
+          {bare && (
+            <span
+              className="text-meta text-muted-foreground"
+              data-slot="bare-reason"
+            >
+              {t("agents.bare.reason")}
+            </span>
+          )}
           <div className="flex flex-col gap-(--space-group)">
             <span className="text-meta text-muted-foreground">
               {t("agentSettings.inboxWake")}
@@ -90,6 +101,7 @@ export function AgentSettingsDialog() {
               size="sm"
               value={wake}
               aria-label={t("agentSettings.inboxWake")}
+              disabled={bare}
               onValueChange={(next) => {
                 if (!(INBOX_WAKE_MODES as readonly string[]).includes(next)) {
                   return;
@@ -123,6 +135,7 @@ export function AgentSettingsDialog() {
             {t("agentSettings.acceptSubDelivery")}
             <Switch
               checked={agent?.acceptSubDelivery === true}
+              disabled={bare}
               aria-label={t("agentSettings.acceptSubDelivery")}
               onCheckedChange={(next) => patch({ acceptSubDelivery: next })}
             />
@@ -136,6 +149,7 @@ export function AgentSettingsDialog() {
             {t("agentSettings.contextShare")}
             <Switch
               checked={(agent?.contextShare ?? "full") === "full"}
+              disabled={bare}
               aria-label={t("agentSettings.contextShare")}
               onCheckedChange={(next) =>
                 patch({ contextShare: next ? "full" : "summary" })

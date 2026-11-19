@@ -22,9 +22,9 @@ import {
   resolveCommand,
 } from "../../agent/registry";
 import type { ShimTarget } from "../../agent/windows-shim";
-import { LAUNCH_GATE, type LauncherSpec } from "./launcher";
+import { BARE_GATE, LAUNCH_GATE, type LauncherSpec } from "./launcher";
 
-export { LAUNCH_GATE };
+export { BARE_GATE, LAUNCH_GATE };
 
 /**
  * The Windows half of the canvas launcher (docs/design/canvas-launcher.md
@@ -63,13 +63,21 @@ export const LAUNCH_CONFIG_HEADER = "armadra-launch 1";
  * `LauncherSpec` fits.
  */
 export type LaunchConfigSpec = Pick<LauncherSpec, "agentId" | "args" | "env"> &
-  Partial<Pick<LauncherSpec, "credential" | "amaKeys">>;
+  Partial<Pick<LauncherSpec, "credential" | "amaKeys">> & {
+    /**
+     * Write `bare=ARMADRA_BARE` (zero injection, contract §113). The real
+     * generator always sets it; a spec without it gives the older text.
+     */
+    readonly bare?: boolean;
+  };
 
 /**
  * Everything one CLI's Windows launcher and shim are made of: the POSIX
  * generator's `LauncherSpec` (§6.1) plus the program and the shim's target.
  */
 export interface WindowsLauncherSpec extends LauncherSpec {
+  /** See {@link LaunchConfigSpec}: the real generator sets it. */
+  readonly bare?: boolean;
   /** The built `armadra-launch.exe` ({@link findLaunchExe}). */
   readonly exe: string;
   /** The shim's program and lead words ({@link shimTargetFor}); absent, no shim is written. */
@@ -148,6 +156,8 @@ export function launchConfig(
     for (const name of keys.variables)
       lines.push(`ama-var=${variableName(name)}`);
   }
+  // 零注入（契约 §113）：这个变量非空时程序只兑换凭据，不设 env、不接 arg。
+  if (spec.bare === true) lines.push(`bare=${BARE_GATE}`);
   return `${lines.join("\r\n")}\r\n`;
 }
 

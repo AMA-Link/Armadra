@@ -1,6 +1,6 @@
 import { delimiter } from "node:path";
 
-import { AGENT_ROLES, type AgentRole } from "@armadra/shared";
+import { AGENT_ROLES, BARE_LAUNCH_ENV, type AgentRole } from "@armadra/shared";
 
 import {
   type ShellDialect,
@@ -235,9 +235,14 @@ export function canvasEnvironment(
       error: error instanceof Error ? error.message : String(error),
     });
   }
-  if (options.ssh === true) return [];
+  // 零注入（契约 §113）：启动器见 `ARMADRA_BARE` 非空就原样启动 CLI。SSH 节点
+  // 的这个变量随 `ARMADRA_*` 转发到执行主机。
+  const bare: readonly (readonly [string, string])[] =
+    settings.bareLaunch?.(base) === true ? [[BARE_LAUNCH_ENV, "1"]] : [];
+  if (options.ssh === true) return bare;
   const shims = shimDirectoryOf(dataDir);
   return [
+    ...bare,
     ["ARMADRA_SHIMS", shims],
     ["PATH", canvasPath(shims, options.ambient)],
   ];

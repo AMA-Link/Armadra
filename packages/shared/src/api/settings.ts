@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BARE_LAUNCH_AGENT_IDS } from "../agent-bare-launch.js";
 import {
   AGENT_DRIVER_CHOICES,
   BREACH_CHECK_CHOICES,
@@ -214,6 +215,16 @@ export const cloudSettingsSchema = z.looseObject({
     .default(D.cloud.orgDefaultRole),
 });
 
+const bareLaunchEntry = z
+  .looseObject({
+    bareLaunch: z.boolean().catch(false).default(false),
+  })
+  .optional()
+  .catch(undefined);
+const bareLaunchEntries = Object.fromEntries(
+  BARE_LAUNCH_AGENT_IDS.map((id) => [id, bareLaunchEntry]),
+) as Record<(typeof BARE_LAUNCH_AGENT_IDS)[number], typeof bareLaunchEntry>;
+
 /**
  * 这几段的形状。只描述 G0-3 加的键：同一段里已有的键（`usage.enabled`、
  * `updates.autoCheck`、`agents.custom` 等）照旧由 `looseObject` 透传。
@@ -241,6 +252,8 @@ export const completionSettingsSchema = z.looseObject({
         .default(D.agents.defaultDriver),
       /** 用户在设置里关掉的 Agent id（契约 §97）；没关过就没有这个键。 */
       disabled: z.array(z.string()).optional().catch(undefined),
+      /** 每家的零注入开关 `agents.<id>.bareLaunch`（契约 §113）；没写过就没有这一项。 */
+      ...bareLaunchEntries,
     })
     .catch({ ...D.agents })
     .default({ ...D.agents }),

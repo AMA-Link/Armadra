@@ -26,5 +26,6 @@ export * from "./timeline-acp.js";
 export * from "./timeline-approval.js";
 export * from "./session-display.js";
 export * from "./agent-driver.js";
+export * from "./agent-bare-launch.js";
 export * from "./source-core-outdated.js";
 export * from "./cloud-issuer.js";

@@ -7,6 +7,7 @@ import {
   screen,
 } from "@testing-library/react";
 import type { CanvasNode } from "@armadra/shared";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 /**
  * 节点的 Agent 设置（设计 `agent-delivery.md` §10）。
@@ -144,5 +145,32 @@ describe("Agent 设置", () => {
   it("没有 agent 的裸终端不开这个对话框", () => {
     open(undefined);
     expect(screen.queryByText("Agent 设置")).toBeNull();
+  });
+});
+
+describe("零注入（#975）", () => {
+  it("没有设置客户端时照常可用", () => {
+    open({ id: "claude" });
+    expect(screen.queryByText("审批、画布工具与协作消息不可用")).toBeNull();
+  });
+
+  it("开关打开：三项停用并说明原因", () => {
+    const client = new QueryClient();
+    client.setQueryData(["settings"], {
+      agents: { claude: { bareLaunch: true } },
+    });
+    store.document = { nodes: [node({ id: "claude" })] };
+    render(
+      <QueryClientProvider client={client}>
+        <AgentSettingsDialog />
+      </QueryClientProvider>,
+    );
+    act(() => openAgentSettings("n1"));
+    expect(screen.getByText("审批、画布工具与协作消息不可用")).toBeTruthy();
+    for (const toggle of screen.getAllByRole("switch")) {
+      expect(toggle.hasAttribute("disabled")).toBe(true);
+    }
+    fireEvent.click(screen.getAllByRole("switch")[0]!);
+    expect(store.updateNodeData).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   type AgentDriver,
+  type BuiltinAgentId,
   TERMINAL_BACKEND_CHOICES,
   answerSshPromptRequestSchema,
   customAgentSchema,
@@ -276,6 +277,9 @@ export interface RuntimeSettingsPatch {
     defaultDriver?: AgentDriver;
     /** 关掉的 Agent id，整组替换（契约 §97）；空数组 = 一个都没关。 */
     disabled?: string[] | null;
+  } & {
+    /** 每家的零注入开关（契约 §113）。 */
+    [Id in BuiltinAgentId]?: { bareLaunch?: boolean };
   };
   hooks?: { replyApprovals?: boolean };
   watchdog?: { stalledMinutes?: number; needsHumanMinutes?: number };

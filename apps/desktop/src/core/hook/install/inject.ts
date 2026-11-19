@@ -1024,6 +1024,7 @@ function writeLaunchers(
         windowsLauncherFiles({
           ...spec,
           exe,
+          bare: true,
           ...(target === undefined ? {} : { shimTarget: target }),
         }),
       );
