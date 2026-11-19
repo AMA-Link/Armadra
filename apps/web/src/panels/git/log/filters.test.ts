@@ -157,6 +157,25 @@ describe("工具栏筛选 → 请求", () => {
   });
 });
 
+describe("排序（#976）", () => {
+  it("缺省不发 order，拓扑优先发 topo", () => {
+    expect(
+      logRequestFromPreferences(preferences(), { now: NOW }).order,
+    ).toBeUndefined();
+    expect(
+      logRequestFromPreferences(preferences({ logOrder: "topo" }), {
+        now: NOW,
+      }).order,
+    ).toBe("topo");
+  });
+
+  it("换排序是另一份列表", () => {
+    expect(filterKey(preferences({ logOrder: "topo" }))).not.toBe(
+      filterKey(preferences()),
+    );
+  });
+});
+
 describe("筛选键", () => {
   it("条件变了就是另一份列表", () => {
     expect(filterKey(preferences())).not.toBe(
