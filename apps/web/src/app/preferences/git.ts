@@ -38,6 +38,9 @@ export const GIT_CHANGE_LAYOUTS = ["tree", "flat"] as const;
 /** 表格突出哪一类提交（#927 B3）。 */
 export const GIT_LOG_EMPHASES = ["all", "mine", "agent"] as const;
 export type GitLogEmphasis = (typeof GIT_LOG_EMPHASES)[number];
+/** 日志排序（#976）：时间优先（`--date-order`）或拓扑优先（`--topo-order`）。 */
+export const GIT_LOG_ORDERS = ["date", "topo"] as const;
+export type GitLogOrder = (typeof GIT_LOG_ORDERS)[number];
 export type GitChangeLayout = (typeof GIT_CHANGE_LAYOUTS)[number];
 
 export interface GitPreferences {
@@ -88,6 +91,8 @@ export interface GitPreferences {
   filesHeight: number;
   /** 表格突出哪一类提交（#927 B3）：全部、我的、Agent 协作。 */
   emphasis: GitLogEmphasis;
+  /** 日志排序（#976）；也是请求字段 `order`。 */
+  logOrder: GitLogOrder;
   /** 详情里的变更文件：树形（false）还是平铺（true）。 */
   flatFiles: boolean;
   /** 提交页变更树的排列方式。 */
@@ -120,6 +125,7 @@ export const GIT_KEYS: Record<keyof GitPreferences, string> = {
   collapseMerges: KEY("collapseMerges"),
   diffSplit: KEY("diffSplit"),
   emphasis: KEY("emphasis"),
+  logOrder: KEY("logOrder"),
   repositoryColumnCollapsed: KEY("repositoryColumnCollapsed"),
   filesHeight: KEY("filesHeight"),
   flatFiles: KEY("flatFiles"),
@@ -173,6 +179,7 @@ export function storedGitPreferences(): GitPreferences {
     collapseMerges: storedBoolean(GIT_KEYS.collapseMerges, true),
     diffSplit: storedBoolean(GIT_KEYS.diffSplit, false),
     emphasis: storedEnum(GIT_KEYS.emphasis, GIT_LOG_EMPHASES, "all"),
+    logOrder: storedEnum(GIT_KEYS.logOrder, GIT_LOG_ORDERS, "date"),
     repositoryColumnCollapsed: storedBoolean(
       GIT_KEYS.repositoryColumnCollapsed,
       false,
