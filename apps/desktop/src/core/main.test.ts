@@ -519,6 +519,9 @@ describe("what the core answers", () => {
     });
     expect(hello.headers.get("access-control-allow-origin")).toBe(origin);
     expect(hello.headers.get("access-control-allow-credentials")).toBe("true");
+    expect(
+      ((await hello.json()) as { capabilities: string[] }).capabilities,
+    ).toContain("identity.loopback-owner.v1");
     const preflight = await fetch(`${base(dev)}/api/identity/hello`, {
       method: "OPTIONS",
       headers: { origin },
@@ -533,6 +536,12 @@ describe("what the core answers", () => {
     const plain = await fetch(`${base(core)}/health`, { headers: { origin } });
     expect(plain.headers.get("access-control-allow-origin")).toBe(origin);
     expect(plain.headers.get("access-control-allow-credentials")).toBeNull();
+    const plainHello = await fetch(`${base(core)}/api/identity/hello`, {
+      headers: { origin },
+    });
+    expect(
+      ((await plainHello.json()) as { capabilities: string[] }).capabilities,
+    ).not.toContain("identity.loopback-owner.v1");
   });
 
   it("answers a preflight with the allowed verbs and no body", async () => {

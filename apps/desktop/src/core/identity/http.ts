@@ -36,6 +36,13 @@ export const BROWSER_SESSION_CAPABILITY = "identity.browser-session.v1";
 /** `cloud/login` 认 `probe`（只判定，不建待确认、不开会话；契约 §31.3）。旧 core 没有这一位，会把 probe 当普通登录。 */
 export const CLOUD_PROBE_CAPABILITY = "identity.cloud.probe.v1";
 
+/**
+ * 裸 core 开着回环匿名主人（`ARMADRA_LOOPBACK_OWNER=1`）时才报：页面据此知道这台
+ * core 不要会话、按本机主人处理，浏览器开发模式（`armadra.sh run web`）才用得上
+ * 代码托管面板（#977）。桌面壳与服务器壳不开回环主人，也就从不报。
+ */
+export const LOOPBACK_OWNER_CAPABILITY = "identity.loopback-owner.v1";
+
 export interface IdentityHttpOptions {
   readonly service: IdentityService;
   readonly instanceId: string;
@@ -287,6 +294,7 @@ export class IdentityHttp {
       NATIVE_SESSION_CAPABILITY,
       BROWSER_SESSION_CAPABILITY,
       CLOUD_PROBE_CAPABILITY,
+      ...(loopbackAnonymousOwner() ? [LOOPBACK_OWNER_CAPABILITY] : []),
       ...(this.options.capabilities?.() ?? []),
     ];
   }
