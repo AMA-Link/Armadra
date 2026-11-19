@@ -672,6 +672,13 @@ export function adoptIdentitySession(
 export const NATIVE_SESSION_CAPABILITY = "identity.native-session.v1";
 export const BROWSER_SESSION_CAPABILITY = "identity.browser-session.v1";
 
+/**
+ * 裸 core 开着回环匿名主人时 hello 报的能力名（`ARMADRA_LOOPBACK_OWNER=1`，
+ * 只有 `armadra.sh run web` 与探针这样起）：这台 core 不装门，页面没有会话也
+ * 按本机主人用（#977）。
+ */
+export const LOOPBACK_OWNER_CAPABILITY = "identity.loopback-owner.v1";
+
 /** 这个环境要求 hello 报的会话能力名。 */
 export function sessionCapability(): string {
   return bearerTransport()
