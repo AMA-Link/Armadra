@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, posix } from "node:path";
+import { delimiter, join, posix } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { tempDir } from "../../testing/temp-dir";
 import {
@@ -71,7 +71,7 @@ function launch(
   out: string,
 ): Seen {
   execFileSync("/bin/sh", [launcher, cli, "x"], {
-    env: { PATH: "/usr/bin:/bin", HOME: root, ...env },
+    env: { PATH: ["/usr/bin", "/bin"].join(delimiter), HOME: root, ...env },
   });
   return JSON.parse(readFileSync(out, "utf8")) as Seen;
 }
