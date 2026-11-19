@@ -132,7 +132,11 @@ final class ConnectFlowUITests: XCTestCase {
         // 浏览器授权完回到的是还在跑的 App：经系统打开（热启动）。
         XCUIDevice.shared.system.open(try XCTUnwrap(URL(string: "armadra://oauth?state=e2e-state&code=e2e-code")))
         confirmOpenIfAsked()
-        let security = app.webViews.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", ["账号与设备", "Account & devices"])).firstMatch
+        // 系统把 App 切回前台之后，XCUITest 有时还当 SpringBoard 在前台：查询一直等 App 的无障碍树，
+        // 30 秒一次超时（#955，nightly 43771152638、44211830026：录屏里页面早已是「账号与设备」，失败时
+        // 抓到的是 SpringBoard 的树）。先等它认到 App 在前台，再按文本查分区名，不走 descendants(.any)。
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 30), "app in front after the oauth link")
+        let security = app.webViews.staticTexts.matching(NSPredicate(format: "label IN %@", ["账号与设备", "Account & devices"])).firstMatch
         XCTAssertTrue(security.waitForExistence(timeout: 60), "security page after the oauth link")
         XCTAssertFalse(button(app, ["连接", "Connect"]).exists)
     }
