@@ -78,6 +78,7 @@ interface LogArguments {
   readonly options: string[];
   readonly revisions: string[];
   readonly paths: string[];
+  readonly order: "date" | "topo";
 }
 
 export async function log(
@@ -183,7 +184,7 @@ async function logCommits(
   const command = [
     "log",
     "--no-show-signature",
-    "--date-order",
+    args.order === "topo" ? "--topo-order" : "--date-order",
     "--decorate=full",
     // A ref named in the filter is a workspace-wide name: most repositories
     // will not have it, and neither will an unborn `HEAD`. That is a repository
@@ -315,7 +316,12 @@ function logArguments(request: LogRequest): LogArguments {
     if (!request.text.matchCase) options.push("--regexp-ignore-case");
     options.push(`--grep=${query}`);
   }
-  return { options, revisions, paths: validPathspecs(request.paths) };
+  return {
+    options,
+    revisions,
+    paths: validPathspecs(request.paths),
+    order: request.order ?? "date",
+  };
 }
 
 /**
@@ -395,6 +401,12 @@ function filterIdentity(
     hasher.update(
       Buffer.from([request.text.regex ? 1 : 0, request.text.matchCase ? 1 : 0]),
     );
+  }
+  // Only a non-default order is hashed, so cursors taken under the default
+  // stay valid across the upgrade that introduced the field.
+  if (request.order === "topo") {
+    hasher.update(Buffer.from([7]));
+    hasher.update("topo");
   }
   return hasher.digest("hex");
 }

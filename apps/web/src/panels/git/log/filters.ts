@@ -82,6 +82,8 @@ export function logRequestFromPreferences(
           ? { kind: "all" }
           : { kind: "head" },
     limit: options.limit ?? GIT_LOG_PAGE_SIZE,
+    // 缺省（时间优先）不发，老 core 与新 core 对缺省的理解一致。
+    ...(git.logOrder === "topo" ? { order: "topo" as const } : {}),
     ...(git.repositories.length > 0
       ? { repositories: [...git.repositories] }
       : options.defaultRepositories && options.defaultRepositories.length > 0
@@ -121,5 +123,6 @@ export function filterKey(git: GitPreferences): string {
     git.searchText,
     git.searchRegex,
     git.searchMatchCase,
+    git.logOrder,
   ]);
 }

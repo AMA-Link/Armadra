@@ -23,7 +23,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../../ui/dropdown-menu";
-import { GIT_LOG_DATE_RANGES } from "../../../app/preferences/git";
+import {
+  GIT_LOG_DATE_RANGES,
+  GIT_LOG_ORDERS,
+} from "../../../app/preferences/git";
 
 /**
  * 日志工具栏（Git 工具窗口设计 §2.2）。
@@ -352,6 +355,19 @@ export function LogToolbar({
             <span className="truncate">{entry}</span>
           </DropdownMenuItem>
         ))}
+      </Facet>
+
+      <Facet label={t("gitLog.toolbar.order")} count={0} slot="git-log-order">
+        <DropdownMenuRadioGroup
+          value={git.logOrder}
+          onValueChange={(next) => set("logOrder", next as typeof git.logOrder)}
+        >
+          {GIT_LOG_ORDERS.map((order) => (
+            <DropdownMenuRadioItem key={order} value={order}>
+              {t(`gitLog.toolbar.order.${order}`)}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
       </Facet>
 
       <div className="flex-1" />

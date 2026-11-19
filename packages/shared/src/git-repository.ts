@@ -176,6 +176,7 @@ export const gitLogTextSchema = z.object({
  * refused with `invalid_cursor` rather than answered with a window over neither
  * set. Reload from the first page when that happens.
  */
+export const gitLogOrderSchema = z.enum(["date", "topo"]);
 export const gitLogRequestSchema = z.object({
   repositories: z.array(z.string().min(1)).max(64).optional(),
   refs: gitLogRefsSchema.optional(),
@@ -188,6 +189,12 @@ export const gitLogRequestSchema = z.object({
   cursor: z.string().nullable().optional(),
   /** 1–200; the service defaults to 100. */
   limit: z.number().int().min(1).max(200).optional(),
+  /**
+   * Row order inside each repository (#976): `date` (default) is
+   * `--date-order`, `topo` is `--topo-order`. Repositories stay interleaved by
+   * committer time either way. A core older than protocol 1.52 ignores it.
+   */
+  order: gitLogOrderSchema.optional(),
 });
 /** One row of the merged graph: the commit record, plus the checkout it is from. */
 /** One `Co-authored-by:` trailer, split into its name and address. */
@@ -847,6 +854,7 @@ export const gitWorktreeBindingVerdictSchema = z.object({
 export type GitLogRefKind = z.infer<typeof gitLogRefKindSchema>;
 export type GitLogRefs = z.infer<typeof gitLogRefsSchema>;
 export type GitLogText = z.infer<typeof gitLogTextSchema>;
+export type GitLogOrder = z.infer<typeof gitLogOrderSchema>;
 export type GitLogRequest = z.infer<typeof gitLogRequestSchema>;
 export type GitLogCommit = z.infer<typeof gitLogCommitSchema>;
 export type GitLogRepository = z.infer<typeof gitLogRepositorySchema>;

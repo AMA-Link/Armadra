@@ -845,6 +845,80 @@ describe("the merged workspace log", () => {
     ).rejects.toThrow("reload the first page");
   });
 
+  it("orders by date or by topology, and a cursor belongs to its order", async () => {
+    invalidateAll();
+    const repo = repository("log-order", false);
+    const at = (seconds: number, message: string, file: string) => {
+      process.env.GIT_COMMITTER_DATE = `${1_700_000_000 + seconds} +0000`;
+      try {
+        repo.write(file, `${message}\n`);
+        repo.commit(message);
+      } finally {
+        delete process.env.GIT_COMMITTER_DATE;
+      }
+    };
+    at(1, "base", "base.txt");
+    repo.git("checkout", "-q", "-b", "side");
+    at(2, "side1", "side1.txt");
+    at(4, "side2", "side2.txt");
+    repo.git("checkout", "-q", "main");
+    at(3, "main1", "main1.txt");
+    at(5, "main2", "main2.txt");
+    process.env.GIT_COMMITTER_DATE = `${1_700_000_006} +0000`;
+    try {
+      repo.git("merge", "-q", "--no-ff", "-m", "join", "side");
+    } finally {
+      delete process.env.GIT_COMMITTER_DATE;
+    }
+    const base = {
+      repositories: null,
+      refs: { kind: "head" as const, names: [] },
+      authors: [],
+      since: null,
+      until: null,
+      paths: [],
+      text: null,
+      cursor: null,
+      limit: 10,
+    };
+    const repositoryService = service();
+    const subjects = async (order: "date" | "topo") =>
+      (
+        await log(repositoryService, repo.path, "log-order-key", {
+          ...base,
+          order,
+        })
+      ).commits.map((commit) => commit.subject);
+
+    expect(await subjects("date")).toEqual([
+      "join",
+      "main2",
+      "side2",
+      "main1",
+      "side1",
+      "base",
+    ]);
+    // Topology keeps a branch's commits together instead of interleaving.
+    const topo = await subjects("topo");
+    expect(topo).not.toEqual(await subjects("date"));
+    expect(Math.abs(topo.indexOf("side1") - topo.indexOf("side2"))).toBe(1);
+    expect(Math.abs(topo.indexOf("main1") - topo.indexOf("main2"))).toBe(1);
+
+    const first = await log(repositoryService, repo.path, "log-order-key", {
+      ...base,
+      limit: 2,
+      order: "topo",
+    });
+    await expect(
+      log(repositoryService, repo.path, "log-order-key", {
+        ...base,
+        limit: 2,
+        order: "date",
+        cursor: first.nextCursor,
+      }),
+    ).rejects.toThrow("reload the first page");
+  });
+
   it("refuses a search pattern that cannot compile", async () => {
     invalidateAll();
     const repo = repository("log-regex");
