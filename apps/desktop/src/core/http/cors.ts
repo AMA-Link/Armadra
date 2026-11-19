@@ -59,9 +59,12 @@ function answerable(origin: string): boolean {
  * The CORS headers for one request, or nothing when the origin is not one we
  * answer. A request with no `Origin` header is not a browser request and needs
  * no headers; refusing it would break `curl` and the shell's own probe.
+ *
+ * `loopbackOwner`：core 是否开着回环匿名主人（`ARMADRA_LOOPBACK_OWNER=1`）。
  */
 export function corsHeaders(
   origin: string | undefined,
+  loopbackOwner = false,
 ): Record<string, string> | undefined {
   if (origin === undefined) return {};
   if (!answerable(origin)) return undefined;
@@ -69,6 +72,14 @@ export function corsHeaders(
     "access-control-allow-origin": origin,
     "access-control-allow-methods": CORS_METHODS,
     "access-control-allow-headers": CORS_HEADERS,
+    // 浏览器开发模式（`armadra.sh run web`）：页面在 Vite 的回环端口，经
+    // `credentials: "include"` 跨源打 core，没有这个头浏览器把整条应答丢掉
+    // （#977）。只给「裸 core 显式打开回环匿名」且来源是回环字面量的请求；
+    // 其余路径（壳、服务器壳、Gateway）不带它，行为不变。上面回显的是具体来源，
+    // 从不是 `*`。
+    ...(loopbackOwner && isLoopbackOrigin(origin)
+      ? { "access-control-allow-credentials": "true" }
+      : {}),
     vary: "origin",
   };
 }

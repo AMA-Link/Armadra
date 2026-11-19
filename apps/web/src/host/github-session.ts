@@ -7,6 +7,7 @@ import {
   type IdentitySession,
   hasSessionCapability,
   identityHello,
+  LOOPBACK_OWNER_CAPABILITY,
   permits,
   resumeIdentity,
 } from "../api/identity";
@@ -70,6 +71,27 @@ export interface GithubSessionStore {
   reset: () => void;
 }
 
+/** 回环主人没有真会话：给面板一份只含读写两项权限的占位，不带任何密钥。 */
+function loopbackOwnerSession(hello: IdentityHello): IdentitySession {
+  return {
+    hostId: hello.sourceId,
+    device: {
+      deviceId: "loopback-owner",
+      principalId: "",
+      displayName: "",
+      role: "owner",
+      createdAtUnixMs: 0,
+      revision: 0,
+    },
+    scopes: ["github:read", "github:write"].map((permission) => ({
+      permission,
+      workspaceId: "",
+      executionHostId: "",
+    })),
+    expiresAtUnixMs: 0,
+  };
+}
+
 export const useGithubSession = create<GithubSessionStore>((set, get) => {
   let attempt = 0;
 
@@ -127,6 +149,14 @@ export const useGithubSession = create<GithubSessionStore>((set, get) => {
         return;
       }
       if (!live()) return;
+      if (
+        session === null &&
+        hello.capabilities.includes(LOOPBACK_OWNER_CAPABILITY)
+      ) {
+        // 开发模式的裸 core 不装门、把没带凭据的调用当本机主人：这里没有会话
+        // 可恢复，也不需要（#977）。别的 core 从不报这个能力位，仍走 signedOut。
+        session = loopbackOwnerSession(hello);
+      }
       if (session === null) {
         set({ state: { status: "blocked", reason: "signedOut" } });
         return;

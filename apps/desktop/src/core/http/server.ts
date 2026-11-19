@@ -10,6 +10,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import type { EventBus } from "../bus";
 import { type CorePlatform, reportError } from "../platform";
 import { corsHeaders, websocketOriginAllowed } from "./cors";
+import { loopbackAnonymousOwner } from "../identity/http";
 import {
   type ErrorResponse,
   badRequest,
@@ -285,7 +286,10 @@ export class CoreServer {
     admitted = false,
   ): Promise<void> {
     const origin = request.headers.origin;
-    const headers = corsHeaders(Array.isArray(origin) ? origin[0] : origin);
+    const headers = corsHeaders(
+      Array.isArray(origin) ? origin[0] : origin,
+      loopbackAnonymousOwner(),
+    );
     if (headers === undefined) {
       return this.send(response, 403, {
         code: "forbidden",

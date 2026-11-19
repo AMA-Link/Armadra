@@ -502,6 +502,48 @@ describe("what the core answers", () => {
     expect((await refused.json()).code).toBe("forbidden");
   });
 
+  it("allow-credentials 只在回环主人模式下随回环来源回给浏览器（#977）", async () => {
+    const dev = await run({
+      argv: ["--listen", "tcp:127.0.0.1:0", "--data-dir", temporary()],
+      env: {
+        ARMADRA_CORE_MIGRATIONS_DIR: migrationsDir,
+        ARMADRA_LOG: "error",
+        ARMADRA_LOOPBACK_OWNER: "1",
+      },
+      stdout: () => undefined,
+    });
+    running.push(dev);
+    const origin = "http://127.0.0.1:1420";
+    const hello = await fetch(`${base(dev)}/api/identity/hello`, {
+      headers: { origin },
+    });
+    expect(hello.headers.get("access-control-allow-origin")).toBe(origin);
+    expect(hello.headers.get("access-control-allow-credentials")).toBe("true");
+    expect(
+      ((await hello.json()) as { capabilities: string[] }).capabilities,
+    ).toContain("identity.loopback-owner.v1");
+    const preflight = await fetch(`${base(dev)}/api/identity/hello`, {
+      method: "OPTIONS",
+      headers: { origin },
+    });
+    expect(preflight.headers.get("access-control-allow-credentials")).toBe(
+      "true",
+    );
+    await dev.stop();
+    running.splice(running.indexOf(dev), 1);
+    // 同一进程里再起一个不开回环主人的 core：头必须消失。
+    const { core } = await start(temporary());
+    const plain = await fetch(`${base(core)}/health`, { headers: { origin } });
+    expect(plain.headers.get("access-control-allow-origin")).toBe(origin);
+    expect(plain.headers.get("access-control-allow-credentials")).toBeNull();
+    const plainHello = await fetch(`${base(core)}/api/identity/hello`, {
+      headers: { origin },
+    });
+    expect(
+      ((await plainHello.json()) as { capabilities: string[] }).capabilities,
+    ).not.toContain("identity.loopback-owner.v1");
+  });
+
   it("answers a preflight with the allowed verbs and no body", async () => {
     const { core } = await start(temporary());
     const response = await fetch(`${base(core)}/api/workspaces`, {
