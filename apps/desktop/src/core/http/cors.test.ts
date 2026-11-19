@@ -46,6 +46,38 @@ describe("which origins a loopback core answers", () => {
     });
   });
 
+  it("只在回环主人开发模式下对回环来源加 allow-credentials（#977）", () => {
+    const origin = "http://127.0.0.1:1420";
+    expect(corsHeaders(origin, true)).toEqual({
+      "access-control-allow-origin": origin,
+      "access-control-allow-credentials": "true",
+      "access-control-allow-methods": CORS_METHODS,
+      "access-control-allow-headers": CORS_HEADERS,
+      vary: "origin",
+    });
+    expect(corsHeaders(origin, false)).not.toHaveProperty(
+      "access-control-allow-credentials",
+    );
+    expect(corsHeaders(origin)).not.toHaveProperty(
+      "access-control-allow-credentials",
+    );
+    expect(corsHeaders(undefined, true)).toEqual({});
+    expect(corsHeaders("http://example.com", true)).toBeUndefined();
+  });
+
+  it("壳注入的非回环来源即便开着回环主人也不带 allow-credentials", () => {
+    allowOrigins(["https://armadra.example"]);
+    try {
+      const headers = corsHeaders("https://armadra.example", true);
+      expect(headers?.["access-control-allow-origin"]).toBe(
+        "https://armadra.example",
+      );
+      expect(headers).not.toHaveProperty("access-control-allow-credentials");
+    } finally {
+      allowOrigins([]);
+    }
+  });
+
   it("lets the page send its Bearer across ports", () => {
     // 页面在壳的静态服务上、core 在另一个回环端口：带 Authorization 的请求先
     // 预检，这个头不在放行表里，浏览器就不发（契约 §3.2）。
