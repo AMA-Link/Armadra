@@ -200,9 +200,9 @@ export function createAgentNode(
     return;
   }
   const role = newNodeRole(agent.id);
+  // 标题不给：`addNode` 起预设名（Armadra#969），类型看节点头的标记。
   create(context, "terminal", {
     position: nodeDropPosition("terminal", { anchor: context.position }),
-    title: agent.label,
     data: {
       kind: "terminal",
       ...(attach?.cwd === undefined ? {} : { cwd: attach.cwd }),
@@ -548,7 +548,6 @@ export function spawnSubordinate(
   try {
     id = state.addNode("terminal", {
       position,
-      title: agent.label,
       ...(parent.parentId && !anchor ? { parentId: parent.parentId } : {}),
       data: {
         kind: "terminal",

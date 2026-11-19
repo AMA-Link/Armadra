@@ -38,6 +38,12 @@ import {
   stripControl,
 } from "../refusals";
 import { MAX_HOPS, sendLimits } from "../send-limits";
+import {
+  type NodeName,
+  nameFor,
+  withHandle,
+  withPresetNames,
+} from "./preset-names";
 import { enqueue } from "../send-queue";
 import { type CollabContext, nowDate, nowSeconds } from "../service";
 import { INBOX_WAKE_MODES } from "../wake";
@@ -195,8 +201,9 @@ export function openTerminal(
   caller: Caller,
   args: Args,
 ): Outcome {
-  const title = cleanTitle(args.text("title") ?? "终端");
   const document = load(context, caller);
+  const name = nameFor(args.text("title"), document.nodes);
+  const title = name.title;
   if (args.flag("dry-run")) {
     return result(`（演练）会在你右侧创建终端节点「${title}」。`, {
       dryRun: true,
@@ -209,7 +216,7 @@ export function openTerminal(
     "terminal",
     title,
     placement(document, caller.node.id),
-    { kind: "terminal" },
+    withHandle({ kind: "terminal" }, name),
   );
   inheritCreator(context, caller, [node]);
   save(
@@ -288,7 +295,8 @@ async function openAgentHeld(
       ? undefined
       : checkBody(collapsed, "--task");
   // `--name` 是 runner 起节点时给的名字（补全架构 §5.3），与 `--title` 同义。
-  const title = cleanTitle(args.text("title") ?? args.text("name") ?? agentId);
+  // 两个都没给就用预设名（Armadra#969），读到画布之后才定。
+  const explicitTitle = args.text("title") ?? args.text("name");
   const permissionMode = readPermissionMode(context, agentId, args);
   const model = readModel(args);
   const inboxWake = readInboxWake(args);
@@ -328,6 +336,8 @@ async function openAgentHeld(
     if (kept !== undefined) return kept;
   }
   let document = load(context, caller);
+  let name = nameFor(explicitTitle, document.nodes);
+  let title = name.title;
   for (const id of after) {
     if (!document.nodes.some((node) => node.id === id)) {
       throw Refusal.badRequest(`--after 里的 \`${id}\` 不是这块画布上的节点。`);
@@ -409,13 +419,16 @@ async function openAgentHeld(
   if (worktreeSpec !== undefined) {
     target = await ensureWorktree(context, caller, worktreeSpec);
     document = load(context, caller);
+    // 等检出的这会儿画布可能多了节点：预设名按新读到的画布重取一次。
+    name = nameFor(explicitTitle, document.nodes);
+    title = name.title;
   }
   let node = newNode(
     document.board.id,
     "terminal",
     title,
     placement(document, caller.node.id),
-    data,
+    withHandle(data, name),
   );
   let frame: CanvasNode | undefined;
   if (target !== undefined) {
@@ -692,6 +705,8 @@ interface TeamRole {
   readonly agentId: string;
   readonly model: string | undefined;
   readonly title: string;
+  /** 没写标题：读到画布后换成预设名（`preset-names.ts`）；`null` = 还没换。 */
+  readonly preset?: NodeName | null;
   readonly task: string | undefined;
   readonly worktree: string | undefined;
   readonly cwd: string | undefined;
@@ -763,6 +778,7 @@ function parseRole(
     agentId,
     model,
     title: cleanTitle(title?.trim() || agentId),
+    preset: title?.trim() ? undefined : null,
     task: cleaned.trim() === "" ? undefined : checkBody(cleaned, flag),
     worktree,
     cwd,
@@ -862,7 +878,7 @@ async function teamHeld(
     gatherSpec === undefined
       ? undefined
       : parseRole(context, gatherSpec, "--gather");
-  const roster = gather === undefined ? members : [...members, gather];
+  let roster = gather === undefined ? members : [...members, gather];
   const chain = args.flag("chain");
   const after = args.list("after");
   const condition = readCondition(args);
@@ -919,6 +935,7 @@ async function teamHeld(
   // 远端工作区：成员起在执行主机上（G5-07）。
   const ssh = memberSsh(context, caller);
   let document = load(context, caller);
+  roster = withPresetNames(roster, document.nodes);
   for (const id of after) {
     if (!document.nodes.some((node) => node.id === id)) {
       throw Refusal.badRequest(`--after 里的 \`${id}\` 不是这块画布上的节点。`);
@@ -996,7 +1013,10 @@ async function teamHeld(
       await ensureWorktree(context, caller, role.worktree),
     );
   }
-  if (targets.size > 0) document = load(context, caller);
+  if (targets.size > 0) {
+    document = load(context, caller);
+    roster = withPresetNames(roster, document.nodes);
+  }
 
   let working = document;
   const created: CanvasNode[] = [];
@@ -1030,6 +1050,7 @@ async function teamHeld(
         agent,
         ...(cwd === undefined ? {} : { cwd }),
         ...(ssh === undefined ? {} : { ssh }),
+        ...(role.preset ? { handle: role.preset.handle } : {}),
       },
     );
     const target =

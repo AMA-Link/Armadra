@@ -1,4 +1,8 @@
-import { type CanvasNode } from "@armadra/shared";
+import {
+  type CanvasNode,
+  isPresetTitle,
+  presetNodeName,
+} from "@armadra/shared";
 import {
   defaultNodeColor,
   defaultNodeData,
@@ -60,11 +64,19 @@ export function createNodesSlice(
       const inherited = inheritedNodeData(type, frameBindingOf(frame), {
         workspaceRoot: state.workspace?.rootPath,
       });
+      // 终端 / Agent 没给标题：起一个预设名，同时当名字（Armadra#969）。
+      // 类型由节点头的类型标记说，不再塞进标题。
+      const preset =
+        type === "terminal" &&
+        options.title === undefined &&
+        (options.data as { handle?: unknown } | undefined)?.handle === undefined
+          ? presetNodeName(state.document.nodes)
+          : undefined;
       const node = {
         id,
         boardId: state.document.board.id,
         type,
-        title: options.title ?? defaultNodeTitle(type),
+        title: options.title ?? preset?.title ?? defaultNodeTitle(type),
         color: options.color ?? defaultNodeColor(type),
         position: options.position ?? {
           x: 80 + index * 24,
@@ -74,7 +86,13 @@ export function createNodesSlice(
         ...(options.parentId ? { parentId: options.parentId } : {}),
         labels: [],
         note: "",
-        data: { ...base, ...inherited, ...options.data, kind: type },
+        data: {
+          ...base,
+          ...inherited,
+          ...options.data,
+          ...(preset === undefined ? {} : { handle: preset.handle }),
+          kind: type,
+        },
         createdAt: stamp,
         updatedAt: stamp,
       } as CanvasNode;
@@ -269,6 +287,7 @@ export function createNodesSlice(
       );
       if (sources.length === 0) return [];
       const stamp = now();
+      const placed: CanvasNode[] = [...state.document.nodes];
       const copies = sources.map((source) => {
         const copy = {
           ...source,
@@ -286,6 +305,24 @@ export function createNodesSlice(
             ...(agent ? { agent: { ...agent, sessionId: undefined } } : {}),
           };
         }
+        // 名字在一块画布内唯一（agent-delivery §2）：副本不带走原件的名字。
+        // 原件还顶着预设名时，副本另取一个预设名（Armadra#969）。
+        const handle = (copy.data as { handle?: unknown }).handle;
+        if (typeof handle === "string") {
+          const { handle: _handle, ...data } = copy.data as typeof copy.data & {
+            handle?: string;
+          };
+          copy.data = data as CanvasNode["data"];
+          if (isPresetTitle(source.title, handle)) {
+            const preset = presetNodeName(placed);
+            copy.title = preset.title;
+            copy.data = {
+              ...copy.data,
+              handle: preset.handle,
+            } as CanvasNode["data"];
+          }
+        }
+        placed.push(copy);
         return copy;
       });
       const patch = commit(state, (document) => ({

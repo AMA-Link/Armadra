@@ -72,6 +72,20 @@ export function agentLabel(id: string | undefined): string {
   return id.startsWith("custom:") ? id.slice("custom:".length) : id;
 }
 
+/**
+ * 节点头的两字符类型标记（Armadra#969）：内置 Agent 用注册表的 `mark`
+ * （首字母会撞：Claude Code / Codex / Copilot），自定义 Agent 取自己显示名的
+ * 前两个字符——颜色已经借了它基于的那家，字说的是「这是哪一个」。
+ */
+export function agentMark(id: string | undefined): string {
+  if (!id) return "";
+  const definition = agentDefinition(id);
+  if (definition) return definition.mark;
+  const chars = Array.from(agentLabel(id).trim().replace(/\s+/g, ""));
+  const mark = chars.slice(0, 2).join("");
+  return mark.length === 0 ? "?" : mark[0]!.toUpperCase() + mark.slice(1);
+}
+
 /** 品牌色原始值（`#d97757`…）。需要 alpha 混合时用它。 */
 export function agentColor(id: string | undefined): string {
   const definition = id ? agentDefinition(id) : undefined;

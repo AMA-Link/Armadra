@@ -317,16 +317,38 @@ describe("选择", () => {
 });
 
 describe("addNode", () => {
-  it("按 NODE_META 取默认尺寸、颜色与标题", () => {
+  it("按 NODE_META 取默认尺寸与颜色；终端标题是预设名，也是名字（#969）", () => {
     load();
     const id = state().addNode("terminal");
     const node = byId(id);
     expect(node?.size).toEqual({ width: 640, height: 440 });
     expect(node?.color).toBe("#0a84ff");
-    expect(node?.title).toBe("终端");
-    expect(node?.data).toEqual({ kind: "terminal" });
+    expect(node?.title).toBe("Atlas");
+    expect(node?.data).toEqual({ kind: "terminal", handle: "atlas" });
     expect(state().selectedNodeIds).toEqual([id]);
     expect(state().saveState).toBe("dirty");
+  });
+
+  it("预设名按本画布的空位依次取；给了标题就不起名字（#969）", () => {
+    load();
+    const first = byId(state().addNode("terminal"));
+    const second = byId(state().addNode("terminal"));
+    const titled = byId(state().addNode("terminal", { title: "壳" }));
+    expect([first?.title, second?.title]).toEqual(["Atlas", "Birch"]);
+    expect(titled?.title).toBe("壳");
+    expect(titled?.data).toEqual({ kind: "terminal" });
+  });
+
+  it("复制带预设名的节点另取一个名字，手改过名的副本不带名字（#969）", () => {
+    load();
+    const preset = state().addNode("terminal");
+    const renamed = state().addNode("terminal");
+    state().updateNode(renamed, { title: "审阅" });
+    const [presetCopy, renamedCopy] = state().duplicateNodes([preset, renamed]);
+    expect(byId(presetCopy!)?.title).toBe("Cedar");
+    expect(byId(presetCopy!)?.data).toMatchObject({ handle: "cedar" });
+    expect(byId(renamedCopy!)?.title).toBe("审阅");
+    expect(byId(renamedCopy!)?.data).not.toHaveProperty("handle");
   });
 
   it("便签有自己的默认色与空正文", () => {
@@ -384,7 +406,7 @@ describe("addNode", () => {
     // 终端的 cwd 会被原样交给子进程，所以是绝对路径；其余是工作区相对。
     expect(
       byId(state().addNode("terminal", { parentId: bound.id }))?.data,
-    ).toEqual({ kind: "terminal", cwd: "/tmp/one/wt/feature" });
+    ).toMatchObject({ kind: "terminal", cwd: "/tmp/one/wt/feature" });
     expect(
       byId(state().addNode("files", { parentId: bound.id }))?.data,
     ).toEqual({ kind: "files", path: "wt/feature" });
@@ -400,7 +422,7 @@ describe("addNode", () => {
           data: { kind: "terminal", cwd: "/tmp/elsewhere" },
         }),
       )?.data,
-    ).toEqual({ kind: "terminal", cwd: "/tmp/elsewhere" });
+    ).toMatchObject({ kind: "terminal", cwd: "/tmp/elsewhere" });
   });
 
   it("没绑定的分组不影响新节点的默认目录", () => {
@@ -408,7 +430,7 @@ describe("addNode", () => {
     load([plain]);
     expect(
       byId(state().addNode("terminal", { parentId: plain.id }))?.data,
-    ).toEqual({ kind: "terminal" });
+    ).not.toHaveProperty("cwd");
   });
 
   it("select:false 不改选择", () => {

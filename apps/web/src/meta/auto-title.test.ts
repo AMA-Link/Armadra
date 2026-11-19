@@ -55,6 +55,19 @@ describe("title source", () => {
     expect(titleSource(node("重构导出流程"))).toBe("manual");
   });
 
+  it("treats an untouched preset name as a placeholder (#969)", () => {
+    const named = (title: string, handle: string) =>
+      ({
+        ...node(title),
+        data: { kind: "terminal", agent: { id: "codex" }, handle },
+      }) as unknown as CanvasNode;
+    expect(titleSource(named("Atlas", "atlas"))).toBe("placeholder");
+    expect(titleSource(named("Atlas 2", "atlas-2"))).toBe("placeholder");
+    // Renamed, or a handle someone typed: the title is theirs.
+    expect(titleSource(named("Reviewer", "atlas"))).toBe("manual");
+    expect(titleSource(named("Reviewer", "reviewer"))).toBe("manual");
+  });
+
   it("recognises a title it wrote itself and forgets it on request", () => {
     rememberAutoTitle(NODE_ID, "重构导出流程");
     expect(titleSource(node("重构导出流程"))).toBe("auto");
@@ -98,6 +111,22 @@ describe("automatic naming", () => {
     // title is ours and would otherwise be replaceable.
     await autoNameNode(NODE_ID, binding);
     expect(suggestTitle).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a preset name when the suggestion is only the brand name (#969)", async () => {
+    seed({
+      ...node("Atlas", "codex"),
+      data: { kind: "terminal", agent: { id: "codex" }, handle: "atlas" },
+    } as unknown as CanvasNode);
+    suggestTitle.mockResolvedValue("Codex");
+    await autoNameNode(NODE_ID, binding);
+    expect(useCanvasStore.getState().document?.nodes[0]?.title).toBe("Atlas");
+    // The attempt is handed back: a later turn, with a transcript, may name it.
+    suggestTitle.mockResolvedValue("重构导出流程");
+    await autoNameNode(NODE_ID, binding);
+    expect(useCanvasStore.getState().document?.nodes[0]?.title).toBe(
+      "重构导出流程",
+    );
   });
 
   it("never touches a node the user renamed", async () => {
