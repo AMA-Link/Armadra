@@ -284,6 +284,21 @@ describe("the Git routes", () => {
     expect(commits[1]!.coAuthors).toEqual([]);
   });
 
+  it("accepts a log order and refuses an unknown one (#976)", async () => {
+    const repo = repository("routes-log-order");
+    const id = workspace(repo.path);
+    const topo = await core.call("POST", `/api/workspaces/${id}/git/log`, {
+      refs: { kind: "head" },
+      order: "topo",
+    });
+    expect(topo.status).toBe(200);
+    const bad = await core.call("POST", `/api/workspaces/${id}/git/log`, {
+      refs: { kind: "head" },
+      order: "random",
+    });
+    expect(bad.status).toBe(400);
+  });
+
   it("runs an operation, scopes it to its workspace and cancels it", async () => {
     const repo = repository("routes-operations");
     const id = workspace(repo.path);
