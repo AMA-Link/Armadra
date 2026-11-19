@@ -602,6 +602,8 @@ export interface LogRequest {
   readonly text: LogText | null;
   readonly cursor: string | null;
   readonly limit: number;
+  /** `date` = `--date-order` (default), `topo` = `--topo-order` (#976). */
+  readonly order?: "date" | "topo";
 }
 
 export type LogCommit = CommitRecord & {

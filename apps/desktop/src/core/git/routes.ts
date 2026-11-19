@@ -1359,5 +1359,14 @@ function logRequest(body: Record<string, unknown>): LogRequest {
           },
     cursor: optionalString(body, "cursor") ?? null,
     limit: body.limit === undefined ? 100 : Number(body.limit),
+    order: logOrder(body.order),
   };
+}
+
+function logOrder(value: unknown): "date" | "topo" {
+  if (value === undefined || value === null) return "date";
+  if (value !== "date" && value !== "topo") {
+    throw badRequest("A log order must be `date` or `topo`");
+  }
+  return value;
 }
