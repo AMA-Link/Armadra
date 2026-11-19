@@ -465,7 +465,7 @@ preload 向壳要一张一次性配对票、换成自己的会话（Windows 经 
 `Sec-WebSocket-Protocol` 升级；托盘经 `shell-core/core-session.ts` 用自己的会话。没带会话的调用（包括
 `curl` 与本机别的回环端口上的网页）一律 401，只有 `/health`、`/api/health`、`/api/identity/*` 与配对短码
 换票例外。只有设了 `ARMADRA_LOOPBACK_OWNER=1` 的裸 core 不装这道门、按本机主人处理；所以浏览器里经
-Vite 开发页面时，core 要由 `armadra.sh run web` 起（它带这个变量），连桌面壳起的 core 会处处 401。探针要从
+Vite 开发页面时，core 要由 `armadra.sh run web` 起（它带这个变量），连桌面壳起的 core 会处处 401。这种开发模式下 core 对回环来源多回 `access-control-allow-credentials: true`、hello 多报一个 `identity.loopback-owner.v1` 能力位，页面没有会话也按本机主人开代码托管面板（#977）；开发代理（不设 `VITE_RUNTIME_URL`）会替同源请求补上页面自己的回环 `Origin`，否则身份面按 CSRF 规则回 403。探针要从
 Node 直接打桌面壳起的 core 时用 `tools/probes/probe-session.mjs`（经私有通道要票配对）。
 分进程时代的票据链见 [桌面壳原生 Host 会话](../history/host-native-session.md) 与
 [设备认证](../history/host-device-auth.md)，两份都是历史文档。
