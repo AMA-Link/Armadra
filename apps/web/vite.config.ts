@@ -241,7 +241,23 @@ export default defineConfig(({ command }) => ({
       command === "serve" && runtimeTarget
         ? {
             // `ws` 让终端与工作空间事件流也走同一条路。
-            "/api": { target: runtimeTarget, ws: true, changeOrigin: false },
+            "/api": {
+              target: runtimeTarget,
+              ws: true,
+              changeOrigin: false,
+              // 同源 GET 浏览器不带 Origin，而 core 的身份面对没有 Origin 的请求
+              // 一律 403（CSRF 防线，不能放松）。开发代理替页面补上它自己的回环
+              // 来源——页面本来就在这个来源上，core 看到的与直连时一致（#977）。
+              configure: (proxy) => {
+                proxy.on("proxyReq", (proxyReq) => {
+                  if (proxyReq.getHeader("origin") !== undefined) return;
+                  const host = proxyReq.getHeader("host");
+                  if (typeof host !== "string") return;
+                  if (!/^(127\.0\.0\.1|localhost)(:\d+)?$/.test(host)) return;
+                  proxyReq.setHeader("origin", `http://${host}`);
+                });
+              },
+            },
             "/health": { target: runtimeTarget, changeOrigin: false },
           }
         : undefined,
