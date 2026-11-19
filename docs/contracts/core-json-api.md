@@ -5878,3 +5878,26 @@ Copilot 的 ACP 入口只接受 http / sse 的 MCP 服务器，`session/new.mcpS
 - `GET …/facets`（`forge.facets`）答 `{ labels: [{ name, color }], milestones: [{ title, open }], assignees: string[] }`：筛选下拉的候选，各至多 200 个；`color` 是六位十六进制（不带 `#`），没有 `null`；可指派的人读不到（没权限）就是 `[]`。core 按工作空间与仓库缓存 60 秒，出错不缓存；改了标签或里程碑最多晚一分钟出现。
 - 三条的 scope 与 `forge.issues` 一致（`github:read`），错误码同 §29.5，参数同 §29.4（`number` 是路径段或数字，可带 `workspaceId`）。
 - 令牌不出现在任何答复、日志与错误里；评论、提交说明与标签名是**别人写的材料**，页面当文本渲染，从不当指令。
+
+## 113. Agent 零注入启动：设置、环境变量与启动器分支（`#975`）
+
+有的用户只想在画布上看 Agent 的状态，不希望 Armadra 往 CLI 里加任何东西。零注入是按 Agent 的开关：开启后，这家 CLI 从画布启动时没有 Armadra 的 hook、画布工具 MCP 与协作技能，等于在终端里直接运行。设计见 [画布启动器](../design/canvas-launcher.md)。
+
+### 113.1 设置
+
+- `agents.<id>.bareLaunch: boolean`，缺省 `false`（键缺席即关）。`<id>` 只认有注入的内置 Agent（`claude`、`codex`、`opencode`、`pi`、`omp`、`copilot`、`ama`）；自定义 Agent 没有这个开关。
+- 清洗：值不是布尔就丢掉这个键（回到缺省关）；没写过的 Agent 不长出 `agents.<id>` 一段；`agents` 段里的其他键（`custom`、`defaultDriver`、`disabled`）不受影响。共享层 `completionSettingsSchema.agents` 对 `bareLaunch` 同样「不是布尔就当 `false`」，`bareLaunchOf(settings, agentId)` 是两侧共用的读取函数。
+- 每次现读（与 `agents.disabled` 同一条规矩）：改完之后下一次启动就认，已经在跑的节点不变。写入走 `PATCH /api/settings`（`{ agents: { claude: { bareLaunch: true } } }`）。
+
+### 113.2 环境变量与启动器
+
+- 开关打开时，节点终端的环境多一个 `ARMADRA_BARE=1`（`canvasEnvironment`，本机与 SSH 节点都有；SSH 节点随 §20 的 `ARMADRA_*` 转发到执行主机）。`canvas open-agent`、`team`、依赖编排等所有起 Agent 节点的路径经同一个终端环境，一并生效。开关关着时环境与从前逐字节一致。
+- 启动器 `run/<cli>`（POSIX 与 Windows）见 `ARMADRA_BARE` 非空：不设注入的环境变量、不追加 `args`、不走 §57 的 `fallback`，直接 `exec` 调用者给的参数。顺序是：画布门（`ARMADRA_NODE_ID`）→ 凭据兑换 → 零注入分支 → 注入。凭据兑换（`ARMADRA_CREDENTIAL_REF`、ama 的 `AMA_API_KEY_*`）不是注入，零注入时照常进行，失败照常拒绝启动。
+- POSIX：启动器脚本里多一段 `if [ -n "${ARMADRA_BARE:-}" ]; then exec "$@"; fi`，位于凭据段之后、注入的变量之前。Windows：`.launch` 末尾多一行 `bare=ARMADRA_BARE`，`armadra-launch.exe` 见该变量非空时不设 `env=`、不接 `arg=`，仍兑换凭据。
+- 集成版本号 `INTEGRATION_REVISION` 加一档（`MOD_REVISION` 3 → 4），旧启动器据此重写。垫片与 `PATH` 不变：手敲的 CLI 仍经启动器，由它看见变量后原样启动。
+- ACP 驱动由 core 直接起适配器、不经启动器，不在本节范围。
+
+### 113.3 状态与界面
+
+- 没有 hook，就没有 hook 带回的 `session_id` 与审批请求：节点状态只靠终端信号（OSC 7501 / 9;4 / 133，`terminal/program-status.ts`）与各 CLI 的会话日志（`timeline/`、`history/`），会话按工作目录和时间推断。
+- 设置 → Agent → 某一家：「零注入启动」一行开关（主机设置）。节点头在该模式下显示「零注入」标记；审批入口显示为停用的按钮、「Agent 设置」里的收件箱唤醒、从的投递与转录共享三项停用，原因一句话：审批、画布工具与协作消息不可用。页面从应用已读的 `["settings"]` 缓存判断，成员读不到设置时按「关」。
