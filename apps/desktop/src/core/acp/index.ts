@@ -65,6 +65,7 @@ import { settingsDomain } from "../settings";
 import { timelineDomainOf } from "../timeline";
 import {
   parseCustomAgents,
+  parseBareLaunch,
   parseDisabledAgents,
 } from "../settings/custom-agents";
 import { TerminalError, type TerminalSpec } from "../terminal/backend";
@@ -203,6 +204,8 @@ export function agentSettings(): AgentSettings {
         parseCustomAgents(settingsDomain()?.settings.snapshot() ?? {}),
       disabledAgents: () =>
         parseDisabledAgents(settingsDomain()?.settings.snapshot() ?? {}),
+      bareLaunch: (agentId) =>
+        parseBareLaunch(settingsDomain()?.settings.snapshot() ?? {}, agentId),
     }
   );
 }

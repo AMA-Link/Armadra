@@ -23,6 +23,12 @@ import { posixQuote } from "../../terminal/shell";
 export const LAUNCH_GATE = "ARMADRA_NODE_ID";
 
 /**
+ * 零注入开关（契约 §113）：节点环境里它非空时，启动器不设注入的变量、不追加
+ * `args`、不走 `fallback`，直接 `exec` 调用者的参数。凭据兑换照常进行。
+ */
+export const BARE_GATE = "ARMADRA_BARE";
+
+/**
  * 路径怎么拼。本机数据目录用原生的；同步到执行主机的那份用 `path.posix.join`。
  * 与 `inject.ts::PathJoin` 同形，放在这里免得两个模块互相导入。
  */
@@ -175,6 +181,11 @@ function amaKeyLines(spec: LauncherSpec): string[] {
   return lines;
 }
 
+/** 零注入那一段：凭据兑换之后、注入的变量与 argv 之前，原样 `exec`。 */
+function bareLines(): string[] {
+  return [`if [ -n "\${${BARE_GATE}:-}" ]; then`, '  exec "$@"', "fi"];
+}
+
 /**
  * 环境分支那一段：变量名是我们的常量，逐个 `[ -n "${名:-}" ]`，任一成立就带
  * 另一组字面 argv `exec`。同样没有 `eval`，值不进 argv。
@@ -213,10 +224,12 @@ export function posixLauncher(spec: LauncherSpec): string {
     `# 用法：run/${spec.agentId} <程序> [程序前置词…] [CLI 的参数…]`,
     `# 没有 ${LAUNCH_GATE}（不是画布节点，或在画布外重跑这一行）时原样启动程序。`,
     `[ -n "\${${LAUNCH_GATE}:-}" ] || exec "$@"`,
-    // 变量在第一个 `exec` 之后才设：画布外不设。
-    ...exportLines(spec.env),
+    // 凭据兑换不是注入：零注入时也照常进行。
     ...credentialLines(spec),
     ...amaKeyLines(spec),
+    ...bareLines(),
+    // 变量在两个 `exec` 之后才设：画布外与零注入都不设。
+    ...exportLines(spec.env),
     ...fallbackLines(spec),
     `exec "$@"${tail === "" ? "" : ` ${tail}`}`,
     "",

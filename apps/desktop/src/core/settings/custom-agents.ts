@@ -11,6 +11,7 @@
  * settings document itself needs — what survives a load — is here.
  */
 
+import { bareLaunchOf, supportsBareLaunch } from "@armadra/shared";
 import { clone, isJsonObject, type JsonObject, type JsonValue } from "./local";
 
 /**
@@ -267,16 +268,38 @@ export function parseDisabledAgents(document: JsonValue): string[] {
 }
 
 /**
+ * 内置 Agent 的 `agents.<id>` 段里，`bareLaunch` 不是布尔就丢掉键（回到缺省关）；
+ * 没写过的 Agent 不长出一段。
+ */
+function normalizeBareLaunch(section: JsonObject): void {
+  for (const id of Object.keys(section)) {
+    if (!supportsBareLaunch(id)) continue;
+    const entry = section[id];
+    if (!isJsonObject(entry)) continue;
+    if ("bareLaunch" in entry && typeof entry.bareLaunch !== "boolean") {
+      delete entry.bareLaunch;
+    }
+  }
+}
+
+/** `settings.agents.<id>.bareLaunch`（契约 §113）：这家是否零注入启动。 */
+export function parseBareLaunch(document: JsonValue, agentId: string): boolean {
+  return bareLaunchOf(document, agentId);
+}
+
+/**
  * 每次现读的 Agent 设置：自定义条目与关掉的 Agent 都按设置文档此刻的样子给，
  * 不留快照——刚改的下一次调用就认。
  */
 export function liveAgentSettings(snapshot: () => JsonValue): {
   customAgents(): CustomAgent[];
   disabledAgents(): string[];
+  bareLaunch(agentId: string): boolean;
 } {
   return {
     customAgents: () => parseCustomAgents(snapshot()),
     disabledAgents: () => parseDisabledAgents(snapshot()),
+    bareLaunch: (agentId) => parseBareLaunch(snapshot(), agentId),
   };
 }
 
@@ -293,6 +316,7 @@ export function normalizeCustomAgents(document: JsonObject): void {
   const existing = document.agents;
   const section: JsonObject = isJsonObject(existing) ? clone(existing) : {};
   section.custom = agents.map(customAgentToJson);
+  normalizeBareLaunch(section);
   // `disabled` 只在写过时才有；清洗后空了就删掉键，回到「没关过」。
   if ("disabled" in section) {
     const disabled = parseDisabledAgents({ agents: section });

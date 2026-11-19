@@ -9,6 +9,7 @@
 //
 //   armadra-launch 1             首行，认不出就退出码 1
 //   gate=ARMADRA_NODE_ID         这个变量为空时不注入（画布外重跑那一行 = 普通启动）
+//   bare=ARMADRA_BARE            这个变量非空时零注入：只兑换凭据，不设 env、不接 arg（契约 §113）
 //   program=C:\…\node.exe        只在垫片模式：要起的程序（core 解析 PATH 与 npm 包装后写入）
 //   lead=C:\…\cli.js             只在垫片模式：排在程序后面的词，可多条
 //   env=NAME=value               注入：只给 CLI 进程设的环境变量，可多条
@@ -177,6 +178,7 @@ internal static class ArmadraLaunch
     private sealed class LaunchConfig
     {
         public string Gate;
+        public string Bare;
         public string Program;
         public readonly List<string> Lead = new List<string>();
         public readonly List<KeyValuePair<string, string>> Env = new List<KeyValuePair<string, string>>();
@@ -255,7 +257,8 @@ internal static class ArmadraLaunch
 
         bool batch = IsBatch(resolved);
         bool canvas = config.Gate == null || !string.IsNullOrEmpty(Environment.GetEnvironmentVariable(config.Gate));
-        bool inject = canvas;
+        bool bare = config.Bare != null && !string.IsNullOrEmpty(Environment.GetEnvironmentVariable(config.Bare));
+        bool inject = canvas && !bare;
         if (canvas)
         {
             int refused = Exchange(config);
@@ -419,6 +422,9 @@ internal static class ArmadraLaunch
             {
                 case "gate":
                     config.Gate = value;
+                    break;
+                case "bare":
+                    config.Bare = value;
                     break;
                 case "program":
                     config.Program = value;

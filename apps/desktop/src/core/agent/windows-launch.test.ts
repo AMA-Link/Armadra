@@ -113,6 +113,7 @@ function writeLauncher(
     args,
     env,
     exe,
+    bare: true,
     ...(shimTarget === undefined ? {} : { shimTarget }),
   };
   writeWindowsLauncherFiles(windowsLauncherFiles(spec));
@@ -256,6 +257,15 @@ describe.runIf(windows)(
 
     it("injects nothing without ARMADRA_NODE_ID: the same line outside a canvas", () => {
       const result = runCmd(launchLine("cmd"), outsideEnv());
+      expect(result.status, result.stderr).toBe(0);
+      const out = parse(result.stdout);
+      expect(out.argv).toEqual(VALUES);
+      expect(out.plain).toBeNull();
+    });
+
+    it("injects nothing with ARMADRA_BARE set, inside a canvas node", () => {
+      const env = { ...canvasEnv(), ARMADRA_BARE: "1" };
+      const result = runCmd(launchLine("cmd"), env);
       expect(result.status, result.stderr).toBe(0);
       const out = parse(result.stdout);
       expect(out.argv).toEqual(VALUES);

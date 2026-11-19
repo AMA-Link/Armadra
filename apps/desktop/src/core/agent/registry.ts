@@ -352,6 +352,11 @@ export interface AgentSettings {
    * 一个都没关。关掉只影响**发现与派发**：已有节点照常工作。
    */
   disabledAgents?(): readonly string[];
+  /**
+   * 这家是否零注入启动（`settings.agents.<id>.bareLaunch`，契约 §113）。缺席 =
+   * 关。只对有注入的内置 Agent 有意义。
+   */
+  bareLaunch?(agentId: string): boolean;
 }
 
 export const NO_CUSTOM_AGENTS: AgentSettings = { customAgents: () => [] };
