@@ -2,6 +2,45 @@
 
 每个版本一节，按发布倒序。括号里是合入的 PR 编号（github.com/AMA-Link/Armadra，2026-10-11 前为 Owlbay/Armadra，旧编号照常跳转）。兼容范围以 `tools/release/compatibility.json` 为准，发布说明里的 `armadra-compatibility` 围栏由它渲染。桌面、服务器与手机 / 平板 App 共用一条版本线和一个标签 `vX.Y.Z`（规则见 `docs/guides/ci-release.md`「版本规则」）；有手机端改动的版本，在「手机与平板」小节里写，其余写在「桌面 / 服务器」下。2026-10-10 之前手机端曾单独编号（1.0.0、1.1.0），内容并入对应的 0.2.5、0.2.6。
 
+## 0.21.0（2026-11-19）
+
+版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.21.0。随包 `@armadra/agent` 0.21.0（没有功能改动）与平台协议包 0.21.0（没有形状变化，云端协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.21.0。本版是功能版：Agent 零注入启动、节点预设名称、ACP 模型弹层、Git 日志排序。核心 JSON API 协议升到 1.52（只增字段）。
+
+Version aligned with armadra-cloud and armadra-agent (all three ship 0.21.0), with `@armadra/agent` 0.21.0 (no functional change) and platform protocol 0.21.0 (no shape changes, the cloud protocol is still 1.4); matching images `armadra-cloud` / `armadra-relay` 0.21.0. A feature release: zero-injection agent launch, preset node names, the ACP model popover and Git log sort order. The core JSON API protocol moves to 1.52 (additive only).
+
+### 桌面 / 服务器
+
+- Agent 零注入启动模式（#978，Closes #975）：设置 → Agent 里每家一个开关（`agents.<id>.bareLaunch`），打开后启动器不设注入变量、不追加参数、不走 mod 的回退，凭据兑换照常；节点终端环境（本机与 SSH）加 `ARMADRA_BARE=1`，节点头显示「零注入」标记；审批入口与协作相关设置在该模式下停用并给出原因。开关关着时行为不变；`MOD_REVISION` 升到 4，旧启动器会被重写。
+  Zero-injection agent launch (#978, Closes #975): a per-agent switch in Settings → Agent (`agents.<id>.bareLaunch`); when on, the launcher sets no injected variables, appends no arguments and skips the mod fallback, while credential exchange still runs; node terminal environments (local and SSH) get `ARMADRA_BARE=1` and the node header shows a "zero injection" mark; the approval entry and collaboration settings are disabled with a reason. Behaviour with the switch off is unchanged; `MOD_REVISION` goes to 4 so old launchers are rewritten.
+- 节点预设名称与类型标记（#973，Closes #969）：新建终端与 Agent 节点取预设名（标题 `Atlas`，名字 `atlas`，用完后带编号），`open-terminal` / `open-agent` / team 不给标题时同样如此；终端节点头最左边加类型标记（Agent 用两字符，普通终端用图标）；没改过的预设名算占位，自动命名可以接管。
+  Preset node names and type marks (#973, Closes #969): new terminal and agent nodes get preset names (title `Atlas`, name `atlas`, numbered once the pool runs out), and so do `open-terminal` / `open-agent` / team when no title is given; the terminal node header gets a type mark on its left (two characters for an agent, an icon for a plain terminal); untouched preset names count as placeholders that auto-titling may take over.
+- ACP 模型按钮弹层（#971，Closes #970）：操作行只留一个模型按钮，模型、思考强度、其余配置项、速度与权限模式都收进它的弹层，支持搜索与 `⌘1`…`⌘9` 快捷键。
+  ACP model popover (#971, Closes #970): the action row keeps one model button; model, reasoning level, other options, speed and permission mode move into its popover, with search and `Ctrl/⌘ 1`…`9` shortcuts.
+- Git 日志排序（#979，Closes #976）：日志筛选栏加「排序」下拉（时间优先 / 拓扑优先），偏好随本地保存；请求加可选 `order`（缺省 `date`，`topo` 走 `--topo-order`），游标绑定排序，已有游标不失效；协议 1.52，只增字段。
+  Git log sort order (#979, Closes #976): the log filter bar gets a Sort dropdown (date first / topology first) saved locally; the request takes an optional `order` (`date` by default, `topo` uses `--topo-order`), cursors are bound to a non-default order and existing cursors stay valid; protocol 1.52, additive only.
+
+### 修正
+
+- 浏览器开发模式下代码托管面板可用（#980，Closes #977）：回环主人模式下 core 对回环来源回 `allow-credentials`，hello 报 `identity.loopback-owner.v1`，页面据此免会话，Vite 开发代理给没有 Origin 的同源请求补来源；桌面壳、服务器壳与 SaaS 路径的应答不变。
+  The code-hosting panel works in browser dev mode (#980, Closes #977): in loopback-owner mode the core answers `allow-credentials` for loopback origins and hello advertises `identity.loopback-owner.v1`, so the page skips the session; the Vite dev proxy fills in the origin for same-origin requests without one; desktop shell, server shell and SaaS replies are unchanged.
+
+### 手机与平板
+
+- 夜间 iOS 构建与探针更稳（#974，Refs #955）：构建前单独解析 Swift 包依赖并最多重试三次；OAuth 深链之后先等 App 回到前台再按文本查分区名。App 本身没有行为改动。
+  A steadier nightly iOS build and probe (#974, Refs #955): Swift packages are resolved in their own step with up to three retries; after the OAuth deep link the probe waits for the app to be foreground before querying by text. No behaviour change in the app itself.
+
+### 随包 Agent
+
+- `@armadra/agent` 0.21.0：没有功能改动，与统一版本对齐。
+  `@armadra/agent` 0.21.0: no functional change, aligned with the unified version.
+
+### 部署说明
+
+- 无需迁移：没有新的数据库迁移，核心库仍是 0067；核心 JSON API 协议 1.52（只增字段，旧客户端照常），云端协议（1.4）不变。
+  Nothing to migrate: no new database migrations (the core database stays at 0067); the core JSON API protocol is 1.52 (additive only, older clients keep working) and the cloud protocol (1.4) is unchanged.
+- 配套镜像 `ghcr.io/ama-link/armadra-cloud:0.21.0`、`ghcr.io/ama-link/armadra-relay:0.21.0` 与协议包 0.21.0 同号（cloud 侧没有面向用户的改动；控制台页面取自本版服务器壳镜像）；推送中继镜像 `ghcr.io/ama-link/armadra-push-relay:0.21.0` 与服务器壳镜像同号。发版顺序沿用 0.20.0：先打 Armadra `v0.21.0`，等服务器壳镜像推送成功后再打 armadra-cloud `v0.21.0`。
+  Matching images `ghcr.io/ama-link/armadra-cloud:0.21.0` and `ghcr.io/ama-link/armadra-relay:0.21.0` share the number with protocol package 0.21.0 (no user-facing changes on the cloud side; console pages come from this version's server shell image); the push-relay image `ghcr.io/ama-link/armadra-push-relay:0.21.0` shares the number with the server shell image. Release order as in 0.20.0: tag Armadra `v0.21.0` first, then tag armadra-cloud `v0.21.0` once the server shell image has been pushed.
+
 ## 0.20.0（2026-11-17）
 
 版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.20.0。随包 `@armadra/agent` 0.20.0（没有功能改动）与平台协议包 0.20.0（没有形状变化，协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.20.0。本版是功能版：自研画板引擎 `@armadra/board` 完成性能收尾并成为唯一画布，`@xyflow/react` 移除。
