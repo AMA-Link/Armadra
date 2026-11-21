@@ -73,12 +73,15 @@ final class ConnectFlowUITests: XCTestCase {
         return link.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    func test2PairsThroughThePinnedGatewayAndOpensTheCanvas() throws {
-        guard let given = ProcessInfo.processInfo.environment["ARMADRA_PAIR_LINK_SOURCE"],
-              let source = URL(string: given) else {
-            throw XCTSkip("ARMADRA_PAIR_LINK_SOURCE not given (run through tools/probes/mobile-shell-e2e.mjs)")
-        }
-        let app = launched()
+    /// 页面答配对票过期（二维码过期或配对链接失效，中英都认）。
+    private func pairingExpired(_ app: XCUIApplication) -> Bool {
+        app.webViews.staticTexts.matching(NSPredicate(
+            format: "label CONTAINS %@ OR label CONTAINS %@ OR label CONTAINS[c] %@",
+            "过期", "失效", "expired")).firstMatch.exists
+    }
+
+    /// 现铸一张票，在连接页填进链接、点「连接」，等画布出来；出来了返回 true。
+    private func pairOnce(_ app: XCUIApplication, with source: URL) throws -> Bool {
         XCTAssertTrue(pairingLink(app).waitForExistence(timeout: 60), "connect screen")
         let text = try freshPairLink(from: source)
         // 二维码文本填进连接页的链接输入框（App 内扫码器解析的就是这一串，契约 §99.2）：先点「配对链接」
@@ -106,7 +109,26 @@ final class ConnectFlowUITests: XCTestCase {
                 connect.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
             }
         }
-        if !canvas.waitForExistence(timeout: 20) {
+        return canvas.waitForExistence(timeout: 20)
+    }
+
+    func test2PairsThroughThePinnedGatewayAndOpensTheCanvas() throws {
+        guard let given = ProcessInfo.processInfo.environment["ARMADRA_PAIR_LINK_SOURCE"],
+              let source = URL(string: given) else {
+            throw XCTSkip("ARMADRA_PAIR_LINK_SOURCE not given (run through tools/probes/mobile-shell-e2e.mjs)")
+        }
+        // 票只有两分钟。慢的运行机上光把链接敲进输入框就要近一分钟，第一下「连接」再被吞掉，重点时票已
+        // 过期，页面答「二维码已过期」（#955，nightly 44647110798：铸票约 95 秒后才点「连接」）。过期就
+        // 重开 App 回到干净的连接页，重铸一张再来一轮，最多两轮；别的失败照常报。
+        var app = launched()
+        var paired = try pairOnce(app, with: source)
+        if !paired && pairingExpired(app) {
+            XCTContext.runActivity(named: "pairing link expired, minting a fresh one") { _ in }
+            app.terminate()
+            app = launched()
+            paired = try pairOnce(app, with: source)
+        }
+        if !paired {
             let shot = XCTAttachment(screenshot: app.screenshot())
             shot.lifetime = .keepAlways
             add(shot)
