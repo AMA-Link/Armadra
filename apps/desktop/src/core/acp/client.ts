@@ -22,6 +22,7 @@
  */
 
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import { accessSync, constants as fsConstants, statSync } from "node:fs";
 
 import {
   AcpClient,
@@ -66,6 +67,8 @@ export class AcpError extends Error {
 
 export type AcpErrorCode =
   | "acp_spawn_failed"
+  // 会话的工作目录在本机不存在（#984）：`details: { cwd }`。
+  | "acp_cwd_missing"
   | "acp_exited"
   | "acp_initialize_failed"
   | "acp_initialize_timeout"
@@ -375,6 +378,14 @@ export class AcpProcess {
    * 「没拿到 pid」两条路都在这里收口。
    */
   static spawn(options: AcpSpawnOptions): AcpProcess {
+    // 工作目录不在时 spawn 同样报 ENOENT，看起来像程序没装（#984）：先查目录。
+    if (!isDirectory(options.cwd)) {
+      throw new AcpError(
+        "acp_cwd_missing",
+        `working directory does not exist: ${options.cwd}`,
+        { cwd: options.cwd },
+      );
+    }
     let child: ChildProcess;
     try {
       child = spawn(options.program, [...options.args], {
@@ -395,7 +406,10 @@ export class AcpProcess {
       // 异步失败（通常是 ENOENT）会在没人监听的 child 上发 error，那是进程级
       // 的抛出；返回之前先挂上。
       child.on("error", () => {});
-      throw new AcpError("acp_spawn_failed", `cannot start ${options.program}`);
+      throw new AcpError(
+        "acp_spawn_failed",
+        `cannot start ${options.program}: ${spawnFailureReason(options)}`,
+      );
     }
     return new AcpProcess(child, options);
   }
@@ -705,6 +719,41 @@ function killGroup(pid: number, signal: NodeJS.Signals): void {
       // 已经没了。
     }
   }
+}
+
+function isDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 没拿到进程号时的原因：Node 的 `error` 事件要到下一拍才发，这里自己查一遍。
+ * 绝对路径查存在与可执行；裸命令名在 PATH 里找不到时说找不到。
+ */
+export function spawnFailureReason(options: {
+  readonly program: string;
+  readonly cwd: string;
+}): string {
+  if (!isDirectory(options.cwd)) {
+    return `working directory does not exist: ${options.cwd}`;
+  }
+  if (!options.program.includes("/") && !options.program.includes("\\")) {
+    return "not found on PATH";
+  }
+  try {
+    statSync(options.program);
+  } catch {
+    return "not found";
+  }
+  try {
+    accessSync(options.program, fsConstants.X_OK);
+  } catch {
+    return "not executable";
+  }
+  return "spawn failed";
 }
 
 export function messageOf(error: unknown): string {

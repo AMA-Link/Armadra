@@ -168,6 +168,7 @@ function acpStatus(code: string): number {
     case "acp_model_unsupported":
     case "acp_auth_required":
     case "acp_cli_outdated":
+    case "acp_cwd_missing":
     case "pi_outdated":
     case "pi_missing":
     case "pi_no_model":

@@ -1,4 +1,6 @@
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { fakeAcpAgentPath } from "@armadra/agent/acp";
 import { afterEach, describe, expect, it } from "vitest";
@@ -8,6 +10,7 @@ import {
   type AcpPendingPermission,
   type AcpPermissionSettlement,
   AcpProcess,
+  spawnFailureReason,
 } from "./client";
 import type { AcpSessionNotification } from "./types";
 
@@ -238,5 +241,56 @@ describe("AcpProcess", () => {
     }
     expect(thrown).toBeInstanceOf(AcpError);
     expect((thrown as AcpError).toJSON().code).toBe("acp_spawn_failed");
+    expect((thrown as AcpError).message).toBe(
+      "cannot start /nonexistent/armadra-acp-agent: not found",
+    );
+  });
+
+  it("refuses a missing working directory with acp_cwd_missing, not blaming the program (#984)", () => {
+    const cwd = join(tmpdir(), `armadra-missing-${process.pid}-${Date.now()}`);
+    let thrown: unknown;
+    try {
+      started.push(
+        AcpProcess.spawn({
+          program: process.execPath,
+          args: [fakeAcpAgentPath()],
+          cwd,
+        }),
+      );
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(AcpError);
+    const error = thrown as AcpError;
+    expect(error.code).toBe("acp_cwd_missing");
+    expect(error.details).toEqual({ cwd });
+    expect(error.message).toContain(cwd);
+  });
+});
+
+describe("spawnFailureReason", () => {
+  it("names the cause: missing directory, missing program, not executable, not on PATH", () => {
+    const dir = mkdtempSync(join(tmpdir(), "armadra-spawn-"));
+    const plain = join(dir, "plain");
+    writeFileSync(plain, "#!/bin/sh\n");
+    chmodSync(plain, 0o644);
+    try {
+      expect(spawnFailureReason({ program: plain, cwd: join(dir, "x") })).toBe(
+        `working directory does not exist: ${join(dir, "x")}`,
+      );
+      expect(spawnFailureReason({ program: join(dir, "nope"), cwd: dir })).toBe(
+        "not found",
+      );
+      expect(spawnFailureReason({ program: "armadra-nope", cwd: dir })).toBe(
+        "not found on PATH",
+      );
+      if (process.platform !== "win32") {
+        expect(spawnFailureReason({ program: plain, cwd: dir })).toBe(
+          "not executable",
+        );
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
