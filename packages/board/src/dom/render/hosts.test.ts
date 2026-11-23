@@ -66,9 +66,15 @@ describe("createWorldHosts", () => {
     const { scene, hosts } = setup();
     scene.transact((d) => d.set(make("a")));
     scene.preview(new Map([["a", { x: 50 }]]));
-    expect(hosts.hostOf("a")!.style.transform).toBe("translate(50px, 0px)");
+    // jsdom 31 把第二个值为 0 的 translate 序列化成单参数写法，浏览器保留两个值，
+    // 两种都是同一个位移。
+    expect(hosts.hostOf("a")!.style.transform).toMatch(
+      /^translate\(50px(, 0px)?\)$/,
+    );
     scene.clearPreview();
-    expect(hosts.hostOf("a")!.style.transform).toBe("translate(0px, 0px)");
+    expect(hosts.hostOf("a")!.style.transform).toMatch(
+      /^translate\(0px(, 0px)?\)$/,
+    );
   });
 
   it("只追加不重排：改 z 或在中间插入，已有宿主的 DOM 顺序与引用不变，层级靠 z-index", () => {
