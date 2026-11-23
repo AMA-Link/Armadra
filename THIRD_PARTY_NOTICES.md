@@ -9,7 +9,7 @@ Armadra is distributed under the MIT License (see `LICENSE`). It includes the th
 - **Electron and Chromium.** The notices Electron and Chromium require to accompany their binaries are shipped as `LICENSE.electron.txt` and `LICENSES.chromium.html` next to the executable (on macOS in `Armadra.app/Contents/Resources/`).
 - **ama (`@armadra/agent` 0.21.0).** Its own license and third-party notices are shipped in `resources/agent/` as `LICENSE` and `THIRD_PARTY_NOTICES.md`.
 
-## npm packages (553)
+## npm packages (552)
 
 ### @antfu/install-pkg@2.1.0
 
@@ -3905,14 +3905,6 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
-
-### @oxc-parser/binding-darwin-arm64@0.152.0
-
-License: MIT
-Author: Boshen and oxc contributors
-Homepage: https://oxc.rs/docs/guide/usage/parser
-
-The package ships no license file; see its homepage for the license terms.
 
 ### @oxc-project/types@0.152.0
 
