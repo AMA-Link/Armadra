@@ -18,6 +18,26 @@ import { homedir } from "node:os";
  *     里的用户名、常见令牌形状、地址里的账号与查询串全部替换，再截断。
  */
 
+/**
+ * SDK 11 起 `sendDefaultPii` 被 `dataCollection` 取代，而且不写时默认什么都收（用户 IP、
+ * cookie、请求与响应正文、数据库与 GenAI 的输入输出……）。这里把每一类都明确关掉，
+ * 桌面与服务器两个壳共用，`beforeSend` 的剥离在此之外再兜一层。
+ */
+export const DATA_COLLECTION_NONE = {
+  userInfo: false,
+  cookies: false,
+  httpHeaders: false,
+  httpBodies: [],
+  urlQueryParams: false,
+  graphQL: { document: false, variables: false },
+  genAI: { inputs: false, outputs: false },
+  mcp: { inputs: false, outputs: false },
+  databaseQueryData: false,
+  queues: false,
+  stackFrameVariables: false,
+  frameContextLines: 0,
+} as const;
+
 /** 剥离要知道的两样东西：这台机器的家目录，以及不能出现在事件里的那些值。 */
 export interface ScrubContext {
   readonly homes: readonly string[];

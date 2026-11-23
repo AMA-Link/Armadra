@@ -327,6 +327,7 @@ export function packagesFrom(listing) {
       if (entry.name.startsWith("@armadra/")) continue;
       entry.versions.forEach((version, index) => {
         const path = entry.paths?.[index] ?? entry.paths?.[0] ?? "";
+        if (platformSpecific(path)) return;
         packages.push({
           name: entry.name,
           version,
@@ -342,6 +343,20 @@ export function packagesFrom(listing) {
     (a, b) =>
       (a.name < b.name ? -1 : a.name > b.name ? 1 : 0) ||
       (a.version < b.version ? -1 : a.version > b.version ? 1 : 0),
+  );
+}
+
+/**
+ * 按平台装的原生绑定（manifest 带 `os` / `cpu`，例如 `@oxc-parser/binding-*`）：
+ * 每台机器只装自己那一个，列进声明就随生成的机器变，`--check` 在三个平台上
+ * 不可能同时过。它们与依赖它们的父包同一项目、同一许可证，父包已在声明里。
+ */
+function platformSpecific(directory) {
+  if (directory === "") return false;
+  const manifest = readManifest(directory);
+  return (
+    manifest !== null &&
+    (manifest.os !== undefined || manifest.cpu !== undefined)
   );
 }
 

@@ -83,6 +83,39 @@ test("pnpm's grouped listing becomes one sorted row per installed version, works
   );
 });
 
+test("platform-specific native bindings (os / cpu in the manifest) are left out so every platform renders the same notices", () => {
+  const { dir, pkg } = fixture();
+  try {
+    const parent = pkg("parser", {
+      "package.json": JSON.stringify({ name: "parser", license: "MIT" }),
+    });
+    const binding = pkg("@parser/binding-linux-x64", {
+      "package.json": JSON.stringify({
+        name: "@parser/binding-linux-x64",
+        license: "MIT",
+        os: ["linux"],
+        cpu: ["x64"],
+      }),
+    });
+    const rows = packagesFrom({
+      MIT: [
+        { name: "parser", versions: ["1.0.0"], paths: [parent] },
+        {
+          name: "@parser/binding-linux-x64",
+          versions: ["1.0.0"],
+          paths: [binding],
+        },
+      ],
+    });
+    assert.deepEqual(
+      rows.map((row) => row.name),
+      ["parser"],
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("resolved peers and optional dependencies pnpm 12 leaves out are added, with their own dependencies", () => {
   const dir = mkdtempSync(join(tmpdir(), "armadra-notices-peers-"));
   const install = (store, name, manifest) => {

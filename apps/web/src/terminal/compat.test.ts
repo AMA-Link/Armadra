@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   appChordsInTerminal,
@@ -184,14 +184,13 @@ describe("OSC 标题（§18.3 标题行）", () => {
   });
 
   it("这份记忆写进 localStorage，刷新之后 OSC 还能继续跟随标题", () => {
-    // 这个测试环境是 node，没有 localStorage：源码里是 `?.` 可选调用，
+    // 这个测试环境没有可写的 localStorage（只读 getter）：源码里是 `?.` 可选调用，
     // 所以补一份最小的实现就能把落盘那条路跑出来。
     const store = new Map<string, string>();
-    const previous = (globalThis as { localStorage?: unknown }).localStorage;
-    (globalThis as { localStorage?: unknown }).localStorage = {
+    vi.stubGlobal("localStorage", {
       getItem: (key: string) => store.get(key) ?? null,
       setItem: (key: string, value: string) => void store.set(key, value),
-    };
+    });
     try {
       forgetOscTitle("node-3");
       rememberOscTitle("node-3", "pnpm dev");
@@ -205,7 +204,7 @@ describe("OSC 标题（§18.3 标题行）", () => {
       forgetOscTitle("node-3");
       expect(read()["node-3"]).toBeUndefined();
     } finally {
-      (globalThis as { localStorage?: unknown }).localStorage = previous;
+      vi.unstubAllGlobals();
     }
   });
 });

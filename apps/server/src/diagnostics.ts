@@ -1,6 +1,7 @@
 import { readFileSync, unwatchFile, watchFile } from "node:fs";
 import { join } from "node:path";
 import {
+  DATA_COLLECTION_NONE,
   type ScrubContext,
   dsnFromSettings,
   dsnHost,
@@ -94,9 +95,7 @@ export function nodeSentryOptions(
     environment: "production",
     defaultIntegrations: false,
     integrations: [sdk.linkedErrorsIntegration(), sdk.dedupeIntegration()],
-    skipOpenTelemetrySetup: true,
-    autoSessionTracking: false,
-    sendDefaultPii: false,
+    dataCollection: DATA_COLLECTION_NONE,
     sendClientReports: false,
     attachStacktrace: false,
     includeLocalVariables: false,

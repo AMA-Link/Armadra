@@ -181,8 +181,7 @@ describe("the workspace event socket", () => {
         updatedAt: "2026-09-19T10:00:00Z",
       },
     });
-    expect(arrived).resolves.toMatchObject({ type: "board.changed" });
-    await arrived;
+    await expect(arrived).resolves.toMatchObject({ type: "board.changed" });
   });
 
   it("stops publishing to a workspace once its last client has gone", async () => {

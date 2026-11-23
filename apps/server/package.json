@@ -19,9 +19,9 @@
     "@types/ws": "8.18.2",
     "esbuild": "0.28.2",
     "typescript": "6.0.3",
-    "vitest": "4.1.12"
+    "vitest": "5.1.1"
   },
   "dependencies": {
-    "@sentry/node": "10.75.0"
+    "@sentry/node": "11.16.0"
   }
 }

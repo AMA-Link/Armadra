@@ -36,6 +36,13 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock("../api/client", () => ({ runtimeApi: api }));
 const openFile = vi.hoisted(() => vi.fn());
+// 跳转会按延迟重试居中；测试结束、jsdom 拆掉之后重试才触发会抛 `window is not defined`。
+// 居中本身由 goto-node.test.ts 覆盖，这里只关心搜索结果的行为。
+vi.mock("../canvas/flow/flow-context", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../canvas/flow/flow-context")>()),
+  requestCenterOnNode: vi.fn(),
+}));
+
 vi.mock("@/files/open-editor", () => ({ openFileInEditor: openFile }));
 
 const timestamp = "2026-09-05T10:00:00.000Z";

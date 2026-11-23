@@ -79,19 +79,18 @@ describe("title source", () => {
   });
 
   it("survives a reload, because a lost ledger would read as a manual rename", () => {
-    // 这个测试环境没有 localStorage（和 `compat.test.ts` 同一个坑）：源码里是
+    // 这个测试环境的 localStorage 是只读 getter（和 `compat.test.ts` 同一个坑），用 stubGlobal 换：源码里是
     // `?.` 可选调用，所以补一个最小实现来验证它确实写出去了。
-    const previous = (globalThis as { localStorage?: unknown }).localStorage;
     const store = new Map<string, string>();
-    (globalThis as { localStorage?: unknown }).localStorage = {
+    vi.stubGlobal("localStorage", {
       getItem: (key: string) => store.get(key) ?? null,
       setItem: (key: string, value: string) => void store.set(key, value),
-    };
+    });
     try {
       rememberAutoTitle(NODE_ID, "重构导出流程");
       expect(store.get("armadra.autoTitles")).toContain("重构导出流程");
     } finally {
-      (globalThis as { localStorage?: unknown }).localStorage = previous;
+      vi.unstubAllGlobals();
     }
   });
 });

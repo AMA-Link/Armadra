@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { scrubContext } from "../../desktop/src/core/diagnostics/crash";
+import {
+  DATA_COLLECTION_NONE,
+  scrubContext,
+} from "../../desktop/src/core/diagnostics/crash";
 import { createLog } from "../../desktop/src/core/platform";
 import {
   CRASH_REPORT_DSN_ENV,
@@ -95,9 +98,7 @@ describe("服务器壳崩溃上报", () => {
     expect(calls.init[0]).toMatchObject({
       dsn: DSN,
       defaultIntegrations: false,
-      skipOpenTelemetrySetup: true,
-      autoSessionTracking: false,
-      sendDefaultPii: false,
+      dataCollection: DATA_COLLECTION_NONE,
       includeLocalVariables: false,
     });
     expect(
