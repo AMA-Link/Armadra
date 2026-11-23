@@ -143,6 +143,24 @@ mac:
     - target: zip
       arch: [arm64, x64]
 
+# The artwork is drawn around these coordinates; change them together with
+# WINDOW and the artwork in scripts/render-dmg-background.mjs.
+dmg:
+  background: build/background.png
+  iconSize: 112
+  iconTextSize: 13
+  window:
+    width: 660
+    height: 440
+  contents:
+    - x: 170
+      y: 200
+      type: file
+    - x: 490
+      y: 200
+      type: link
+      path: /Applications
+
 # How Windows is signed is not written here either. `win.azureSignOptions`
 # (Azure Artifact Signing) makes electron-builder take the signing path the
 # moment the block exists, without checking that its credentials do, so
