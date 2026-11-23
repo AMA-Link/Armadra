@@ -472,13 +472,24 @@ describe("GitHub Copilot payloads", () => {
   });
 
   it("ends the turn only on an unrecoverable error", () => {
-    // The `agentStop` that follows is what ends this turn.
+    // A model call may be retried: still working, marked for the sweep.
+    const retrying = copilot({
+      sessionId: "s-1",
+      cwd: "/repo",
+      error: { message: "socket hang up", name: "FetchError" },
+      errorContext: "model_call",
+      recoverable: true,
+    });
+    expect(retrying?.state).toBe(WORKING);
+    expect(retrying?.modelError).toBe(true);
+    expect(retrying?.lastMessage).toBe("socket hang up");
+    // A failed tool is routine, and the model carries on.
     expect(
       copilot({
         sessionId: "s-1",
         cwd: "/repo",
-        error: { message: "socket hang up", name: "FetchError" },
-        errorContext: "model_call",
+        error: { message: "tool threw", name: "Error" },
+        errorContext: "tool_execution",
         recoverable: true,
       }),
     ).toBeUndefined();
@@ -509,6 +520,12 @@ describe("GitHub Copilot payloads", () => {
     // spelling of the discriminator is the same discriminator.
     expect(
       copilot({ sessionId: "s-1", notificationType: "permission_prompt" })
+        ?.state,
+    ).toBe(WAITING);
+
+    // A question the model asked (measured on 1.0.110).
+    expect(
+      copilot({ sessionId: "s-1", notificationType: "elicitation_dialog" })
         ?.state,
     ).toBe(WAITING);
 
@@ -910,10 +927,91 @@ describe("tool details for the timeline: opencode", () => {
     expect(ask?.hookEvent).toBe("PermissionRequest");
     expect(ask?.toolName).toBe("bash");
     expect(ask?.toolSummary).toBe("run tests");
+    const replied = opencode({
+      event: "permission.replied",
+      properties: { id: "p1" },
+    });
+    expect(replied?.hookEvent).toBe("PostToolUse");
+    expect(replied?.state).toBe(WORKING);
+  });
+
+  it("reads OpenCode's questions, interrupts and settling idle", () => {
+    const asked = opencode({ event: "question.asked", properties: {} });
+    expect(asked?.state).toBe(WAITING);
+    expect(asked?.awaitingInput).toBe(true);
+    for (const event of ["question.replied", "question.rejected"]) {
+      const closed = opencode({ event, properties: {} });
+      expect(closed?.state).toBe(WORKING);
+      expect(closed?.questionClosed).toBe(true);
+    }
+    const aborted = opencode({
+      event: "session.error",
+      properties: { error: { name: "MessageAbortedError" } },
+    });
+    expect(aborted?.interrupted).toBe(true);
+    expect(aborted?.errored).toBeUndefined();
     expect(
-      opencode({ event: "permission.replied", properties: { id: "p1" } })
-        ?.hookEvent,
-    ).toBe("PostToolUse");
+      opencode({ event: "session.idle", properties: {} })?.keepsVerdict,
+    ).toBe(true);
+    // The question tool stays running while the person answers.
+    expect(
+      opencode({
+        event: "message.part.updated",
+        properties: {
+          part: {
+            type: "tool",
+            tool: "question",
+            state: { status: "running" },
+          },
+        },
+      }),
+    ).toBeUndefined();
+  });
+
+  it("reads why a Pi-family turn ended, and OMP's ask", () => {
+    const failed = pi({ hookEventName: "agent_end", stopReason: "error" });
+    expect(failed?.state).toBe(DONE);
+    expect(failed?.errored).toBe(true);
+    const aborted = pi({ hookEventName: "agent_end", stopReason: "aborted" });
+    expect(aborted?.interrupted).toBe(true);
+    expect(aborted?.questionClosed).toBe(true);
+    const clean = pi({ hookEventName: "agent_end", stopReason: "stop" });
+    expect(clean?.errored).toBeUndefined();
+    expect(clean?.interrupted).toBeUndefined();
+
+    const omp = (payload: Record<string, unknown>) =>
+      normalizeAs("omp", "omp", "n", payload);
+    const asking = omp({ hookEventName: "tool_call", toolName: "ask" });
+    expect(asking?.state).toBe(WAITING);
+    expect(asking?.awaitingInput).toBe(true);
+    expect(
+      omp({ hookEventName: "tool_result", toolName: "ask" })?.questionClosed,
+    ).toBe(true);
+    // Pi has no such tool: one a person wrote called `ask` is plain work.
+    expect(pi({ hookEventName: "tool_call", toolName: "ask" })?.state).toBe(
+      WORKING,
+    );
+  });
+
+  it("closes a Claude or Codex question when its tool returns", () => {
+    const claude = (payload: Record<string, unknown>) =>
+      normalizeAs("claude", "claude", "n", payload);
+    const codex = (payload: Record<string, unknown>) =>
+      normalizeAs("codex", "codex", "n", payload);
+    expect(
+      claude({ hook_event_name: "PostToolUse", tool_name: "AskUserQuestion" })
+        ?.questionClosed,
+    ).toBe(true);
+    const answered = codex({
+      hook_event_name: "PostToolUse",
+      tool_name: "request_user_input",
+    });
+    expect(answered?.state).toBe(WORKING);
+    expect(answered?.questionClosed).toBe(true);
+    const aborted = claude({ hook_event_name: "TurnAborted" });
+    expect(aborted?.state).toBe(DONE);
+    expect(aborted?.interrupted).toBe(true);
+    expect(aborted?.questionClosed).toBe(true);
   });
 
   it("reads the older tool topics", () => {

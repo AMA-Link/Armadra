@@ -70,6 +70,9 @@ export function normalize(
     }
     case "PostToolUse":
       event = stateEvent(nodeId, agentId, WORKING);
+      if (toolName !== undefined && QUESTION_TOOLS.includes(toolName)) {
+        event.questionClosed = true;
+      }
       break;
     case "PermissionRequest":
       event = stateEvent(nodeId, agentId, BLOCKED);
@@ -84,6 +87,20 @@ export function normalize(
     case "StopFailure":
       event = stateEvent(nodeId, agentId, DONE);
       event.errored = true;
+      break;
+    // Not Claude hooks: the mod's `turn.complete`. Esc (`aborted`) and No at a
+    // permission prompt (`answer`) end a turn with no `Stop` (2.1.325, measured
+    // 2026-11-23). On any other turn `Stop` says the same and has the last word.
+    case "TurnAborted":
+      event = stateEvent(nodeId, agentId, DONE);
+      event.interrupted = true;
+      event.questionClosed = true;
+      break;
+    case "TurnEnded":
+      event = stateEvent(nodeId, agentId, DONE);
+      event.keepsVerdict = true;
+      event.closesPrompt = true;
+      event.questionClosed = true;
       break;
     case "SubagentStart":
       event = newEvent(nodeId, agentId, "subagent-start");
