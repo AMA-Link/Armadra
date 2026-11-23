@@ -21,6 +21,7 @@ const START_FAILURE_KEYS: Readonly<Record<string, string>> = {
   acp_mode_unsupported: "acp.error.modeUnavailable",
   acp_protocol_version: "acp.error.protocolVersion",
   acp_cli_outdated: "acp.error.cliOutdated",
+  acp_cwd_missing: "acp.error.cwdMissing",
   // ama 的 pi 桥在 `session/new` 里答的三种原因。
   pi_outdated: "acp.error.piOutdated",
   pi_missing: "acp.error.piMissing",
@@ -63,11 +64,18 @@ const NOTE_CHARS = 300;
  *   * 通用文案的那些码（`acp_session_failed` 一类）：core 转述的 Agent 原话，
  *     免得只剩「会话没有启动」。
  *   * `pi_outdated`：同上（桥带的 `details` 与 `acp_cli_outdated` 同形）；
- *   * `pi_missing`：应装的包。
+ *   * `pi_missing`：应装的包；
+ *   * `acp_cwd_missing`：不存在的那个目录（#984）。
  * 有专门一句的码本身就说清了，不再附；没有可说的答 `null`。
  */
 export function startFailureNote(error: unknown, t: Translate): string | null {
   if (!(error instanceof RuntimeRequestError)) return null;
+  if (error.code === "acp_cwd_missing") {
+    const details = (error.body as { details?: unknown } | null | undefined)
+      ?.details;
+    const cwd = (details as { cwd?: unknown } | null | undefined)?.cwd;
+    return typeof cwd === "string" && cwd !== "" ? cwd : null;
+  }
   if (error.code === "pi_missing") {
     const details = (error.body as { details?: unknown } | null | undefined)
       ?.details;
