@@ -19,7 +19,7 @@ import type { HookRequest, HookResponse } from "./http.js";
  * `core/hook/install/events.ts` and `packages/shared`. Lives here rather than in the CLI's `usage.ts` because every user of
  * the shared client (the CLI, the MCP bridge, the ama adapter) sends it.
  */
-export const HOOK_CLIENT_REVISION = "6";
+export const HOOK_CLIENT_REVISION = "7";
 
 export interface Session {
   nodeId: string;

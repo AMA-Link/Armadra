@@ -637,7 +637,7 @@ function codexEvents(): string[] {
  * today's defaults, so nothing about how the hooks run changes.
  */
 function codexHookTimeout(event: string): number {
-  return event === "SessionEnd" ? 1 : 600;
+  return event === "SessionEnd" || event === "Interrupt" ? 1 : 600;
 }
 
 /** One hook table for Codex: `[{hooks=[{type="command",command=…,timeout=…}]}]`. */

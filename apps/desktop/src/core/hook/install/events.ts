@@ -15,7 +15,7 @@
  * integration's version: the design keeps it fixed while the way the adapter
  * is injected changes (docs/design/agent-integration.md §2).
  */
-export const HOOK_CLIENT_REVISION = 6;
+export const HOOK_CLIENT_REVISION = 7;
 
 /** The revision of the skill half, mirroring `collab::skills::SKILLS_REVISION`. */
 export const SKILLS_REVISION = 26;
@@ -31,7 +31,7 @@ export const SKILLS_REVISION = 26;
  * revision is the event contract and must not move for it, and the skill
  * revision is pinned to the skill package.
  */
-export const MOD_REVISION = 4;
+export const MOD_REVISION = 5;
 
 /**
  * One number for "is this CLI integrated, and is it current" — the hook
@@ -74,8 +74,10 @@ export const CODEX_HOOK_EVENTS = [
   "SessionStart",
   "UserPromptSubmit",
   "PreToolUse",
+  "PermissionRequest",
   "PostToolUse",
   "Stop",
+  "Interrupt",
   "SessionEnd",
   "SubagentStart",
   "SubagentStop",

@@ -130,11 +130,11 @@ describe("the Claude Code mod", () => {
     const hooks = (source.match(/on\("[^"]+"/g) ?? []).filter(
       (hook) => hook !== 'on("command.run"',
     );
-    expect(hooks.length).toBe(MOD_CLASSIC_EVENTS.length + 2);
+    expect(hooks.length).toBe(MOD_CLASSIC_EVENTS.length + 3);
     expect(source.match(/return next\(e\);/g)?.length).toBe(hooks.length + 1);
     expect(
       source.match(/\.catch\(\(\$, e, next\) => next\(e\)\)/g)?.length,
-    ).toBe(MOD_CLASSIC_EVENTS.length + 1);
+    ).toBe(MOD_CLASSIC_EVENTS.length + 2);
   });
 
   it("carries every settings hook event but PermissionRequest", () => {
@@ -329,6 +329,37 @@ describe("the Claude Code mod", () => {
     },
   };
 
+  it("reports how a main-loop turn ended", async () => {
+    const mod = await load(WORLD);
+    await mod.raise("classic.SessionStart", {
+      hook_event_name: "SessionStart",
+      session_id: "claude-1",
+    });
+    const before = mod.fetched.length;
+    await mod.raise("turn.complete", { reason: "error" });
+    await mod.raise("turn.complete", { reason: "refusal" });
+    await mod.raise("turn.complete", { reason: "answer", agentId: "child" });
+    await mod.raise("turn.complete", { reason: "aborted", agentId: "child" });
+    await new Promise((done) => setTimeout(done, 0));
+    expect(mod.fetched.length).toBe(before);
+
+    const aborted = { reason: "aborted" };
+    expect(await mod.raise("turn.complete", aborted)).toEqual([aborted]);
+    await new Promise((done) => setTimeout(done, 0));
+    const body = JSON.parse(mod.fetched.at(-1)?.init.body as string);
+    expect(body.payload).toEqual({
+      session_id: "claude-1",
+      hook_event_name: "TurnAborted",
+    });
+
+    await mod.raise("turn.complete", { reason: "answer" });
+    await new Promise((done) => setTimeout(done, 0));
+    expect(
+      JSON.parse(mod.fetched.at(-1)?.init.body as string).payload
+        .hook_event_name,
+    ).toBe("TurnEnded");
+  });
+
   it("forwards each event unchanged and at once, PreToolUse rebuilt", async () => {
     const mod = await load(WORLD);
     const start = {
@@ -354,7 +385,7 @@ describe("the Claude Code mod", () => {
     expect(mod.fetched[0]?.init.socketPath).toBe("/data/hook.sock");
     expect(mod.fetched[0]?.init.headers).toEqual({
       "Content-Type": "application/json",
-      "X-Armadra-Hook-Client": "6",
+      "X-Armadra-Hook-Client": "7",
       "X-Armadra-Hook-Token": "it's",
       "X-Armadra-Node-Token": "kid.mac",
     });

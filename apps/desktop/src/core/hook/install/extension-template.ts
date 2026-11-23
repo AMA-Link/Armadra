@@ -542,6 +542,14 @@ function armadraPayload(name, event, ctx) {
     const modelId = armadraText(event?.model?.id);
     if (modelId) payload.modelId = modelId;
   }
+  if (name === "agent_end") {
+    // Pi and OMP keep why the turn ended on its last assistant message.
+    const messages = Array.isArray(event?.messages) ? event.messages : [];
+    const last = [...messages].reverse().find(message => message?.role === "assistant");
+    const reason = armadraText(event?.stopReason) ?? armadraText(last?.stopReason);
+    if (reason) payload.stopReason = reason;
+    if (event?.willContinue === true) payload.willContinue = true;
+  }
   return payload;
 }
 

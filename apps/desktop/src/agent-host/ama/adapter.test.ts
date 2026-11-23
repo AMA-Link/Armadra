@@ -406,6 +406,9 @@ describe("status reports", () => {
       cwd: () => "/work",
     };
     expect(
+      payloadOf("agent_end", { stopReason: "error", willRetry: true }, session),
+    ).toMatchObject({ stopReason: "error", willContinue: true });
+    expect(
       payloadOf("before_agent_start", { prompt: "review" }, session),
     ).toEqual({
       hookEventName: "before_agent_start",

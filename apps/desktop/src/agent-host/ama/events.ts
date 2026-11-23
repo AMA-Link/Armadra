@@ -87,6 +87,12 @@ export function payloadOf(
     const modelId = shortText(model?.id);
     if (modelId !== undefined) payload.modelId = modelId;
   }
+  if (name === "agent_end") {
+    const reason = shortText(event.stopReason);
+    if (reason !== undefined) payload.stopReason = reason;
+    // A retry is the same turn going on.
+    if (event.willRetry === true) payload.willContinue = true;
+  }
   return payload;
 }
 
