@@ -535,7 +535,9 @@ await h.run(async () => {
     const reached = new Set();
     const ringless = [];
     const strangers = [];
-    for (let press = 0; press < total + 3; press += 1) {
+    // 没登记过的落点（滚动区视口、recharts 3.11 起图表的无障碍层 `<g>` 等）也吃
+    // 一次 Tab：上限按已遇到的陌生落点顺延，不让它们把末尾的控件挤出循环。
+    for (let press = 0; press < total + 3 + strangers.length; press += 1) {
       await tab();
       const hit = await page.evaluate(`
         const element = document.activeElement;
