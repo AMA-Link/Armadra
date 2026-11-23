@@ -7,6 +7,7 @@ import {
 } from "../core/diagnostics/client-report";
 import {
   CRASH_REPORT_ENV,
+  DATA_COLLECTION_NONE,
   type ErrorSource,
   type ScrubContext,
   dsnFromSettings,
@@ -119,13 +120,11 @@ export function sentryOptions(
     // 0 = 既不注册 IPC 通道也不注册 `sentry-ipc://` 协议：页面不装 SDK，
     // 别的 webContents（浏览器节点）也就没有一条能往这里塞事件的路。
     ipcMode: 0,
-    autoSessionTracking: false,
-    sendDefaultPii: false,
+    dataCollection: DATA_COLLECTION_NONE,
     sendClientReports: false,
     attachStacktrace: false,
     includeServerName: false,
     maxBreadcrumbs: 50,
-    skipOpenTelemetrySetup: true,
     beforeSend: (event: object) =>
       stillActive(dsn) ? scrubEvent(event, scrub) : null,
     beforeSendTransaction: () => null,

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   CRASH_REPORT_ENV,
+  DATA_COLLECTION_NONE,
   crashReportMessage,
   scrubContext,
 } from "../core/diagnostics/crash";
@@ -97,9 +98,7 @@ describe("桌面壳崩溃上报", () => {
       dsn: DSN,
       defaultIntegrations: false,
       ipcMode: 0,
-      autoSessionTracking: false,
-      sendDefaultPii: false,
-      skipOpenTelemetrySetup: true,
+      dataCollection: DATA_COLLECTION_NONE,
     });
     const names = (options.integrations as { name: string }[]).map(
       (integration) => integration.name,

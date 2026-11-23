@@ -24,7 +24,7 @@
     "@armadra/shared": "workspace:*",
     "@orpc/openapi": "1.16.4",
     "@orpc/server": "1.16.4",
-    "@sentry/electron": "7.20.2",
+    "@sentry/electron": "8.4.0",
     "@simplewebauthn/server": "14.1.0",
     "acme-client": "5.4.0",
     "electron-updater": "6.8.11",
