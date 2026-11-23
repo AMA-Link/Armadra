@@ -311,6 +311,25 @@ export function staleWorkingAgents(
   );
 }
 
+/** Those of `nodeIds` still `working` on a node that still exists. */
+export function workingAgentsAmong(
+  database: DatabaseSync,
+  nodeIds: readonly string[],
+  limit: number,
+): StaleAgent[] {
+  const ids = nodeIds.slice(0, Math.min(500, Math.max(1, limit)));
+  if (ids.length === 0) return [];
+  return staleRows(
+    database
+      .prepare(
+        "SELECT node_id, workspace_id, agent_id FROM agent_status a " +
+          `WHERE a.state = 'working' AND a.node_id IN (${ids.map(() => "?").join(",")}) ` +
+          "AND EXISTS (SELECT 1 FROM nodes n WHERE n.id = a.node_id)",
+      )
+      .all(...ids) as Row[],
+  );
+}
+
 /**
  * Nodes whose permission request has been waiting longer than the answer can
  * still reach the CLI. The oldest are first, so a burst is capped fairly.

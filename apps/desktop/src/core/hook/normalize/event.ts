@@ -99,12 +99,46 @@ export interface AgentEvent {
    * Never serialized, for the same reason as `silent`.
    */
   sessionOpenedByPrompt?: boolean;
+  /**
+   * The question the turn was waiting on has been answered, refused or
+   * abandoned, so the `done` that ends this turn is a real end (§5.4 rule 3).
+   *
+   * Never serialized, for the same reason as `silent`.
+   */
+  questionClosed?: boolean;
+  /**
+   * This `done` says the session settled and nothing about how the turn ended:
+   * it must not overwrite the verdict of a `done` already on the row. OpenCode
+   * follows `session.error` with `session.idle`.
+   *
+   * Never serialized, for the same reason as `silent`.
+   */
+  keepsVerdict?: boolean;
+  /**
+   * The turn is over: a permission prompt still open on the row was declined,
+   * so this end counts as interrupted.
+   *
+   * Never serialized, for the same reason as `silent`.
+   */
+  closesPrompt?: boolean;
+  /**
+   * A model request failed and the CLI may still retry it. Copilot reports
+   * every such failure as recoverable and sends no `agentStop` once it gives
+   * up, so only continued silence can say the turn is over.
+   *
+   * Never serialized, for the same reason as `silent`.
+   */
+  modelError?: boolean;
 }
 
 /** The two keys that never travel on the wire. */
 const UNSERIALIZED = new Set([
   "silent",
   "sessionOpenedByPrompt",
+  "questionClosed",
+  "keepsVerdict",
+  "closesPrompt",
+  "modelError",
   "toolName",
   "toolSummary",
   "hookEvent",

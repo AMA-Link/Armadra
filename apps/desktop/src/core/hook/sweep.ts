@@ -1,12 +1,19 @@
 import { withStalled } from "../agent/stalled";
 import { type IngestContext, apply } from "./ingest";
-import { STALE_WORKING_MINUTES, staleEvent, terminalGoneEvent } from "./reduce";
+import {
+  MODEL_ERROR_SETTLE_SECONDS,
+  STALE_WORKING_MINUTES,
+  modelErrorEvent,
+  staleEvent,
+  terminalGoneEvent,
+} from "./reduce";
 import {
   agentsWithDeadTerminals,
   getAgentStatus,
   staleApprovalAgents,
   staleWorkingAgents,
   upsertAgentStatus,
+  workingAgentsAmong,
 } from "./store";
 
 /** How often the stale-working sweep runs. */
@@ -24,9 +31,10 @@ export const SWEEP_BATCH = 64;
 export const TERMINAL_GONE_GRACE_SECONDS = 30;
 
 /**
- * Two ways a turn can end without anyone saying so: the CLI stopped reporting
- * ({@link STALE_WORKING_MINUTES} minutes), or its terminal died and it will
- * never report again.
+ * Three ways a turn can end without anyone saying so: the CLI stopped reporting
+ * ({@link STALE_WORKING_MINUTES} minutes), its terminal died and it will never
+ * report again, or a model error was its last word
+ * ({@link MODEL_ERROR_SETTLE_SECONDS} seconds).
  */
 export function sweepOnce(context: IngestContext): number {
   const now = (context.now ?? (() => new Date()))();
@@ -37,10 +45,26 @@ export function sweepOnce(context: IngestContext): number {
     now.getTime() - TERMINAL_GONE_GRACE_SECONDS * 1000,
   ).toISOString();
 
-  const work = [
-    ...staleWorkingAgents(context.database, silentSince, SWEEP_BATCH).map(
-      (agent) => ({ agent, event: staleEvent(agent.nodeId, agent.agentId) }),
+  const failed = workingAgentsAmong(
+    context.database,
+    context.hooks.modelErrorsBefore(
+      now.getTime() - MODEL_ERROR_SETTLE_SECONDS * 1000,
     ),
+    SWEEP_BATCH,
+  );
+  const failedNodes = new Set(failed.map((agent) => agent.nodeId));
+
+  const work = [
+    ...failed.map((agent) => ({
+      agent,
+      event: modelErrorEvent(agent.nodeId, agent.agentId),
+    })),
+    ...staleWorkingAgents(context.database, silentSince, SWEEP_BATCH)
+      .map((agent) => ({
+        agent,
+        event: staleEvent(agent.nodeId, agent.agentId),
+      }))
+      .filter(({ agent }) => !failedNodes.has(agent.nodeId)),
     ...agentsWithDeadTerminals(context.database, goneBefore, SWEEP_BATCH).map(
       (agent) => ({
         agent,
