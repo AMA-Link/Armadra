@@ -13,6 +13,7 @@ describe("startFailureKey", () => {
     ["acp_protocol_version", "acp.error.protocolVersion"],
     ["acp_session_timeout", "acp.error.timeout"],
     ["acp_cli_outdated", "acp.error.cliOutdated"],
+    ["acp_cwd_missing", "acp.error.cwdMissing"],
     ["pi_outdated", "acp.error.piOutdated"],
     ["pi_missing", "acp.error.piMissing"],
     ["pi_no_model", "acp.error.piNoModel"],
@@ -34,6 +35,7 @@ describe("startFailureKey", () => {
       "acp_protocol_version",
       "acp_session_timeout",
       "acp_cli_outdated",
+      "acp_cwd_missing",
       "pi_outdated",
       "pi_missing",
       "pi_no_model",
@@ -85,6 +87,20 @@ describe("startFailureNote", () => {
     expect(
       startFailureNote(new RuntimeRequestError(409, "x", "pi_no_model"), t),
     ).toBeNull();
+  });
+
+  it("acp_cwd_missing 写出不存在的目录（#984）", () => {
+    const error = new RuntimeRequestError(409, "gone", "acp_cwd_missing", {
+      code: "acp_cwd_missing",
+      message: "working directory does not exist: /work/gone",
+      details: { cwd: "/work/gone" },
+    });
+    expect(startFailureNote(error, t)).toBe("/work/gone");
+    const bare = new RuntimeRequestError(409, "gone", "acp_cwd_missing", {
+      code: "acp_cwd_missing",
+      message: "gone",
+    });
+    expect(startFailureNote(bare, t)).toBeNull();
   });
 
   it("details 缺失或形状不对时不附", () => {

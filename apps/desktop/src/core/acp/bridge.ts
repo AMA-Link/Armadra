@@ -184,7 +184,8 @@ export class AcpBackend implements TerminalBackend {
             error.code === "acp_unsupported" ||
             error.code === "acp_mode_unsupported"
             ? 400
-            : error.code === "acp_auth_required"
+            : error.code === "acp_auth_required" ||
+                error.code === "acp_cwd_missing"
               ? 409
               : 502,
           error.code,

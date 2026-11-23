@@ -101,6 +101,7 @@ export const acp: MessageModule = {
     "acp.error.modeUnavailable": "该 Agent 没有这个权限模式",
     "acp.error.protocolVersion": "协议版本不兼容",
     "acp.error.cliOutdated": "CLI 版本过旧",
+    "acp.error.cwdMissing": "工作目录不存在",
     "acp.error.piOutdated": "Pi 版本过旧",
     "acp.error.piMissing": "没有找到 Pi",
     "acp.error.piNoModel": "Pi 里没有可用模型，请先在 Pi 里 /login",
@@ -284,6 +285,7 @@ export const acp: MessageModule = {
     "acp.error.modeUnavailable": "The agent has no such permission mode",
     "acp.error.protocolVersion": "Protocol version not supported",
     "acp.error.cliOutdated": "CLI version is too old",
+    "acp.error.cwdMissing": "Working directory does not exist",
     "acp.error.piOutdated": "Pi version is too old",
     "acp.error.piMissing": "Pi was not found",
     "acp.error.piNoModel":
