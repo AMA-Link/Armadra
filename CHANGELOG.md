@@ -2,6 +2,50 @@
 
 每个版本一节，按发布倒序。括号里是合入的 PR 编号（github.com/AMA-Link/Armadra，2026-10-11 前为 Owlbay/Armadra，旧编号照常跳转）。兼容范围以 `tools/release/compatibility.json` 为准，发布说明里的 `armadra-compatibility` 围栏由它渲染。桌面、服务器与手机 / 平板 App 共用一条版本线和一个标签 `vX.Y.Z`（规则见 `docs/guides/ci-release.md`「版本规则」）；有手机端改动的版本，在「手机与平板」小节里写，其余写在「桌面 / 服务器」下。2026-10-10 之前手机端曾单独编号（1.0.0、1.1.0），内容并入对应的 0.2.5、0.2.6。
 
+## 0.22.0（2026-11-24）
+
+版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.22.0。随包 `@armadra/agent` 0.22.0（`task_land`、worktree 任务继承未提交改动）与平台协议包 0.22.0（没有形状变化，云端协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.22.0。本版是功能版：Agent 节点四栏交付状态，核心库迁移到 0070。核心 JSON API 协议仍是 1.52（只增路由与事件，没有改已有形状）。
+
+Version aligned with armadra-cloud and armadra-agent (all three ship 0.22.0), with `@armadra/agent` 0.22.0 (`task_land`, worktree tasks inheriting uncommitted work) and platform protocol 0.22.0 (no shape changes, the cloud protocol is still 1.4); matching images `armadra-cloud` / `armadra-relay` 0.22.0. A feature release: four-lane delivery status for agent nodes, with the core database moving to 0070. The core JSON API protocol stays at 1.52 (a new route and event only; no existing shapes change).
+
+### 桌面 / 服务器
+
+- Agent 节点四栏交付状态（#988，经 #990、#992、#993、#994、#999）：一个带 Agent 的终端节点在画板上处于「需要你 / 进行中 / 审查中 / 可合并」哪一栏、一句什么话，由 Agent 状态、工作项阶段与 PR 快照推出；画布右侧新增交付面板（手机竖排，已合并 / 已关闭默认收起，终态条目 24 小时内显示），节点头显示交付标记，命令面板有 `app.delivery`。后端：PR 快照（`PullSnapshot`，GitHub、GitLab、Gitea，#992）；节点按当前分支关联开着的 PR，只刷快照、不读讨论、不向终端投递（#993）；`deliveryStatus` 纯函数、路由 `GET /api/workspaces/{workspaceId}/boards/{boardId}/delivery` 与事件 `delivery.changed`（#994）。同一提交上「失败、重跑、再失败」的检查不再被吞。迁移 0068 `pull_snapshots`、0069 `node_pull_links`、0070 `agent_status.ended_by`；契约 §115–§117。
+  Four-lane delivery status for agent nodes (#988, via #990, #992, #993, #994, #999): which lane (needs you / working / in review / ready to merge) and phrase an agent terminal node is in, derived from agent state, work-item stage and PR snapshots; a delivery panel on the right of the canvas (stacked on phones, merged / closed collapsed by default, ended rows shown for 24 hours), a delivery badge in node headers and `app.delivery` in the command palette. Backend: PR snapshots (`PullSnapshot` for GitHub, GitLab and Gitea, #992); a node is linked to the open PR of its current branch, only to refresh snapshots, with no discussion reads and nothing delivered to a terminal (#993); the pure `deliveryStatus`, the route `GET /api/workspaces/{workspaceId}/boards/{boardId}/delivery` and the `delivery.changed` event (#994). A check that fails, is re-run and fails again on the same commit is no longer swallowed. Migrations 0068 `pull_snapshots`, 0069 `node_pull_links`, 0070 `agent_status.ended_by`; contract §115–§117.
+- 七个 CLI 的 Agent 状态信号补全（#990，Refs #988）：提问、拒绝、失败、中断不再显示成运行中或正常完成；回答问题后回合正常结束，Claude mod 接 `turn.complete`，Esc 与权限框选 No 都能收尾，Codex 订阅 `PermissionRequest` 与 `Interrupt`（只观察），Copilot 识别提问且模型报错后 120 秒无新上报判失败，OpenCode 处理提问与中断，Pi、OMP、ama 转发结束原因；契约 §114。
+  Agent status signals completed on seven CLIs (#990, Refs #988): questions, denials, failures and interrupts no longer read as working or a clean finish; a turn ends normally once its question is answered, the Claude mod uses `turn.complete` so Esc and No at a permission prompt close the turn, Codex subscribes to `PermissionRequest` and `Interrupt` (observing only), Copilot recognizes questions and treats a model error followed by 120 s of silence as a failure, OpenCode handles questions and interrupts, and Pi, OMP and ama forward the stop reason; contract §114.
+- macOS 安装窗口换成浅色环形轨道背景（#989，Closes #987）：7 个内置 Agent 的原生 Logo 排在轨道上，中间是拖到 Applications 的指引，窗口 660×440。
+  The macOS install window gets a light orbit background (#989, Closes #987): the native logos of the seven built-in agents around a drag-to-Applications cue, in a 660×440 window.
+
+### 修正
+
+- ACP 工作目录不存在时起会话答 `acp_cwd_missing`（#986，Closes #984）：409 并附路径，页面写「工作目录不存在」；其余没拿到进程号的情况，消息带上原因，不再只报 cannot start。
+  Starting an ACP session with a missing working directory answers `acp_cwd_missing` (#986, Closes #984): 409 with the path, and the page says the working directory does not exist; other spawn failures now say why instead of only "cannot start".
+
+### 手机与平板
+
+- 夜间 iOS 配对探针在配对票过期时重铸再配一轮（#982，Refs #955）。App 本身没有行为改动。
+  The nightly iOS pairing probe re-mints and retries once when the pairing link has expired (#982, Refs #955). No behaviour change in the app itself.
+
+### 构建与依赖
+
+- 全仓 npm 依赖升级（#985，Closes #983）：pnpm 12.21.0、Electron 45.4.1、vitest 5、jsdom 31、motion 14、`@sentry/electron` 8 与 `@sentry/node` 11（崩溃上报显式全关 v11 新增的数据采集，信封里没有用户、IP、主机名）等；TypeScript 7 暂缓，保持 6.0.3（typescript-eslint 尚不支持）。
+  Repository-wide npm dependency upgrade (#985, Closes #983): pnpm 12.21.0, Electron 45.4.1, vitest 5, jsdom 31, motion 14, `@sentry/electron` 8 and `@sentry/node` 11 (crash reporting turns off the new v11 data collection explicitly; envelopes carry no user, IP or server name) and more; TypeScript 7 is held at 6.0.3 until typescript-eslint supports it.
+- CI 加速（#991，Refs armadra-workspace#98）：页面产物复用、并行静态检查、A 档端到端三分片、多架构容器去 QEMU。
+  CI speed-up (#991, Refs armadra-workspace#98): reuse of the web build, parallel static checks, three A-tier e2e shards and QEMU-free multi-arch container builds.
+
+### 随包 Agent
+
+- `@armadra/agent` 0.22.0：新增 `task_land`（经权限管线把 worktree 任务的提交落到当前分支）与 `subagents.worktreeSetup`；worktree 任务从未提交改动的快照开始；`-p` 被拒提示修正。
+  `@armadra/agent` 0.22.0: adds `task_land` (lands a worktree task's commits on the current branch through the permission pipeline) and `subagents.worktreeSetup`; worktree tasks start from a snapshot of uncommitted work; the `-p` denial hint is corrected.
+
+### 部署说明
+
+- 需要迁移：核心库升到 0070（新增 0068、0069、0070，向前自动执行）；核心 JSON API 协议仍是 1.52，云端协议（1.4）不变。
+  Migration needed: the core database moves to 0070 (0068, 0069 and 0070 are new and run forward automatically); the core JSON API protocol stays at 1.52 and the cloud protocol (1.4) is unchanged.
+- 配套镜像 `ghcr.io/ama-link/armadra-cloud:0.22.0`、`ghcr.io/ama-link/armadra-relay:0.22.0` 与协议包 0.22.0 同号（cloud 侧没有面向用户的改动；控制台页面取自本版服务器壳镜像）；推送中继镜像 `ghcr.io/ama-link/armadra-push-relay:0.22.0` 与服务器壳镜像同号。发版顺序沿用 0.21.0：先打 Armadra `v0.22.0`，等服务器壳镜像推送成功后再打 armadra-cloud `v0.22.0`。
+  Matching images `ghcr.io/ama-link/armadra-cloud:0.22.0` and `ghcr.io/ama-link/armadra-relay:0.22.0` share the number with protocol package 0.22.0 (no user-facing changes on the cloud side; console pages come from this version's server shell image); the push-relay image `ghcr.io/ama-link/armadra-push-relay:0.22.0` shares the number with the server shell image. Release order as in 0.21.0: tag Armadra `v0.22.0` first, then tag armadra-cloud `v0.22.0` once the server shell image has been pushed.
+
 ## 0.21.0（2026-11-19）
 
 版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.21.0。随包 `@armadra/agent` 0.21.0（没有功能改动）与平台协议包 0.21.0（没有形状变化，云端协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.21.0。本版是功能版：Agent 零注入启动、节点预设名称、ACP 模型弹层、Git 日志排序。核心 JSON API 协议升到 1.52（只增字段）。
