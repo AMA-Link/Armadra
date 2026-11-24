@@ -22,6 +22,7 @@ import { statSync } from "node:fs";
 
 import {
   acpCliFloor,
+  floorHint,
   acpCliOutdated,
   compareVersions,
   parseCliVersion,
@@ -75,8 +76,38 @@ function outdatedOf(agentId: string, version: string | undefined) {
     agentId,
     installed: version,
     minimum: floor.minVersion,
-    package: floor.package,
+    ...floorHint(floor),
   };
+}
+
+/**
+ * 低于下限的错误：有 npm 包指向包，没有包的 CLI 指向它自己的升级命令。登记里没写
+ * 升级命令时兜底成 `<程序> update`，**消息与 `details` 用同一个值**——页面只读
+ * `details`，两边不一致它就没有一句可说。
+ */
+export function outdatedError(
+  launchCmd: string,
+  outdated: NonNullable<ReturnType<typeof acpCliOutdated>>,
+): AcpError {
+  const updateCommand =
+    outdated.package === undefined
+      ? (outdated.updateCommand ?? `${launchCmd} update`)
+      : outdated.updateCommand;
+  return new AcpError(
+    "acp_cli_outdated",
+    `${launchCmd} ${outdated.installed} is older than the ${outdated.minimum} the ACP bridge needs; ${
+      outdated.package === undefined
+        ? `run ${updateCommand}`
+        : `install ${outdated.package}`
+    }`,
+    {
+      agentId: outdated.agentId,
+      installed: outdated.installed,
+      minimum: outdated.minimum,
+      ...(outdated.package === undefined ? {} : { package: outdated.package }),
+      ...(updateCommand === undefined ? {} : { updateCommand }),
+    },
+  );
 }
 
 /**
@@ -108,14 +139,5 @@ export async function checkCliFloor(
   // 只记够新的：过旧的下一次重问（升级可能就发生在两次之间）。
   if (outdated === undefined && version !== undefined) known.set(key, version);
   if (outdated === undefined) return undefined;
-  return new AcpError(
-    "acp_cli_outdated",
-    `${launchCmd} ${outdated.installed} is older than the ${outdated.minimum} the ACP bridge needs; install ${outdated.package}`,
-    {
-      agentId: outdated.agentId,
-      installed: outdated.installed,
-      minimum: outdated.minimum,
-      package: outdated.package,
-    },
-  );
+  return outdatedError(launchCmd, outdated);
 }

@@ -86,13 +86,23 @@ export function startFailureNote(error: unknown, t: Translate): string | null {
     const details = (error.body as { details?: unknown } | null | undefined)
       ?.details;
     const parsed = acpCliOutdatedDetailsSchema.safeParse(details);
-    return parsed.success
-      ? t("acp.error.cliOutdatedNeed", {
-          installed: parsed.data.installed,
-          minimum: parsed.data.minimum,
-          package: parsed.data.package,
-        })
-      : null;
+    if (!parsed.success) return null;
+    const { installed, minimum } = parsed.data;
+    // 有 npm 包的指向包；没有包的 CLI（如 agy）给它自己的升级命令。
+    if (parsed.data.package !== undefined) {
+      return t("acp.error.cliOutdatedNeed", {
+        installed,
+        minimum,
+        package: parsed.data.package,
+      });
+    }
+    return parsed.data.updateCommand === undefined
+      ? null
+      : t("acp.error.cliOutdatedUpdate", {
+          installed,
+          minimum,
+          command: parsed.data.updateCommand,
+        });
   }
   if (startFailureKey(error.code) !== "acp.error.start") return null;
   const said = error.coreMessage.trim();

@@ -107,6 +107,8 @@ export const acp: MessageModule = {
     "acp.error.piNoModel": "Pi 里没有可用模型，请先在 Pi 里 /login",
     "acp.error.cliOutdatedNeed":
       "已装 {installed}，至少需要 {minimum}；请安装 {package}",
+    "acp.error.cliOutdatedUpdate":
+      "已装 {installed}，至少需要 {minimum}；请运行 {command}",
     "acp.error.log": "记录没有读到",
     "acp.error.retry": "重试",
     "acp.offline": "已断开，正在重连",
@@ -293,6 +295,8 @@ export const acp: MessageModule = {
       "Pi has no available model; sign in with /login in Pi",
     "acp.error.cliOutdatedNeed":
       "{installed} is installed, {minimum} or newer is needed; install {package}",
+    "acp.error.cliOutdatedUpdate":
+      "{installed} is installed, {minimum} or newer is needed; run {command}",
     "acp.error.log": "Could not read the log",
     "acp.error.retry": "Retry",
     "acp.offline": "Disconnected, reconnecting",

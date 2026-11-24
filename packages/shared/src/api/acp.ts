@@ -669,7 +669,8 @@ export const acpCliOutdatedDetailsSchema = z.looseObject({
   agentId: z.string(),
   installed: z.string(),
   minimum: z.string(),
-  package: z.string(),
+  package: z.string().optional(),
+  updateCommand: z.string().optional(),
 });
 
 /**
