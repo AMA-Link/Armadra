@@ -1,7 +1,14 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { AgentState, DeliveryStatus, PullSnapshot } from "@armadra/shared";
 import { getAgentStatus } from "../agent/status";
-import { type DeliveryFacts, deliveryStatus } from "./delivery";
+import {
+  type DeliveryChildFact,
+  type DeliveryFacts,
+  type DeliveryWave,
+  deliveryStatus,
+  deliveryWave,
+} from "./delivery";
+import { childrenOf, collectStateOf } from "./delivery-children";
 import { linkedPulls } from "./node-pulls";
 import { loadSnapshots } from "./pull-snapshots";
 import type { TaskRun } from "./task-runs";
@@ -64,12 +71,17 @@ export interface DeliveryNodeView {
   readonly status: DeliveryStatus;
   readonly pulls: readonly PullSnapshot[];
   readonly endedAtMs: number | null;
+  readonly children: DeliveryWave | null;
 }
+
+/** 收集子节点时只回看这么久的已结束工作项，限制扫描量；批次在纯函数里算。 */
+const CHILD_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export function deliveryFacts(
   database: DatabaseSync,
   nodeId: string,
   nowMs: number,
+  options: { readonly children?: boolean } = {},
 ): DeliveryFacts & {
   readonly allPulls: readonly PullSnapshot[];
   readonly taskId: string | null;
@@ -78,6 +90,21 @@ export function deliveryFacts(
   const row = getAgentStatus(database, nodeId);
   const item = latestItem(database, nodeId);
   const allPulls = pullsOfNode(database, nodeId, nowMs);
+  const withChildren = options.children !== false;
+  // 子节点自己的栏只看它自己（不递归），所以连线成环也不会卡住。
+  const children: DeliveryChildFact[] = withChildren
+    ? childrenOf(database, nodeId, nowMs - CHILD_WINDOW_MS).map((child) => {
+        const own = deliveryFacts(database, child.nodeId, nowMs, {
+          children: false,
+        });
+        return {
+          ...child,
+          needsYou: deliveryStatus(own).lane === "needsYou",
+        };
+      })
+    : [];
+  const doneAt =
+    row?.doneAt === undefined ? Number.NaN : Date.parse(row.doneAt);
   return {
     agent:
       row === undefined
@@ -95,6 +122,9 @@ export function deliveryFacts(
         : stageOf(database, item, Math.floor(nowMs / 1000)),
     itemResult: item === undefined ? null : itemResultOf(item),
     pulls: allPulls,
+    children,
+    idleAtMs: Number.isNaN(doneAt) ? null : doneAt,
+    collect: withChildren ? collectStateOf(database, nodeId) : null,
     allPulls,
     taskId: item?.taskId ?? null,
     endedAt: item?.endedAt ?? null,
@@ -121,6 +151,7 @@ export function deliveryNode(
     status,
     pulls: facts.allPulls,
     endedAtMs,
+    children: deliveryWave(facts),
   };
 }
 

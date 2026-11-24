@@ -36,6 +36,19 @@ export function boardDelivery(
           ...view.pulls,
         ] as DeliveryBoardResponse["nodes"][number]["pulls"],
         endedAtMs: view.endedAtMs,
+        children:
+          view.children === null
+            ? null
+            : {
+                total: view.children.total,
+                finished: view.children.finished,
+                needsYou: view.children.needsYou,
+                nodes: view.children.nodes.map((child) => ({
+                  nodeId: child.nodeId,
+                  source: child.source,
+                  finished: child.finished,
+                })),
+              },
       };
     }),
   };
