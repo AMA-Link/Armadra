@@ -22,6 +22,7 @@ permissions:
 env:
   PNPM_VERSION: "12.21.0"
   NODE_VERSION: "24"
+  ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
 
 jobs:
   # 先判断改了什么（workspace#9）：只改文档（Markdown 与 docs/，契约与第三方声明
@@ -34,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
       - id: diff
         shell: bash
         env:
@@ -42,6 +43,10 @@ jobs:
         run: |
           set -euo pipefail
           code=false
+          if [ -n "${BASE:-}" ] && ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            git fetch --no-tags --depth=1 origin "$BASE" 2>/dev/null || \
+              git fetch --no-tags --unshallow origin 2>/dev/null || true
+          fi
           if [ -z "${BASE:-}" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null || [ "$GITHUB_REF_TYPE" = tag ]; then
             code=true
           else
@@ -114,24 +119,33 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # pnpm check = libs:build + prettier + eslint（只有 error 失败）+ typecheck +
-      # repo:check + ci:workflows + release:check + notices:check。
-      # 三个平台都跑：换行与路径分隔符都是平台差异的常见出口。
-      - run: pnpm check
+      - name: 缓存工具链增量产物（prettier / eslint / tsc）
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules/.cache
+            apps/*/node_modules/.cache
+            packages/*/node_modules/.cache
+          key: check-cache-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'tsconfig.base.json', '**/tsconfig*.json', 'eslint.config.js') }}-${{ github.sha }}
+          restore-keys: |
+            check-cache-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'tsconfig.base.json', '**/tsconfig*.json', 'eslint.config.js') }}-
+            check-cache-${{ runner.os }}-
 
-      # shell: bash 不是装饰：Windows 默认的 pwsh 只看多行 run 里最后一条命令的
-      # 退出码，前面失败了照样算通过。
-      - name: 仓库与发布脚本自检
-        shell: bash
-        run: |
-          set -euo pipefail
-          pnpm repo:test
-          pnpm release:test
+      # Linux 跑 full（含契约、lint、画板预算、工作流结构与许可证扫描）；
+      # macOS 与 Windows 跑 platform（换行、路径分隔符与平台相关脚本单测），
+      # 跳过平台无关的纯 AST / 许可证重复扫描。
+      - name: 静态检查与脚本自检（并行）
+        run: node tools/ci/check-ci.mjs --mode ${{ runner.os == 'Linux' && 'full' || 'platform' }}
 
-      # web、shared、两种壳与桌面脚本的测试与类型检查。这一步已经跑了
-      # @armadra/desktop 的 `test`（vitest + `node --test scripts/*.test.mjs`），
-      # 覆盖 core 的全部单测，以及 electron-builder.yml、entitlements、
-      # signing-electron.mjs、after-pack.mjs 与产物矩阵一致性；不再重复一遍。
+      # check-ci 已完成 libs:build 与 typecheck；先编一次页面产物，既给后面
+      # production.test.ts 静态核对（省掉测试内二次 vite build），也给桌面壳复用。
+      - name: 构建前端页面产物
+        run: pnpm --filter @armadra/web run build:vite
+
+      # web、shared、两种壳与桌面脚本的测试。这一步已经跑了 @armadra/desktop 的
+      # `test`（vitest + `node --test scripts/*.test.mjs`），覆盖 core 的全部单测，
+      # 以及 electron-builder.yml、entitlements、signing-electron.mjs、
+      # after-pack.mjs 与产物矩阵一致性；不再重复一遍。
       # 覆盖率（工程规范化 §5）只在 Linux 上开、只出报告不设门槛：web、desktop、
       # server 三个 vitest 配置读 ARMADRA_COVERAGE，三平台不重复算。
       #
@@ -143,6 +157,7 @@ jobs:
       - run: pnpm -r --workspace-concurrency=1 --if-present test
         env:
           ARMADRA_COVERAGE: ${{ runner.os == 'Linux' && '1' || '' }}
+          ARMADRA_WEB_BUILT_DIST: ${{ github.workspace }}/apps/web/dist
       - name: 上传覆盖率报告
         if: ${{ !cancelled() && runner.os == 'Linux' }}
         uses: actions/upload-artifact@v4
@@ -154,14 +169,14 @@ jobs:
             apps/server/coverage/lcov.info
           if-no-files-found: warn
           retention-days: 14
-      - run: pnpm --filter @armadra/web build
       - run: pnpm plugin:test
-      - run: pnpm controller:real:test
 
-      # 桌面壳的 main/preload/renderer/core 四个 target 编译一遍，但不打包：
+      # 桌面壳的 main/preload/core 等子包编译一遍并复用上面编好的页面产物，但不打包：
       # 打包（electron-builder）要平台特定的证书/公证输入，是发布流水线的事。
       # 这里要的是三个平台上 electron-vite 的构建图都过得去。
       - name: 桌面壳构建（不打包）
+        env:
+          ARMADRA_REUSE_WEB_DIST: "1"
         run: pnpm --filter @armadra/desktop build
 
       # Windows 首版明确不支持 controller transport；客户端的拒绝分支由上方
@@ -189,9 +204,19 @@ jobs:
   e2e:
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
-    name: e2e (tier a)
+    name: e2e (tier a, ${{ matrix.shard }})
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: "1/3"
+            slug: "1-of-3"
+          - shard: "2/3"
+            slug: "2-of-3"
+          - shard: "3/3"
+            slug: "3-of-3"
     steps:
       - uses: actions/checkout@v4
       - name: 给 Git 一个身份
@@ -233,25 +258,29 @@ jobs:
         run: |
           set -euo pipefail
           pnpm libs:build
-          pnpm --filter @armadra/web build
-          pnpm --filter @armadra/desktop build
-          pnpm --filter @armadra/server build
-          pnpm --filter @armadra/push-relay build
-          # node-pty 只带 macOS / Windows 的预编译；Linux 上给 Node 编一份，
-          # 否则 core 的直连终端起不来（与 desktop 的 pretest 同一个脚本）。
-          node apps/desktop/scripts/ensure-node-pty.mjs
+          # 页面、服务器壳、推送中继与 Linux Node ABI 的 node-pty 互不依赖，并行构建；
+          # 桌面壳随后直接复用编好的 apps/web/dist。
+          pids=()
+          pnpm --filter @armadra/web run build:vite & pids+=($!)
+          pnpm --filter @armadra/server build & pids+=($!)
+          pnpm --filter @armadra/push-relay build & pids+=($!)
+          node apps/desktop/scripts/ensure-node-pty.mjs & pids+=($!)
+          for pid in "${pids[@]}"; do
+            wait "$pid"
+          done
+          ARMADRA_REUSE_WEB_DIST=1 pnpm --filter @armadra/desktop build
 
       - name: A 档端到端
         shell: bash
         env:
           CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
-        run: xvfb-run -a node tools/ci/e2e.mjs --tier a --out target/e2e/a
+        run: xvfb-run -a node tools/ci/e2e.mjs --tier a --shard "${{ matrix.shard }}" --out target/e2e/a
 
       - name: 上传端到端产物
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-tier-a
+          name: e2e-tier-a-${{ matrix.slug }}
           path: target/e2e/a
           if-no-files-found: ignore
           retention-days: 14
