@@ -1,8 +1,16 @@
 import type { DatabaseSync } from "node:sqlite";
 import { forgeRepo, validOwner } from "../forge/service";
 import type { ForgeService } from "../forge/service";
-import type { Forge, ForgeRepo } from "../forge/types";
+import type { Forge, ForgePullSnapshot, ForgeRepo } from "../forge/types";
 import { ForgeError } from "../forge/types";
+import type { PullSnapshot } from "@armadra/shared";
+import { snapshotOf } from "../forge/snapshot";
+import {
+  loadSnapshots,
+  markSnapshotFailed,
+  saveSnapshot,
+  snapshotFetchedAt,
+} from "./pull-snapshots";
 import { loadNode } from "../collab/nodes";
 import { finishTask, taskRun, type TaskRun, type Thread } from "./task-runs";
 import {
@@ -10,6 +18,7 @@ import {
   type PullBatch,
   botRounds,
   eventPrefix,
+  lastChecks,
   pollableItems,
   recordThreadEvent,
   threadCursor,
@@ -49,7 +58,17 @@ export const REWIND_MS = 5_000;
 /** 一次 `tick` 最多轮询几个线程，剩下的留给下一次。 */
 const MAX_POLLS_PER_TICK = 20;
 
+/** 只刷快照的 PR 最短刷新间隔（毫秒）。 */
+export const SNAPSHOT_ONLY_MIN_MS = 120_000;
+
 export type PullResult = "merged" | "closed";
+
+/** 只刷快照、不读讨论、不记账、不投递的 PR（节点关联，#988 P2）。 */
+export interface SnapshotTarget {
+  readonly repo: string;
+  readonly number: number;
+  readonly workspaceId: string;
+}
 
 export interface PrWatchOptions {
   readonly database: DatabaseSync;
@@ -62,6 +81,14 @@ export interface PrWatchOptions {
   /** 工作项因为自己开的 PR 都合并 / 关闭而结束了。 */
   readonly onSettled: (run: TaskRun, result: PullResult) => void;
   readonly log?: (message: string, fields?: Record<string, unknown>) => void;
+  /** 只刷快照、不读讨论、不记账、不投递的 PR（P2 的节点关联）。 */
+  readonly snapshotTargets?: (nowMs: number) => readonly SnapshotTarget[];
+  /** 快照指纹变化（含首次）。 */
+  readonly onSnapshot?: (
+    repo: string,
+    number: number,
+    snapshot: PullSnapshot,
+  ) => void;
 }
 
 interface Schedule {
@@ -91,6 +118,8 @@ function isBot(author: string | null): author is string {
 export class PrWatch {
   private readonly schedule = new Map<string, Schedule>();
   private running = false;
+  /** 这一遍已经刷新过快照的 PR（`<仓库>#<编号>`）。 */
+  private readonly refreshed = new Set<string>();
 
   constructor(private readonly options: PrWatchOptions) {}
 
@@ -123,6 +152,7 @@ export class PrWatch {
       const live = new Set<string>();
       let delivered = 0;
       let polled = 0;
+      this.refreshed.clear();
       for (const listed of pollableItems(database, start)) {
         for (const thread of listed.threads) {
           const key = `${listed.taskId}|${threadKey(thread)}`;
@@ -151,6 +181,14 @@ export class PrWatch {
               failures,
             });
             // 只记固定的种类，不记远端原话，更不会有凭据。
+            if (thread.kind === "pull") {
+              markSnapshotFailed(
+                database,
+                thread.repo,
+                thread.number,
+                this.now,
+              );
+            }
             this.options.log?.("PR 轮询失败", {
               taskId: listed.taskId,
               pull: threadKey(thread),
@@ -161,6 +199,7 @@ export class PrWatch {
         }
         this.settle(listed.taskId);
       }
+      polled = await this.refreshTargets(forge, live, polled);
       for (const key of this.schedule.keys()) {
         if (!live.has(key)) this.schedule.delete(key);
       }
@@ -168,6 +207,94 @@ export class PrWatch {
     } finally {
       this.running = false;
     }
+  }
+
+  /**
+   * 只刷快照的 PR：不读讨论、不记账、不投递，结构上没有投递的入口。已经被工作项
+   * 线程刷新过，或离上次成功还没到间隔的跳过；与线程共用每遍的上限与退避。
+   */
+  private async refreshTargets(
+    forge: ForgeService,
+    live: Set<string>,
+    polledSoFar: number,
+  ): Promise<number> {
+    const targets = this.options.snapshotTargets;
+    if (targets === undefined) return polledSoFar;
+    const database = this.options.database;
+    let polled = polledSoFar;
+    const seen = new Set<string>();
+    for (const target of targets(this.now)) {
+      const id = `${target.repo}#${target.number}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const key = `snap|${id}`;
+      live.add(key);
+      if (this.refreshed.has(id)) continue;
+      const due = this.schedule.get(key);
+      if (due !== undefined && due.nextAt > this.now) continue;
+      const last = snapshotFetchedAt(database, target.repo, target.number);
+      if (last !== undefined && this.now - last < SNAPSHOT_ONLY_MIN_MS) {
+        continue;
+      }
+      if (polled >= MAX_POLLS_PER_TICK) continue;
+      polled += 1;
+      try {
+        const repo = parseRepo(target.repo);
+        if (repo === undefined) continue;
+        const remote = await forge.forgeForReady(repo, target.workspaceId);
+        await this.refreshSnapshot(remote, repo, target.repo, target.number);
+        this.schedule.set(key, {
+          nextAt: this.now + SNAPSHOT_ONLY_MIN_MS,
+          failures: 0,
+        });
+      } catch (error) {
+        markSnapshotFailed(database, target.repo, target.number, this.now);
+        const failures = (due?.failures ?? 0) + 1;
+        this.schedule.set(key, {
+          nextAt:
+            this.now +
+            Math.min(
+              MAX_BACKOFF_MS,
+              SNAPSHOT_ONLY_MIN_MS * 2 ** Math.min(failures - 1, 10),
+            ),
+          failures,
+        });
+        this.options.log?.("PR 快照刷新失败", {
+          pull: id,
+          kind: error instanceof ForgeError ? error.kind : "unknown",
+          reason: error instanceof ForgeError ? error.reason : "",
+        });
+      }
+    }
+    return polled;
+  }
+
+  /** 读、存一份快照；指纹变了（含首次）就告诉 `onSnapshot`。 */
+  private async refreshSnapshot(
+    remote: Forge,
+    repo: ForgeRepo,
+    repoKey: string,
+    number: number,
+  ): Promise<ForgePullSnapshot> {
+    const snapshot = await snapshotOf(remote, repo, number);
+    this.refreshed.add(`${repoKey}#${number}`);
+    const database = this.options.database;
+    const nowMs = this.now;
+    if (saveSnapshot(database, repoKey, snapshot, nowMs)) {
+      const stored = loadSnapshots(
+        database,
+        [{ repo: repoKey, number }],
+        nowMs,
+      )[0];
+      if (stored !== undefined) {
+        try {
+          this.options.onSnapshot?.(repoKey, number, stored);
+        } catch {
+          // 订阅方出错不影响轮询。
+        }
+      }
+    }
+    return snapshot;
   }
 
   /** 读一个线程。读失败（不是「没新东西」）抛出，由调用方退避。 */
@@ -199,6 +326,7 @@ export class PrWatch {
     const prefix = eventPrefix(thread.kind);
     const issue = thread.kind === "issue";
     // 合并 / 关闭：读不到 PR（issue）本身就整个线程算失败。
+    let snapshot: ForgePullSnapshot | undefined;
     const current: {
       readonly state: "open" | "merged" | "closed";
       readonly atMs: number;
@@ -207,10 +335,15 @@ export class PrWatch {
           state: value.state,
           atMs: value.closedAtMs ?? value.updatedAtMs,
         }))
-      : await remote.getPull(repo, thread.number).then((value) => ({
-          state: value.state,
-          atMs: value.mergedAtMs ?? value.updatedAtMs,
-        }));
+      : await this.refreshSnapshot(
+          remote,
+          repo,
+          thread.repo,
+          thread.number,
+        ).then((value) => {
+          snapshot = value;
+          return { state: value.state, atMs: nowMs };
+        });
 
     // 评论与评审。
     const items = [];
@@ -255,42 +388,45 @@ export class PrWatch {
       errors.push(error);
     }
 
-    // head 提交上检查的结论：只在 head 或结论变了时算一次，进行中不算。
+    // head 提交上检查的结论（契约 §115）：事件 id 带序号，同一个提交上结论变了
+    // 就是新事件，所以「失败 → 重跑 → 失败」也会再投一次。进行中只记账不投，用来
+    // 隔开前后两次相同的结论；没读到、中性与「没有检查」不记。
     let checks: PullBatch["checks"] = null;
-    if (!issue && current.state === "open") {
-      try {
-        const summary = await remote.checks(repo, thread.number);
-        if (
-          (summary.rollup === "success" || summary.rollup === "failure") &&
-          summary.headSha !== ""
-        ) {
-          const eventId = `pr-checks:${key}:${summary.headSha}:${summary.rollup}`;
-          const fresh = recordThreadEvent(
-            database,
-            {
-              itemId: taskId,
-              eventId,
-              thread,
-              kind: "checks",
-              delivered: true,
-              sourceAt: nowMs,
-            },
-            nowMs,
-          );
-          if (fresh) {
-            checks = {
-              rollup: summary.rollup,
-              sha: summary.headSha,
-              failing: summary.checks
-                .filter((check) => check.state === "failure")
-                .map((check) => check.name)
-                .slice(0, 3),
-            };
-            eventIds.push(eventId);
-          }
+    const read = snapshot?.checks;
+    if (
+      !issue &&
+      current.state === "open" &&
+      read !== undefined &&
+      read.read &&
+      read.headSha !== "" &&
+      (read.rollup === "pending" ||
+        read.rollup === "success" ||
+        read.rollup === "failure")
+    ) {
+      const last = lastChecks(database, taskId, key, read.headSha);
+      if (last.rollup !== read.rollup) {
+        const eventId = `pr-checks:${key}:${read.headSha}:${last.count}:${read.rollup}`;
+        const notify = read.rollup !== "pending";
+        const fresh = recordThreadEvent(
+          database,
+          {
+            itemId: taskId,
+            eventId,
+            thread,
+            kind: "checks",
+            delivered: notify,
+            sourceAt: nowMs,
+          },
+          nowMs,
+        );
+        if (fresh && notify) {
+          checks = {
+            rollup: read.rollup as "success" | "failure",
+            sha: read.headSha,
+            failing: read.failing.slice(0, 3),
+          };
+          eventIds.push(eventId);
         }
-      } catch (error) {
-        errors.push(error);
       }
     }
 

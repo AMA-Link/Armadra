@@ -14,7 +14,13 @@ import {
   type ForgeIssue,
   type ForgePull,
 } from "../forge/types";
-import { MAX_BACKOFF_MS, MIN_POLL_MS, PrWatch, REWIND_MS } from "./pr-watch";
+import {
+  MAX_BACKOFF_MS,
+  MIN_POLL_MS,
+  PrWatch,
+  REWIND_MS,
+  SNAPSHOT_ONLY_MIN_MS,
+} from "./pr-watch";
 import { stageOf } from "./work-items";
 import { POLL_RETENTION_MS, bindThread } from "./threads";
 import { recordTaskStart, taskRun } from "./task-runs";
@@ -595,5 +601,218 @@ describe("issue threads", () => {
     );
     const events = openEvents(fixture.database, lead, 10);
     expect(events[0]?.summary).toBe("issue #7 有 1 条新评论");
+  });
+});
+
+/** 检查结论的事件序号与快照（契约 §115，#988）。 */
+describe("checks events and snapshots", () => {
+  const SHA = "a".repeat(40);
+  const KEY = `${REPO}#7`;
+
+  function rollup(value: ForgeChecks["rollup"]): void {
+    remote.rollup = {
+      headSha: SHA,
+      rollup: value,
+      checks: [
+        {
+          name: "build",
+          state:
+            value === "failure"
+              ? "failure"
+              : value === "pending"
+                ? "pending"
+                : "success",
+          url: null,
+        },
+      ],
+    };
+  }
+
+  async function step(value: ForgeChecks["rollup"]): Promise<number> {
+    rollup(value);
+    clock += MIN_POLL_MS;
+    return watch.tick();
+  }
+
+  function eventIds(): string[] {
+    return (
+      fixture.database
+        .prepare(
+          "SELECT event_id FROM thread_events WHERE kind = 'checks' ORDER BY rowid",
+        )
+        .all() as { event_id: string }[]
+    ).map((row) => row.event_id);
+  }
+
+  it("delivers failure, success, failure as three batches", async () => {
+    setUp();
+    expect(await step("failure")).toBe(1);
+    expect(await step("success")).toBe(1);
+    expect(await step("failure")).toBe(1);
+    expect(delivered.map((batch) => batch.checks)).toEqual([
+      "failure",
+      "success",
+      "failure",
+    ]);
+    expect(eventIds()).toEqual([
+      `pr-checks:${KEY}:${SHA}:0:failure`,
+      `pr-checks:${KEY}:${SHA}:1:success`,
+      `pr-checks:${KEY}:${SHA}:2:failure`,
+    ]);
+  });
+
+  it("a rerun seen as pending separates two failures on one commit", async () => {
+    setUp();
+    expect(await step("failure")).toBe(1);
+    expect(await step("pending")).toBe(0);
+    expect(await step("failure")).toBe(1);
+    expect(delivered.map((batch) => batch.checks)).toEqual([
+      "failure",
+      "failure",
+    ]);
+    expect(
+      fixture.database
+        .prepare(
+          "SELECT delivered FROM thread_events WHERE kind = 'checks' ORDER BY rowid",
+        )
+        .all()
+        .map((row) => (row as { delivered: number }).delivered),
+    ).toEqual([1, 0, 1]);
+  });
+
+  it("the same response repeated delivers nothing, also from a new instance", async () => {
+    setUp();
+    expect(await step("failure")).toBe(1);
+    expect(await step("failure")).toBe(0);
+    expect(await step("failure")).toBe(0);
+    const again = new PrWatch({
+      database: fixture.database,
+      forge: () => remote.service,
+      clock: () => clock,
+      deliver: () =>
+        delivered.push({ items: [], checks: "restart", state: null }),
+      onSettled: () => undefined,
+    });
+    clock += MIN_POLL_MS;
+    expect(await again.tick()).toBe(0);
+    expect(delivered).toHaveLength(1);
+    expect(eventIds()).toHaveLength(1);
+  });
+
+  it("continues the sequence after a row in the old id format", async () => {
+    setUp();
+    fixture.database
+      .prepare(
+        "INSERT INTO thread_events (item_id, event_id, repo, number, kind, delivered, source_at, seen_at) VALUES ('t1', ?, ?, 7, 'checks', 1, 1, 1)",
+      )
+      .run(`pr-checks:${KEY}:${SHA}:failure`, REPO);
+    expect(await step("failure")).toBe(0);
+    expect(await step("success")).toBe(1);
+    expect(await step("failure")).toBe(1);
+    expect(eventIds().slice(1)).toEqual([
+      `pr-checks:${KEY}:${SHA}:1:success`,
+      `pr-checks:${KEY}:${SHA}:2:failure`,
+    ]);
+  });
+
+  it("neutral, none and unread checks leave the ledger alone", async () => {
+    setUp();
+    expect(await step("neutral")).toBe(0);
+    expect(await step("none")).toBe(0);
+    expect(eventIds()).toEqual([]);
+  });
+
+  it("stores a snapshot with the failing names and reports each change once", async () => {
+    const seen: string[] = [];
+    watch = new PrWatch({
+      database: fixture.database,
+      forge: () => remote.service,
+      clock: () => clock,
+      deliver: () => undefined,
+      onSettled: () => undefined,
+      onSnapshot: (repo, number, snapshot) =>
+        seen.push(
+          `${repo}#${number}:${snapshot.checks.read ? snapshot.checks.rollup : "unread"}`,
+        ),
+    });
+    setUp();
+    await step("failure");
+    await step("failure");
+    await step("success");
+    expect(seen).toEqual([`${KEY}:failure`, `${KEY}:success`]);
+    const row = fixture.database
+      .prepare(
+        "SELECT snapshot_json FROM pull_snapshots WHERE repo = ? AND number = 7",
+      )
+      .get(REPO) as { snapshot_json: string };
+    expect(JSON.parse(row.snapshot_json)).toMatchObject({
+      state: "open",
+      headSha: SHA,
+    });
+  });
+
+  it("marks the stored snapshot failed when the poll throws", async () => {
+    setUp();
+    await step("success");
+    remote.failure = new ForgeError("unavailable");
+    clock += MIN_POLL_MS;
+    await watch.tick();
+    const row = fixture.database
+      .prepare(
+        "SELECT failed_at, fetched_at FROM pull_snapshots WHERE number = 7",
+      )
+      .get() as { failed_at: number; fetched_at: number };
+    expect(row.failed_at).toBeGreaterThan(row.fetched_at);
+  });
+
+  it("snapshot targets refresh the snapshot only: nothing delivered, nothing in the ledger", async () => {
+    const seen: string[] = [];
+    watch = new PrWatch({
+      database: fixture.database,
+      forge: () => remote.service,
+      clock: () => clock,
+      deliver: () => delivered.push({ items: [], checks: "x", state: null }),
+      onSettled: () => undefined,
+      snapshotTargets: () => [{ repo: REPO, number: 7, workspaceId: "w" }],
+      onSnapshot: (repo, number) => seen.push(`${repo}#${number}`),
+    });
+    remote.items = [note("c1", "alice", T0 + 1_000)];
+    rollup("failure");
+    expect(await watch.tick()).toBe(0);
+    expect(seen).toEqual([KEY]);
+    expect(delivered).toEqual([]);
+    expect(remote.conversationKinds).toEqual([]);
+    for (const table of ["thread_events", "agent_mailbox"]) {
+      expect(
+        (
+          fixture.database
+            .prepare(`SELECT COUNT(*) AS n FROM ${table}`)
+            .get() as { n: number }
+        ).n,
+      ).toBe(0);
+    }
+    const reads = remote.reads;
+    clock += SNAPSHOT_ONLY_MIN_MS - 1;
+    await watch.tick();
+    expect(remote.reads).toBe(reads);
+    clock += 1;
+    rollup("success");
+    await watch.tick();
+    expect(remote.reads).toBe(reads + 1);
+    expect(seen).toEqual([KEY, KEY]);
+  });
+
+  it("a pull watched by an item is not read twice in one tick when it is also a target", async () => {
+    setUp();
+    watch = new PrWatch({
+      database: fixture.database,
+      forge: () => remote.service,
+      clock: () => clock,
+      deliver: () => undefined,
+      onSettled: () => undefined,
+      snapshotTargets: () => [{ repo: REPO, number: 7, workspaceId: "w" }],
+    });
+    await watch.tick();
+    expect(remote.reads).toBe(1);
   });
 });
