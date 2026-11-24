@@ -106,6 +106,8 @@ export interface AgentDefinition {
   /** Permission mode → extra argv. An empty list means "CLI default". */
   readonly permissionFlag: Readonly<Record<PermissionMode, readonly string[]>>;
   readonly modelFlag?: string;
+  /** 工作流档位的参数（只有 ama）。 */
+  readonly tierFlag?: string;
   /**
    * Role → extra argv. A role this CLI has no entry for is ignored: the role
    * shapes what the agent may do, and only a CLI that can enforce it says so.
@@ -330,6 +332,7 @@ export const AGENT_REGISTRY: Readonly<Record<BuiltinAgentId, AgentDefinition>> =
         plan: ["--permission-mode", "plan"],
       },
       modelFlag: "--model",
+      tierFlag: "--tier",
       // ama's own preset for the canvas coordinator: read plus the host's
       // canvas tools, no bash / edit / write, and codemode cannot reach past
       // it (`@armadra/agent` src/tools/presets.ts).
@@ -466,6 +469,8 @@ export interface AssembleLaunchCommandInput {
   prompt?: string;
   permissionMode?: PermissionMode;
   model?: string;
+  /** 工作流档位；只有带 `tierFlag` 的 CLI 进 argv，`model` 同给时 `model` 优先。 */
+  tier?: string;
   /** The node's role; argv only for a CLI with a `roleFlag` for it. */
   role?: AgentRole;
   sessionId?: string;
@@ -602,6 +607,9 @@ export function assembleLaunchArgv(
 
   if (input.model && base.modelFlag) {
     args.push(base.modelFlag, input.model);
+  }
+  if (input.tier && base.tierFlag && !input.model) {
+    args.push(base.tierFlag, input.tier);
   }
 
   args.push(...roleFlags(base.id, input.role));
