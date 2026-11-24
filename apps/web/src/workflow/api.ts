@@ -21,10 +21,15 @@ import { RuntimeRequestError } from "@/api/request";
  * 按 `boardId` 过滤，模板是全局的。
  */
 
-const draftsSchema = z.object({ drafts: z.array(workflowDraftRowSchema) });
-const draftSchema = z.object({ draft: workflowDraftRowSchema });
+/** 草案行多一份提示：档位在这台机器上不起作用的角色 id（契约 §15.2）。 */
+const draftRowSchema = workflowDraftRowSchema.extend({
+  hints: z.object({ tierIgnored: z.array(z.string()) }).optional(),
+});
+export type WorkflowDraftRowWithHints = z.infer<typeof draftRowSchema>;
+const draftsSchema = z.object({ drafts: z.array(draftRowSchema) });
+const draftSchema = z.object({ draft: draftRowSchema });
 const confirmSchema = z.object({
-  draft: workflowDraftRowSchema,
+  draft: draftRowSchema,
   template: workflowTemplateSchema,
 });
 const templatesSchema = z.object({
@@ -68,7 +73,7 @@ export const workflowsApi = {
       .templates,
   updateTemplate: async (
     templateId: string,
-    input: { name?: string; template: WorkflowDraft },
+    input: { name?: string; template: WorkflowDraft; baseVersion: number },
   ) =>
     updatedTemplateSchema.parse(
       await currentClient().workflows.updateTemplate({ templateId, ...input }),

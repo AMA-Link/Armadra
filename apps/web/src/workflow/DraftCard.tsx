@@ -2,10 +2,10 @@ import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/ui/toast";
 import { Workflow } from "lucide-react";
-import type { WorkflowDraftRow } from "@armadra/shared";
 
 import { useT } from "@/app/preferences-store";
 import { useAccess } from "@/app/use-access";
+import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import {
   Card,
@@ -17,7 +17,11 @@ import {
 import { Input } from "@/ui/input";
 import { useCanvasStore } from "@/store/canvas-store";
 import { featureEnabled } from "@/lib/features";
-import { workflowErrorKey, workflowsApi } from "./api";
+import {
+  workflowErrorKey,
+  workflowsApi,
+  type WorkflowDraftRowWithHints,
+} from "./api";
 import { useItemStageSync } from "@/coordinator/stage";
 import { useWorkflowStepSync } from "./node-steps";
 import { openWorkflowPanel, useWorkflowEvents, workflowKeys } from "./store";
@@ -61,7 +65,7 @@ export function DraftLayer() {
   );
 }
 
-export function DraftCard({ row }: { row: WorkflowDraftRow }) {
+export function DraftCard({ row }: { row: WorkflowDraftRowWithHints }) {
   const t = useT();
   const client = useQueryClient();
   const [name, setName] = React.useState(row.draft.title);
@@ -109,6 +113,13 @@ export function DraftCard({ row }: { row: WorkflowDraftRow }) {
           {" · "}
           {row.draft.roles.map((role) => role.agentId).join(" / ")}
         </p>
+        {(row.hints?.tierIgnored.length ?? 0) > 0 ? (
+          <Badge variant="outline" data-slot="workflow-draft-tier-ignored">
+            {t("workflow.draft.tierIgnored", {
+              roles: row.hints!.tierIgnored.join(" / "),
+            })}
+          </Badge>
+        ) : null}
         <Input
           aria-label={t("workflow.draft.name")}
           value={name}

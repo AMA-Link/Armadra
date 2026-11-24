@@ -176,6 +176,7 @@ describe("workflows：草案与模板", () => {
     const updated = await workflowsApi.updateTemplate("t1", {
       name: "第二版",
       template: { ...body, version: 2 } as never,
+      baseVersion: 1,
     });
     expect(updated.frozenSchedules).toEqual([]);
     ok(undefined);
@@ -187,7 +188,7 @@ describe("workflows：草案与模板", () => {
       "workflows/deleteTemplate",
     ]);
     expect(sent(2)).toMatchObject({
-      json: { templateId: "t1", name: "第二版" },
+      json: { templateId: "t1", name: "第二版", baseVersion: 1 },
     });
     expect(sent(3)).toEqual({ json: { templateId: "t1" } });
   });
