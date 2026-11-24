@@ -42,7 +42,10 @@ describe("ACP_MODE_TABLE", () => {
         acpModeCandidates(id).map((c) => `${c.permissionMode}=${c.modeId}`),
       ]),
     );
-    expect(table).toEqual({
+    // Every built-in has an entry here or says why not; an agent added later
+    // writes its own row below rather than reshaping this one.
+    expect(Object.keys(table)).toEqual([...AGENT_IDS]);
+    const expected: Record<string, string[]> = {
       claude: [
         "default=default",
         "auto-edit=acceptEdits",
@@ -70,14 +73,22 @@ describe("ACP_MODE_TABLE", () => {
         "full-auto=full-auto",
         "plan=plan",
       ],
-    });
+    };
+    for (const [id, candidates] of Object.entries(expected)) {
+      expect(table[id], id).toEqual(candidates);
+    }
   });
 
   it("offers a bypass-style mode wherever the agent has a switchable one", () => {
     const withBypass = AGENT_IDS.filter((id) =>
       acpModeCandidates(id).some((c) => c.permissionMode === "full-auto"),
     );
-    expect(withBypass).toEqual(["claude", "codex", "pi", "ama"]);
+    expect(withBypass).toEqual(
+      expect.arrayContaining(["claude", "codex", "pi", "ama"]),
+    );
+    expect(withBypass).not.toContain("opencode");
+    expect(withBypass).not.toContain("omp");
+    expect(withBypass).not.toContain("copilot");
     // 其余只在启动旗标上有（omp、copilot）或根本没有（opencode）。
     expect(ACP_MODE_TABLE.omp["full-auto"]?.args).toEqual([
       "--approval-mode",

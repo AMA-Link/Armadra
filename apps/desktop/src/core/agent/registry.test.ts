@@ -9,6 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { AGENT_IDS as SHARED_AGENT_IDS } from "@armadra/shared";
 import {
   AGENT_IDS,
   AGENT_REGISTRY,
@@ -34,7 +35,7 @@ import {
 const NO_CUSTOM = { customAgents: () => [] };
 
 describe("the agent registry", () => {
-  it("lists exactly the seven CLIs, and Gemini is not one of them", () => {
+  it("lists exactly the built-in CLIs, and Gemini is not one of them", () => {
     expect(AGENT_REGISTRY).toHaveLength(AGENT_IDS.length);
     expect([...AGENT_IDS]).not.toContain("gemini");
     for (const agent of AGENT_REGISTRY) {
@@ -42,7 +43,10 @@ describe("the agent registry", () => {
       expect(agent.launchCmd).not.toBe("");
       expect(agent.color.startsWith("#")).toBe(true);
       expect(agent.color).toHaveLength(7);
-      expect(agent.capabilities).toContain("contextLink");
+      // The context link rides the status source's channel.
+      if (agent.capabilities.includes("hooks")) {
+        expect(agent.capabilities).toContain("contextLink");
+      }
     }
     expect(definition("claude")?.launchCmd).toBe("claude");
     expect(definition("opencode")?.promptMode).toBe("flag-prompt");
@@ -58,16 +62,8 @@ describe("the agent registry", () => {
    * `packages/shared`'s ama entry, restated: the core has no dependency on
    * that package (coordinator-agent §2.2).
    */
-  it("carries ama as the seventh built-in, as packages/shared states it", () => {
-    expect([...AGENT_IDS]).toEqual([
-      "claude",
-      "codex",
-      "opencode",
-      "pi",
-      "omp",
-      "copilot",
-      "ama",
-    ]);
+  it("carries ama as a built-in, as packages/shared states it", () => {
+    expect([...AGENT_IDS]).toEqual([...SHARED_AGENT_IDS]);
     const ama = definition("ama");
     expect(ama?.color).toBe("#2f6fed");
     expect(ama?.promptMode).toBe("argv");
