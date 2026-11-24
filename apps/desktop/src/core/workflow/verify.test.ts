@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
+import type { StepVerdict } from "./store";
 import type { CollectStep } from "./types";
-import {
-  verifyDecision,
-  type VerifyStepView,
-  type VerifyVerdict,
-} from "./verify";
+import { verifyDecision, type VerifyStepView } from "./verify";
 
 const verify = { commands: ["pnpm test"], checklist: [] };
 const collect = (over: Partial<CollectStep> = {}): CollectStep => ({
@@ -34,16 +31,18 @@ const baseSteps = (): VerifyStepView[] => [
   view("b", "ui"),
   view("c", "lead", { kind: "collect", status: "running", after: ["a", "b"] }),
 ];
-const fail = (
-  issues: VerifyVerdict["issues"],
-  round = 0,
-): VerifyVerdict => ({ round, pass: false, issues, at: 1 });
+const fail = (issues: StepVerdict["issues"], round = 0): StepVerdict => ({
+  round,
+  pass: false,
+  issues,
+  at: 1,
+});
 
 interface Case {
   name: string;
   step?: CollectStep;
   round?: number;
-  verdict: VerifyVerdict | null;
+  verdict: StepVerdict | null;
   steps?: VerifyStepView[];
   expected: ReturnType<typeof verifyDecision>;
 }
@@ -93,7 +92,10 @@ const CASES: Case[] = [
   {
     name: "5 点名角色 -> 只退该角色",
     verdict: fail([{ role: "ui", text: "按钮错位" }]),
-    expected: { kind: "retry", reopen: [{ stepId: "b", issues: ["按钮错位"] }] },
+    expected: {
+      kind: "retry",
+      reopen: [{ stepId: "b", issues: ["按钮错位"] }],
+    },
   },
   {
     name: "5 无角色问题 -> 退回全部来源角色并都带上",
@@ -167,18 +169,26 @@ const CASES: Case[] = [
   },
   {
     name: "6 目标未完成 -> escalate",
-    steps: [view("a", "dev", { status: "running" }), view("b", "ui"), baseSteps()[2]!],
+    steps: [
+      view("a", "dev", { status: "running" }),
+      view("b", "ui"),
+      baseSteps()[2]!,
+    ],
     verdict: fail([{ role: "dev", text: "t" }]),
     expected: { kind: "escalate", reason: "verifyFailed" },
   },
   {
     name: "6 目标是 gate -> escalate",
-    steps: [view("a", "dev", { kind: "gate" }), view("b", "ui"), baseSteps()[2]!],
+    steps: [
+      view("a", "dev", { kind: "gate" }),
+      view("b", "ui"),
+      baseSteps()[2]!,
+    ],
     verdict: fail([{ role: "dev", text: "t" }]),
     expected: { kind: "escalate", reason: "verifyFailed" },
   },
   {
-    name: "6 目标缺视图 -> escalate",
+    name: "5 无角色问题、from 里缺视图的步骤被忽略 -> 只重开有视图的",
     steps: [view("b", "ui"), baseSteps()[2]!],
     verdict: fail([{ role: null, text: "t" }]),
     expected: { kind: "retry", reopen: [{ stepId: "b", issues: ["t"] }] },
@@ -200,7 +210,10 @@ const CASES: Case[] = [
   },
   {
     name: "6 下游仍 pending -> 可重开",
-    steps: [...baseSteps(), view("d", "ops", { after: ["a"], status: "pending" })],
+    steps: [
+      ...baseSteps(),
+      view("d", "ops", { after: ["a"], status: "pending" }),
+    ],
     verdict: fail([{ role: "dev", text: "t" }]),
     expected: { kind: "retry", reopen: [{ stepId: "a", issues: ["t"] }] },
   },

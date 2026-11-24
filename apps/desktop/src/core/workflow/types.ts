@@ -186,6 +186,16 @@ export interface StepOutcome {
   readonly outputs?: readonly StepOutput[];
   readonly decision?: GateDecision;
   readonly note?: string;
+  /** `collect` 通过验证时的结论。 */
+  readonly verdict?: {
+    readonly round: number;
+    readonly pass: boolean;
+    readonly issues: readonly {
+      readonly role: string | null;
+      readonly text: string;
+    }[];
+    readonly at: number;
+  };
 }
 
 /** 稳定的错误码（契约 §15.2–§15.3）。 */

@@ -248,6 +248,8 @@ export interface WorkspaceEventPayloads {
     readonly status: string;
     readonly stepId?: string;
     readonly stepStatus?: string;
+    /** 该步骤当前第几轮（被退回重做一次 +1）。 */
+    readonly round?: number;
   };
   "workflow.gate": {
     readonly runId: string;
@@ -257,6 +259,8 @@ export interface WorkspaceEventPayloads {
     readonly state: "waiting" | "approved" | "rejected" | "cancelled";
     /** 运行的 Frame：推送的深链打开它（契约 §15.4）。 */
     readonly nodeId?: string;
+    /** `collect` 升级成关卡的原因（`verifyFailed` / `verdictMissing`）。 */
+    readonly reason?: string;
   };
   /**
    * 协调者分派出去的一个任务换了状态（契约 §15.4、§15.7）：起任务、换绑、结束、

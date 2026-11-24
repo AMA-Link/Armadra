@@ -57,6 +57,8 @@ export interface LayoutRole {
   readonly title: string;
   readonly permissionMode?: string | null | undefined;
   readonly model?: string | null | undefined;
+  /** 档位（只有 ama 认，写进节点 `agent.tier`）；映射成模型的由调用方换成 `model`。 */
+  readonly tier?: string | null | undefined;
   readonly worktree?: string | null | undefined;
 }
 
@@ -83,6 +85,8 @@ export async function layoutRun(
     readonly runId: string;
     readonly roles: readonly LayoutRole[];
     readonly links: readonly LayoutLink[];
+    /** 共享约定正文；放进起点便签，给人看（角色读的是收件箱里的那份）。 */
+    readonly contract?: string | null;
   },
 ): Promise<RunLayout> {
   const { workspaceId, boardId } = request;
@@ -163,6 +167,7 @@ function build(
     readonly runId: string;
     readonly roles: readonly LayoutRole[];
     readonly links: readonly LayoutLink[];
+    readonly contract?: string | null;
   },
   cwds: ReadonlyMap<string, string>,
   settings: AgentSettings,
@@ -198,7 +203,13 @@ function build(
       "sticky",
       request.title,
       { x: FRAME_PADDING, y: FRAME_PADDING + 40 },
-      { kind: "sticky", content: `workflow run ${request.runId}` },
+      {
+        kind: "sticky",
+        content:
+          request.contract == null || request.contract === ""
+            ? `workflow run ${request.runId}`
+            : `workflow run ${request.runId}\n\n${request.contract}`,
+      },
     ),
     parentId: frame.id,
   };
@@ -207,6 +218,7 @@ function build(
     const agent: Record<string, unknown> = { id: role.agentId };
     if (role.permissionMode != null) agent.permissionMode = role.permissionMode;
     if (role.model != null) agent.model = role.model;
+    if (role.tier != null) agent.tier = role.tier;
     // 与页面新建、`canvas spawn` 同一条默认驱动规则。
     Object.assign(agent, newNodeView(settings, role.agentId));
     const cwd = role.worktree == null ? undefined : cwds.get(role.worktree);

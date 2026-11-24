@@ -9,6 +9,12 @@ import { cancelOwn } from "../collab/send-queue";
 import type { CollabContext } from "../collab/service";
 import { evaluate } from "../dependencies/evaluate";
 import { DomainError, uuidV7 } from "../workspaces/support";
+import {
+  contractMessages,
+  feedbackBody,
+  stepSuffix,
+  verifyMessage,
+} from "./contract";
 import { checkRendered, renderPrompt, resolveParams } from "./draft";
 import {
   DeliveryRefused,
@@ -19,15 +25,20 @@ import {
   layoutRun,
   queueItem,
 } from "./dispatch";
+import { roleLaunch } from "./tier";
+import { type VerifyStepView, verifyDecision } from "./verify";
 import {
   type RunRow,
   type StepRow,
   type TemplateRow,
   activeRuns,
+  escalateCollect,
   insertRun,
   noteBusy,
   noteDelivered,
   noteDispatched,
+  reopenStep,
+  requeueCollect,
   runById,
   runsTouchingNode,
   setRunStatus,
@@ -95,6 +106,8 @@ export interface WorkflowEngineOptions {
   /** 建 Frame 与角色节点；缺省 `dispatch.ts::layoutRun`。 */
   readonly layout?: typeof layoutRun;
   readonly log?: (message: string, fields?: Record<string, unknown>) => void;
+  /** 这台机器上的 ama 认不认 `--tier`（探测到的版本）；缺省不认，档位只记提示。 */
+  readonly amaSupportsTier?: () => boolean;
 }
 
 export interface StartRunRequest {
@@ -198,14 +211,19 @@ export class WorkflowEngine {
     }
 
     const runId = request.runId ?? uuidV7();
-    const roles: LayoutRole[] = template.roles.map((role) => ({
-      id: role.id,
-      agentId: role.agentId,
-      title: role.title ?? role.id,
-      permissionMode: role.permissionMode,
-      model: role.model,
-      worktree: role.worktree,
-    }));
+    const tierOk = this.options.amaSupportsTier?.() ?? false;
+    const roles: LayoutRole[] = template.roles.map((role) => {
+      const picked = roleLaunch(collab.settings, role, tierOk);
+      return {
+        id: role.id,
+        agentId: role.agentId,
+        title: role.title ?? role.id,
+        permissionMode: role.permissionMode,
+        model: picked.model,
+        tier: picked.tier,
+        worktree: role.worktree,
+      };
+    });
     const layout: RunLayout = await (this.options.layout ?? layoutRun)(collab, {
       workspaceId,
       boardId,
@@ -213,6 +231,7 @@ export class WorkflowEngine {
       runId,
       roles,
       links: template.links,
+      contract: template.contract?.text ?? null,
     });
     const run = insertRun(this.database, {
       id: runId,
@@ -269,7 +288,7 @@ export class WorkflowEngine {
             endedAt: now,
           },
         );
-        if (step.kind === "gate" && step.status === "waiting") {
+        if (step.status === "waiting" && step.kind !== "prompt") {
           this.publishGate(run, step.stepId, "cancelled");
         }
       }
@@ -287,7 +306,10 @@ export class WorkflowEngine {
   ): Promise<RunRow> {
     const run = this.requireRun(runId);
     const step = stepOfRun(this.database, runId, stepId);
-    if (step === undefined || step.kind !== "gate") {
+    if (
+      step === undefined ||
+      (step.kind !== "gate" && step.kind !== "collect")
+    ) {
       throw new DomainError(404, "not_found", "这次运行里没有这个关卡。");
     }
     if (step.status !== "waiting" || RUN_FINAL.includes(run.status)) {
@@ -306,11 +328,31 @@ export class WorkflowEngine {
           endedAt: now,
           reason: decision === "approve" ? null : "rejected",
           outcome: {
+            // 升级的 collect：人明确接受现状，仍带上这一轮的产出与结论。
+            ...(step.kind === "collect" && step.nodeId !== null
+              ? {
+                  outputs: outputsOf(
+                    this.database,
+                    step.nodeId,
+                    step.startedAt ?? 0,
+                  ),
+                }
+              : {}),
             decision,
             ...(note === undefined || note === "" ? {} : { note }),
+            ...(step.kind === "collect" && step.verdict !== null
+              ? { verdict: step.verdict }
+              : {}),
           },
         },
       );
+      if (answered && step.kind === "collect") {
+        this.publishStep(
+          run,
+          stepId,
+          decision === "approve" ? "done" : "failed",
+        );
+      }
       if (answered) {
         this.publishGate(
           run,
@@ -559,7 +601,7 @@ export class WorkflowEngine {
       return undefined;
     }
     this.publishStep(run, definition.id, "running");
-    if (definition.kind === "collect") this.gather(run, definition, collab);
+    this.inject(run, definition, collab);
     this.dispatch(run, definition, collab);
     return "running";
   }
@@ -576,8 +618,8 @@ export class WorkflowEngine {
       return;
     }
     let body = renderPrompt(definition.prompt, run.params);
-    if (definition.kind === "collect")
-      body = `${body}\n${collectNote(definition)}`;
+    const suffix = stepSuffix(run.template, definition);
+    if (suffix !== "") body = `${body}\n${suffix}`;
     try {
       const queueId = deliverPrompt(collab, {
         workspaceId: run.workspaceId,
@@ -667,6 +709,15 @@ export class WorkflowEngine {
         return;
       case "satisfied": {
         const now = this.clock();
+        if (current.kind === "collect") {
+          const definition = run.template.steps.find(
+            (entry) => entry.id === step.stepId,
+          );
+          if (definition?.kind === "collect" && definition.verify != null) {
+            this.settleVerify(run, definition, current, nodeId, collab);
+            return;
+          }
+        }
         if (
           transitionStep(
             this.database,
@@ -711,6 +762,166 @@ export class WorkflowEngine {
   }
 
   /**
+   * 开始一步前放进收件箱的东西：角色的共享约定（每个节点只放一次，键相同
+   * `DO NOTHING`）、`collect` 来源步骤的产出、有 `verify` 时这一轮的验证说明。
+   * 发信人是起点便签；`outputsOf` 排除 `workflow:` 前缀，所以都不算产出。
+   */
+  private inject(
+    run: RunRow,
+    definition: PromptStep | CollectStep,
+    collab: CollabContext,
+  ): void {
+    const targetId = run.roles[definition.role];
+    if (targetId === undefined || run.anchorNodeId === null) return;
+    const nowSeconds = this.nowSeconds();
+    const insert = (key: string, body: string): void => {
+      collab.database
+        .prepare(
+          "INSERT INTO agent_mailbox (id, workspace_id, source_node_id, target_node_id, message_key, body, created_at, expires_at) " +
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(source_node_id, target_node_id, message_key) DO NOTHING",
+        )
+        .run(
+          uuidV7(),
+          run.workspaceId,
+          run.anchorNodeId,
+          targetId,
+          key,
+          body,
+          nowSeconds,
+          nowSeconds + TTL_SECONDS,
+        );
+    };
+    contractMessages(run.template, definition.role).forEach((body, index) => {
+      insert(`workflow:${run.id}:contract:${index}`, body);
+    });
+    if (definition.kind !== "collect") return;
+    this.gather(run, definition, collab);
+    const round = stepOfRun(this.database, run.id, definition.id)?.round ?? 0;
+    const note = verifyMessage(run.template, definition, round);
+    if (note !== undefined) {
+      insert(`workflow:${run.id}:verify:${definition.id}:${round}`, note);
+    }
+  }
+
+  /**
+   * 带 `verify` 的 `collect` 这一轮结束了：按汇总角色报的结论判定（`verify.ts`）。
+   * 通过照旧完成；没过且能退回就把问题发给相关角色重做、自己回到 `pending`；
+   * 其余升级成等人的关卡。
+   */
+  private settleVerify(
+    run: RunRow,
+    definition: CollectStep,
+    current: StepRow,
+    nodeId: string,
+    collab: CollabContext | undefined,
+  ): void {
+    const rows = stepsOf(this.database, run.id);
+    const views: VerifyStepView[] = rows.map((row) => {
+      const entry = run.template.steps.find((item) => item.id === row.stepId);
+      return {
+        stepId: row.stepId,
+        kind: row.kind,
+        status: row.status,
+        role: entry === undefined || entry.kind === "gate" ? null : entry.role,
+        after: entry?.after ?? [],
+      };
+    });
+    const decision = verifyDecision({
+      step: definition,
+      round: current.round,
+      verdict: current.verdict,
+      steps: views,
+    });
+    const now = this.clock();
+    if (decision.kind === "done") {
+      if (
+        transitionStep(
+          this.database,
+          run.id,
+          current.stepId,
+          ["running"],
+          "done",
+          {
+            endedAt: now,
+            outcome: {
+              outputs: outputsOf(this.database, nodeId, current.startedAt ?? 0),
+              ...(current.verdict === null ? {} : { verdict: current.verdict }),
+            },
+          },
+        )
+      ) {
+        this.publishStep(run, current.stepId, "done");
+      }
+      return;
+    }
+    if (decision.kind === "retry" && collab !== undefined) {
+      const hasContract = (roleId: string): boolean =>
+        (run.template.contract?.text ?? "") !== "" ||
+        (run.template.contract?.owns?.[roleId]?.length ?? 0) > 0;
+      for (const target of decision.reopen) {
+        if (!reopenStep(this.database, run.id, target.stepId, now)) continue;
+        this.publishStep(run, target.stepId, "running");
+        const entry = run.template.steps.find(
+          (item) => item.id === target.stepId,
+        );
+        if (entry === undefined || entry.kind === "gate") continue;
+        this.deliver(
+          run,
+          target.stepId,
+          run.roles[entry.role],
+          feedbackBody({
+            collectStepId: definition.id,
+            round: current.round,
+            issues: target.issues,
+            hasContract: hasContract(entry.role),
+          }),
+          collab,
+        );
+      }
+      if (requeueCollect(this.database, run.id, current.stepId)) {
+        this.publishStep(run, current.stepId, "pending");
+      }
+      return;
+    }
+    const reason =
+      decision.kind === "escalate" ? decision.reason : "verifyFailed";
+    if (escalateCollect(this.database, run.id, current.stepId, reason)) {
+      this.publishStep(run, current.stepId, "waiting");
+      this.publishGate(run, current.stepId, "waiting", undefined, reason);
+    }
+  }
+
+  /** 把一段正文投给角色节点并记下排队项；投不上让那一步失败。 */
+  private deliver(
+    run: RunRow,
+    stepId: string,
+    nodeId: string | undefined,
+    body: string,
+    collab: CollabContext,
+  ): void {
+    if (nodeId === undefined || run.anchorNodeId === null) {
+      this.fail(run, stepId, "roleMissing");
+      return;
+    }
+    try {
+      const queueId = deliverPrompt(collab, {
+        workspaceId: run.workspaceId,
+        sourceNodeId: run.anchorNodeId,
+        targetNodeId: nodeId,
+        body,
+        nowSeconds: this.nowSeconds(),
+      });
+      noteDispatched(this.database, run.id, stepId, queueId);
+    } catch (error) {
+      this.fail(
+        run,
+        stepId,
+        error instanceof DeliveryRefused ? error.code : "deliveryFailed",
+      );
+    }
+  }
+
+  /**
    * `collect`：来源步骤的产出放进目标节点的收件箱（发信人是产出它的那个节点）。
    * 已经是发给目标的 `post` 不再放第二份。
    */
@@ -730,6 +941,11 @@ export class WorkflowEngine {
       const source = stepOfRun(this.database, run.id, sourceStepId);
       if (source?.nodeId == null || source.nodeId === targetId) continue;
       if (loadNode(this.database, source.nodeId) === undefined) continue;
+      // 被退回重做过的来源（round > 0）用新键，否则新产出被 DO NOTHING 吞掉。
+      const prefix =
+        source.round > 0
+          ? `workflow:${run.id}:${sourceStepId}:${source.round}`
+          : `workflow:${run.id}:${sourceStepId}`;
       (source.outcome?.outputs ?? []).forEach((output, index) => {
         if (output.target === targetId) return;
         insert.run(
@@ -737,7 +953,7 @@ export class WorkflowEngine {
           run.workspaceId,
           source.nodeId,
           targetId,
-          `workflow:${run.id}:${sourceStepId}:${index}`,
+          `${prefix}:${index}`,
           output.body,
           nowSeconds,
           nowSeconds + TTL_SECONDS,
@@ -789,6 +1005,7 @@ export class WorkflowEngine {
       status: current?.status ?? run.status,
       stepId,
       stepStatus,
+      round: stepOfRun(this.database, run.id, stepId)?.round ?? 0,
     });
   }
 
@@ -797,6 +1014,7 @@ export class WorkflowEngine {
     stepId: string,
     state: "waiting" | "approved" | "rejected" | "cancelled",
     definition?: GateStep,
+    reason?: string,
   ): void {
     const gate =
       definition ??
@@ -810,6 +1028,7 @@ export class WorkflowEngine {
       label: gate?.label ?? stepId,
       state,
       ...(run.frameId === null ? {} : { nodeId: run.frameId }),
+      ...(reason === undefined ? {} : { reason }),
     });
   }
 
@@ -834,11 +1053,6 @@ export class WorkflowEngine {
     }
     return run;
   }
-}
-
-/** `collect` 投出去的正文末尾那一句。长度计进 `COLLECT_NOTE_RESERVE`。 */
-export function collectNote(definition: CollectStep): string {
-  return `（来源步骤 ${definition.from.join("、")} 的结论已放进你的收件箱：canvas inbox。）`;
 }
 
 /**

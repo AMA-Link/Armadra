@@ -75,6 +75,8 @@ export function install(context: CoreContext): WorkflowDomain | undefined {
     collab: () => collab(),
     bus: context.bus,
     log: (message, fields) => context.log.info(message, fields),
+    amaSupportsTier: () =>
+      amaSupportsTier(storedProbe("ama")?.version ?? undefined),
   });
   const service = new WorkflowService({
     database,

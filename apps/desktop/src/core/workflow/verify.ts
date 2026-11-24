@@ -1,12 +1,5 @@
+import type { StepVerdict } from "./store";
 import type { CollectStep, StepStatus, WorkflowStepKind } from "./types";
-
-/** 与 `store.ts` 的 `StepVerdict` 同形（结构兼容，纯函数不依赖存取层）。 */
-export interface VerifyVerdict {
-  readonly round: number;
-  readonly pass: boolean;
-  readonly issues: readonly { readonly role: string | null; readonly text: string }[];
-  readonly at: number;
-}
 
 export interface VerifyStepView {
   readonly stepId: string;
@@ -38,7 +31,7 @@ const DEFAULT_MAX_RETRIES = 2;
 export function verifyDecision(input: {
   readonly step: CollectStep;
   readonly round: number;
-  readonly verdict: VerifyVerdict | null;
+  readonly verdict: StepVerdict | null;
   readonly steps: readonly VerifyStepView[];
 }): VerifyDecision {
   const { step, round, verdict, steps } = input;
