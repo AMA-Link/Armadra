@@ -149,8 +149,8 @@ describe("WorkspaceEventStream", () => {
   });
 
   it("carries the 21 contractual type strings, plus node.created, terminal.lease, canvas.presence, terminal.hibernation, terminal.program, the six workflow events, delivery.changed, the four G5 schedule / resources events, cloud.tunnel and the three device events, connect.used and no others", () => {
-    expect(WORKSPACE_EVENT_TYPES).toHaveLength(41);
-    expect(new Set(WORKSPACE_EVENT_TYPES).size).toBe(41);
+    expect(WORKSPACE_EVENT_TYPES).toHaveLength(42);
+    expect(new Set(WORKSPACE_EVENT_TYPES).size).toBe(42);
     // A rename here is a break in `packages/shared`'s discriminated union and
     // in every front-end reducer that switches on it (contract §5).
     expect([...WORKSPACE_EVENT_TYPES]).toEqual([
