@@ -194,6 +194,23 @@ describe("DeliveryWatch", () => {
     expect(frames).toEqual([]);
   });
 
+  it("follows a snapshot of a branch-linked pull to its node", () => {
+    setState("done");
+    fixture.database
+      .prepare(
+        "INSERT INTO node_pull_links (node_id, workspace_id, repo, number, head_ref, url, linked_at) VALUES (?, ?, ?, 7, 'x', 'u', 1)",
+      )
+      .run(node, fixture.workspaceId, REPO);
+    saveSnapshot(fixture.database, REPO, snapshot(), NOW);
+    watch.onSnapshot(REPO, 7);
+    expect(frames.at(-1)).toMatchObject({
+      nodeId: node,
+      lane: "inReview",
+      phrase: "awaitingReview",
+      pullsChanged: true,
+    });
+  });
+
   it("onLinkChanged refreshes the node with pullsChanged", () => {
     setState("working");
     watch.onLinkChanged(node);

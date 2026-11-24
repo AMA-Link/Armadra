@@ -211,6 +211,7 @@ export function install(context: CoreContext): WorkflowDomain | undefined {
     forge: forgeService,
     repositories: workspaceRepository,
     bus: context.bus,
+    onLinkChanged: delivery.onLinkChanged,
     log: (message, fields) => context.log.info(message, fields),
   });
   const tasks = new TaskWatch({

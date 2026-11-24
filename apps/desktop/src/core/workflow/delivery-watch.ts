@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import type { EventBus } from "../bus";
 import { loadNode } from "../collab/nodes";
 import { deliveryNode } from "./delivery-facts";
+import { nodesOfPull as linkedNodesOfPull } from "./node-pulls";
 import type { Thread } from "./task-runs";
 
 /**
@@ -60,8 +61,8 @@ export class DeliveryWatch {
   };
 
   /**
-   * 绑了这个 PR 的节点。接缝（P2）：节点关联的 PR 经 `nodesOfPull(db, repo,
-   * number)` 并入这里，按节点去重。
+   * 绑了这个 PR 的节点，加上按分支关联到它的节点（`node-pulls.ts`，契约 §116），
+   * 按节点去重。
    */
   private nodesOfPull(repo: string, number: number): string[] {
     const rows = this.options.database
@@ -93,6 +94,13 @@ export class DeliveryWatch {
       ) {
         nodes.add(row.node_id);
       }
+    }
+    for (const nodeId of linkedNodesOfPull(
+      this.options.database,
+      repo,
+      number,
+    )) {
+      nodes.add(nodeId);
     }
     return [...nodes];
   }
