@@ -56,10 +56,12 @@ export function paramSummary(
   return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
 }
 
-/** 正在等人的关卡（通常最多一个）。 */
+/** 正在等人的关卡（通常最多一个）；验证升级的 `collect` 同样等人答复。 */
 export function waitingGates(run: WorkflowRunJson): WorkflowRunStepJson[] {
   return run.steps.filter(
-    (step) => step.kind === "gate" && step.status === "waiting",
+    (step) =>
+      step.status === "waiting" &&
+      (step.kind === "gate" || step.kind === "collect"),
   );
 }
 

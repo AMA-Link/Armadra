@@ -777,7 +777,7 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
 
 > 自协议 1.12 起这些路由同时是 `workflows.*` 与 `coordinator.*` procedure（§43.2、§43.3），旧路径与 procedure 调同一份实现。
 
-协调者把一次协作沉淀成**草案**，人确认后成为**模板**，模板按参数**运行**（设计 `design/coordinator-agent.md` §5、`design/completion-architecture.md` §5.4）。表在迁移 `0034_workflow.sql`（`workflow_drafts` / `workflow_templates` / `workflow_runs` / `workflow_run_steps` / `workflow_task_runs`）。zod 在 `packages/shared/src/api/workflows.ts`，core 的手写校验在 `core/workflow/draft.ts`，两边规则相同。§15.5 是 `wait` 动词与 `workflow_task_runs` 行；§15.6（自动化目标 `WORKFLOW_RUN`）由 G2-3 填写。
+协调者把一次协作沉淀成**草案**，人确认后成为**模板**，模板按参数**运行**（设计 `design/coordinator-agent.md` §5、`design/completion-architecture.md` §5.4）。表在迁移 `0034_workflow.sql`（`workflow_drafts` / `workflow_templates` / `workflow_runs` / `workflow_run_steps` / `workflow_task_runs`）。zod 在 `packages/shared/src/api/workflows.ts`，core 的手写校验在 `core/workflow/draft.ts`，两边规则相同。§15.5 是 `wait` 动词与 `workflow_task_runs` 行；§119 是 v2 的共享约定、验证、`workflow-verdict` 与档位；§15.6（自动化目标 `WORKFLOW_RUN`）由 G2-3 填写。
 
 权限按前缀（`http/route-scopes.ts`）：读 `canvas:read`，写 `agent:launch`。路径里没有工作空间，服务器壳上的路由门按草案 / 运行 / 画板查出画布再判，成员的逐条权限与关卡答复见 §23.3。失败一律 `{ code, message }`，`code` 是 snake_case 的稳定码。
 
@@ -787,8 +787,13 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "title": "双人代码审查",
+  "description": "两人各审一块，lead 汇总后人工确认。",
+  "contract": {
+    "text": "只改自己负责的路径。",
+    "owns": { "reviewerA": ["src/a/**"] }
+  },
   "params": [
     { "name": "scopeA", "type": "string", "label": null, "default": null }
   ],
@@ -799,6 +804,7 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
       "title": null,
       "permissionMode": "plan",
       "model": null,
+      "tier": "standard",
       "worktree": null
     },
     { "id": "lead", "agentId": "codex" }
@@ -818,6 +824,8 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
       "role": "lead",
       "from": ["s1"],
       "prompt": "汇总到便签",
+      "verify": { "commands": ["pnpm test"], "checklist": ["结论逐条有依据"] },
+      "maxRetries": 2,
       "after": ["s1"]
     },
     { "id": "s3", "kind": "gate", "label": "合并前人工确认", "after": ["s2"] }
@@ -831,41 +839,44 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
 }
 ```
 
-- `version` ≥ 1 的整数；模板改一次就要更大（§15.2）。`title` 1–160 字。
+- `version` 是**格式号**：读时 ≥ 1 的整数都收（v1 草案与历史模板照常读），Armadra 写出的草案与模板恒为 2。模板的修订号不在这里，只在 `workflow_templates.version` 列（§15.2）。`title` 1–160 字。
+- `description` 可选，≤ 4000 字（`.md` 正文）。`contract` 可选（共享约定）：`text` ≤ 6000 字；`owns` 是角色 id → glob 数组，键必须是草案里的角色，每角色 ≤ 16 条、每条 ≤ 200 字。glob 原样保存，不改写。这里只查结构，glob 语法与跨角色冲突要等 ama 的校验函数接进来才查。约定怎么送到角色见 §119.1。
 - `params[]` ≤ 32：`name` 匹配 `^[A-Za-z_][A-Za-z0-9_]{0,63}$`，`type` 是 `string` / `path` / `text`（缺省 `string`），可选 `label`、`default`。提示词里 `{{name}}` 在起跑时代入；没声明的 `{{…}}` 原样留着。
-- `roles[]` 1–8：`id` 匹配 `^[A-Za-z][A-Za-z0-9_-]{0,31}$`；`agentId` 是注册表 id 或 `custom:…`；`permissionMode` 是 `default` / `auto-edit` / `full-auto` / `plan` 或 null（这个 CLI 有没有这个模式在起跑时查）；`model` ≤ 120 字；`worktree` 是 worktree 名或相对路径，起跑时与 `canvas team` 一样备好检出，角色的终端开在里面。
+- `roles[]` 1–8：`id` 匹配 `^[A-Za-z][A-Za-z0-9_-]{0,31}$`；`agentId` 是注册表 id 或 `custom:…`；`permissionMode` 是 `default` / `auto-edit` / `full-auto` / `plan` 或 null（这个 CLI 有没有这个模式在起跑时查）；`model` ≤ 120 字；`tier` 可选，`light` / `standard` / `strong` / `max` 之一或 null（档位，`model` 非空时以 `model` 为准，见 §119.5）；`worktree` 是 worktree 名或相对路径，起跑时与 `canvas team` 一样备好检出，角色的终端开在里面。
 - `links[]` ≤ 32：两个不同角色之间的线，`role` 是 `peer`（缺省）或 `supervises`（`from` 是主）。
 - `steps[]` 1–32，`id` 同角色的规则、草案内唯一；`after` 是别的步骤 id，不能成环。`kind`：
-  - `prompt`：把 `prompt`（代入参数后 ≤ 2000 字）投给 `role` 的节点；
-  - `collect`：先把 `from` 里各步骤的产出放进 `role` 节点的收件箱，再投 `prompt`（末尾加一句「来源步骤的结论在收件箱里」，代入后连这一句 ≤ 2000 字）；`from` 必须都写在它的 `after` 里；
+  - `prompt`：把 `prompt`（代入参数后 ≤ 2000 字）投给 `role` 的节点；该角色在共享约定里有条目（`contract.text` 非空，或 `owns` 有它）时，同样要给末尾那一句留 200 字，即代入后 + 200 ≤ 2000（按码点计）；
+  - `collect`：先把 `from` 里各步骤的产出放进 `role` 节点的收件箱，再投 `prompt`（末尾追加一句固定短语，≤ 200 字，不含 id 或列表，代入后连这一句 ≤ 2000 字，§119.1）；`from` 必须都写在它的 `after` 里。可选 `verify`：`commands` ≤ 4 条（每条 ≤ 300 字，由汇总角色自己执行）、`checklist` ≤ 16 条（每条 ≤ 300 字），至少一项非空；可选 `maxRetries`（0–3 的整数，缺省 2，只能随 `verify` 给），§119.2；
   - `gate`：停下等人答复（§15.3），`label` 1–160 字。
 - `source` 可选，原样存着；未知字段丢掉。
+- **往返不规整**：glob 不改写，缺省值（`maxRetries`、参数 `type` 等）不写回；原文没有的可选字段不出现在解析结果里。
+- 违反以上任何一条都是 `400 invalid_draft`。
 
 ### 15.2 草案与模板
 
-| 方法与路径                                | 说明                                                                                            |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `GET /api/workflows/drafts`               | `?boardId=`、`?status=pending\|confirmed\|discarded` 过滤，新的在前，最多 200 条 → `{ drafts }` |
-| `GET /api/workflows/drafts/{id}`          | `{ draft }`                                                                                     |
-| `POST /api/workflows/drafts/{id}/confirm` | `{ name?, draft? }`：`draft` 给了就是人改过的那份（重新校验）→ `{ draft, template }`            |
-| `POST /api/workflows/drafts/{id}/discard` | `{ draft }`                                                                                     |
-| `GET /api/workflows/templates`            | `{ templates }`，最近改过的在前                                                                 |
-| `POST /api/workflows/templates`           | `{ name?, template }` → `201 { template }`；`name` 缺省取 `template.title`                      |
-| `GET /api/workflows/templates/{id}`       | `{ template }`                                                                                  |
-| `PUT /api/workflows/templates/{id}`       | `{ name?, template }`，`template.version` 必须大于库里那份，否则 `409 template_version_stale`   |
-| `DELETE /api/workflows/templates/{id}`    | `204`；已有的运行不受影响（运行存的是起跑时的模板快照）                                         |
+| 方法与路径                                | 说明                                                                                                                                                              |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/workflows/drafts`               | `?boardId=`、`?status=pending\|confirmed\|discarded` 过滤，新的在前，最多 200 条 → `{ drafts }`                                                                   |
+| `GET /api/workflows/drafts/{id}`          | `{ draft }`                                                                                                                                                       |
+| `POST /api/workflows/drafts/{id}/confirm` | `{ name?, draft? }`：`draft` 给了就是人改过的那份（重新校验）→ `{ draft, template }`                                                                              |
+| `POST /api/workflows/drafts/{id}/discard` | `{ draft }`                                                                                                                                                       |
+| `GET /api/workflows/templates`            | `{ templates }`，最近改过的在前                                                                                                                                   |
+| `POST /api/workflows/templates`           | `{ name?, template }` → `201 { template }`；`name` 缺省取 `template.title`                                                                                        |
+| `GET /api/workflows/templates/{id}`       | `{ template }`                                                                                                                                                    |
+| `PUT /api/workflows/templates/{id}`       | `{ name?, template, baseVersion }`，`baseVersion` 必带且等于库里的修订号，改后修订号 +1；缺或不是 ≥ 1 的整数 `400 bad_request`，不等 `409 template_version_stale` |
+| `DELETE /api/workflows/templates/{id}`    | `204`；已有的运行不受影响（运行存的是起跑时的模板快照）                                                                                                           |
 
-草案行：`{ id, workspaceId, boardId, proposerNodeId, status, templateId, draft, createdAt, updatedAt }`，`status` 是 `pending` / `confirmed` / `discarded`；不是 `pending` 的草案再确认或丢弃回 `409 draft_not_pending`。模板行：`{ id, name, version, createdFromDraft, template, createdAt, updatedAt }`。
+草案行：`{ id, workspaceId, boardId, proposerNodeId, status, templateId, draft, createdAt, updatedAt }`，`status` 是 `pending` / `confirmed` / `discarded`；不是 `pending` 的草案再确认或丢弃回 `409 draft_not_pending`。草案行多一个 `hints: { tierIgnored: string[] }`：草案里档位在这台机器上不生效的角色 id（ama 角色而探测到的 ama 版本低于 `AMA_TIER_SINCE`，或非 ama 角色没有内置映射 / 选不了模型），页面据此提示；没有这类角色或这台机器取不到设置时为空数组。模板行：`{ id, name, version, createdFromDraft, template, createdAt, updatedAt }`，`version` 是修订号（新建为 1，每次 `PUT` +1），`template.version` 只是格式号（§15.1），两者无关。
 
 ### 15.3 运行、步骤与关卡
 
-| 方法与路径                                     | 说明                                                                                         |
-| ---------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `POST /api/workflows/runs`                     | `{ templateId, params?, boardId? }` → `201 { run }`；`boardId` 缺省取模板的 `source.boardId` |
-| `GET /api/workflows/runs`                      | `?templateId=`、`?boardId=`、`?limit=`（1–200，缺省 50），新的在前 → `{ runs }`              |
-| `GET /api/workflows/runs/{id}`                 | `{ run }`                                                                                    |
-| `POST /api/workflows/runs/{id}/cancel`         | `{ run }`；已结束回 `409 run_finished`                                                       |
-| `POST /api/workflows/runs/{id}/gates/{stepId}` | `{ decision: "approve" \| "reject", note? }` → `{ run }`；不在等人回 `409 gate_not_waiting`  |
+| 方法与路径                                     | 说明                                                                                                                                                                       |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/workflows/runs`                     | `{ templateId, params?, boardId? }` → `201 { run }`；`boardId` 缺省取模板的 `source.boardId`                                                                               |
+| `GET /api/workflows/runs`                      | `?templateId=`、`?boardId=`、`?limit=`（1–200，缺省 50），新的在前 → `{ runs }`                                                                                            |
+| `GET /api/workflows/runs/{id}`                 | `{ run }`                                                                                                                                                                  |
+| `POST /api/workflows/runs/{id}/cancel`         | `{ run }`；已结束回 `409 run_finished`                                                                                                                                     |
+| `POST /api/workflows/runs/{id}/gates/{stepId}` | `{ decision: "approve" \| "reject", note? }` → `{ run }`；不在等人回 `409 gate_not_waiting`。`stepId` 可以是 `gate`，也可以是因验证升级而 `waiting` 的 `collect`（§119.3） |
 
 起跑当场拒绝的：缺参数或参数未声明（`400 missing_param` / `bad_request`）、代入后超长（`400 prompt_too_long`）、角色的 CLI 没有那个权限模式（`400 permission_mode_unsupported`）、这台机器不认识的 `agentId`（`400 invalid_draft`）、画布不存在（`404`）、worktree 备不好（Git 的拒绝原样）。这些都在动画布之前。
 
@@ -897,6 +908,8 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
         "startedAt": "2026-10-03T08:00:00.000Z",
         "endedAt": "2026-10-03T08:03:10.000Z",
         "reason": null,
+        "round": 0,
+        "verdict": null,
         "outputs": [
           {
             "key": "review",
@@ -916,6 +929,7 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
 - 运行 `status`：`running` / `waiting`（有关卡在等人）/ `succeeded` / `failed` / `cancelled`；`reason` 是 `<stepId>:<步骤 reason>`（失败时）或 `cancelledByUser`。
 - 步骤 `status`：`pending` / `running` / `waiting`（关卡）/ `done` / `failed` / `skipped`（它等的步骤没成功）/ `cancelled`。一步在 `after` 全部 `done` 时开始；全部步骤结束后，全 `done` 记 `succeeded`，否则 `failed`。
 - `prompt` / `collect` 何时算完：投递落地之后，角色节点**下一轮干净地结束**（判定与 §8 的依赖边相同：只认基准之后的结束）。失败的 `reason`：`turnFailed` / `turnInterrupted`（这一轮出错或被中断）、`nodeDeleted`、`nodeExited`（终端退出而这一轮没结束）、`roleMissing`、`QUEUE_FULL`，以及投递三次都没投进去时最后一次排队项的码（如 `TARGET_STARTING`）。
+- `round`：这一步被验证退回重做的次数，缺省 0；`verdict`：`collect` 的最近一次验证结论 `{ pass, issues: [{ role, text }] }`，没有时 `null`（§119.2）。
 - `outputs`：角色节点在这一步开始之后 `canvas post` 的正文（最多 8 条，回执与引擎放进收件箱的副本不算），`target` 是收件节点。关卡的答复记在 `decision` 与 `note`。
 - 取消：没结束的步骤记 `cancelled`、还排着的提示词收回，节点留在画布上。
 
@@ -925,14 +939,14 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
 
 ```text
 { "type": "workflow.draft", "draftId": "…", "boardId": "…", "status": "pending" }
-{ "type": "workflow.run", "runId": "…", "boardId": "…", "status": "running", "stepId": "s1", "stepStatus": "done" }
-{ "type": "workflow.gate", "runId": "…", "boardId": "…", "stepId": "s3", "label": "合并前人工确认", "state": "waiting", "nodeId": "node-frame" }
+{ "type": "workflow.run", "runId": "…", "boardId": "…", "status": "running", "stepId": "s1", "stepStatus": "done", "round": 0 }
+{ "type": "workflow.gate", "runId": "…", "boardId": "…", "stepId": "s3", "label": "合并前人工确认", "state": "waiting", "nodeId": "node-frame", "reason": "verifyFailed" }
 { "type": "workflow.task", "taskId": "sess:t1", "boardId": "…", "coordinatorNodeId": "node-lead", "nodeId": "node-m", "status": "done" }
 ```
 
 - `workflow.draft`：草案出现、被确认或丢弃。
-- `workflow.run`：运行或其中一步换了状态；只有运行换状态时没有 `stepId` / `stepStatus`。
-- `workflow.gate`：`state` 是 `waiting` / `approved` / `rejected` / `cancelled`；`nodeId` 是运行的 Frame（运行还没有 Frame 时缺席）。推送只在 `waiting` 时叫人，深链打开这个 Frame（§19）。
+- `workflow.run`：运行或其中一步换了状态；只有运行换状态时没有 `stepId` / `stepStatus`；`collect` 步骤的帧带可选 `round`（被验证退回的次数）。
+- `workflow.gate`：`state` 是 `waiting` / `approved` / `rejected` / `cancelled`；`nodeId` 是运行的 Frame（运行还没有 Frame 时缺席）。`label` 是关卡标签，升级的 `collect` 步骤用步骤 id；升级时帧多可选 `reason`（`verifyFailed` / `verdictMissing`，§119.3）。推送只在 `waiting` 时叫人，深链打开这个 Frame（§19）。
 - `workflow.task`：§15.5 的一个任务行换了状态——起任务（含换绑）、结束（`wait` 或 core 自己落的）、§15.7 的重试各一帧；`status` 同任务行。`boardId` 是协调者节点所在的画板；协调者节点已不在时不推。推送不认这一帧。
 - `workflow.reply`（§101）：协调者经 `canvas notify` 对人说了一句话，`{ replyId, taskId, boardId, coordinatorNodeId, nodeId（成员）, purpose }`，**不带 `--text`**；页面据此重读任务行。
 - `workflow.intake`（§104.4）：协调者的来源出了新候选、候选有了判定、复核或接单，`{ boardId, coordinatorNodeId, candidateId, sourceId }`，**不带标题与正文**；页面据此重读来源与候选。不推送。
@@ -3465,23 +3479,23 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 
 <!-- rpc:begin contract=§43.2 -->
 
-| procedure                    | kind     | input                                                                      | output                                                                                                                                                                                                                                                                                                                                                                                                              | errors                                              | scope          | 自   | 原路径                                                         |
-| ---------------------------- | -------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | -------------- | ---- | -------------------------------------------------------------- |
-| `workflows.drafts`           | query    | `{ boardId?: string, status?: string }`                                    | `{ drafts: ({ id: string, workspaceId: string, boardId: string, proposerNodeId: string \| null, status: "pending" \| "confirmed" \| "discarded", templateId: string \| null, draft: Record<string, JSON>, createdAt: string, updatedAt: string })[] }`                                                                                                                                                              | `forbidden`                                         | `canvas:read`  | 1.12 | `GET /api/workflows/drafts`                                    |
-| `workflows.draft`            | query    | `{ draftId: string }`                                                      | `{ draft: { id: string, workspaceId: string, boardId: string, proposerNodeId: string \| null, status: "pending" \| "confirmed" \| "discarded", templateId: string \| null, draft: Record<string, JSON>, createdAt: string, updatedAt: string } }`                                                                                                                                                                   | `forbidden`、`not_found`                            | `canvas:read`  | 1.12 | `GET /api/workflows/drafts/{draftId}`                          |
-| `workflows.confirmDraft`     | mutation | `{ draftId: string, name?: string, draft?: Record<string, JSON> }`         | `{ draft: { id: string, workspaceId: string, boardId: string, proposerNodeId: string \| null, status: "pending" \| "confirmed" \| "discarded", templateId: string \| null, draft: Record<string, JSON>, createdAt: string, updatedAt: string }, template: { id: string, name: string, version: integer, createdFromDraft: string \| null, template: Record<string, JSON>, createdAt: string, updatedAt: string } }` | `bad_request`、`forbidden`、`not_found`、`conflict` | `agent:launch` | 1.12 | `POST /api/workflows/drafts/{draftId}/confirm`                 |
-| `workflows.discardDraft`     | mutation | `{ draftId: string }`                                                      | `{ draft: { id: string, workspaceId: string, boardId: string, proposerNodeId: string \| null, status: "pending" \| "confirmed" \| "discarded", templateId: string \| null, draft: Record<string, JSON>, createdAt: string, updatedAt: string } }`                                                                                                                                                                   | `forbidden`、`not_found`、`conflict`                | `agent:launch` | 1.12 | `POST /api/workflows/drafts/{draftId}/discard`                 |
-| `workflows.templates`        | query    | 可省 `{}`                                                                  | `{ templates: ({ id: string, name: string, version: integer, createdFromDraft: string \| null, template: Record<string, JSON>, createdAt: string, updatedAt: string })[] }`                                                                                                                                                                                                                                         | `forbidden`                                         | `canvas:read`  | 1.12 | `GET /api/workflows/templates`                                 |
-| `workflows.createTemplate`   | mutation | `{ name?: string, template?: Record<string, JSON> }`                       | `{ template: { id: string, name: string, version: integer, createdFromDraft: string \| null, template: Record<string, JSON>, createdAt: string, updatedAt: string } }`                                                                                                                                                                                                                                              | `bad_request`、`forbidden`                          | `agent:launch` | 1.12 | `POST /api/workflows/templates`                                |
-| `workflows.template`         | query    | `{ templateId: string }`                                                   | `{ template: { id: string, name: string, version: integer, createdFromDraft: string \| null, template: Record<string, JSON>, createdAt: string, updatedAt: string } }`                                                                                                                                                                                                                                              | `forbidden`、`not_found`                            | `canvas:read`  | 1.12 | `GET /api/workflows/templates/{templateId}`                    |
-| `workflows.updateTemplate`   | mutation | `{ templateId: string, name?: string, template?: Record<string, JSON> }`   | `{ template: { id: string, name: string, version: integer, createdFromDraft: string \| null, template: Record<string, JSON>, createdAt: string, updatedAt: string }, frozenSchedules: ({ scheduleId: string, workspaceId: string, templateVersion: integer, reason: "compatible" \| "missing_params" \| "param_mismatch", missingParams: string[], unknownParams: string[] })[] }`                                  | `bad_request`、`forbidden`、`not_found`、`conflict` | `agent:launch` | 1.12 | `PUT /api/workflows/templates/{templateId}`                    |
-| `workflows.upgradeSchedules` | mutation | `{ templateId: string, workspaceId?: string, scheduleIds?: string[] }`     | `{ upgraded: { scheduleId: string, revision: integer }[], frozen: ({ scheduleId: string, reason: "compatible" \| "missing_params" \| "param_mismatch" \| "not_found" \| "forbidden" \| "conflict" \| "failed", missingParams: string[], unknownParams: string[] })[] }`                                                                                                                                             | `bad_request`、`forbidden`、`not_found`、`conflict` | `agent:launch` | 1.12 | `POST /api/workflows/templates/{templateId}/upgrade-schedules` |
-| `workflows.deleteTemplate`   | mutation | `{ templateId: string }`                                                   | 无                                                                                                                                                                                                                                                                                                                                                                                                                  | `forbidden`、`not_found`                            | `agent:launch` | 1.12 | `DELETE /api/workflows/templates/{templateId}`                 |
-| `workflows.runs`             | query    | `{ templateId?: string, boardId?: string, limit?: number \| string }`      | `{ runs: ({ id: string, templateId: string, templateVersion: integer, title: string, workspaceId: string, boardId: string, frameId: string \| null, params: Record<string, string>, status: "running" \| "waiting" \| "succeeded" \| "failed" \| "cancelled", reason: string \| null, roles: Record<string, string>, startedAt: string, endedAt: string \| null, steps: {…}[] })[] }`                               | `forbidden`                                         | `canvas:read`  | 1.12 | `GET /api/workflows/runs`                                      |
-| `workflows.startRun`         | mutation | `{ templateId?: string, params?: Record<string, JSON>, boardId?: string }` | `{ run: { id: string, templateId: string, templateVersion: integer, title: string, workspaceId: string, boardId: string, frameId: string \| null, params: Record<string, string>, status: "running" \| "waiting" \| "succeeded" \| "failed" \| "cancelled", reason: string \| null, roles: Record<string, string>, startedAt: string, endedAt: string \| null, steps: {…}[] } }`                                    | `bad_request`、`forbidden`、`not_found`、`conflict` | `agent:launch` | 1.12 | `POST /api/workflows/runs`                                     |
-| `workflows.run`              | query    | `{ runId: string }`                                                        | `{ run: { id: string, templateId: string, templateVersion: integer, title: string, workspaceId: string, boardId: string, frameId: string \| null, params: Record<string, string>, status: "running" \| "waiting" \| "succeeded" \| "failed" \| "cancelled", reason: string \| null, roles: Record<string, string>, startedAt: string, endedAt: string \| null, steps: {…}[] } }`                                    | `forbidden`、`not_found`                            | `canvas:read`  | 1.12 | `GET /api/workflows/runs/{runId}`                              |
-| `workflows.cancelRun`        | mutation | `{ runId: string }`                                                        | `{ run: { id: string, templateId: string, templateVersion: integer, title: string, workspaceId: string, boardId: string, frameId: string \| null, params: Record<string, string>, status: "running" \| "waiting" \| "succeeded" \| "failed" \| "cancelled", reason: string \| null, roles: Record<string, string>, startedAt: string, endedAt: string \| null, steps: {…}[] } }`                                    | `forbidden`、`not_found`、`conflict`                | `agent:launch` | 1.12 | `POST /api/workflows/runs/{runId}/cancel`                      |
-| `workflows.answerGate`       | mutation | `{ runId: string, stepId: string, decision?: string, note?: string }`      | `{ run: { id: string, templateId: string, templateVersion: integer, title: string, workspaceId: string, boardId: string, frameId: string \| null, params: Record<string, string>, status: "running" \| "waiting" \| "succeeded" \| "failed" \| "cancelled", reason: string \| null, roles: Record<string, string>, startedAt: string, endedAt: string \| null, steps: {…}[] } }`                                    | `bad_request`、`forbidden`、`not_found`、`conflict` | `agent:launch` | 1.12 | `POST /api/workflows/runs/{runId}/gates/{stepId}`              |
+| procedure                    | kind     | input                                                                                          | output                                                                                                                                                                                                                                                                                                                                                                                                                           | errors                                              | scope          | 自   | 原路径                                                         |
+| ---------------------------- | -------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | -------------- | ---- | -------------------------------------------------------------- |
+| `workflows.drafts`           | query    | `{ boardId?: string, status?: string }`                                                        | `{ drafts: ({ id: string, workspaceId: string, boardId: string, proposerNodeId: string \| null, status: "pending" \| "confirmed" \| "discarded", templateId: string \| null, draft: Record<string, JSON>, hints?: {…}, createdAt: string, updatedAt: string })[] }`                                                                                                                                                              | `forbidden`                                         | `canvas:read`  | 1.12 | `GET /api/workflows/drafts`                                    |
+| `workflows.draft`            | query    | `{ draftId: string }`                                                                          | `{ draft: { id: string, workspaceId: string, boardId: string, proposerNodeId: string \| null, status: "pending" \| "confirmed" \| "discarded", templateId: string \| null, draft: Record<string, JSON>, hints?: {…}, createdAt: string, updatedAt: string } }`                                                                                                                                                                   | `forbidden`、`not_found`                            | `canvas:read`  | 1.12 | `GET /api/workflows/drafts/{draftId}`                          |
+| `workflows.confirmDraft`     | mutation | `{ draftId: string, name?: string, draft?: Record<string, JSON> }`                             | `{ draft: { id: string, workspaceId: string, boardId: string, proposerNodeId: string \| null, status: "pending" \| "confirmed" \| "discarded", templateId: string \| null, draft: Record<string, JSON>, hints?: {…}, createdAt: string, updatedAt: string }, template: { id: string, name: string, version: integer, createdFromDraft: string \| null, template: Record<string, JSON>, createdAt: string, updatedAt: string } }` | `bad_request`、`forbidden`、`not_found`、`conflict` | `agent:launch` | 1.12 | `POST /api/workflows/drafts/{draftId}/confirm`                 |
+| `workflows.discardDraft`     | mutation | `{ draftId: string }`                                                                          | `{ draft: { id: string, workspaceId: string, boardId: string, proposerNodeId: string \| null, status: "pending" \| "confirmed" \| "discarded", templateId: string \| null, draft: Record<string, JSON>, hints?: {…}, createdAt: string, updatedAt: string } }`                                                                                                                                                                   | `forbidden`、`not_found`、`conflict`                | `agent:launch` | 1.12 | `POST /api/workflows/drafts/{draftId}/discard`                 |
+| `workflows.templates`        | query    | 可省 `{}`                                                                                      | `{ templates: ({ id: string, name: string, version: integer, createdFromDraft: string \| null, template: Record<string, JSON>, createdAt: string, updatedAt: string })[] }`                                                                                                                                                                                                                                                      | `forbidden`                                         | `canvas:read`  | 1.12 | `GET /api/workflows/templates`                                 |
+| `workflows.createTemplate`   | mutation | `{ name?: string, template?: Record<string, JSON> }`                                           | `{ template: { id: string, name: string, version: integer, createdFromDraft: string \| null, template: Record<string, JSON>, createdAt: string, updatedAt: string } }`                                                                                                                                                                                                                                                           | `bad_request`、`forbidden`                          | `agent:launch` | 1.12 | `POST /api/workflows/templates`                                |
+| `workflows.template`         | query    | `{ templateId: string }`                                                                       | `{ template: { id: string, name: string, version: integer, createdFromDraft: string \| null, template: Record<string, JSON>, createdAt: string, updatedAt: string } }`                                                                                                                                                                                                                                                           | `forbidden`、`not_found`                            | `canvas:read`  | 1.12 | `GET /api/workflows/templates/{templateId}`                    |
+| `workflows.updateTemplate`   | mutation | `{ templateId: string, name?: string, template?: Record<string, JSON>, baseVersion: integer }` | `{ template: { id: string, name: string, version: integer, createdFromDraft: string \| null, template: Record<string, JSON>, createdAt: string, updatedAt: string }, frozenSchedules: ({ scheduleId: string, workspaceId: string, templateVersion: integer, reason: "compatible" \| "missing_params" \| "param_mismatch", missingParams: string[], unknownParams: string[] })[] }`                                               | `bad_request`、`forbidden`、`not_found`、`conflict` | `agent:launch` | 1.12 | `PUT /api/workflows/templates/{templateId}`                    |
+| `workflows.upgradeSchedules` | mutation | `{ templateId: string, workspaceId?: string, scheduleIds?: string[] }`                         | `{ upgraded: { scheduleId: string, revision: integer }[], frozen: ({ scheduleId: string, reason: "compatible" \| "missing_params" \| "param_mismatch" \| "not_found" \| "forbidden" \| "conflict" \| "failed", missingParams: string[], unknownParams: string[] })[] }`                                                                                                                                                          | `bad_request`、`forbidden`、`not_found`、`conflict` | `agent:launch` | 1.12 | `POST /api/workflows/templates/{templateId}/upgrade-schedules` |
+| `workflows.deleteTemplate`   | mutation | `{ templateId: string }`                                                                       | 无                                                                                                                                                                                                                                                                                                                                                                                                                               | `forbidden`、`not_found`                            | `agent:launch` | 1.12 | `DELETE /api/workflows/templates/{templateId}`                 |
+| `workflows.runs`             | query    | `{ templateId?: string, boardId?: string, limit?: number \| string }`                          | `{ runs: ({ id: string, templateId: string, templateVersion: integer, title: string, workspaceId: string, boardId: string, frameId: string \| null, params: Record<string, string>, status: "running" \| "waiting" \| "succeeded" \| "failed" \| "cancelled", reason: string \| null, roles: Record<string, string>, startedAt: string, endedAt: string \| null, steps: {…}[] })[] }`                                            | `forbidden`                                         | `canvas:read`  | 1.12 | `GET /api/workflows/runs`                                      |
+| `workflows.startRun`         | mutation | `{ templateId?: string, params?: Record<string, JSON>, boardId?: string }`                     | `{ run: { id: string, templateId: string, templateVersion: integer, title: string, workspaceId: string, boardId: string, frameId: string \| null, params: Record<string, string>, status: "running" \| "waiting" \| "succeeded" \| "failed" \| "cancelled", reason: string \| null, roles: Record<string, string>, startedAt: string, endedAt: string \| null, steps: {…}[] } }`                                                 | `bad_request`、`forbidden`、`not_found`、`conflict` | `agent:launch` | 1.12 | `POST /api/workflows/runs`                                     |
+| `workflows.run`              | query    | `{ runId: string }`                                                                            | `{ run: { id: string, templateId: string, templateVersion: integer, title: string, workspaceId: string, boardId: string, frameId: string \| null, params: Record<string, string>, status: "running" \| "waiting" \| "succeeded" \| "failed" \| "cancelled", reason: string \| null, roles: Record<string, string>, startedAt: string, endedAt: string \| null, steps: {…}[] } }`                                                 | `forbidden`、`not_found`                            | `canvas:read`  | 1.12 | `GET /api/workflows/runs/{runId}`                              |
+| `workflows.cancelRun`        | mutation | `{ runId: string }`                                                                            | `{ run: { id: string, templateId: string, templateVersion: integer, title: string, workspaceId: string, boardId: string, frameId: string \| null, params: Record<string, string>, status: "running" \| "waiting" \| "succeeded" \| "failed" \| "cancelled", reason: string \| null, roles: Record<string, string>, startedAt: string, endedAt: string \| null, steps: {…}[] } }`                                                 | `forbidden`、`not_found`、`conflict`                | `agent:launch` | 1.12 | `POST /api/workflows/runs/{runId}/cancel`                      |
+| `workflows.answerGate`       | mutation | `{ runId: string, stepId: string, decision?: string, note?: string }`                          | `{ run: { id: string, templateId: string, templateVersion: integer, title: string, workspaceId: string, boardId: string, frameId: string \| null, params: Record<string, string>, status: "running" \| "waiting" \| "succeeded" \| "failed" \| "cancelled", reason: string \| null, roles: Record<string, string>, startedAt: string, endedAt: string \| null, steps: {…}[] } }`                                                 | `bad_request`、`forbidden`、`not_found`、`conflict` | `agent:launch` | 1.12 | `POST /api/workflows/runs/{runId}/gates/{stepId}`              |
 
 <!-- rpc:end -->
 
@@ -6128,3 +6142,65 @@ children?: { total: number, finished: number, needsYou: number,
 触发源在 §117.6 之上增加：子节点的 `agent.status`、`workflow.task`（子节点与协调者两端）、`workflow.run`（运行里各步骤的节点），都会同时重算它们的父节点。不订阅 `board.changed`：连线变了要等下一个状态事件才收敛。
 
 只增字段与短语，页面遇到不认识的短语按 §117.1 当作没有状态；不升版本号。
+
+## 119. 工作流 v2：共享约定、验证与档位（`#996`）
+
+> §15.1–§15.5 的字段在原处改写，这里写行为。
+
+### 119.1 共享约定与验证说明进收件箱
+
+长的内容都放进角色节点的收件箱，投递正文只在末尾追加一句固定短语。收件箱消息的发信人是运行的起点便签，每条 ≤ 2000 字，`ON CONFLICT DO NOTHING`（同键不重复）。
+
+| 键                                         | 何时放                                            | 内容                                                                                            |
+| ------------------------------------------ | ------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `workflow:<runId>:contract:<i>`            | 角色节点第一次投递前                              | 第一段是「你负责的路径 / 其他角色负责的路径」（glob 原样），其余是 `contract.text` 按段落切开   |
+| `workflow:<runId>:verify:<stepId>:<round>` | 带 `verify` 的 `collect` 每一轮开始时             | 要跑的命令、要核的清单、`from` 里各步骤的角色 id，以及用 `canvas_workflow_verdict` 报结论的写法 |
+| `workflow:<runId>:<stepId>:<round>:<i>`    | 被退回重做过的来源（`round > 0`）的新产出被收集时 | 来源步骤的产出；`round = 0` 保持原键 `workflow:<runId>:<stepId>:<i>`，否则新产出会被同键吞掉    |
+
+- 起点便签正文是 `workflow run <runId>`，有 `contract.text` 时空一行接上它，给人看。
+- 投递正文末尾的固定短语（≤ 200 字，不含 id 或列表）按需要拼：「来源步骤的结论」「共享约定」「验证说明」在收件箱，带验证时加「验证完用 `canvas_workflow_verdict` 报结论」。草案校验给它留 200 字（§15.1）。
+- 以 `workflow:` 开头的键不算角色的产出（§15.3 `outputs`）。
+- 这些是投给 Agent 的提示词，不是界面文案。
+
+### 119.2 动词 `workflow-verdict` 与 `collect` 的验证
+
+core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按收件箱里的验证说明自己执行，再用控制动词 `workflow-verdict`（工具 `canvas_workflow_verdict`，hook 面，要节点令牌，分级同 `report`）报结论。
+
+| 参数      | 说明                                                                                                     |
+| --------- | -------------------------------------------------------------------------------------------------------- |
+| `pass`    | 布尔，通过                                                                                               |
+| `issue`   | 可重复，≤ 16 条，每条 ≤ 500 字，`<roleId>: <问题>`；不写角色（或冒号前不是模板角色）的算「全体来源角色」 |
+| `step`    | 可选；调用方同时是多个验证中步骤的角色节点时必填                                                         |
+| `dry-run` | 只校验不记结论，答 `{ dryRun: true }`                                                                    |
+
+- 调用方必须是某个活着的运行里 `running`、带 `verify` 的 `collect` 步骤的角色节点，否则 `409 no_verifying_step`（`--dry-run` 之外，写入时步骤已不在验证中也是它）。
+- `400 bad_request`：`pass` 与 `issue` 同给或都不给；`issue` 超过 16 条或单条超过 500 字；`issue` 点名了该运行模板里的角色却没有写问题（冒号前不是模板角色 id 的整行当无角色问题，不报错）；调用方在验证多个步骤却没给 `step`。
+- 成功写 `verdict_json = { round, pass, issues: [{ role | null, text }], at }`（只留最近一次）并答 `{ runId, stepId, round }`；**不推帧、不改步骤状态**。`GET` 运行里步骤的 `verdict` 是 `{ pass, issues }`。
+
+判定是纯函数（`workflow/verify.ts`），按顺序：
+
+1. 没有 `verify` → 完成。
+2. 没有本轮（结论的 `round` 等于步骤当前的 `round`）的结论 → 升级，`reason = verdictMissing`（没报即未验证，不算通过）。
+3. `pass` → 完成，`outcome` 带 `verdict`。
+4. 当前 `round` ≥ `maxRetries`（缺省 2）→ 升级，`reason = verifyFailed`。
+5. 退回目标：带角色的问题 → 该角色在 `from` 里的全部步骤；不带角色的问题 → `from` 里全部有角色的步骤。被点名的角色在 `from` 里没有步骤 → 升级。
+6. 每个目标都要可重开：`prompt` 或 `collect`、已 `done`，且除本 `collect` 外所有 `after` 里写了它的步骤都还是 `pending`（下游已开始的不能拿着旧结果）。有一个不满足 → 升级。
+7. 否则退回：每个目标步骤 `round` +1、回到 `running`、重新投递（正文是发给该角色的问题加不带角色的问题，≤ 2000 字，超长注明条数）；`collect` 自己 `round` +1 回到 `pending`，等来源步骤再次 `done` 后重开，收件箱里放新一轮的产出与验证说明（键见 §119.1）。每次退回各推一帧 `workflow.run`。
+
+### 119.3 升级成关卡
+
+升级时 `collect` 由 `running` 变 `waiting`，`reason` 是 `verifyFailed` 或 `verdictMissing`，推 `workflow.run`（`stepStatus: waiting`）与 `workflow.gate`（`label` 是步骤 id，带 `reason`），运行因此 `waiting`，定时运行也走关卡推送。答复用 §15.3 的关卡路由：`stepId` 是 `waiting` 的 `collect` 时也接受，`approve` 记 `done`（人接受现状，`outcome` 带最近的 `verdict`），`reject` 记 `failed` 并让下游 `skipped`。没有「再跑一轮」。交付状态里这一步呈现为 `needsYou / blocked`（#995）。
+
+### 119.4 模板修订号
+
+`workflow_templates.version` 只是修订号：新建为 1；`PUT` 带 `baseVersion`，等于库里的才改，改后 +1（`400 bad_request` / `409 template_version_stale`，§15.2）。自动化目标的 `templateVersion`（§15.6）语义不变。模板正文里的 `version` 恒为 2，是格式号。
+
+### 119.5 档位
+
+- `role.model` 非空：用它，档位不起作用。
+- ama 角色：探测到的 ama 版本 ≥ `AMA_TIER_SINCE`（现为 `0.22.0`，`core/agent/launch.ts`，同时登记在 `tools/release/version.mjs` 的版本位点里作为门槛，不随发版跟进）时，启动行带 `--tier <档位>`，节点数据写 `agent.tier`；探测不到或低于该版本（预发布版低于正式版）则忽略，草案行 `hints.tierIgnored` 列出它。
+- 其它 CLI：只有 `claude` 有内置映射（`light` → `haiku`，`standard` → `sonnet`，`strong` 与 `max` → `opus`），且该 CLI 能选模型时写成 `agent.model`；否则忽略并进 `hints.tierIgnored`。没有用户自定义映射。
+
+### 119.6 迁移
+
+迁移 `0072_workflow_v2.sql`，只加列与索引：`workflow_run_steps.round`（默认 0）与 `verdict_json`，`workflow_templates.file_ref`（唯一索引，项目级文件引用，本批只建列）与 `workflow_runs.started_by_node_id`。

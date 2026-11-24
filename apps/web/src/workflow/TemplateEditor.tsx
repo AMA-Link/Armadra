@@ -92,12 +92,9 @@ export function updateStep(
   };
 }
 
-/** 保存时的模板：`version` 只增（契约 §15.2）。 */
-export function nextVersion(
-  template: WorkflowTemplateJson,
-  draft: WorkflowDraft,
-): WorkflowDraft {
-  return { ...draft, version: Math.max(template.version, draft.version) + 1 };
+/** 保存时的模板正文：`version` 是格式号，v2 写 2（修订号在库里，由 `baseVersion` 带）。 */
+export function formatVersion(draft: WorkflowDraft): WorkflowDraft {
+  return { ...draft, version: Math.max(draft.version, 2) };
 }
 
 /** 本工作空间里能直接升级的冻结计划（参数相容的）。 */
@@ -186,7 +183,7 @@ function StepItem({
  * 模板编辑器（设计系统 §5.5）：整页对话框，左边步骤列表（可增删、拖排）、右边
  * 当前步骤的表单（角色、提示词、依赖；汇总多一列来源；关卡是说明与依赖），
  * 下面是角色（可增删、换 CLI）与参数缺省值。保存走
- * `PUT /api/workflows/templates/{id}`，版本号加一；别人先改过时 core 回
+ * `PUT /api/workflows/templates/{id}`，带读到的修订号 `baseVersion`；别人先改过时 core 回
  * `template_version_stale`，这里如实说。答复里有冻结在旧版本上的定时计划时，
  * 提示一次并可直接把本工作空间里参数相容的升到新版本（契约 §15.6）。
  */
@@ -232,7 +229,8 @@ export function TemplateEditor({
     mutationFn: () =>
       workflowsApi.updateTemplate(template!.id, {
         name: name.trim() || template!.name,
-        template: nextVersion(template!, draft!),
+        template: formatVersion(draft!),
+        baseVersion: template!.version,
       }),
     onSuccess: (result) => {
       void client.invalidateQueries({ queryKey: workflowKeys.all });

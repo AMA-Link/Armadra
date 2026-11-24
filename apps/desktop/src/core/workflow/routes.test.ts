@@ -248,8 +248,16 @@ describe("/api/workflows", () => {
     });
     expect(created.status).toBe(201);
     const id = (created.body.template as { id: string }).id;
+    const missing = await call("PUT", `/api/workflows/templates/${id}`, {
+      template: DRAFT,
+    });
+    expect(missing).toMatchObject({
+      status: 400,
+      body: { code: "bad_request" },
+    });
     const stale = await call("PUT", `/api/workflows/templates/${id}`, {
       template: DRAFT,
+      baseVersion: 2,
     });
     expect(stale).toMatchObject({
       status: 409,
@@ -257,9 +265,15 @@ describe("/api/workflows", () => {
     });
     const updated = await call("PUT", `/api/workflows/templates/${id}`, {
       name: "第二版",
-      template: { ...DRAFT, version: 2 },
+      template: DRAFT,
+      baseVersion: 1,
     });
-    expect(updated.body.template).toMatchObject({ name: "第二版", version: 2 });
+    // 列 +1；正文里的 version 恒为格式号 2。
+    expect(updated.body.template).toMatchObject({
+      name: "第二版",
+      version: 2,
+      template: { version: 2 },
+    });
     expect(
       (
         (await call("GET", "/api/workflows/templates")).body

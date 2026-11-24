@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { WorkItemStage } from "@armadra/shared";
-import { validAgentId } from "../agent/registry";
+import { validAgentId, type AgentSettings } from "../agent/registry";
 import type { CollabContext } from "../collab/service";
 import { DomainError, uuidV7 } from "../workspaces/support";
 import { DeliveryRefused, deliverPrompt } from "./dispatch";
@@ -43,6 +43,7 @@ import {
   latestReplies,
   markRepliesRead,
 } from "../collab/router-replies";
+import { tierHints } from "./tier";
 import { stageOf } from "./work-items";
 import { forgeService } from "../forge/registry";
 import type { ForgeService } from "../forge/service";
@@ -75,6 +76,10 @@ export interface WorkflowServiceOptions {
   readonly clock?: () => number;
   /** 托管平台服务；缺省取装配好的那个（契约 §104.7 认仓库用）。 */
   readonly forge?: () => ForgeService | undefined;
+  /** 档位提示要的上下文：Agent 设置与 ama 是否认 `--tier`；缺省不出提示。 */
+  readonly tier?: () =>
+    | { readonly settings: AgentSettings; readonly amaSupportsTier: boolean }
+    | undefined;
 }
 
 const RULES = { validAgentId };
@@ -96,6 +101,23 @@ export class WorkflowService {
     this.database = options.database;
     this.engine = options.engine;
     this.clock = options.clock ?? (() => Date.now());
+  }
+
+  /** 草案的提示：档位在这台机器上不生效的角色 id。 */
+  hintsOf(row: DraftRow): { readonly tierIgnored: string[] } {
+    const context = this.options.tier?.();
+    return {
+      tierIgnored:
+        context === undefined
+          ? []
+          : [
+              ...tierHints(
+                context.settings,
+                row.draft,
+                context.amaSupportsTier,
+              ),
+            ],
+    };
   }
 
   /* --------------------------------- 草案 --------------------------------- */
@@ -222,11 +244,26 @@ export class WorkflowService {
     });
   }
 
-  /** 改模板：`template.version` 必须比库里的大（只增）。 */
+  /**
+   * 改模板：`baseVersion` 必须等于库里的修订号，改后列 +1；
+   * 正文里的 `version` 只是格式号。
+   */
   updateTemplate(
     id: string,
-    body: { readonly name?: unknown; readonly template?: unknown },
+    body: {
+      readonly name?: unknown;
+      readonly template?: unknown;
+      readonly baseVersion?: unknown;
+    },
   ): TemplateRow {
+    const base = body.baseVersion;
+    if (typeof base !== "number" || !Number.isInteger(base) || base < 1) {
+      throw new DomainError(
+        400,
+        "bad_request",
+        "baseVersion 必须是 ≥ 1 的整数。",
+      );
+    }
     const current = this.template(id);
     const template = parseDraft(body.template, RULES);
     const name =
@@ -234,13 +271,13 @@ export class WorkflowService {
         ? current.name
         : templateName(body.name, template);
     if (
-      template.version <= current.version ||
-      !updateTemplate(this.database, id, name, template, this.clock())
+      base !== current.version ||
+      !updateTemplate(this.database, id, name, template, this.clock(), base)
     ) {
       throw new DomainError(
         409,
         "template_version_stale",
-        `模板的 version 只增：库里是 ${current.version}，这次要大于它。`,
+        `模板已被改过：库里是 ${current.version}，这次基于 ${base}。`,
       );
     }
     return this.template(id);
@@ -690,7 +727,10 @@ function iso(ms: number | null): string | null {
   return ms === null ? null : new Date(ms).toISOString();
 }
 
-export function draftJson(row: DraftRow): Record<string, unknown> {
+export function draftJson(
+  row: DraftRow,
+  hints?: { readonly tierIgnored: readonly string[] },
+): Record<string, unknown> {
   return {
     id: row.id,
     workspaceId: row.workspaceId,
@@ -699,6 +739,7 @@ export function draftJson(row: DraftRow): Record<string, unknown> {
     status: row.status,
     templateId: row.templateId,
     draft: row.draft,
+    ...(hints === undefined ? {} : { hints }),
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
   };
@@ -733,6 +774,11 @@ export function stepJson(row: StepRow, run: RunRow): Record<string, unknown> {
     outputs: row.outcome?.outputs ?? [],
     decision: row.outcome?.decision ?? null,
     note: row.outcome?.note ?? null,
+    round: row.round,
+    verdict:
+      row.verdict === null
+        ? null
+        : { pass: row.verdict.pass, issues: row.verdict.issues },
   };
 }
 

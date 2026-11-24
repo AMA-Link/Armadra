@@ -12,6 +12,9 @@ export type WorkflowStepKind = (typeof WORKFLOW_STEP_KINDS)[number];
 export const WORKFLOW_PARAM_TYPES = ["string", "path", "text"] as const;
 export type WorkflowParamType = (typeof WORKFLOW_PARAM_TYPES)[number];
 
+export const WORKFLOW_TIERS = ["light", "standard", "strong", "max"] as const;
+export type WorkflowTier = (typeof WORKFLOW_TIERS)[number];
+
 export const WORKFLOW_LIMITS = {
   title: 160,
   params: 32,
@@ -22,6 +25,20 @@ export const WORKFLOW_LIMITS = {
   prompt: 2_000,
   model: 120,
   paramValue: 2_000,
+  /** `.md` 正文。 */
+  description: 4_000,
+  /** `contract.text`。 */
+  contractText: 6_000,
+  /** 每个角色的 `owns` 条数与单条长度。 */
+  ownsPerRole: 16,
+  ownsGlob: 200,
+  /** `verify.commands` 条数与单条长度。 */
+  verifyCommands: 4,
+  verifyCommand: 300,
+  /** `verify.checklist` 条数与单条长度。 */
+  verifyChecklist: 16,
+  verifyItem: 300,
+  maxRetries: 3,
   /** 草案 JSON 序列化之后的字节上限。 */
   draftBytes: 64 * 1024,
 } as const;
@@ -43,6 +60,21 @@ export interface WorkflowRole {
   readonly permissionMode?: string | null;
   readonly model?: string | null;
   readonly worktree?: string | null;
+  readonly tier?: WorkflowTier | null;
+}
+
+export interface WorkflowContract {
+  /** ≤ 6000 字。 */
+  readonly text?: string | null;
+  /** 角色 id → glob；每角色 ≤ 16 条、每条 ≤ 200 字。 */
+  readonly owns?: Readonly<Record<string, readonly string[]>> | null;
+}
+
+export interface WorkflowVerify {
+  /** ≤ 4 条，每条 ≤ 300 字；汇总角色自己执行。 */
+  readonly commands?: readonly string[] | null;
+  /** ≤ 16 条，每条 ≤ 300 字。 */
+  readonly checklist?: readonly string[] | null;
 }
 
 export interface WorkflowLink {
@@ -66,6 +98,9 @@ export interface CollectStep {
   readonly from: readonly string[];
   readonly prompt: string;
   readonly after: readonly string[];
+  readonly verify?: WorkflowVerify | null;
+  /** 0–3，缺省 2，只能随 `verify`。 */
+  readonly maxRetries?: number | null;
 }
 
 export interface GateStep {
@@ -84,7 +119,7 @@ export interface WorkflowSource {
   readonly sessionId?: string | null;
 }
 
-/** 草案 JSON；模板的正文是同一个形状。 */
+/** 草案 JSON；模板的正文是同一个形状。`version` 是格式号：读 ≥ 1，写恒为 2。 */
 export interface WorkflowDraft {
   readonly version: number;
   readonly title: string;
@@ -93,6 +128,9 @@ export interface WorkflowDraft {
   readonly links: readonly WorkflowLink[];
   readonly steps: readonly WorkflowStep[];
   readonly source?: WorkflowSource | null;
+  /** `.md` 正文，≤ 4000 字。 */
+  readonly description?: string | null;
+  readonly contract?: WorkflowContract | null;
 }
 
 export const DRAFT_STATUSES = ["pending", "confirmed", "discarded"] as const;
@@ -148,6 +186,16 @@ export interface StepOutcome {
   readonly outputs?: readonly StepOutput[];
   readonly decision?: GateDecision;
   readonly note?: string;
+  /** `collect` 通过验证时的结论。 */
+  readonly verdict?: {
+    readonly round: number;
+    readonly pass: boolean;
+    readonly issues: readonly {
+      readonly role: string | null;
+      readonly text: string;
+    }[];
+    readonly at: number;
+  };
 }
 
 /** 稳定的错误码（契约 §15.2–§15.3）。 */

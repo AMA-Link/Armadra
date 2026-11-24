@@ -69,6 +69,8 @@ export type ResumeStyle =
 interface LaunchProfile {
   readonly permissionFlag: Readonly<Record<PermissionMode, readonly string[]>>;
   readonly modelFlag?: string;
+  /** 工作流档位（只有 ama 认）；版本门由调用方按 {@link amaSupportsTier} 决定。 */
+  readonly tierFlag?: string;
   readonly sessionIdFlag?: string;
   readonly resume?: ResumeStyle;
   /** `flag-prompt` CLIs take the first prompt behind a flag. */
@@ -169,6 +171,7 @@ const PROFILES: Readonly<Record<string, LaunchProfile>> = {
       plan: ["--permission-mode", "plan"],
     },
     modelFlag: "--model",
+    tierFlag: "--tier",
     sessionIdFlag: "--session-id",
     resume: { style: "flag", flag: "--resume" },
     exitCommand: "/exit",
@@ -214,6 +217,31 @@ export function canResume(settings: AgentSettings, agentId: string): boolean {
   return PROFILES[baseAgent(settings, agentId)]?.resume !== undefined;
 }
 
+/** ama 从这一版起认 `--tier`（登记在 `tools/release/version.mjs`）。 */
+export const AMA_TIER_SINCE = "0.22.0";
+
+function versionParts(version: string): number[] | undefined {
+  const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(version.trim());
+  return match === null
+    ? undefined
+    : [match[1], match[2], match[3]].map(Number);
+}
+
+/** 探测到的 ama 版本是否认 `--tier`；没探测到或读不出版本就是否。 */
+export function amaSupportsTier(version: string | undefined): boolean {
+  if (version === undefined) return false;
+  const have = versionParts(version);
+  const need = versionParts(AMA_TIER_SINCE) as number[];
+  if (have === undefined) return false;
+  for (let i = 0; i < 3; i++) {
+    const a = have[i] ?? 0;
+    const b = need[i] ?? 0;
+    if (a !== b) return a > b;
+  }
+  // 预发布版（0.22.0-beta）低于正式版。
+  return !/^v?\d+\.\d+\.\d+-/.test(version.trim());
+}
+
 /** Whether a model may be chosen for this id. */
 export function canSelectModel(
   settings: AgentSettings,
@@ -227,6 +255,8 @@ export interface LaunchRequest {
   readonly agentId: string;
   readonly permissionMode?: string;
   readonly model?: string;
+  /** 工作流档位；只有带 `tierFlag` 的 CLI（ama）才进 argv，`model` 同给时 `model` 优先。 */
+  readonly tier?: string;
   /** The node's role; argv only for a CLI that has one for it. */
   readonly role?: AgentRole;
   /** Continue this provider session; wins over {@link sessionId}. */
@@ -303,6 +333,16 @@ export function planLaunch(
     } else {
       omitted.push("modelSelectionUnavailable");
     }
+  }
+
+  const tier = request.tier?.trim();
+  if (
+    tier !== undefined &&
+    tier !== "" &&
+    profile.tierFlag !== undefined &&
+    (model === undefined || model === "")
+  ) {
+    args.push(profile.tierFlag, tier);
   }
 
   args.push(...roleFlags(base.id, request.role));

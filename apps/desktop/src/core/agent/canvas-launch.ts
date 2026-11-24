@@ -62,6 +62,8 @@ export interface CanvasLaunchRequest {
   readonly nodeId?: string;
   readonly permissionMode?: string;
   readonly model?: string;
+  /** 节点的 `agent.tier`；只有 ama 带 `--tier`。 */
+  readonly tier?: string;
   /** The node's `agent.role` ({@link agentRoleOf}). */
   readonly role?: AgentRole;
   /** Continue this provider session. */
@@ -144,6 +146,7 @@ export function canvasLaunch(request: CanvasLaunchRequest): CanvasLaunch {
       ? {}
       : { permissionMode: request.permissionMode }),
     ...(request.model === undefined ? {} : { model: request.model }),
+    ...(request.tier === undefined ? {} : { tier: request.tier }),
     ...(request.role === undefined ? {} : { role: request.role }),
   });
   const ssh = request.ssh === true;

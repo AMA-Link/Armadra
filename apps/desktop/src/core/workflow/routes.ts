@@ -60,9 +60,12 @@ export function workflowOperations(service: WorkflowService) {
           boardId: optional(filter.boardId),
           status: optional(filter.status),
         })
-        .map(draftJson),
+        .map((row) => draftJson(row, service.hintsOf(row))),
     }),
-    draft: (draftId: string) => ({ draft: draftJson(service.draft(draftId)) }),
+    draft: (draftId: string) => {
+      const row = service.draft(draftId);
+      return { draft: draftJson(row, service.hintsOf(row)) };
+    },
     confirmDraft: (
       draftId: string,
       body: { name?: unknown; draft?: unknown },
@@ -72,13 +75,14 @@ export function workflowOperations(service: WorkflowService) {
         draft: body.draft,
       });
       return {
-        draft: draftJson(confirmed.draft),
+        draft: draftJson(confirmed.draft, service.hintsOf(confirmed.draft)),
         template: templateJson(confirmed.template),
       };
     },
-    discardDraft: (draftId: string) => ({
-      draft: draftJson(service.discard(draftId)),
-    }),
+    discardDraft: (draftId: string) => {
+      const row = service.discard(draftId);
+      return { draft: draftJson(row, service.hintsOf(row)) };
+    },
 
     /* --------------------------------- 模板 -------------------------------- */
     templates: () => ({ templates: service.templates().map(templateJson) }),
@@ -92,12 +96,13 @@ export function workflowOperations(service: WorkflowService) {
     }),
     updateTemplate: (
       templateId: string,
-      body: { name?: unknown; template?: unknown },
+      body: { name?: unknown; template?: unknown; baseVersion?: unknown },
     ) => {
       const template = templateJson(
         service.updateTemplate(templateId, {
           name: body.name,
           template: body.template,
+          baseVersion: body.baseVersion,
         }),
       );
       // 冻结在旧版本上的计划（契约 §15.6）：页面据此提示「更新到最新版本」。
@@ -327,6 +332,7 @@ export function installWorkflowRoutes(
       templateId: string;
       name?: string;
       template?: unknown;
+      baseVersion?: number;
     }) => ops.updateTemplate(templateId, body),
     upgradeSchedules: (
       {

@@ -32,7 +32,24 @@ export const WORKFLOW_LIMITS = {
   prompt: 2_000,
   model: 120,
   paramValue: 2_000,
+  /** `description`（`.md` 正文）。 */
+  description: 4_000,
+  contractText: 6_000,
+  ownsGlobs: 16,
+  ownsGlob: 200,
+  verifyCommands: 4,
+  verifyCommand: 300,
+  verifyChecklist: 16,
+  verifyItem: 300,
+  maxRetries: 3,
+  verdictIssues: 16,
+  verdictIssue: 500,
 } as const;
+
+/** 角色的模型档位（§2.1）。 */
+export const WORKFLOW_TIERS = ["light", "standard", "strong", "max"] as const;
+export const workflowTierSchema = z.enum(WORKFLOW_TIERS);
+export type WorkflowTier = (typeof WORKFLOW_TIERS)[number];
 
 /** `role.id`, `step.id`: short identifiers a prompt can name. */
 export const WORKFLOW_ID_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,31}$/;
@@ -68,6 +85,7 @@ export const workflowRoleSchema = z.object({
   permissionMode: z.enum(PERMISSION_MODES).nullish(),
   model: z.string().min(1).max(WORKFLOW_LIMITS.model).nullish(),
   worktree: z.string().min(1).max(200).nullish(),
+  tier: workflowTierSchema.nullish(),
 });
 
 export const workflowLinkSchema = z.object({
@@ -78,6 +96,37 @@ export const workflowLinkSchema = z.object({
 
 const after = z.array(workflowId).max(WORKFLOW_LIMITS.steps).default([]);
 const promptText = z.string().min(1).max(WORKFLOW_LIMITS.prompt);
+
+/** `collect` 的验证说明：命令由汇总角色自己执行，core 不跑（§2.6）。 */
+export const workflowVerifySchema = z
+  .object({
+    commands: z
+      .array(z.string().min(1).max(WORKFLOW_LIMITS.verifyCommand))
+      .max(WORKFLOW_LIMITS.verifyCommands)
+      .nullish(),
+    checklist: z
+      .array(z.string().min(1).max(WORKFLOW_LIMITS.verifyItem))
+      .max(WORKFLOW_LIMITS.verifyChecklist)
+      .nullish(),
+  })
+  .refine(
+    (verify) =>
+      (verify.commands?.length ?? 0) + (verify.checklist?.length ?? 0) > 0,
+    { message: "verify needs commands or checklist" },
+  );
+
+/** 共享约定：`owns` 的键是角色 id（键是否在草案里由草案级检查）。 */
+export const workflowContractSchema = z.object({
+  text: z.string().max(WORKFLOW_LIMITS.contractText).nullish(),
+  owns: z
+    .record(
+      z.string(),
+      z
+        .array(z.string().max(WORKFLOW_LIMITS.ownsGlob))
+        .max(WORKFLOW_LIMITS.ownsGlobs),
+    )
+    .nullish(),
+});
 
 export const workflowPromptStepSchema = z.object({
   id: workflowId,
@@ -94,6 +143,8 @@ export const workflowCollectStepSchema = z.object({
   from: z.array(workflowId).min(1).max(WORKFLOW_LIMITS.steps),
   prompt: promptText,
   after,
+  verify: workflowVerifySchema.nullish(),
+  maxRetries: z.number().int().min(0).max(WORKFLOW_LIMITS.maxRetries).nullish(),
 });
 
 export const workflowGateStepSchema = z.object({
@@ -117,8 +168,9 @@ export const workflowSourceSchema = z.object({
 });
 
 /**
- * The draft JSON (contract §15.1). A template's body is the same shape; its
- * `version` only ever grows.
+ * The draft JSON (contract §15.1). A template's body is the same shape.
+ * `version` is the format number (v2 writes 2, any integer >= 1 is read); the
+ * template revision lives in the template row (`baseVersion`).
  */
 export const workflowDraftSchema = z
   .object({
@@ -132,6 +184,8 @@ export const workflowDraftSchema = z
     links: z.array(workflowLinkSchema).max(WORKFLOW_LIMITS.links).default([]),
     steps: z.array(workflowStepSchema).min(1).max(WORKFLOW_LIMITS.steps),
     source: workflowSourceSchema.nullish(),
+    description: z.string().max(WORKFLOW_LIMITS.description).nullish(),
+    contract: workflowContractSchema.nullish(),
   })
   .superRefine((draft, context) => {
     const issue = (message: string, path: (string | number)[]) =>
@@ -156,6 +210,10 @@ export const workflowDraftSchema = z
       draft.steps.map((step) => step.id),
       "steps",
     );
+    for (const roleId of Object.keys(draft.contract?.owns ?? {})) {
+      if (!roles.has(roleId))
+        issue(`unknown role ${roleId} in owns`, ["contract", "owns", roleId]);
+    }
     draft.links.forEach((link, index) => {
       if (!roles.has(link.from) || !roles.has(link.to) || link.from === link.to)
         issue("link must join two different roles", ["links", index]);
@@ -168,6 +226,8 @@ export const workflowDraftSchema = z
           issue(`unknown step ${id} in after`, ["steps", index, "after"]);
       }
       if (step.kind === "collect") {
+        if (step.maxRetries != null && !step.verify)
+          issue("maxRetries needs verify", ["steps", index, "maxRetries"]);
         for (const id of step.from) {
           if (!step.after.includes(id))
             issue(`collect source ${id} must be in after`, [
@@ -264,6 +324,16 @@ export const workflowStepOutputSchema = z.object({
   target: z.string(),
 });
 
+export const workflowStepVerdictSchema = z.object({
+  pass: z.boolean(),
+  issues: z.array(
+    z.object({
+      role: z.string().nullable(),
+      text: z.string().max(WORKFLOW_LIMITS.verdictIssue),
+    }),
+  ),
+});
+
 export const workflowRunStepSchema = z.object({
   stepId: z.string(),
   kind: workflowStepKindSchema,
@@ -276,6 +346,10 @@ export const workflowRunStepSchema = z.object({
   outputs: z.array(workflowStepOutputSchema),
   decision: z.enum(WORKFLOW_GATE_DECISIONS).nullable(),
   note: z.string().nullable(),
+  /** 验证退回的轮次（0 起）；旧服务器不带。 */
+  round: z.number().int().min(0).optional(),
+  /** 最近一次验证结论；旧服务器不带。 */
+  verdict: workflowStepVerdictSchema.nullable().optional(),
 });
 
 export const workflowRunSchema = z.object({
@@ -381,6 +455,7 @@ export const workflowRunEventSchema = z.object({
   status: z.enum(WORKFLOW_RUN_STATUSES),
   stepId: z.string().optional(),
   stepStatus: z.enum(WORKFLOW_STEP_STATUSES).optional(),
+  round: z.number().int().min(0).optional(),
 });
 
 export const workflowGateEventSchema = z.object({
@@ -392,6 +467,8 @@ export const workflowGateEventSchema = z.object({
   state: z.enum(["waiting", "approved", "rejected", "cancelled"]),
   /** 运行的 Frame（推送深链打开它）。 */
   nodeId: z.string().optional(),
+  /** 升级成关卡的原因（`verifyFailed` / `verdictMissing`）。 */
+  reason: z.string().optional(),
 });
 
 /** 协调者分派出去的任务换了状态（§15.4、§15.7）；不带正文。 */

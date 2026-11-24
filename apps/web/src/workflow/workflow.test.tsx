@@ -63,7 +63,7 @@ const { StartRunDialog, TemplateLibrary } = await import("./TemplateLibrary");
 const { RunPanel, gateLabel } = await import("./RunPanel");
 const { GateDialog } = await import("./GateDialog");
 const { RunCompare } = await import("./RunCompare");
-const { TemplateEditor, nextVersion, upgradableSchedules } =
+const { TemplateEditor, formatVersion, upgradableSchedules } =
   await import("./TemplateEditor");
 const { FrozenScheduleAlert, refusalMessage } =
   await import("./FrozenScheduleAlert");
@@ -212,6 +212,21 @@ describe("草案卡", () => {
     fireEvent.click(screen.getByText("丢弃"));
     await waitFor(() => expect(api.discardDraft).toHaveBeenCalledWith("d1"));
   });
+
+  it("档位不起作用的角色出提示，没有时不出", () => {
+    const { rerender } = render(
+      <TestProviders>
+        <DraftCard row={{ ...row, hints: { tierIgnored: ["lead"] } }} />
+      </TestProviders>,
+    );
+    expect(screen.getByText("档位不生效：lead")).toBeTruthy();
+    rerender(
+      <TestProviders>
+        <DraftCard row={{ ...row, hints: { tierIgnored: [] } }} />
+      </TestProviders>,
+    );
+    expect(screen.queryByText(/档位不生效/)).toBeNull();
+  });
 });
 
 describe("模板库与起跑", () => {
@@ -299,6 +314,38 @@ describe("运行记录与关卡", () => {
     );
   });
 
+  it("验证升级的汇总等人答复，对话框列原因与问题，步骤行显示轮次与结论", async () => {
+    const escalated = run({
+      steps: [
+        {
+          ...run().steps[1]!,
+          stepId: "c1",
+          kind: "collect",
+          role: "lead",
+          reason: "verifyFailed",
+          round: 2,
+          verdict: {
+            pass: false,
+            issues: [{ role: "reviewer", text: "测试没过" }],
+          },
+        },
+      ],
+    });
+    useWorkflowView.setState({ expanded: "run-1" });
+    render(
+      <TestProviders>
+        <RunPanel runs={[escalated]} templates={[TEMPLATE]} />
+        <GateDialog />
+      </TestProviders>,
+    );
+    expect(screen.getByText("第 3 轮")).toBeTruthy();
+    expect(screen.getByText("验证未通过")).toBeTruthy();
+    fireEvent.click(screen.getByText("答复"));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("验证没有通过，重试已用完")).toBeTruthy();
+    expect(within(dialog).getByText("reviewer · 测试没过")).toBeTruthy();
+  });
+
   it("模板改过之后关卡说明退回步骤 id", () => {
     expect(gateLabel(run(), "s2", [TEMPLATE])).toBe("合并前确认");
     expect(gateLabel(run({ templateVersion: 2 }), "s2", [TEMPLATE])).toBe("s2");
@@ -354,7 +401,7 @@ describe("两次运行对比", () => {
 });
 
 describe("模板编辑器", () => {
-  it("改选中步骤的提示词，保存时版本加一", async () => {
+  it("改选中步骤的提示词，保存带 baseVersion", async () => {
     api.updateTemplate.mockResolvedValue({
       template: TEMPLATE,
       frozenSchedules: [],
@@ -372,8 +419,9 @@ describe("模板编辑器", () => {
     const [id, input] = api.updateTemplate.mock.calls[0]!;
     expect(id).toBe("tpl-1");
     expect(input.template.version).toBe(2);
+    expect(input.baseVersion).toBe(TEMPLATE.version);
     expect(input.template.steps[0].prompt).toBe("仔细审查 {{scope}}");
-    expect(nextVersion({ ...TEMPLATE, version: 4 }, BODY).version).toBe(5);
+    expect(formatVersion({ ...BODY, version: 1 }).version).toBe(2);
   });
 });
 

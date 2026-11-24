@@ -499,8 +499,8 @@ describe("模板", () => {
         "PUT",
         `${W}/templates/${ids[index]}`,
         "workflows.updateTemplate",
-        { templateId: ids[index], template: DRAFT },
-        { template: DRAFT },
+        { templateId: ids[index], template: DRAFT, baseVersion: 2 },
+        { template: DRAFT, baseVersion: 2 },
       ),
     );
     expect(stale[0]).toMatchObject({
@@ -508,7 +508,7 @@ describe("模板", () => {
       body: { code: "template_version_stale" },
     });
     expectParity(stale);
-    const bumped = { name: "第二版", template: { ...DRAFT, version: 2 } };
+    const bumped = { name: "第二版", template: DRAFT, baseVersion: 1 };
     const updated = await thrice((kind, index) =>
       ask(
         kind,
@@ -1170,7 +1170,7 @@ describe("投递门：成员经旧路径与 procedure 被同一道路由门拦�
           "PUT",
           `${W}/templates/${id}`,
           "workflows.updateTemplate",
-          { templateId: id, template: { ...DRAFT, version: 9 } },
+          { templateId: id, template: DRAFT, baseVersion: 1 },
         ],
         [
           "DELETE",

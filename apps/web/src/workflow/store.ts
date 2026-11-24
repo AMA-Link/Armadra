@@ -18,6 +18,10 @@ export interface GateTarget {
   readonly runId: string;
   readonly stepId: string;
   readonly label: string;
+  /** 验证升级的原因（`verifyFailed` / `verdictMissing`）。 */
+  readonly reason?: string | null;
+  /** 最近一次验证结论里的问题。 */
+  readonly issues?: readonly { role: string | null; text: string }[];
 }
 
 export interface WorkflowView {

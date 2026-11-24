@@ -204,6 +204,8 @@ function RunRow({
                   runId: run.id,
                   stepId: gate.stepId,
                   label: gateLabel(run, gate.stepId, templates),
+                  reason: gate.kind === "collect" ? gate.reason : null,
+                  issues: gate.verdict?.issues ?? [],
                 })
               }
             >
@@ -278,6 +280,11 @@ function StepLine({ step }: { step: WorkflowRunStepJson }) {
             {step.role}
           </span>
         ) : null}
+        {step.round ? (
+          <Badge variant="secondary" size="sm">
+            {t("workflow.step.round", { round: step.round + 1 })}
+          </Badge>
+        ) : null}
         <span className="flex-1" />
         <StatusPill
           tone={stepTone(step.status)}
@@ -289,6 +296,26 @@ function StepLine({ step }: { step: WorkflowRunStepJson }) {
           {t(`workflow.decision.${step.decision}`)}
           {step.note ? ` · ${step.note}` : ""}
         </p>
+      ) : null}
+      {step.verdict ? (
+        <div
+          data-slot="workflow-step-verdict"
+          className="space-y-0.5 text-caption text-muted-foreground"
+        >
+          <p>
+            {t(
+              step.verdict.pass
+                ? "workflow.verdict.pass"
+                : "workflow.verdict.fail",
+            )}
+          </p>
+          {step.verdict.issues.map((issue, index) => (
+            <p key={index}>
+              {issue.role ? `${issue.role} · ` : ""}
+              {issue.text}
+            </p>
+          ))}
+        </div>
       ) : null}
       {step.reason && step.status !== "done" ? (
         <p className="text-caption text-muted-foreground">{step.reason}</p>

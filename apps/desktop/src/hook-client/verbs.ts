@@ -394,6 +394,24 @@ const CANVAS: Record<ControlVerb, Row> = {
     },
     required: ["draft"],
   },
+  "workflow-verdict": {
+    description:
+      "Report the verification result of the workflow collect step you run: pass, or one issue per line as '<roleId>: <problem>' (no role = every source role). Run the checks listed in your inbox first.",
+    properties: {
+      pass: bool("the checks passed"),
+      issue: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "repeatable, at most 16, each at most 500 characters: '<roleId>: <problem>'",
+      },
+      step: str(
+        "the collect step id; only when you verify several steps at once",
+      ),
+      "dry-run": DRY_RUN,
+    },
+    required: [],
+  },
   wait: {
     description:
       "Long-poll a task opened with open-agent --task-id: answers {status, since, events}; status is running, done, failed, blocked or needsInput. Never answer the member's approvals for it.",

@@ -12,6 +12,7 @@ import { type EventFrame, TriggerRules } from "../push/triggers";
 import {
   type TemplateRow,
   insertTemplate,
+  recordVerdict,
   runById,
   stepOfRun,
   stepsOf,
@@ -580,3 +581,277 @@ describe("restarting", () => {
     expect(runById(fixture.database, run.id)?.status).toBe("running");
   });
 });
+
+const VDRAFT = {
+  version: 2,
+  title: "带验证的汇总",
+  params: [],
+  roles: [
+    { id: "dev", agentId: "claude" },
+    { id: "ui", agentId: "claude" },
+    { id: "lead", agentId: "claude", tier: "strong" },
+  ],
+  links: [
+    { from: "lead", to: "dev", role: "supervises" },
+    { from: "lead", to: "ui", role: "supervises" },
+  ],
+  contract: {
+    text: "约定第一段\n\n约定第二段",
+    owns: { dev: ["src/a/**"], ui: ["src/b/**"] },
+  },
+  steps: [
+    { id: "a", kind: "prompt", role: "dev", prompt: "做 A" },
+    { id: "b", kind: "prompt", role: "ui", prompt: "做 B" },
+    {
+      id: "c",
+      kind: "collect",
+      role: "lead",
+      from: ["a", "b"],
+      after: ["a", "b"],
+      prompt: "汇总并验证",
+      verify: { commands: ["pnpm test"], checklist: ["无遗漏"] },
+    },
+  ],
+};
+
+function inboxOf(nodeId: string): { key: string; body: string }[] {
+  return fixture.database
+    .prepare(
+      "SELECT message_key AS key, body FROM agent_mailbox WHERE target_node_id = ? ORDER BY sequence",
+    )
+    .all(nodeId) as { key: string; body: string }[];
+}
+
+function verdict(
+  runId: string,
+  round: number,
+  pass: boolean,
+  issues: { role: string | null; text: string }[] = [],
+): void {
+  recordVerdict(fixture.database, runId, "c", {
+    round,
+    pass,
+    issues,
+    at: clock,
+  });
+}
+
+/** 起一次带验证的运行，跑完 a、b，停在汇总角色刚被投递 c 的时候。 */
+async function startVerifying() {
+  const run = await engine.startRun({
+    template: template(VDRAFT),
+    boardId: fixture.boardId,
+  });
+  const { dev, ui, lead } = run.roles as {
+    dev: string;
+    ui: string;
+    lead: string;
+  };
+  delivered(dev);
+  post(dev, lead, "a1", "A 的产出一");
+  await engine.progress(run.id);
+  report(dev, "working");
+  report(dev, "done");
+  await engine.progress(run.id);
+  await turn(run.id, ui);
+  return { run, dev, ui, lead };
+}
+
+describe("workflow v2 injection", () => {
+  it("puts the contract and verify note in the inbox, not in the body or the outputs", async () => {
+    const { run, lead } = await startVerifying();
+    expect(statuses(run.id).c).toBe("running");
+    const keys = inboxOf(lead).map((row) => row.key);
+    expect(keys).toContain(`workflow:${run.id}:contract:0`);
+    expect(keys).toContain(`workflow:${run.id}:contract:1`);
+    expect(keys).toContain(`workflow:${run.id}:verify:c:0`);
+    const verifyNote = inboxOf(lead).find((row) =>
+      row.key.endsWith("verify:c:0"),
+    )?.body as string;
+    expect(verifyNote).toContain("pnpm test");
+    expect(verifyNote).toContain("canvas_workflow_verdict");
+    const first = inboxOf(lead).find((row) => row.key.endsWith("contract:0"));
+    expect(first?.body).toContain("你负责的路径");
+    expect(first?.body).toContain("其他角色负责的路径");
+
+    const body = await turnBody(run.id, lead);
+    expect(body).toContain("汇总并验证");
+    expect(body).toContain("canvas inbox");
+    expect(body).toContain("canvas_workflow_verdict");
+    expect(body).not.toContain("a、b");
+    expect([...body.split("\n").at(-1)!].length).toBeLessThanOrEqual(200);
+  });
+
+  it("sends a failed verdict back, re-gathers with new keys and only counts the new round", async () => {
+    const { run, dev, ui, lead } = await startVerifying();
+    delivered(lead);
+    await engine.progress(run.id);
+    report(lead, "working");
+    verdict(run.id, 0, false, [{ role: "dev", text: "测试挂了" }]);
+    report(lead, "done");
+    await engine.progress(run.id);
+
+    expect(statuses(run.id)).toMatchObject({
+      a: "running",
+      b: "done",
+      c: "pending",
+    });
+    expect(stepOfRun(fixture.database, run.id, "a")?.round).toBe(1);
+    expect(stepOfRun(fixture.database, run.id, "c")).toMatchObject({
+      round: 1,
+      reason: "verifyFailed",
+    });
+    expect(runById(fixture.database, run.id)?.status).toBe("running");
+    const feedback = delivered(dev);
+    expect(feedback).toContain("测试挂了");
+    expect(feedback).toContain("步骤 c");
+
+    await engine.progress(run.id);
+    report(dev, "working");
+    post(dev, ui, "a2", "A 的产出二");
+    report(dev, "done");
+    await engine.progress(run.id);
+    expect(stepOfRun(fixture.database, run.id, "a")?.outcome).toMatchObject({
+      outputs: [{ key: "a2", body: "A 的产出二" }],
+    });
+    expect(
+      stepOfRun(fixture.database, run.id, "a")?.outcome?.outputs,
+    ).toHaveLength(1);
+    expect(statuses(run.id).c).toBe("running");
+    const keys = inboxOf(lead).map((row) => row.key);
+    expect(keys).toContain(`workflow:${run.id}:a:1:0`);
+    expect(keys).toContain(`workflow:${run.id}:verify:c:1`);
+    // 合约只放一次。
+    expect(keys.filter((key) => key.includes(":contract:"))).toHaveLength(3);
+
+    delivered(lead);
+    await engine.progress(run.id);
+    report(lead, "working");
+    verdict(run.id, 1, true);
+    report(lead, "done");
+    await engine.progress(run.id);
+    expect(statuses(run.id).c).toBe("done");
+    expect(
+      stepOfRun(fixture.database, run.id, "c")?.outcome?.verdict,
+    ).toMatchObject({
+      pass: true,
+    });
+    expect(runById(fixture.database, run.id)?.status).toBe("succeeded");
+  });
+
+  it("escalates a missing verdict to a gate, survives a restart, and obeys approve / reject", async () => {
+    const { run, lead } = await startVerifying();
+    await turn(run.id, lead);
+    expect(statuses(run.id).c).toBe("waiting");
+    expect(stepOfRun(fixture.database, run.id, "c")?.reason).toBe(
+      "verdictMissing",
+    );
+    expect(runById(fixture.database, run.id)?.status).toBe("waiting");
+    expect(events("workflow.gate").at(-1)).toMatchObject({
+      stepId: "c",
+      state: "waiting",
+      reason: "verdictMissing",
+      label: "c",
+    });
+    expect(
+      events("workflow.run").some(
+        (event) => event.stepId === "c" && event.stepStatus === "waiting",
+      ),
+    ).toBe(true);
+
+    await engine.stop();
+    engine = newEngine();
+    await engine.sweep();
+    expect(statuses(run.id).c).toBe("waiting");
+
+    await engine.answerGate(run.id, "c", "approve", "先这样");
+    expect(statuses(run.id).c).toBe("done");
+    expect(stepOfRun(fixture.database, run.id, "c")?.outcome).toMatchObject({
+      decision: "approve",
+      note: "先这样",
+    });
+    expect(runById(fixture.database, run.id)?.status).toBe("succeeded");
+  });
+
+  it("fails the collect and skips downstream when the human rejects an escalation", async () => {
+    const { run, lead } = await startVerifying();
+    await turn(run.id, lead);
+    await engine.answerGate(run.id, "c", "reject");
+    expect(statuses(run.id).c).toBe("failed");
+    expect(runById(fixture.database, run.id)?.status).toBe("failed");
+  });
+
+  it("escalates when the retries are used up", async () => {
+    const draft = {
+      ...VDRAFT,
+      steps: VDRAFT.steps.map((step) =>
+        step.id === "c" ? { ...step, maxRetries: 0 } : step,
+      ),
+    };
+    const run = await engine.startRun({
+      template: template(draft),
+      boardId: fixture.boardId,
+    });
+    const { dev, ui, lead } = run.roles as Record<string, string>;
+    await turn(run.id, dev as string);
+    await turn(run.id, ui as string);
+    delivered(lead as string);
+    await engine.progress(run.id);
+    report(lead as string, "working");
+    verdict(run.id, 0, false, [{ role: null, text: "不行" }]);
+    report(lead as string, "done");
+    await engine.progress(run.id);
+    expect(statuses(run.id).c).toBe("waiting");
+    expect(stepOfRun(fixture.database, run.id, "c")?.reason).toBe(
+      "verifyFailed",
+    );
+  });
+
+  it("writes the tier into the node data: mapped model for claude, native tier for ama", async () => {
+    const draft = {
+      ...VDRAFT,
+      roles: [
+        { id: "dev", agentId: "claude", tier: "strong" },
+        { id: "ui", agentId: "ama", tier: "light" },
+        { id: "lead", agentId: "claude" },
+      ],
+    };
+    const make = async (supports: boolean) => {
+      engine = new WorkflowEngine({
+        database: fixture.database,
+        collab: () => fixture.collab,
+        clock: () => clock,
+        sweepEveryMs: false,
+        launch: (node) => launched.push(node.nodeId),
+        amaSupportsTier: () => supports,
+      });
+      const run = await engine.startRun({
+        template: template(draft),
+        boardId: fixture.boardId,
+      });
+      const document = loadBoard(
+        fixture.database,
+        fixture.workspaceId,
+        fixture.boardId,
+      );
+      const agentOf = (id: string) =>
+        (
+          document.nodes.find((node) => node.id === run.roles[id])?.data as {
+            agent: Record<string, unknown>;
+          }
+        ).agent;
+      return { dev: agentOf("dev"), ui: agentOf("ui") };
+    };
+    const on = await make(true);
+    expect(on.dev).toMatchObject({ id: "claude", model: "opus" });
+    expect(on.dev).not.toHaveProperty("tier");
+    expect(on.ui).toMatchObject({ id: "ama", tier: "light" });
+    const off = await make(false);
+    expect(off.ui).not.toHaveProperty("tier");
+  });
+});
+
+/** 一轮，答投进去的正文（不推进验证结论）。 */
+async function turnBody(runId: string, nodeId: string): Promise<string> {
+  return turn(runId, nodeId);
+}

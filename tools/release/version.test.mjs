@@ -165,8 +165,11 @@ test("set writes every site and reports what changed", () => {
   try {
     const { version, changed } = setVersion("0.3.0-beta.1", base);
     assert.equal(version, "0.3.0-beta.1");
-    assert.equal(changed.length, VERSION_SITES.length);
-    for (const site of readVersions(base))
+    assert.equal(
+      changed.length,
+      VERSION_SITES.filter((site) => !site.floor).length,
+    );
+    for (const site of readVersions(base).filter((s) => !s.floor))
       assert.equal(site.version, "0.3.0-beta.1");
     assert.deepEqual(
       setVersion("0.3.0-beta.1", base).changed,

@@ -4,7 +4,9 @@ import {
   contextSessionEnvironment,
 } from "../terminal/environment";
 import {
+  AMA_TIER_SINCE,
   LaunchRefused,
+  amaSupportsTier,
   PERMISSION_MODES,
   canResume,
   canSelectModel,
@@ -335,5 +337,39 @@ describe("the environment an agent session starts with", () => {
     expect(second.find(([k]) => k === "ARMADRA_SESSION_GENERATION")?.[1]).toBe(
       "2",
     );
+  });
+});
+
+describe("workflow tier launch", () => {
+  it("passes --tier to ama only", () => {
+    expect(
+      planLaunch(NO_CUSTOM, { agentId: "ama", tier: "strong" }).args,
+    ).toEqual(["--tier", "strong"]);
+    expect(
+      planLaunch(NO_CUSTOM, { agentId: "claude", tier: "strong" }).args,
+    ).not.toContain("--tier");
+    expect(
+      planLaunch(NO_CUSTOM, { agentId: "codex", tier: "light" }).args,
+    ).not.toContain("--tier");
+  });
+
+  it("lets model win over tier", () => {
+    const { args } = planLaunch(NO_CUSTOM, {
+      agentId: "ama",
+      tier: "max",
+      model: "m-1",
+    });
+    expect(args).toContain("--model");
+    expect(args).not.toContain("--tier");
+  });
+
+  it("gates on the probed ama version", () => {
+    expect(AMA_TIER_SINCE).toBe("0.22.0");
+    expect(amaSupportsTier(undefined)).toBe(false);
+    expect(amaSupportsTier("0.21.9")).toBe(false);
+    expect(amaSupportsTier("0.22.0")).toBe(true);
+    expect(amaSupportsTier("v1.0.0")).toBe(true);
+    expect(amaSupportsTier("0.22.0-beta.1")).toBe(false);
+    expect(amaSupportsTier("garbage")).toBe(false);
   });
 });

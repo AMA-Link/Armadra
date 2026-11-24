@@ -60,6 +60,15 @@ export const VERSION_SITES = [
     kind: "ts",
     name: "CLIENT_VERSION",
   },
+  // ama 从哪一版起认 `--tier`（工作流档位）。它是门槛而不是随发版跟进的版本：
+  // 不参与「与根版本一致」的检查，set 也不改写；ama 带 `--tier` 发版后由发版者
+  // 手工确认这里的值不高于那一版。登记在此是为了发版时不漏看。
+  {
+    path: "apps/desktop/src/core/agent/launch.ts",
+    kind: "ts",
+    name: "AMA_TIER_SINCE",
+    floor: true,
+  },
 ];
 
 const JSON_VERSION = /^(\s*"version"\s*:\s*")([^"]*)(")/m;
@@ -102,6 +111,7 @@ export function checkVersions({ base = root, tag = "", compatibility } = {}) {
     return { version: expected, problems };
   }
   for (const site of sites.slice(1)) {
+    if (site.floor) continue;
     if (site.version !== expected)
       problems.push(
         `${site.path} says ${site.version}, the root manifest says ${expected}`,
@@ -426,6 +436,7 @@ export function setVersion(next, base = root) {
   const version = parseVersion(next).text;
   const changed = [];
   for (const site of VERSION_SITES) {
+    if (site.floor) continue;
     const file = base + site.path;
     const text = readFileSync(file, "utf8");
     const replaced = text.replace(pattern(site), (_, head, current, tail) => {
@@ -475,7 +486,7 @@ function main(argv) {
     return 1;
   }
   console.log(
-    `Version ${version} (desktop, server, mobile) agrees across ${VERSION_SITES.length} files${tag ? ` and tag ${tag}` : ""}; ${AGENT_PACKAGE} and ${PLATFORM_PACKAGE} pinned as installed.`,
+    `Version ${version} (desktop, server, mobile) agrees across ${VERSION_SITES.filter((site) => !site.floor).length} files${tag ? ` and tag ${tag}` : ""}; ${AGENT_PACKAGE} and ${PLATFORM_PACKAGE} pinned as installed.`,
   );
   return 0;
 }

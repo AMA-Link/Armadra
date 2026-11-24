@@ -1,5 +1,10 @@
 import { DomainError } from "../workspaces/support";
+import { STEP_NOTE_RESERVE } from "./contract";
 import {
+  WORKFLOW_TIERS,
+  type WorkflowContract,
+  type WorkflowTier,
+  type WorkflowVerify,
   WORKFLOW_ID_PATTERN,
   WORKFLOW_LIMITS,
   WORKFLOW_PARAM_PATTERN,
@@ -106,6 +111,12 @@ export function parseDraft(raw: unknown, rules: DraftRules): WorkflowDraft {
     throw invalidDraft("version 是不小于 1 的整数。");
   }
   const title = text(draft.title, "title", WORKFLOW_LIMITS.title) as string;
+  const description = text(
+    draft.description,
+    "description",
+    WORKFLOW_LIMITS.description,
+    { optional: true },
+  );
 
   const params = array(draft.params, "params", WORKFLOW_LIMITS.params).map(
     (entry, index) => parseParam(entry, `params[${index}]`),
@@ -165,18 +176,96 @@ export function parseDraft(raw: unknown, rules: DraftRules): WorkflowDraft {
   if (cycle !== undefined) {
     throw invalidDraft(`after 成环：${cycle.join(" → ")}。`);
   }
+  const contract =
+    draft.contract === undefined || draft.contract === null
+      ? undefined
+      : parseContract(draft.contract, roleIds);
   const source =
     draft.source === undefined || draft.source === null
       ? undefined
       : parseSource(draft.source);
   return {
-    version,
+    // 格式号：读 ≥ 1 的都认，写恒为 2（模板修订号只在 `workflow_templates.version` 列）。
+    version: 2,
     title,
+    ...(description === null ? {} : { description }),
     params,
     roles,
     links,
     steps,
+    ...(contract === undefined ? {} : { contract }),
     ...(source === undefined ? {} : { source }),
+  };
+}
+
+/** 一组字符串：条数与单条长度有上限，不允许空串；缺省返回 `undefined`。 */
+function strings(
+  value: unknown,
+  where: string,
+  maxCount: number,
+  maxLength: number,
+): string[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  return array(value, where, maxCount).map(
+    (entry, index) => text(entry, `${where}[${index}]`, maxLength) as string,
+  );
+}
+
+function parseContract(raw: unknown, roleIds: ReadonlySet<string>) {
+  const entry = object(raw, "contract");
+  const contractText = text(
+    entry.text,
+    "contract.text",
+    WORKFLOW_LIMITS.contractText,
+    {
+      optional: true,
+    },
+  );
+  let owns: Record<string, string[]> | undefined;
+  if (entry.owns !== undefined && entry.owns !== null) {
+    const map = object(entry.owns, "contract.owns");
+    owns = {};
+    for (const [roleId, globs] of Object.entries(map)) {
+      if (!roleIds.has(roleId)) {
+        throw invalidDraft(`contract.owns 的 \`${roleId}\` 不是草案里的角色。`);
+      }
+      // glob 语法与跨角色冲突不在这里查（C2：ama 的 `validateOwnsGlob` / `globsOverlap`）。
+      owns[roleId] =
+        strings(
+          globs,
+          `contract.owns.${roleId}`,
+          WORKFLOW_LIMITS.ownsPerRole,
+          WORKFLOW_LIMITS.ownsGlob,
+        ) ?? [];
+    }
+  }
+  const contract: WorkflowContract = {
+    ...(contractText === null ? {} : { text: contractText }),
+    ...(owns === undefined ? {} : { owns }),
+  };
+  return contract;
+}
+
+function parseVerify(raw: unknown, where: string): WorkflowVerify {
+  const entry = object(raw, where);
+  const commands = strings(
+    entry.commands,
+    `${where}.commands`,
+    WORKFLOW_LIMITS.verifyCommands,
+    WORKFLOW_LIMITS.verifyCommand,
+  );
+  const checklist = strings(
+    entry.checklist,
+    `${where}.checklist`,
+    WORKFLOW_LIMITS.verifyChecklist,
+    WORKFLOW_LIMITS.verifyItem,
+  );
+  if ((commands?.length ?? 0) === 0 && (checklist?.length ?? 0) === 0) {
+    throw invalidDraft(`${where} 的 commands 与 checklist 至少要有一项。`);
+  }
+  return {
+    ...(commands === undefined || commands.length === 0 ? {} : { commands }),
+    ...(checklist === undefined || checklist.length === 0 ? {} : { checklist }),
   };
 }
 
@@ -251,6 +340,10 @@ function parseRole(
   const worktree = text(entry.worktree, `${where}.worktree`, 200, {
     optional: true,
   });
+  const tier = entry.tier ?? null;
+  if (tier !== null && !(WORKFLOW_TIERS as readonly unknown[]).includes(tier)) {
+    throw invalidDraft(`${where}.tier 只能是 ${WORKFLOW_TIERS.join(" / ")}。`);
+  }
   return {
     id,
     agentId,
@@ -258,6 +351,7 @@ function parseRole(
     permissionMode: permissionMode as string | null,
     model,
     worktree,
+    ...(tier === null ? {} : { tier: tier as WorkflowTier }),
   };
 }
 
@@ -294,6 +388,28 @@ function parseStep(raw: unknown, where: string): WorkflowStep {
     case "collect": {
       const from = ids(entry.from, `${where}.from`);
       if (from.length === 0) throw invalidDraft(`${where}.from 至少要一项。`);
+      const verify =
+        entry.verify === undefined || entry.verify === null
+          ? undefined
+          : parseVerify(entry.verify, `${where}.verify`);
+      let maxRetries: number | undefined;
+      if (entry.maxRetries !== undefined && entry.maxRetries !== null) {
+        if (verify === undefined) {
+          throw invalidDraft(`${where}.maxRetries 只能和 verify 一起给。`);
+        }
+        const value = entry.maxRetries;
+        if (
+          typeof value !== "number" ||
+          !Number.isInteger(value) ||
+          value < 0 ||
+          value > WORKFLOW_LIMITS.maxRetries
+        ) {
+          throw invalidDraft(
+            `${where}.maxRetries 是 0 到 ${WORKFLOW_LIMITS.maxRetries} 的整数。`,
+          );
+        }
+        maxRetries = value;
+      }
       return {
         id,
         kind: "collect",
@@ -305,6 +421,8 @@ function parseStep(raw: unknown, where: string): WorkflowStep {
           WORKFLOW_LIMITS.prompt,
         ) as string,
         after,
+        ...(verify === undefined ? {} : { verify }),
+        ...(maxRetries === undefined ? {} : { maxRetries }),
       };
     }
     case "gate":
@@ -430,21 +548,21 @@ export function renderPrompt(
   );
 }
 
-/**
- * `collect` 投出去的正文末尾会多一句「来源步骤的结论在你的收件箱里」
- * （`engine.ts::collectNote`），给它留的余量。
- */
-export const COLLECT_NOTE_RESERVE = 200;
-
-/** 每一步代入之后都不超长；超了在起跑前就拒绝，而不是跑到一半才发现。 */
+/** 每一步代入之后都不超长（按码点计）；超了在起跑前就拒绝，而不是跑到一半才发现。 */
 export function checkRendered(
   draft: WorkflowDraft,
   params: Readonly<Record<string, string>>,
 ): void {
+  const owns = draft.contract?.owns ?? {};
+  const shared = (draft.contract?.text ?? "") !== "";
   for (const step of draft.steps) {
     if (step.kind === "gate") continue;
     const rendered = renderPrompt(step.prompt, params);
-    const reserve = step.kind === "collect" ? COLLECT_NOTE_RESERVE : 0;
+    // `collect` 与「有约定」的 prompt 步骤，正文末尾会多一句固定短语
+    // （`contract.ts::stepSuffix`）；约定与验证说明在收件箱里，不计入。
+    const reserved =
+      step.kind === "collect" || shared || (owns[step.role]?.length ?? 0) > 0;
+    const reserve = reserved ? STEP_NOTE_RESERVE : 0;
     if ([...rendered].length + reserve > WORKFLOW_LIMITS.prompt) {
       throw new DomainError(
         400,

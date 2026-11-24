@@ -329,6 +329,7 @@ export function launchLine(
       : {};
   const permissionMode = stringField(agent, "permissionMode");
   const model = stringField(agent, "model");
+  const tier = stringField(agent, "tier");
   const role = agentRoleOf(agent);
   // `open-agent --resume`（契约 §15.5）：接回 CLI 自己的那段会话。
   const resume = stringField(agent, "resume");
@@ -352,6 +353,7 @@ export function launchLine(
     ssh,
     ...(permissionMode === undefined ? {} : { permissionMode }),
     ...(model === undefined ? {} : { model }),
+    ...(tier === undefined ? {} : { tier }),
     ...(role === undefined ? {} : { role }),
     ...(resume === undefined ? {} : { resume }),
     // 版本管理器的垫片已经穿透过（契约 §52）：起垫片背后那一份。Windows 包装

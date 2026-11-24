@@ -87,6 +87,7 @@ export const ARMADRA_TOOL_ICONS = {
   canvas_cancel: Ban,
   canvas_team: Users,
   canvas_workflow_propose: Workflow,
+  canvas_workflow_verdict: ClipboardCheck,
   canvas_wait: Hourglass,
   canvas_report: Flag,
   canvas_handback: Undo2,

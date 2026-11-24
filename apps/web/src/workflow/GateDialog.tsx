@@ -65,6 +65,20 @@ export function GateDialogView({
         <ResponsiveDialogHeader>
           <ResponsiveDialogTitle>{gate?.label ?? ""}</ResponsiveDialogTitle>
         </ResponsiveDialogHeader>
+        {gate?.reason ? (
+          <div
+            data-slot="workflow-gate-escalation"
+            className="space-y-1 text-meta text-muted-foreground"
+          >
+            <p>{t(`workflow.gate.reason.${gate.reason}`)}</p>
+            {(gate.issues ?? []).map((issue, index) => (
+              <p key={index}>
+                {issue.role ? `${issue.role} · ` : ""}
+                {issue.text}
+              </p>
+            ))}
+          </div>
+        ) : null}
         <Field>
           <FieldLabel htmlFor="workflow-gate-note">
             {t("workflow.gate.note")}

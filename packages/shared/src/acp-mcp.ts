@@ -47,6 +47,7 @@ export const ARMADRA_MCP_TOOLS = [
   "canvas_cancel",
   "canvas_team",
   "canvas_workflow_propose",
+  "canvas_workflow_verdict",
   "canvas_wait",
   "canvas_report",
   "canvas_handback",
