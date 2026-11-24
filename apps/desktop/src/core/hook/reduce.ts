@@ -1,3 +1,5 @@
+import type { AgentEndedBy } from "@armadra/shared";
+
 import {
   type AgentEvent,
   DONE,
@@ -74,6 +76,7 @@ export interface Current {
   readonly sessionPhase?: string | undefined;
   readonly errored?: boolean | undefined;
   readonly interrupted?: boolean | undefined;
+  readonly endedBy?: AgentEndedBy | undefined;
   readonly restored: boolean;
 }
 
@@ -205,6 +208,8 @@ export interface Next {
    */
   errored: boolean | undefined;
   interrupted: boolean | undefined;
+  /** Set when the turn was closed by a synthetic event; see AgentEvent.endedBy. */
+  endedBy: AgentEndedBy | undefined;
 }
 
 export function reduce(
@@ -229,6 +234,7 @@ export function reduce(
     lastMessage: event.lastMessage,
     errored: current.errored,
     interrupted: current.interrupted,
+    endedBy: current.endedBy,
   };
 
   // Anything the CLI says after a model error means it did not end there.
@@ -250,6 +256,7 @@ export function reduce(
     next.pendingId = undefined;
     next.errored = undefined;
     next.interrupted = undefined;
+    next.endedBy = undefined;
     return next;
   }
 
@@ -312,6 +319,7 @@ export function reduce(
       next.interrupted =
         event.interrupted ??
         (event.closesPrompt === true && current.state === "blocked");
+      next.endedBy = event.endedBy;
       break;
     case "blocked":
       next.pendingId = event.pendingId ?? current.pendingId;
@@ -322,6 +330,7 @@ export function reduce(
       // `done` that rule 3 just rewrote.
       next.errored = undefined;
       next.interrupted = undefined;
+      next.endedBy = undefined;
       break;
     default:
       // Working again: whatever was blocking is resolved, and the last turn's
@@ -329,6 +338,7 @@ export function reduce(
       next.pendingId = undefined;
       next.errored = undefined;
       next.interrupted = undefined;
+      next.endedBy = undefined;
       break;
   }
   next.state = target;
@@ -344,6 +354,7 @@ export function staleEvent(nodeId: string, agentId: string): AgentEvent {
   const event = stateEvent(nodeId, agentId, DONE);
   event.errored = false;
   event.interrupted = false;
+  event.endedBy = "stale";
   event.lastMessage = `stale=true no hook report for ${STALE_WORKING_MINUTES} minutes`;
   return event;
 }
@@ -353,6 +364,7 @@ export function modelErrorEvent(nodeId: string, agentId: string): AgentEvent {
   const event = stateEvent(nodeId, agentId, DONE);
   event.errored = true;
   event.interrupted = false;
+  event.endedBy = "modelError";
   event.lastMessage =
     "model request failed and the CLI reported nothing further";
   return event;
@@ -372,6 +384,7 @@ export function terminalGoneEvent(nodeId: string, agentId: string): AgentEvent {
   event.errored = false;
   event.interrupted = false;
   event.silent = true;
+  event.endedBy = "terminated";
   event.lastMessage =
     "terminated=true the terminal exited before the turn ended";
   return event;
