@@ -6043,7 +6043,7 @@ Copilot 的 ACP 入口只接受 http / sse 的 MCP 服务器，`session/new.mcpS
 
 输入：Agent 事实（`state`、`pendingId` 是否非空、`errored`、`interrupted`、`endedBy`）、工作项阶段、工作项结论（`merged` / `closed`，自己开的 PR 结束时）、名下的 PR 快照。按顺序取第一个命中的：
 
-1. **离开看板**：有 PR 且没有一个是 `open`，`offBoard`：有任何一个 `merged` 为 `merged`，否则 `closed`。没有 PR 快照而工作项有结论时同样处理。部分已合并的 PR 在后面的步骤里被忽略。
+1. **离开看板**：有 PR 且没有一个是 `open`，`offBoard`：有任何一个 `merged` 为 `merged`，否则 `closed`。没有 PR 快照而工作项有结论时同样处理。例外：`state = working`（节点已开始下一回合，例如 PR 合并后仍留在默认分支继续干活）时不进 `offBoard`，终态的 PR 当作不存在，按后面的步骤走，没有 open 的 PR 就是 `working` / `working`。其它状态（`blocked`、`waiting`、`done` 等）保持离开看板。部分已合并的 PR 在后面的步骤里被忽略。
 2. **需要人**（`needsYou`），按顺序：`pendingId` 非空或 `state = blocked` 为 `needsApproval`；阶段 `person/answer` 或 `state = waiting` 为 `needsAnswer`；`person/delivery` 为 `deliveryFailed`；`person/review` 为 `readyForReview`；`person/blocked` 为 `blocked`；`endedBy = terminated` 为 `exited`；`endedBy = stale` 为 `noSignal`；`person/failed` 或 `errored` 为 `failed`；`interrupted` 为 `interrupted`。`errored` 与 `interrupted` 一直保持到下一回合开始。
 3. **没有 open 的 PR，或有草稿**：`working` 栏。短语依次：阶段 `working/queued` 为 `queued`；`state = working` 为 `working`；有草稿为 `draft`；否则 `idle`。
 4. 对每个 open 的非草稿 PR 单独判定，取**最落后**的一个。落后程度：草稿 < 有问题 < 审查中 < 可合并；同一档里按下面的短语次序。

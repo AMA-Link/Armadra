@@ -34,6 +34,8 @@ export interface DeliveryFacts {
 }
 
 function offBoard(facts: DeliveryFacts): DeliveryStatus | undefined {
+  // 节点已经开始下一回合：终态的 PR 当作不存在，按后面的步骤走（D7）。
+  if (facts.agent?.state === "working") return undefined;
   if (facts.pulls.length === 0) {
     return facts.itemResult === null
       ? undefined

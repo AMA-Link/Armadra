@@ -69,6 +69,36 @@ const CASES: readonly Case[] = [
     expect: { lane: "offBoard", phrase: "merged" },
   },
   {
+    name: "1 反例：merged 而 agent 在干活，终态的 PR 当作不存在",
+    agent: { state: "working" },
+    pulls: [{ state: "merged" }],
+    expect: { lane: "working", phrase: "working" },
+  },
+  {
+    name: "1 反例：closed 而 agent 在干活",
+    agent: { state: "working" },
+    pulls: [{ state: "closed" }],
+    expect: { lane: "working", phrase: "working" },
+  },
+  {
+    name: "1 反例：merged 加 agent 在干活，另有 open 的 PR 按它算",
+    agent: { state: "working" },
+    pulls: [{ state: "merged" }, { review: "reviewRequired" }],
+    expect: { lane: "inReview", phrase: "awaitingReview" },
+  },
+  {
+    name: "1 反例：itemResult 有值而 agent 在干活",
+    agent: { state: "working" },
+    itemResult: "merged",
+    expect: { lane: "working", phrase: "working" },
+  },
+  {
+    name: "1 merged 而 agent 已 done 仍离开看板",
+    agent: { state: "done" },
+    pulls: [{ state: "merged" }],
+    expect: { lane: "offBoard", phrase: "merged" },
+  },
+  {
     name: "1 全部 closed",
     pulls: [{ state: "closed" }, { state: "closed" }],
     expect: { lane: "offBoard", phrase: "closed" },
