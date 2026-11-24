@@ -84,6 +84,7 @@ import {
   startAdapter,
   withAdapterProcess,
 } from "./host";
+import { sessionMetaDropped } from "./mcp";
 import { type SessionListing, listSessionsOn } from "./session-list";
 import {
   AcpPrestartPool,
@@ -126,6 +127,7 @@ export {
   acpMcpServers,
   canvasMcpServer,
   clientAcceptsMcpServers,
+  sessionMetaDropped,
   sessionOpener,
 } from "./mcp";
 export {
@@ -811,6 +813,12 @@ class AcpRuntime {
         } finally {
           gate.release(nodeId);
         }
+      }
+      if (sessionMetaDropped(host)) {
+        this.context.log.warn(
+          "the ACP client cannot send the session _meta; the adapter's instructions were not applied (armadra-agent#327)",
+          { agentId },
+        );
       }
       session.opened(host);
       return {

@@ -20,7 +20,9 @@ import {
   acpMcpServers,
   canvasMcpServer,
   clientAcceptsMcpServers,
+  clientAcceptsSessionMeta,
   copilotAcpMcpArgs,
+  sessionMetaDropped,
   sessionOpener,
 } from "./mcp";
 
@@ -139,6 +141,84 @@ function recordingClient() {
   return { client, calls };
 }
 
+describe("session _meta", () => {
+  const META = { antigravity: { systemPrompt: { append: "rules" } } };
+
+  it("is detected from AcpClient.features.sessionMeta, and the pinned client has none", () => {
+    expect(clientAcceptsSessionMeta({ features: { sessionMeta: true } })).toBe(
+      true,
+    );
+    expect(clientAcceptsSessionMeta({})).toBe(false);
+    expect(clientAcceptsSessionMeta({ features: { sessionMeta: 1 } })).toBe(
+      false,
+    );
+    // The client this build ships: no declaration, so no `_meta` on the wire.
+    expect(clientAcceptsSessionMeta()).toBe(false);
+  });
+
+  it("goes as `meta` in the third argument when the client takes it", async () => {
+    const { client, calls } = recordingClient();
+    const opener = sessionOpener(client, [], true, META, true);
+    await opener.newSession("/w");
+    await opener.loadSession("s", "/w");
+    expect(opener.metaInjected).toBe(true);
+    expect(opener.mcpInjected).toBe(false);
+    expect(calls).toEqual([
+      {
+        method: "new",
+        args: ["/w", undefined, { mcpServers: [], meta: META }],
+      },
+      {
+        method: "load",
+        args: ["s", "/w", undefined, { mcpServers: [], meta: META }],
+      },
+    ]);
+  });
+
+  it("rides along with the servers, each by its own capability", async () => {
+    const server = canvasMcpServer({ ...INPUT, hookBin: HOOK })!;
+    const both = recordingClient();
+    const opener = sessionOpener(both.client, [server], true, META, true);
+    await opener.newSession("/w");
+    expect(opener.mcpInjected).toBe(true);
+    expect(opener.metaInjected).toBe(true);
+    expect(both.calls[0]?.args[2]).toEqual({
+      mcpServers: [server],
+      meta: META,
+    });
+    // A client that takes servers but not `_meta`: servers go, `_meta` does not.
+    const serversOnly = recordingClient();
+    const onlyServers = sessionOpener(
+      serversOnly.client,
+      [server],
+      true,
+      META,
+      false,
+    );
+    await onlyServers.newSession("/w");
+    expect(onlyServers.mcpInjected).toBe(true);
+    expect(onlyServers.metaInjected).toBe(false);
+    expect(serversOnly.calls[0]?.args[2]).toEqual({ mcpServers: [server] });
+  });
+
+  it("calls exactly as before when the client cannot take it", async () => {
+    const { client, calls } = recordingClient();
+    const opener = sessionOpener(client, [], true, META, false);
+    await opener.newSession("/w");
+    expect(opener.metaInjected).toBe(false);
+    expect(calls).toEqual([{ method: "new", args: ["/w"] }]);
+  });
+});
+
+describe("sessionMetaDropped", () => {
+  it("is true only when a _meta was asked for and did not go out", () => {
+    expect(sessionMetaDropped({ metaInjected: false })).toBe(true);
+    expect(sessionMetaDropped({ metaInjected: true })).toBe(false);
+    // No _meta on the row: `metaInjected` is absent, nothing was lost.
+    expect(sessionMetaDropped({})).toBe(false);
+  });
+});
+
 describe("feature detection", () => {
   it("reads AcpClient.features and nothing else", () => {
     expect(clientAcceptsMcpServers({ features: { mcpServers: true } })).toBe(
@@ -205,6 +285,28 @@ describe("startAcp with mcpServers", () => {
     sessions.push(session);
     expect(session.sessionId).toMatch(/^fake-/);
     expect(session.mcpInjected).toBe(true);
+  });
+
+  it("says the _meta stayed behind when the client cannot send it", async () => {
+    const session = await startAcp({
+      program: process.execPath,
+      args: [fakeAcpAgentPath()],
+      cwd: tmpdir(),
+      sessionMeta: { antigravity: { systemPrompt: { append: "x" } } },
+    });
+    sessions.push(session);
+    expect(session.sessionId).toMatch(/^fake-/);
+    expect(session.metaInjected).toBe(false);
+  });
+
+  it("leaves metaInjected out when no _meta was asked for", async () => {
+    const session = await startAcp({
+      program: process.execPath,
+      args: [fakeAcpAgentPath()],
+      cwd: tmpdir(),
+    });
+    sessions.push(session);
+    expect(session).not.toHaveProperty("metaInjected");
   });
 
   it("leaves mcpInjected out when none were asked for", async () => {

@@ -460,6 +460,40 @@ describe.skipIf(process.platform === "win32")("startAdapter", () => {
     }
   });
 
+  it("derives the session _meta from the adapter row, and sends none without one", () => {
+    const withMeta: AcpAdapter = {
+      ...adapter,
+      sessionMeta: ({ instructions, mode }) =>
+        instructions === undefined
+          ? undefined
+          : { vendor: { rules: instructions, mode } },
+    };
+    const given = adapterStartOptions(withMeta, {
+      cwd: tmpdir(),
+      env: onPath("armadra-fake-acp"),
+      metaInput: { instructions: "canvas rules" },
+    });
+    if (given instanceof AcpError) throw given;
+    expect(given.sessionMeta).toEqual({
+      vendor: { rules: "canvas rules", mode: "default" },
+    });
+    // The input itself never leaks into the start options.
+    expect(given).not.toHaveProperty("metaInput");
+    // No input, no `_meta`; and an adapter without the hook never has one.
+    for (const [row, metaInput] of [
+      [withMeta, undefined],
+      [adapter, { instructions: "x" }],
+    ] as const) {
+      const none = adapterStartOptions(row, {
+        cwd: tmpdir(),
+        env: onPath("armadra-fake-acp"),
+        ...(metaInput === undefined ? {} : { metaInput }),
+      });
+      if (none instanceof AcpError) throw none;
+      expect(none).not.toHaveProperty("sessionMeta");
+    }
+  });
+
   it("refuses a permission mode the adapter has no mapping for", async () => {
     await expect(
       startAdapter(adapter, {
