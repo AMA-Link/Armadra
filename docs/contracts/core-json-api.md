@@ -5976,3 +5976,47 @@ Copilot 的 ACP 入口只接受 http / sse 的 MCP 服务器，`session/new.mcpS
 `PrWatchOptions.snapshotTargets(nowMs)` 给出只刷快照的 PR（`{repo, number, workspaceId}`）：不读讨论、不记账、不投递；本遍已被工作项线程刷新过、或离上次成功不足 `SNAPSHOT_ONLY_MIN_MS`（120 秒）的跳过；与线程共用每遍的上限与退避。
 
 没有新 procedure，不改已有节号；HTTP 与事件形状不变。
+
+## 116. 节点与 PR 的关联（`#988`）
+
+画布上的 Agent 节点停在哪个分支，那个分支上开着的 PR 就记为这个节点的 PR，只用来刷新快照（§115）并给交付状态用。没有新 procedure，不改已有节号；HTTP 与事件形状不变。
+
+### 116.1 取分支：`WorkspaceRepositoryService.branchAt(workspaceId, cwd)`
+
+答 `{ repo, branch, head: { repo, owner, name } } | null`。`repo` 是基仓库（工作空间选中的 remote，§111.1），`head` 是分支所在的仓库：与基仓库不同就是 fork。`cwd` 取节点最近一个终端会话的工作目录。
+
+- 本机：`git symbolic-ref --short -q HEAD` 取分支，游离 HEAD 答 `null`。有 upstream（`rev-parse --abbrev-ref @{u}`）时按 upstream 的 remote 识别 head 仓库，分支名取 upstream 的分支名（本地名与远端名不同也对得上）；没有 upstream 时按基仓库同名分支。head 与基仓库不在同一个主机上按读不到处理。`cwd` 不在工作空间根所在的仓库里（嵌套 clone）时，用 `cwd` 自己的 `remote -v` 按同一条选主 remote 的规则选基仓库。分支等于默认分支（`refs/remotes/<remote>/HEAD`，没设置时按 `main` / `master`）答 `null`。
+- 远程执行主机：只读 `git.status` 的分支、`git.remotes` 的 remote，按基仓库同名分支，**不识别 fork**（读不到 upstream）；`cwd` 在工作空间根之外、主机不可达、不支持这个操作，一律答 `null`，下次再试。
+- 平台不认识的主机答 `null`。读取失败不抛，答 `null`。
+
+### 116.2 按 head 查 PR：`Forge.pullsByHead?(repo, { owner, ref, name? })`
+
+只要开着的。GitHub：`pulls?head=<owner>:<ref>&state=open`。GitLab：`merge_requests?source_branch=<ref>&state=opened`，同项目的只留非 fork，fork 的按 `source_project_id` 对 fork 项目的 id（按仓库缓存，读不到记空）。Gitea / Forgejo：先试 `pulls/{默认分支}/{ref}`（fork 写作 `<owner>:<ref>`），取不到再翻 open 列表（至多 2 页 100 条），按 `head.ref` 与 `head.repo.full_name` 过滤。没实现的平台视为查不到。
+
+### 116.3 `node_pull_links` 与归属规则
+
+迁移 0069 `node_pull_links(node_id, workspace_id, repo, number, head_ref, url, linked_at, released_at)`，主键 `(node_id, repo, number)`；`(repo, number)` 在 `released_at IS NULL` 的行上唯一，所以一个 PR 同一时刻只归一个节点。释放只写 `released_at`，行不删。
+
+1. **工作项绑定优先**：绑在某个运行中工作项线程上的 PR 归那个工作项的节点（它们本来就走 §103 的轮询），这里不为它建关联；已有的关联在绑定出现后释放。
+2. **先到先得**：已经有有效关联的 PR 保持不变，不因另一个节点偶然切到同一分支而跳。
+3. **新的竞争**：在这一遍里同在这个分支上、还没有关联的节点中，取 `agent_status.last_event_at` 最新的；相同取节点 id 字典序最小的。
+
+释放：节点被删；节点的分支读到了（非 `null`）且不再是这条关联的 `(repo, head_ref)`；PR 被规则 1 夺走。分支读不到（`null`）分不出是切走还是读失败，保持原样。有工作项的节点，PR 集合是工作项绑定的与这里关联的并集，按 `(repo, number)` 去重；投递只走工作项线程原来的路径。
+
+### 116.4 触发、频率与额度
+
+`NodePullLinker`（`workflow/node-pulls.ts`）挂在 `TaskWatch` 的 60 秒 tick 上。
+
+- 触发：总线上 `agent.status` 变成 `done` 时只把节点放进待查集合，不在事件里直接查；每次 tick 查待查集合，以及「上一回合在 30 分钟内结束、还没有关联」的节点。刚结束回合的节点绕过分支缓存。
+- 缓存（内存）：`(工作空间, cwd)` 到分支 2 分钟；`(基仓库, head 仓库, 分支)` 的 head 查询结果 2 分钟，查到空的负缓存 5 分钟。
+- 额度：每次 tick 最多 10 次 head 查询，超出的下一遍再查。已关联的节点之后只剩快照轮询（`SNAPSHOT_ONLY_MIN_MS` = 120 秒一次）：20 个节点 PR 在 GitHub 约 600 点 / 小时、GitLab 约 2400 次 / 小时，都在默认额度内。
+- 对外：`linkedPulls(db, nodeId)`（含已合并、关闭的，不含已释放的）、`nodesOfPull(db, repo, number)`、`snapshotTargets(db, nowMs)`（关联还在且快照还没有终态，或还没读过）；`NodePullLinker` 的 `onLinkChanged(nodeId)` 在一个节点的关联集合变了（新关联或释放）时调用。
+
+### 116.5 不向普通节点投递
+
+关联的 PR 只经 `PrWatchOptions.snapshotTargets` 进入轮询：不读讨论、不记 `thread_events`、不写收件箱、不向任何终端写东西。`node-pulls.ts` 里没有这些调用，用例断言没有工作项的节点 `agent_mailbox` 与 `thread_events` 都是 0 行，并读源码确认没有这几个入口。
+
+### 116.6 限制
+
+- 远程执行主机上的 fork 第一版不识别（同名分支才对得上）。
+- 分支共用时参与竞争的只是这一遍查到的节点；回合结束超过 30 分钟又没有 `done` 事件的节点不参与。
