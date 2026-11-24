@@ -60,7 +60,15 @@ async function dispatch(taskId: string): Promise<string> {
   return member;
 }
 
-function status(nodeId: string, state: string): void {
+function status(
+  nodeId: string,
+  state: string,
+  extra: {
+    endedBy?: string;
+    errored?: boolean;
+    interrupted?: boolean;
+  } = {},
+): void {
   const at = new Date(clock).toISOString();
   fixture.database
     .prepare(
@@ -70,6 +78,18 @@ function status(nodeId: string, state: string): void {
         "last_event_at = excluded.last_event_at",
     )
     .run(nodeId, fixture.workspaceId, state, at, at);
+  // 一个回合结束的行总带着裁决；这里默认是干净结束。
+  const verdict = state === "done" ? 0 : null;
+  fixture.database
+    .prepare(
+      "UPDATE agent_status SET ended_by = ?, errored = ?, interrupted = ? WHERE node_id = ?",
+    )
+    .run(
+      extra.endedBy ?? null,
+      extra.errored === undefined ? verdict : extra.errored ? 1 : 0,
+      extra.interrupted === undefined ? verdict : extra.interrupted ? 1 : 0,
+      nodeId,
+    );
 }
 
 function interrupted() {
@@ -156,7 +176,7 @@ describe("the startup scan", () => {
     status(live, "working");
     alive.add(live);
     const idle = await dispatch("s:idle");
-    status(idle, "idle");
+    status(idle, "done");
     // 第一条任务还在投递队列里：还没开始，不算中断。
     const queued = result(
       await controlDispatcher()!.dispatch(
@@ -175,6 +195,25 @@ describe("the startup scan", () => {
       .run();
     expect(scan.scan()).toBe(0);
     expect(interrupted()).toEqual([]);
+  });
+
+  it("still flags a member whose terminal died mid-turn, even though the row is done", async () => {
+    // 终端死掉的合成收尾把状态写成 done，但不是干净结束：阶段仍是 working。
+    const gone = await dispatch("s:gone");
+    status(gone, "done", { endedBy: "terminated" });
+    const quiet = await dispatch("s:quiet");
+    status(quiet, "done", { endedBy: "stale" });
+    const failed = await dispatch("s:failed");
+    status(failed, "done", { endedBy: "modelError", errored: true });
+    const stopped = await dispatch("s:stopped");
+    status(stopped, "done", { interrupted: true });
+    const silent = await dispatch("s:silent");
+    expect(scan.scan()).toBe(5);
+    expect(
+      interrupted()
+        .map((event) => event.sourceNodeId)
+        .sort(),
+    ).toEqual([gone, quiet, failed, stopped, silent].sort());
   });
 
   it("waits out the startup grace", async () => {
