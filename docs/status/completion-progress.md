@@ -4470,3 +4470,9 @@ nightly 在 `b8353492`（运行 37338174906）之后连续失败。逐个作业�
 实测：`delivery.test.ts`、`delivery-children.test.ts`、`delivery-facts.test.ts`、`delivery-routes.test.ts`、`delivery-watch.test.ts`、迁移与 hook store 用例通过；`pnpm --filter @armadra/desktop typecheck`、`pnpm repo:check` 通过。
 
 没做 / 限制：页面（卡片的 n/m、子任务等人提示）在 web 线（叠在 #999 上）；连线变了不立即重算，要等下一个状态事件。验证命令不由 core 执行，由汇总角色自己跑。
+
+## 工作流 v2：共享约定、验证与档位（Refs #996，F1–F9，2026-11-24）
+
+做了什么：草案升到 v2（`description`、`contract`、角色 `tier`、`collect` 的 `verify` / `maxRetries`），`version` 只是格式号、模板修订号改用 `baseVersion`；共享约定与验证说明进角色收件箱，投递正文只追加一句固定短语；新动词 `workflow-verdict`，`collect` 按结论完成、退回来源角色重做或升级成关卡；步骤带 `round` / `verdict`，`workflow.run` 带 `round`、`workflow.gate` 带 `reason`；ama 角色按 `AMA_TIER_SINCE = 0.22.0` 起 `--tier`，草案行带 `hints.tierIgnored`；迁移 0072。契约 §15.1–§15.4 改写，新增 §119。
+
+没做 / 限制：glob 语法与跨角色冲突校验、导入导出项目级文件（`file_ref` 只建了列）等 ama 升级之后；用户自定义档位映射推后；没有「再跑一轮」。
