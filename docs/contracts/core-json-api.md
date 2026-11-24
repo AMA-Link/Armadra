@@ -6069,7 +6069,7 @@ Copilot 的 ACP 入口只接受 http / sse 的 MCP 服务器，`session/new.mcpS
 { nodes: [{
     nodeId: string, taskId: string | null,   // 节点最近的工作项
     lane: DeliveryLane, phrase: string,
-    pulls: PullSnapshot[],                   // §115.1；工作项绑定的 PR，还没读到快照的不出现
+    pulls: PullSnapshot[],                   // §115.1；工作项绑定的 PR 与按分支关联的 PR（§116），按 repo + number 去重、绑定优先；没有工作项、只靠分支关联的节点 taskId 为 null；还没读到快照的不出现
     endedAtMs?: number | null                // 离开看板（offBoard）的时刻，其余为 null
 }] }
 ```
@@ -6084,6 +6084,6 @@ Copilot 的 ACP 入口只接受 http / sse 的 MCP 服务器，`session/new.mcpS
 { type: "delivery.changed", boardId, nodeId, lane, phrase, pullsChanged?: boolean }
 ```
 
-core 内存里记每个节点上一次的 `lane|phrase`，变了才发；PR 细节变了而栏与短语没变时发一帧带 `pullsChanged: true`，页面据此重读 §117.5。帧里没有 PR 正文。重启后第一次重算多发一帧。触发源：`agent.status`、`workflow.task`、PR 快照指纹变化（§115.4）。
+core 内存里记每个节点上一次的 `lane|phrase`，变了才发；PR 细节变了而栏与短语没变时发一帧带 `pullsChanged: true`，页面据此重读 §117.5。帧里没有 PR 正文。重启后第一次重算多发一帧。触发源：`agent.status`、`workflow.task`、PR 快照指纹变化（§115.4，绑定的与按分支关联的节点都会重算）、节点关联集合变化（§116）。
 
 没有新 procedure，不改已有节号；HTTP 契约只增字段，不升版本号。
