@@ -188,7 +188,7 @@ export function insertTemplate(
     .run(
       template.id,
       template.name,
-      template.template.version,
+      1,
       JSON.stringify(template.template),
       template.createdFromDraft,
       template.createdAt,
@@ -217,8 +217,9 @@ export function listTemplates(database: DatabaseSync): TemplateRow[] {
 }
 
 /**
- * 改模板：新的 `version` 必须大于库里那份（只增）。条件写在 `WHERE` 里，两个
- * 页面同时保存，只有一个算数。
+ * 改模板：只有库里的修订号等于 `baseVersion` 才改，改后列 +1（草案里的
+ * `version` 是格式号，与修订号无关）。条件写在 `WHERE` 里，两个页面同时保存，
+ * 只有一个算数。
  */
 export function updateTemplate(
   database: DatabaseSync,
@@ -226,20 +227,14 @@ export function updateTemplate(
   name: string,
   template: WorkflowDraft,
   now: number,
+  baseVersion: number,
 ): boolean {
   const changes = database
     .prepare(
-      "UPDATE workflow_templates SET name = ?, version = ?, template_json = ?, updated_at = ? " +
-        "WHERE id = ? AND version < ?",
+      "UPDATE workflow_templates SET name = ?, version = version + 1, template_json = ?, updated_at = ? " +
+        "WHERE id = ? AND version = ?",
     )
-    .run(
-      name,
-      template.version,
-      JSON.stringify(template),
-      now,
-      id,
-      template.version,
-    );
+    .run(name, JSON.stringify(template), now, id, baseVersion);
   return Number(changes.changes) > 0;
 }
 
@@ -457,6 +452,17 @@ export function setRunLayout(
 
 /* --------------------------------- 步骤 ----------------------------------- */
 
+/** collect 步骤一次验证的结论（`workflow-verdict`）。 */
+export interface StepVerdict {
+  readonly round: number;
+  readonly pass: boolean;
+  readonly issues: readonly {
+    readonly role: string | null;
+    readonly text: string;
+  }[];
+  readonly at: number;
+}
+
 export interface StepRow {
   readonly runId: string;
   readonly stepId: string;
@@ -473,6 +479,9 @@ export interface StepRow {
   readonly startedAt: number | null;
   readonly endedAt: number | null;
   readonly outcome: StepOutcome | null;
+  /** 第几轮：被退回重做一次 +1，起始为 0。 */
+  readonly round: number;
+  readonly verdict: StepVerdict | null;
 }
 
 interface StepRecord {
@@ -491,11 +500,13 @@ interface StepRecord {
   started_at: number | null;
   ended_at: number | null;
   outcome_json: string | null;
+  round: number;
+  verdict_json: string | null;
 }
 
 const STEP_COLUMNS =
   "run_id, step_id, kind, status, node_id, queue_id, attempts, delivered, baseline_state, " +
-  "baseline_event_at, observed_busy, reason, started_at, ended_at, outcome_json";
+  "baseline_event_at, observed_busy, reason, started_at, ended_at, outcome_json, round, verdict_json";
 
 function stepOf(row: StepRecord): StepRow {
   return {
@@ -514,6 +525,8 @@ function stepOf(row: StepRecord): StepRow {
     startedAt: row.started_at === null ? null : Number(row.started_at),
     endedAt: row.ended_at === null ? null : Number(row.ended_at),
     outcome: parse<StepOutcome | null>(row.outcome_json, null),
+    round: Number(row.round),
+    verdict: parse<StepVerdict | null>(row.verdict_json, null),
   };
 }
 
@@ -639,4 +652,100 @@ export function noteBusy(
       "UPDATE workflow_run_steps SET observed_busy = 1 WHERE run_id = ? AND step_id = ? AND status = 'running'",
     )
     .run(runId, stepId);
+}
+
+/* ------------------------- 轮次与验证结论（#996） ---------------------------- */
+
+/**
+ * 已完成的步骤重开一轮：`round` +1，回到 `running`，开始时刻重置为 `now`
+ * （`outputsOf` 只收新一轮的产出），其余运行态列全部清空。只改 `done`。
+ */
+export function reopenStep(
+  database: DatabaseSync,
+  runId: string,
+  stepId: string,
+  now: number,
+): boolean {
+  const changes = database
+    .prepare(
+      "UPDATE workflow_run_steps SET status = 'running', round = round + 1, started_at = ?, " +
+        "ended_at = NULL, reason = NULL, outcome_json = NULL, queue_id = NULL, attempts = 0, " +
+        "delivered = 0, baseline_state = NULL, baseline_event_at = NULL, observed_busy = 0 " +
+        "WHERE run_id = ? AND step_id = ? AND status = 'done'",
+    )
+    .run(now, runId, stepId);
+  return Number(changes.changes) > 0;
+}
+
+/** 验证没过、退回重做：`running` 回到 `pending`，`round` +1，结论保留。 */
+export function requeueCollect(
+  database: DatabaseSync,
+  runId: string,
+  stepId: string,
+): boolean {
+  const changes = database
+    .prepare(
+      "UPDATE workflow_run_steps SET status = 'pending', round = round + 1, reason = 'verifyFailed', " +
+        "started_at = NULL, ended_at = NULL, queue_id = NULL, attempts = 0, delivered = 0, " +
+        "baseline_state = NULL, baseline_event_at = NULL, observed_busy = 0 " +
+        "WHERE run_id = ? AND step_id = ? AND status = 'running'",
+    )
+    .run(runId, stepId);
+  return Number(changes.changes) > 0;
+}
+
+/** 退回次数用尽或无法判定：`running` 推到 `waiting`，交给人。 */
+export function escalateCollect(
+  database: DatabaseSync,
+  runId: string,
+  stepId: string,
+  reason: string,
+): boolean {
+  const changes = database
+    .prepare(
+      "UPDATE workflow_run_steps SET status = 'waiting', reason = ? " +
+        "WHERE run_id = ? AND step_id = ? AND status = 'running'",
+    )
+    .run(reason, runId, stepId);
+  return Number(changes.changes) > 0;
+}
+
+/** 记下结论（只留最近一次）。只有还在 `running` 的步骤收。 */
+export function recordVerdict(
+  database: DatabaseSync,
+  runId: string,
+  stepId: string,
+  verdict: StepVerdict,
+): boolean {
+  const changes = database
+    .prepare(
+      "UPDATE workflow_run_steps SET verdict_json = ? " +
+        "WHERE run_id = ? AND step_id = ? AND status = 'running'",
+    )
+    .run(JSON.stringify(verdict), runId, stepId);
+  return Number(changes.changes) > 0;
+}
+
+/** 某节点正在汇总验证的 collect 步骤（运行未结束，步骤 `running`）。 */
+export function verifyingStepsOf(
+  database: DatabaseSync,
+  nodeId: string,
+): readonly {
+  readonly runId: string;
+  readonly stepId: string;
+  readonly round: number;
+}[] {
+  const rows = database
+    .prepare(
+      "SELECT s.run_id AS run_id, s.step_id AS step_id, s.round AS round FROM workflow_run_steps s " +
+        "JOIN workflow_runs r ON r.id = s.run_id " +
+        "WHERE s.node_id = ? AND s.kind = 'collect' AND s.status = 'running' " +
+        "AND r.status IN ('running','waiting') ORDER BY s.rowid",
+    )
+    .all(nodeId) as { run_id: string; step_id: string; round: number }[];
+  return rows.map((row) => ({
+    runId: row.run_id,
+    stepId: row.step_id,
+    round: Number(row.round),
+  }));
 }

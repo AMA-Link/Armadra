@@ -235,7 +235,14 @@ export class WorkflowService {
         : templateName(body.name, template);
     if (
       template.version <= current.version ||
-      !updateTemplate(this.database, id, name, template, this.clock())
+      !updateTemplate(
+        this.database,
+        id,
+        name,
+        template,
+        this.clock(),
+        current.version,
+      )
     ) {
       throw new DomainError(
         409,
