@@ -41,6 +41,7 @@ import {
   workflowReplyEventSchema,
   workflowRunEventSchema,
 } from "./workflows.js";
+import { deliveryChangedEventSchema } from "./delivery.js";
 
 /**
  * `agent.approval` 的 `request`：core 的审批行（`core/agent/approvals.ts` 的
@@ -302,6 +303,8 @@ export const workspaceEventSchema = z.discriminatedUnion("type", [
   workflowTaskEventSchema,
   workflowReplyEventSchema,
   workflowIntakeEventSchema,
+  /** 节点的交付状态（栏或短语）变了，或名下的 PR 细节变了（#988）；不带 PR 正文。 */
+  deliveryChangedEventSchema,
   /**
    * 自动化计划的三种时刻（契约 §27）：到点起跑、一次运行失败、连续失败到要人
    * 处理。只带标识与稳定码，不带命令与输出。

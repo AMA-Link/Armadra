@@ -37,7 +37,7 @@ export interface ItemStageFacts {
   readonly runStatus: TaskRun["status"];
   /** 还没起，或在排队（首条任务在投递队列里、成员在等依赖启动）。 */
   readonly queued: boolean;
-  /** 成员的 Agent 此刻空闲。 */
+  /** 成员的 Agent 回合干净地结束了（`done`，没有合成收尾、失败或打断）。 */
   readonly nodeIdle: boolean;
   /** 成员的收件箱里有没处理的未读。 */
   readonly unread: boolean;
@@ -114,7 +114,14 @@ export function itemFacts(
       waitingLaunch !== undefined ||
       (delivery !== undefined &&
         (delivery.state === "queued" || delivery.state === "delivering")),
-    nodeIdle: status?.state === "idle",
+    // 干净结束才算空闲：没有状态记录、合成收尾（终端死掉、无信号、模型报错）、
+    // 失败或被打断的回合都不算，它们仍在 `working`，重启恢复扫描照旧认得。
+    nodeIdle:
+      status !== undefined &&
+      status.state === "done" &&
+      status.endedBy === undefined &&
+      status.errored !== true &&
+      status.interrupted !== true,
     unread: Number(unread.total) > 0,
   };
 }

@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-import { AGENT_STATES } from "@armadra/shared";
+import { AGENT_STATES, type AgentEndedBy } from "@armadra/shared";
 
 /**
  * The `agent_status` and `agent_approvals` tables, as the hook surface reads
@@ -73,6 +73,7 @@ export interface AgentStatusRow {
   readonly sessionPhase?: string;
   readonly errored?: boolean;
   readonly interrupted?: boolean;
+  readonly endedBy?: AgentEndedBy;
   /**
    * Not a column: the reducer attaches the event's message (or the stale
    * sweep's marker) to the copy it publishes. A row read back from SQLite
@@ -95,6 +96,7 @@ export interface AgentStatusPatch {
   readonly sessionPhase: string | undefined;
   readonly errored: boolean | undefined;
   readonly interrupted: boolean | undefined;
+  readonly endedBy?: AgentEndedBy | undefined;
   /**
    * When the hook report that produced this state arrived. `undefined` for
    * writes that are not hook reports (the read receipt, the stale sweep),
@@ -106,7 +108,7 @@ export interface AgentStatusPatch {
 const SELECT =
   "SELECT node_id, workspace_id, agent_id, state, state_source, unread, session_id, " +
   "pending_id, verified, restored, updated_at, transcript_path, last_event_at, " +
-  "session_phase, errored, interrupted FROM agent_status ";
+  "session_phase, errored, interrupted, ended_by FROM agent_status ";
 
 type Row = Record<string, unknown>;
 
@@ -118,6 +120,12 @@ function optionalBool(value: unknown): boolean | undefined {
   return value === null || value === undefined
     ? undefined
     : Number(value) !== 0;
+}
+
+function endedByOf(value: unknown): AgentEndedBy | undefined {
+  return value === "stale" || value === "terminated" || value === "modelError"
+    ? value
+    : undefined;
 }
 
 function statusFromRow(row: Row): AgentStatusRow {
@@ -156,6 +164,9 @@ function statusFromRow(row: Row): AgentStatusRow {
     ...(optionalBool(row.interrupted) === undefined
       ? {}
       : { interrupted: optionalBool(row.interrupted) as boolean }),
+    ...(endedByOf(row.ended_by) === undefined
+      ? {}
+      : { endedBy: endedByOf(row.ended_by) as AgentEndedBy }),
   };
 }
 
@@ -193,13 +204,13 @@ export function upsertAgentStatus(
   database
     .prepare(
       "INSERT INTO agent_status (node_id, workspace_id, agent_id, state, state_source, unread, session_id, pending_id, " +
-        "verified, restored, updated_at, transcript_path, last_event_at, session_phase, errored, interrupted) " +
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?) " +
+        "verified, restored, updated_at, transcript_path, last_event_at, session_phase, errored, interrupted, ended_by) " +
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?) " +
         "ON CONFLICT(node_id) DO UPDATE SET workspace_id = excluded.workspace_id, agent_id = excluded.agent_id, " +
         "state = excluded.state, state_source = excluded.state_source, unread = excluded.unread, session_id = excluded.session_id, " +
         "pending_id = excluded.pending_id, verified = excluded.verified, restored = 0, updated_at = excluded.updated_at, " +
         "transcript_path = excluded.transcript_path, session_phase = excluded.session_phase, " +
-        "errored = excluded.errored, interrupted = excluded.interrupted, " +
+        "errored = excluded.errored, interrupted = excluded.interrupted, ended_by = excluded.ended_by, " +
         "last_event_at = COALESCE(excluded.last_event_at, agent_status.last_event_at)",
     )
     .run(
@@ -218,6 +229,7 @@ export function upsertAgentStatus(
       patch.sessionPhase ?? null,
       patch.errored === undefined ? null : patch.errored ? 1 : 0,
       patch.interrupted === undefined ? null : patch.interrupted ? 1 : 0,
+      patch.endedBy ?? null,
     );
   const written = getAgentStatus(database, patch.nodeId);
   if (written === undefined) {

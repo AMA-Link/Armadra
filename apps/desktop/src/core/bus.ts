@@ -273,6 +273,18 @@ export interface WorkspaceEventPayloads {
    * 协调者经 `canvas notify` 对人说了一句话（契约 §101）：页面据此重读任务行、推送
    * 规则据此对 `result` / `attention` 叫人。帧里不带 `--text`。
    */
+  /**
+   * 一个 Agent 节点的交付状态变了（栏或短语），或栏与短语没变而名下的 PR 细节变了
+   * （`pullsChanged`，页面据此重读 `…/boards/{boardId}/delivery`）。不带 PR 正文。
+   */
+  "delivery.changed": {
+    readonly boardId: string;
+    readonly nodeId: string;
+    readonly lane:
+      "working" | "needsYou" | "inReview" | "readyToMerge" | "offBoard";
+    readonly phrase: string;
+    readonly pullsChanged?: boolean;
+  };
   "workflow.reply": {
     readonly replyId: string;
     readonly taskId: string;
@@ -450,6 +462,7 @@ export const WORKSPACE_EVENT_TYPES = [
   "workflow.gate",
   "workflow.task",
   "workflow.reply",
+  "delivery.changed",
   "workflow.intake",
   "schedule.fired",
   "schedule.failed",

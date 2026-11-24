@@ -144,6 +144,7 @@ export function expireApprovalsOnce(context: IngestContext): number {
           sessionPhase: row.sessionPhase,
           errored: row.errored,
           interrupted: row.interrupted,
+          endedBy: row.endedBy,
           lastEventAt: undefined,
         },
         now.toISOString(),

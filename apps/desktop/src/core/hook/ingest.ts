@@ -366,6 +366,7 @@ export function apply(
           sessionPhase: existing.sessionPhase,
           errored: existing.errored,
           interrupted: existing.interrupted,
+          endedBy: existing.endedBy,
           restored: existing.restored,
         };
 
@@ -392,6 +393,7 @@ export function apply(
       sessionPhase: next.sessionPhase,
       errored: next.errored,
       interrupted: next.interrupted,
+      endedBy: next.endedBy,
       lastEventAt: now.toISOString(),
     },
     now.toISOString(),

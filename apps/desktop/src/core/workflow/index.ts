@@ -39,6 +39,8 @@ import {
 import { IntakeWatch } from "./intake-watch";
 import { NodePullLinker, snapshotTargets } from "./node-pulls";
 import { PrWatch } from "./pr-watch";
+import { installDeliveryRoutes } from "./delivery-routes";
+import { DeliveryWatch } from "./delivery-watch";
 import { installWorkflowRoutes } from "./routes";
 import { type WorkflowDomain, setWorkflowDomain } from "./registry";
 import { WorkflowService } from "./service";
@@ -78,6 +80,7 @@ export function install(context: CoreContext): WorkflowDomain | undefined {
     collab: () => collab(),
   });
   installWorkflowRoutes(context.server, service);
+  installDeliveryRoutes(context.server, { database });
   engine.start();
   // 协调者分派出去的任务：没人 `wait` 时也落结束（契约 §15.7）。
   // 进展看门狗（契约 §91）搭任务行兜底扫描的便车，不另开定时器。
@@ -165,8 +168,15 @@ export function install(context: CoreContext): WorkflowDomain | undefined {
   firstScan.unref?.();
   // 绑定 PR 的拉取式轮询（契约 §103）：同样搭 60 秒兜底扫描的便车，每个线程自己
   // 按 60 秒与服务端给的间隔到点才读。
+  const delivery = new DeliveryWatch({
+    database,
+    bus: context.bus,
+    log: (message, fields) => context.log.info(message, fields),
+  });
+  delivery.start();
   const pulls = new PrWatch({
     database,
+    onSnapshot: delivery.onSnapshot,
     forge: forgeService,
     // 画布节点关联的 PR（契约 §116）：只刷快照，不读讨论、不投递。
     snapshotTargets: (nowMs) => snapshotTargets(database, nowMs),
@@ -201,6 +211,7 @@ export function install(context: CoreContext): WorkflowDomain | undefined {
     forge: forgeService,
     repositories: workspaceRepository,
     bus: context.bus,
+    onLinkChanged: delivery.onLinkChanged,
     log: (message, fields) => context.log.info(message, fields),
   });
   const tasks = new TaskWatch({
@@ -239,6 +250,7 @@ export function install(context: CoreContext): WorkflowDomain | undefined {
     stop: async () => {
       tasks.stop();
       nodePulls.stop();
+      delivery.stop();
       offStatus();
       clearTimeout(firstScan);
       setStallSource(undefined);

@@ -14,6 +14,7 @@ import {
   type Memory,
   type SessionKeep,
   emptyCurrent,
+  modelErrorEvent,
   newMemory,
   reduce,
   sessionKeep,
@@ -71,6 +72,40 @@ function current(state: string): Current {
 function memoryWith(partial: Partial<Memory>): Memory {
   return { ...newMemory(), ...partial };
 }
+
+describe("endedBy", () => {
+  it("is written by the synthetic closes and cleared by the next report", () => {
+    const memory = newMemory();
+    const cases = [
+      ["stale", staleEvent("n", "claude")],
+      ["terminated", terminalGoneEvent("n", "claude")],
+      ["modelError", modelErrorEvent("n", "claude")],
+    ] as const;
+    for (const [value, event] of cases) {
+      const closed = reduce(at(0), current(WORKING), memory, event);
+      expect(closed?.endedBy).toBe(value);
+      const after: Current = { ...emptyCurrent(), state: DONE, endedBy: value };
+      expect(
+        reduce(at(1), after, memory, working("n"))?.endedBy,
+      ).toBeUndefined();
+      const question = stateEvent("n", "claude", WAITING);
+      expect(reduce(at(2), after, memory, question)?.endedBy).toBeUndefined();
+      const session = newEvent("n", "claude", "session");
+      session.sessionPhase = "start";
+      expect(reduce(at(3), after, memory, session)?.endedBy).toBeUndefined();
+    }
+  });
+
+  it("is absent for a real end", () => {
+    const next = reduce(
+      at(0),
+      current(WORKING),
+      newMemory(),
+      stateEvent("n", "claude", DONE),
+    );
+    expect(next?.endedBy).toBeUndefined();
+  });
+});
 
 describe("the agent state machine", () => {
   it("walks a plain turn from working to done and marks it unread", () => {

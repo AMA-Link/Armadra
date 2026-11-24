@@ -54,6 +54,7 @@ describe("the stale sweeps", () => {
     expect(sweepOnce(context)).toBe(1);
     expect(one.status()?.state).toBe("done");
     expect(one.status()?.errored).toBe(true);
+    expect(one.status()?.endedBy).toBe("modelError");
   });
 
   it("closes a node that stopped reporting", async () => {
@@ -71,6 +72,8 @@ describe("the stale sweeps", () => {
     expect(status?.state).toBe("done");
     expect(status?.unread).toBe(true);
     expect(statuses(one).at(-1)?.lastMessage).toContain("stale=true");
+    expect(status?.endedBy).toBe("stale");
+    expect(statuses(one).at(-1)?.endedBy).toBe("stale");
 
     // A closed node is not swept twice.
     expect(sweepOnce(one.context)).toBe(0);
@@ -123,6 +126,8 @@ describe("the stale sweeps", () => {
 
     const published = statuses(one).at(-1);
     expect(published?.interrupted).toBe(false);
+    expect(status?.endedBy).toBe("terminated");
+    expect(published?.endedBy).toBe("terminated");
     expect(published?.unread).toBe(false);
     // The cause travels in the marker, which a client can match on.
     expect(String(published?.lastMessage).startsWith("terminated=true")).toBe(

@@ -534,6 +534,13 @@ export const ROUTES: readonly RouteEntry[] = [
     surface: "runtime",
     implemented: true,
   },
+  // 交付状态（契约 §117，#988）：一块画板上带 Agent 的节点的栏、短语与 PR 快照。
+  {
+    path: "/api/workspaces/{workspaceId}/boards/{boardId}/delivery",
+    methods: ["GET"],
+    surface: "runtime",
+    implemented: true,
+  },
   {
     path: "/api/workspaces/{workspaceId}/deliveries",
     methods: ["GET"],

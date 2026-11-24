@@ -18,6 +18,10 @@ export const AGENT_STALL_KINDS = [
 export const agentStallKindSchema = z.enum(AGENT_STALL_KINDS);
 export type AgentStallKind = (typeof AGENT_STALL_KINDS)[number];
 
+export const AGENT_ENDED_BY = ["stale", "terminated", "modelError"] as const;
+export const agentEndedBySchema = z.enum(AGENT_ENDED_BY);
+export type AgentEndedBy = (typeof AGENT_ENDED_BY)[number];
+
 export const agentStatusSchema = z.object({
   nodeId: z.string().uuid(),
   workspaceId: z.string().uuid(),
@@ -56,6 +60,12 @@ export const agentStatusSchema = z.object({
    */
   errored: z.boolean().optional(),
   interrupted: z.boolean().optional(),
+  /**
+   * Why a synthetic close ended the turn (Armadra#988): no hook report for a
+   * while, the terminal died mid-turn, or the model failed and the CLI said
+   * nothing more. Absent for a real end or an open turn.
+   */
+  endedBy: agentEndedBySchema.optional(),
   /**
    * The watchdog's mark on this node (contract §91). Absent means no mark;
    * any later report from the node drops it again.

@@ -578,7 +578,11 @@ describe("the stage read from the board's facts", () => {
       .run(nodeId);
   }
 
-  function setStatus(nodeId: string, state: string): void {
+  function setStatus(
+    nodeId: string,
+    state: string,
+    verdict: { endedBy?: string; errored?: number; interrupted?: number } = {},
+  ): void {
     fixture.database
       .prepare(
         "INSERT INTO agent_status (node_id, workspace_id, agent_id, state, unread, verified, restored, updated_at, last_event_at) " +
@@ -591,6 +595,16 @@ describe("the stage read from the board's facts", () => {
         state,
         new Date().toISOString(),
         new Date().toISOString(),
+      );
+    fixture.database
+      .prepare(
+        "UPDATE agent_status SET ended_by = ?, errored = ?, interrupted = ? WHERE node_id = ?",
+      )
+      .run(
+        verdict.endedBy ?? null,
+        verdict.errored ?? (state === "done" ? 0 : null),
+        verdict.interrupted ?? (state === "done" ? 0 : null),
+        nodeId,
       );
   }
 
@@ -619,7 +633,7 @@ describe("the stage read from the board's facts", () => {
     started(member);
     setStatus(member, "working");
     expect(await stageOf("s1:t1")).toBe("working");
-    setStatus(member, "idle");
+    setStatus(member, "done");
     expect(await stageOf("s1:t1")).toBe("idle");
     fixture.database
       .prepare(
@@ -628,6 +642,25 @@ describe("the stage read from the board's facts", () => {
       )
       .run(fixture.workspaceId, lead, member);
     expect(await stageOf("s1:t1")).toBe("working");
+  });
+
+  it("a done that was not a clean end, or no status row at all, is not idle", async () => {
+    const member = await dispatch("s1:t1");
+    started(member);
+    // 还没收到第一条上报。
+    expect(await stageOf("s1:t1")).toBe("working");
+    for (const verdict of [
+      { endedBy: "terminated" },
+      { endedBy: "stale" },
+      { endedBy: "modelError", errored: 1 },
+      { errored: 1 },
+      { interrupted: 1 },
+    ]) {
+      setStatus(member, "done", verdict);
+      expect(await stageOf("s1:t1")).toBe("working");
+    }
+    setStatus(member, "done");
+    expect(await stageOf("s1:t1")).toBe("idle");
   });
 
   it("a stale cached stage is overridden by the facts", async () => {

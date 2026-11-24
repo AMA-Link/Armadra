@@ -58,6 +58,8 @@ export interface AgentEvent {
   sessionId?: string;
   sessionPhase?: SessionPhase;
   lastMessage?: string;
+  /** Set only by the synthetic closes (stale sweep, dead terminal, model error). */
+  endedBy?: "stale" | "terminated" | "modelError";
   toolUseId?: string;
   /**
    * The tool a PreToolUse / PostToolUse / PermissionRequest names and a
