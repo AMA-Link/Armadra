@@ -107,7 +107,8 @@ export function injectionProblem(
   t: Translate,
   integration: AgentIntegration | null,
 ): string | null {
-  if (!integration) return null;
+  // 没有画布注入的 CLI 没有产物可言，不是「未生成」（契约 §120）。
+  if (!integration || integration.mode === "none") return null;
   const hookMissing = !integration.hook.installed;
   const skillMissing = !integration.skill.installed;
   if (hookMissing && skillMissing) return t("integration.state.notGenerated");

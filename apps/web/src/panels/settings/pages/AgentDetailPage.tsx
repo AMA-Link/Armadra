@@ -186,7 +186,8 @@ export function AgentDetailPage({ agent }: { agent: AgentInfo }) {
           : t("integration.state.missing");
 
   /* -------------------------------- 画布注入 -------------------------------- */
-  const hooked = agent.capabilities.includes("hooks");
+  const injected = integration?.mode !== "none";
+  const hooked = agent.capabilities.includes("hooks") && injected;
   const problem = injectionProblem(t, integration);
   const limited = integration?.launcherWarning;
   const legacy = integration?.legacy.found ?? [];
@@ -259,8 +260,17 @@ export function AgentDetailPage({ agent }: { agent: AgentInfo }) {
         <InstallFailure agent={agent} jobs={[cli, adapter]} />
       </SettingsGroup>
 
-      {(hooked || mods !== null || spawn !== null || history !== null) && (
+      {(hooked ||
+        !injected ||
+        mods !== null ||
+        spawn !== null ||
+        history !== null) && (
         <SettingsGroup title={t("agents.group.injection")}>
+          {!injected && (
+            <SettingsRow label={t("agents.row.artifacts")}>
+              <RowValue>{t("integration.state.noInjection")}</RowValue>
+            </SettingsRow>
+          )}
           {hooked && (
             <SettingsRow
               label={t("agents.row.artifacts")}

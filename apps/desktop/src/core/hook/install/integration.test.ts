@@ -27,6 +27,7 @@ import {
   canvasAgentsOf,
   install,
   modsState,
+  noInjectionState,
   prepareAtStartup,
   state,
   uninstall,
@@ -174,10 +175,58 @@ describe("the canvas integration", () => {
     );
   });
 
-  it("refuses a CLI it has no injection for", () => {
+  it("refuses what is not a built-in CLI at all", () => {
     expect(() => state("custom:thing", options("x"))).toThrow(
       /no canvas injection/,
     );
+    expect(() => install("custom:thing", options("x"))).toThrow(
+      /no canvas injection/,
+    );
+  });
+
+  describe("a built-in CLI without injection (contract §120)", () => {
+    it("answers the `none` shape: nothing generated, nothing stale, nothing global", () => {
+      const shape = noInjectionState("opencode", options("opencode"));
+      expect(shape).toMatchObject({
+        agentId: "opencode",
+        mode: "none",
+        hook: { installed: false, revision: 0 },
+        skill: { installed: false, revision: 0 },
+        legacy: { found: [] },
+        stale: false,
+        launchArgs: [],
+        launchEnv: [],
+        globalWrites: [],
+      });
+      expect(shape.launcher).toBeUndefined();
+      expect(shape.shim).toBeUndefined();
+      expect(shape.migration).toBeUndefined();
+      // Only the ACP half can still create agents; the terminal half says why not.
+      expect(shape.canvasAgents.terminal).toBe("unavailable");
+      expect(shape.canvasAgents.reasons).toContain("no_injection");
+      expect(shape.canvasAgents.reasons).not.toContain("skill_missing");
+      expect(shape.canvasAgents.reasons).not.toContain("hook_missing");
+    });
+
+    it("is what `state` answers once a built-in is not in the injected list", () => {
+      // Every built-in is injected today; take one out for the duration.
+      const list = INJECTED_AGENTS as unknown as string[];
+      const at = list.indexOf("ama");
+      list.splice(at, 1);
+      try {
+        expect(state("ama", options("ama")).mode).toBe("none");
+        // Writing is still refused: there is nothing to write.
+        expect(() => install("ama", options("ama"))).toThrow(
+          /no canvas injection/,
+        );
+        expect(() => uninstall("ama", options("ama"))).toThrow(
+          /no canvas injection/,
+        );
+      } finally {
+        list.splice(at, 0, "ama");
+      }
+      expect(state("ama", options("ama")).mode).toBe("canvas");
+    });
   });
 });
 
@@ -369,6 +418,18 @@ describe("canvasAgents", () => {
       terminal: "unavailable",
       reasons: ["skill_missing", "hook_missing"],
     });
+  });
+
+  it("terminal: without injection the only reason is no_injection", () => {
+    expect(canvasAgentsOf({ ...ready, injected: false })).toEqual({
+      terminal: "unavailable",
+      acp: "available",
+      reasons: ["no_injection"],
+    });
+    expect(
+      canvasAgentsOf({ ...ready, injected: false, cliInstalled: false })
+        .reasons,
+    ).toEqual(["cli_missing", "no_injection"]);
   });
 
   it("acp: none without an entry, unavailable when not installed", () => {
