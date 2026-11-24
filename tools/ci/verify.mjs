@@ -163,16 +163,16 @@ function changedFiles(ref) {
 const isWindows = process.platform === "win32";
 
 /** 跑一步，输出写进日志文件；返回 { id, ok, seconds, log }。 */
-function runStep(id, args, cwd = ".") {
+function runStep(id, args, cwd = ".", extraEnv = {}) {
   const started = Date.now();
   // Windows 的文件名里不能有冒号。
   const log = join(logDir, `${id.replace(/[^\w.-]/g, "_")}.log`);
   return new Promise((resolve) => {
     const chunks = [];
-    const child = spawn("pnpm", args, {
+    const child = spawn(isWindows ? "pnpm.cmd" : "pnpm", args, {
       cwd: join(root, cwd),
       shell: isWindows,
-      env: { ...process.env, FORCE_COLOR: "0" },
+      env: { ...process.env, FORCE_COLOR: "0", ...extraEnv },
     });
     child.stdout.on("data", (chunk) => chunks.push(chunk));
     child.stderr.on("data", (chunk) => chunks.push(chunk));
@@ -195,10 +195,22 @@ function runStep(id, args, cwd = ".") {
   });
 }
 
+export function planBuilds({ reuseWebDist = true } = {}) {
+  return [
+    ["build:web", ["--filter", "@armadra/web", "build"], ".", {}],
+    [
+      "build:desktop",
+      ["--filter", "@armadra/desktop", "build"],
+      ".",
+      reuseWebDist ? { ARMADRA_REUSE_WEB_DIST: "1" } : {},
+    ],
+  ];
+}
+
 async function sequence(steps) {
   const results = [];
-  for (const [id, args, cwd] of steps)
-    results.push(await runStep(id, args, cwd));
+  for (const [id, args, cwd, extraEnv] of steps)
+    results.push(await runStep(id, args, cwd, extraEnv));
   return results;
 }
 
@@ -239,11 +251,14 @@ async function main(argv) {
   results.push(...(await Promise.all(statics.map((id) => runStep(id, [id])))));
 
   console.log("构建");
+  const [webStep, desktopStep] = planBuilds();
+  const webResult = await runStep(...webStep);
+  results.push(webResult);
+  const [, desktopArgs, desktopCwd, desktopEnv] = webResult.ok
+    ? desktopStep
+    : planBuilds({ reuseWebDist: false })[1];
   results.push(
-    ...(await sequence([
-      ["build:web", ["--filter", "@armadra/web", "build"]],
-      ["build:desktop", ["--filter", "@armadra/desktop", "build"]],
-    ])),
+    await runStep("build:desktop", desktopArgs, desktopCwd, desktopEnv),
   );
 
   if (!noTest) {

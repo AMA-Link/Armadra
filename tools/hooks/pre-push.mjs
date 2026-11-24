@@ -185,11 +185,19 @@ export function planChecks(files, { base, exists = () => true } = {}) {
     if (everything || files.some((file) => suite.when.test(file)))
       statics.push({ id: suite.id, args: [suite.id] });
 
-  const builds = BUILDS.filter(
+  const selectedBuilds = BUILDS.filter(
     (build) =>
       everything ||
       files.some((file) => build.when.test(file) && !TEST_SOURCE.test(file)),
-  ).map(({ id, args }) => ({ id, args }));
+  );
+  const buildsWeb = selectedBuilds.some((build) => build.id === "build:web");
+  const builds = selectedBuilds.map(({ id, args }) => ({
+    id,
+    args,
+    ...(id === "build:desktop" && buildsWeb
+      ? { env: { ARMADRA_REUSE_WEB_DIST: "1" } }
+      : {}),
+  }));
 
   const tests = planTests(files, { base }).runs.map((run) => ({
     id: `test:${run.id}`,
@@ -354,7 +362,7 @@ function runStep(step, env) {
     const child = spawn("pnpm", step.args, {
       cwd: join(ROOT, step.cwd ?? "."),
       shell: isWindows,
-      env: { ...cleanEnv(), FORCE_COLOR: "0", ...env },
+      env: { ...cleanEnv(), FORCE_COLOR: "0", ...step.env, ...env },
     });
     child.stdout.on("data", (chunk) => chunks.push(chunk));
     child.stderr.on("data", (chunk) => chunks.push(chunk));
@@ -436,6 +444,7 @@ async function probes(files) {
         {
           id: "e2e:build:desktop",
           args: ["--filter", "@armadra/desktop", "build"],
+          env: { ARMADRA_REUSE_WEB_DIST: "1" },
         },
         {
           id: "e2e:build:server",
@@ -569,8 +578,19 @@ async function main(argv, input) {
       )),
     );
   }
-  if (results.every((result) => result.ok))
-    results.push(...(await sequence(plan.builds.filter(keep))));
+  if (results.every((result) => result.ok)) {
+    const activeBuilds = plan.builds.filter(keep);
+    const hasWebBuild = activeBuilds.some((step) => step.id === "build:web");
+    results.push(
+      ...(await sequence(
+        activeBuilds.map((step) =>
+          step.id === "build:desktop" && !hasWebBuild
+            ? { ...step, env: undefined }
+            : step,
+        ),
+      )),
+    );
+  }
   if (results.every((result) => result.ok))
     results.push(...(await sequence(plan.tests.filter(keep))));
   if (results.every((result) => result.ok) && !plan.docsOnly)

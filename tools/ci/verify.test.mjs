@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { planTests } from "./verify.mjs";
+import { planBuilds, planTests } from "./verify.mjs";
 
 const BASE = "abc123";
 const ids = (plan) => plan.runs.map((run) => run.id);
@@ -101,4 +101,12 @@ test("只改文档与 tools：不跑包测试（tools 的 node:test 在静态阶
     base: BASE,
   });
   assert.deepEqual(ids(plan), []);
+});
+
+test("构建阶段同时跑 web 与 desktop 时，desktop 复用已构建的页面产物", () => {
+  const steps = planBuilds();
+  assert.equal(steps[0][0], "build:web");
+  assert.equal(steps[1][0], "build:desktop");
+  assert.deepEqual(steps[1][3], { ARMADRA_REUSE_WEB_DIST: "1" });
+  assert.deepEqual(planBuilds({ reuseWebDist: false })[1][3], {});
 });
