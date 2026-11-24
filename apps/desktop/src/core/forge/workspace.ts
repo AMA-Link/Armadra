@@ -23,6 +23,7 @@ import { gitService } from "../git";
 import { executeOn, type ExecutionTarget } from "../remote/execute";
 import { CoreFailure } from "../http/errors";
 import { canonicalize } from "../workspaces/roots";
+import { relative, isAbsolute } from "node:path";
 import { getWorkspace } from "../workspaces/table";
 import type { DatabaseSync } from "node:sqlite";
 import {
@@ -37,7 +38,7 @@ import { RemoteSelectionStore } from "./selection";
 import type { ForgeDetection, ForgeService } from "./service";
 import { WARM_DEADLINE_MS, settleWithin } from "./deadline";
 import { SshAliasResolver } from "./ssh-alias";
-import { forgeError } from "./types";
+import { type ForgeRepo, forgeError } from "./types";
 
 export type WorkspaceRepositoryReason =
   "ok" | "notGit" | "noRemote" | "remoteHostUnavailable";
@@ -88,11 +89,37 @@ export type RemoteHostReader = (target: ExecutionTarget) => Promise<unknown>;
 export const realRemoteHostReader: RemoteHostReader = async (target) =>
   await executeOn(target, "git.remotes", { path: "." });
 
+/** 在执行主机上读一个目录的 git 状态（`git.status`）；连不上、不支持时抛。 */
+export type RemoteStatusReader = (
+  target: ExecutionTarget,
+  path: string,
+) => Promise<unknown>;
+
+export const realRemoteStatusReader: RemoteStatusReader = async (
+  target,
+  path,
+) => await executeOn(target, "git.status", { path });
+
+/** 一个节点此刻所在分支对应的 head（契约 §116）。 */
+export interface NodeBranch {
+  /** 基仓库：工作空间选中的 remote，`<主机>/<owner>/<名字>`（契约 §111.1）。 */
+  readonly repo: string;
+  /** head 仓库里的分支名（有 upstream 时是 upstream 的分支名）。 */
+  readonly branch: string;
+  /** head 所在仓库；fork 时是 fork 仓库，否则等于基仓库。 */
+  readonly head: {
+    readonly repo: string;
+    readonly owner: string;
+    readonly name: string;
+  };
+}
+
 export interface WorkspaceRepositoryOptions {
   readonly database: DatabaseSync;
   readonly forge: ForgeService;
   readonly git?: GitReader;
   readonly remoteHost?: RemoteHostReader;
+  readonly remoteStatus?: RemoteStatusReader;
   readonly ssh?: SshAliasResolver;
   readonly now?: () => number;
   /**
@@ -174,11 +201,13 @@ export class WorkspaceRepositoryService {
   readonly selections: RemoteSelectionStore;
   private readonly git: GitReader;
   private readonly remoteHost: RemoteHostReader;
+  private readonly remoteStatus: RemoteStatusReader;
   private readonly ssh: SshAliasResolver;
 
   constructor(private readonly options: WorkspaceRepositoryOptions) {
     this.git = options.git ?? realGitReader;
     this.remoteHost = options.remoteHost ?? realRemoteHostReader;
+    this.remoteStatus = options.remoteStatus ?? realRemoteStatusReader;
     this.ssh = options.ssh ?? new SshAliasResolver();
     this.selections = new RemoteSelectionStore(options.database, options.now);
   }
@@ -367,4 +396,152 @@ export class WorkspaceRepositoryService {
     if (remote === undefined) return undefined;
     return (await this.detect(remote.url, workspaceId, located.remoteHost)).url;
   }
+
+  /**
+   * 一个节点的 cwd 此刻在哪个分支上，以及那个分支该去哪个仓库找 PR（契约 §116）。
+   * 读不到、游离 HEAD、分支就是默认分支、平台不认识、执行主机不可达，一律答
+   * `null`，由调用方下次再试。
+   *
+   * 本机：`symbolic-ref` 取分支，有 upstream 就按 upstream 的 remote 与分支名识别
+   * head（与基仓库不同就是 fork）；没有 upstream 时按基仓库同名分支。cwd 不在
+   * 工作空间根的仓库里（嵌套 clone）时，用 cwd 自己的 remote 选基仓库。执行主机：
+   * 只读 `git.status` 的分支，按基仓库同名分支，不识别 fork。
+   */
+  async branchAt(workspaceId: string, cwd: string): Promise<NodeBranch | null> {
+    try {
+      return await this.readBranch(workspaceId, cwd);
+    } catch {
+      return null;
+    }
+  }
+
+  private async readBranch(
+    workspaceId: string,
+    cwd: string,
+  ): Promise<NodeBranch | null> {
+    const located = await this.locate(workspaceId);
+    if (located.reason !== "ok") return null;
+    const workspace = getWorkspace(this.options.database, workspaceId);
+    if (located.remoteHost) {
+      return await this.remoteBranch(located, cwd, {
+        rootPath: workspace.rootPath,
+        executionHostId: workspace.executionHostId,
+      });
+    }
+    const top = await this.git(cwd, ["rev-parse", "--show-toplevel"]);
+    if (top.status !== 0 || top.stdout.trim() === "") return null;
+    let remotes = located.remotes;
+    let user = this.selections.get(workspaceId);
+    let ghResolved = located.ghResolved;
+    const rootTop = await this.git(canonicalize(workspace.rootPath), [
+      "rev-parse",
+      "--show-toplevel",
+    ]);
+    if (rootTop.stdout.trim() !== top.stdout.trim()) {
+      const listed = await this.git(cwd, ["remote", "-v"]);
+      remotes = parseRemotes(listed.stdout).slice(0, MAX_REMOTES);
+      user = null;
+      const resolved = await this.git(cwd, [
+        "config",
+        "--get-regexp",
+        "^remote\\..*\\.gh-resolved$",
+      ]);
+      ghResolved =
+        resolved.status === 0 ? parseGhResolved(resolved.stdout) : [];
+    }
+    const chosen = chooseRemote(remotes, { user, ghResolved });
+    const base = remotes.find((entry) => entry.name === chosen?.name);
+    if (base === undefined) return null;
+    const baseRepo = await this.repoOf(base.url, workspaceId, false);
+    if (baseRepo === null) return null;
+    const branch = (
+      await this.git(cwd, ["symbolic-ref", "--short", "-q", "HEAD"])
+    ).stdout.trim();
+    if (branch === "") return null;
+    let head = { ref: branch, repo: baseRepo };
+    const upstream = await this.git(cwd, [
+      "rev-parse",
+      "--abbrev-ref",
+      "--symbolic-full-name",
+      "@{u}",
+    ]);
+    const tracked = upstream.status === 0 ? upstream.stdout.trim() : "";
+    const via = [...remotes]
+      .sort((a, b) => b.name.length - a.name.length)
+      .find((entry) => tracked.startsWith(`${entry.name}/`));
+    if (via !== undefined) {
+      const ref = tracked.slice(via.name.length + 1);
+      const repo =
+        via.name === base.name
+          ? baseRepo
+          : await this.repoOf(via.url, workspaceId, false);
+      // 另一个主机上的「fork」没有意义：按读不到处理。
+      if (repo === null || repo.host !== baseRepo.host) return null;
+      if (ref !== "") head = { ref, repo };
+    }
+    const symbolic = await this.git(cwd, [
+      "symbolic-ref",
+      "--short",
+      "-q",
+      `refs/remotes/${base.name}/HEAD`,
+    ]);
+    const defaultBranch = symbolic.stdout.trim().slice(base.name.length + 1);
+    if (isDefaultBranch(head.ref, defaultBranch)) return null;
+    return nodeBranch(baseRepo, head);
+  }
+
+  private async remoteBranch(
+    located: Located,
+    cwd: string,
+    target: ExecutionTarget,
+  ): Promise<NodeBranch | null> {
+    const path = relative(target.rootPath, cwd);
+    if (path.startsWith("..") || isAbsolute(path)) return null;
+    const status = (await this.remoteStatus(
+      target,
+      path === "" ? "." : path,
+    )) as { branch?: unknown } | null;
+    const branch = typeof status?.branch === "string" ? status.branch : "";
+    if (branch === "") return null;
+    const chosen = chooseRemote(located.remotes, {
+      user: this.selections.get(located.workspaceId),
+      ghResolved: [],
+    });
+    const base = located.remotes.find((entry) => entry.name === chosen?.name);
+    if (base === undefined) return null;
+    const baseRepo = await this.repoOf(base.url, located.workspaceId, true);
+    if (baseRepo === null || isDefaultBranch(branch, "")) return null;
+    return nodeBranch(baseRepo, { ref: branch, repo: baseRepo });
+  }
+
+  /** 一个 remote 地址 → 平台认识的仓库；不认识的 `null`。 */
+  private async repoOf(
+    url: string,
+    workspaceId: string,
+    remoteHost: boolean,
+  ): Promise<ForgeRepo | null> {
+    const seen = await this.detect(url, workspaceId, remoteHost);
+    return seen.detection?.forge == null ? null : seen.detection.repository;
+  }
+}
+
+/** 默认分支：已知就比对，不知道时按 main / master 算。 */
+function isDefaultBranch(ref: string, known: string): boolean {
+  return known !== "" ? ref === known : ref === "main" || ref === "master";
+}
+
+function nodeBranch(
+  base: ForgeRepo,
+  head: { ref: string; repo: ForgeRepo },
+): NodeBranch {
+  const key = (repo: ForgeRepo) => `${repo.host}/${repo.owner}/${repo.name}`;
+  return {
+    repo: key(base),
+    branch: head.ref,
+    head: {
+      repo: key(head.repo),
+      owner: head.repo.owner,
+      name: head.repo.name,
+    },
+  };
 }
