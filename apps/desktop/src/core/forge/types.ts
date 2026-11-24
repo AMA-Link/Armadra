@@ -397,6 +397,19 @@ export interface Forge {
    * pullReviewers` 拼出。
    */
   pullSnapshot?(repo: ForgeRepo, number: number): Promise<ForgePullSnapshot>;
+  /**
+   * 某个 head 分支上开着的 PR（只要 open；契约 §116）。`owner` 是 head 所在仓库
+   * 的所有者，fork 时是 fork 仓库的所有者。没实现的平台视为查不到。
+   */
+  pullsByHead?(
+    repo: ForgeRepo,
+    head: {
+      readonly owner: string;
+      readonly ref: string;
+      /** head 仓库名；缺省与基仓库同名（fork 改过名时要给）。 */
+      readonly name?: string;
+    },
+  ): Promise<readonly ForgePull[]>;
   /** PR 的提交，按时间从早到晚，最多 {@link MAX_COMMITS} 个。 */
   pullCommits(repo: ForgeRepo, number: number): Promise<readonly ForgeCommit[]>;
   /** 筛选下拉的候选：标签、里程碑、可指派的人。 */

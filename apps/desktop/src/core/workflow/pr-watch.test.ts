@@ -23,6 +23,7 @@ import {
 } from "./pr-watch";
 import { stageOf } from "./work-items";
 import { POLL_RETENTION_MS, bindThread } from "./threads";
+import { loadSnapshots } from "./pull-snapshots";
 import { recordTaskStart, taskRun } from "./task-runs";
 
 /**
@@ -44,6 +45,7 @@ class ScriptedForge {
   issue: ForgeIssue = issueOf("open");
   checkReads = 0;
   conversationKinds: (string | undefined)[] = [];
+  conversationFailure: ForgeError | undefined;
 
   readonly remote = {
     getPull: async () => {
@@ -58,6 +60,10 @@ class ScriptedForge {
     },
     conversation: async (_repo: unknown, _number: number, kind?: string) => {
       this.conversationKinds.push(kind);
+      if (this.conversationFailure !== undefined) {
+        clock += 1;
+        throw this.conversationFailure;
+      }
       return { items: this.items, pollIntervalMs: this.pollIntervalMs };
     },
     checks: async () => {
@@ -814,5 +820,31 @@ describe("checks events and snapshots", () => {
     });
     await watch.tick();
     expect(remote.reads).toBe(1);
+  });
+});
+
+describe("a failed discussion read after a good snapshot", () => {
+  const KEY_FAILURE = new ForgeError("unavailable", "RESPONSE_MALFORMED");
+
+  function stale(): boolean | undefined {
+    return loadSnapshots(
+      fixture.database,
+      [{ repo: REPO, number: 7 }],
+      clock,
+    )[0]?.stale;
+  }
+
+  it("keeps the freshly read snapshot current, and marks it stale only when the snapshot itself failed", async () => {
+    setUp();
+    remote.conversationFailure = KEY_FAILURE;
+    await watch.tick();
+    expect(logs.some((line) => line.startsWith("PR 轮询失败"))).toBe(true);
+    expect(stale()).toBe(false);
+    // 快照本身读不到：照旧标成过期。
+    remote.conversationFailure = undefined;
+    remote.failure = new ForgeError("unavailable", "RESPONSE_MALFORMED");
+    clock += MAX_BACKOFF_MS;
+    await watch.tick();
+    expect(stale()).toBe(true);
   });
 });

@@ -181,7 +181,11 @@ export class PrWatch {
               failures,
             });
             // 只记固定的种类，不记远端原话，更不会有凭据。
-            if (thread.kind === "pull") {
+            // 本轮快照已经读成功、只是后面读评论失败时，刚刷新的快照不算过期。
+            if (
+              thread.kind === "pull" &&
+              !this.refreshed.has(`${thread.repo}#${thread.number}`)
+            ) {
               markSnapshotFailed(
                 database,
                 thread.repo,

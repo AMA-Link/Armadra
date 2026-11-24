@@ -29,6 +29,8 @@ export interface FakePull {
   mergeSha?: string;
   /** head 在别人的仓库里（`head.repo_id` 与 `base.repo_id` 不同）。 */
   fork?: boolean;
+  /** head 仓库的所有者（默认：fork 时 `forker`，否则基仓库所有者）。 */
+  headOwner?: string;
   /** 检查还没过：`merge_when_checks_succeed` 时排上（201）而不是当场合并。 */
   checksPending?: boolean;
   /** 时间线事件的类型，按时间先后。 */
@@ -186,6 +188,9 @@ export async function startFakeGitea(): Promise<FakeGitea> {
       sha: pull.sha,
       label: pull.head,
       repo_id: pull.fork === true ? 2 : 1,
+      repo: {
+        full_name: `${pull.headOwner ?? (pull.fork === true ? "forker" : OWNER)}/${REPO}`,
+      },
     },
     mergeable: pull.mergeable,
     merged: pull.merged,

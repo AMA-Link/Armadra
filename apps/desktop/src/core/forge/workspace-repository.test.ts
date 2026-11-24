@@ -28,6 +28,7 @@ import { DomainError } from "../workspaces/support";
 import {
   type GitReader,
   type RemoteHostReader,
+  type RemoteStatusReader,
   WorkspaceRepositoryService,
 } from "./workspace";
 
@@ -78,6 +79,7 @@ interface Harness {
   readonly forge: ForgeService;
   readonly service: WorkspaceRepositoryService;
   readonly probeCalls: string[];
+  readonly root: string;
   call(
     method: string,
     path: string,
@@ -95,6 +97,8 @@ async function harness(options: {
   /** 这些主机的探测永远不答（模拟不可达的内网主机）。 */
   hangHosts?: readonly string[];
   warmDeadlineMs?: number;
+  git?: GitReader;
+  remoteStatus?: RemoteStatusReader;
 }): Promise<Harness> {
   const fixture = await githubFixture();
   closing.push(() => fixture.close());
@@ -150,7 +154,10 @@ async function harness(options: {
   const service = new WorkspaceRepositoryService({
     database: fixture.db.database,
     forge,
-    git: gitFor(options.repo),
+    git: options.git ?? gitFor(options.repo),
+    ...(options.remoteStatus === undefined
+      ? {}
+      : { remoteStatus: options.remoteStatus }),
     ...(options.remoteHost === undefined
       ? {}
       : { remoteHost: options.remoteHost }),
@@ -180,7 +187,7 @@ async function harness(options: {
       body: any;
     };
   };
-  return { fixture, forge, service, probeCalls, call };
+  return { fixture, forge, service, probeCalls, root, call };
 }
 
 const FORK = verbose({
@@ -809,5 +816,175 @@ describe("预热整体限时", () => {
     );
     expect(byHost["git.intranet.example"]).toBeNull();
     expect(byHost["gitea.lan.example"]).toBe("gitea");
+  });
+});
+
+describe("branchAt（契约 §116）", () => {
+  interface Replies {
+    top?: string;
+    branch?: string;
+    upstream?: string;
+    head?: string;
+    cwdTop?: string;
+    cwdRemotes?: string;
+    remotes: string;
+  }
+
+  /** 按 cwd 与命令回答；以 `/lib` 结尾的 cwd 是嵌套 clone。 */
+  function git(replies: Replies): GitReader {
+    return async (dir, args) => {
+      const verb = args.join(" ");
+      const nested = /[\\/]lib$/.test(dir);
+      const none = { status: 1, stdout: "" };
+      const out = (stdout: string | undefined) =>
+        stdout === undefined ? none : { status: 0, stdout: `${stdout}\n` };
+      if (verb === "rev-parse --show-toplevel") {
+        return out(
+          nested ? (replies.cwdTop ?? "/other") : (replies.top ?? "/repo"),
+        );
+      }
+      if (verb === "remote -v") {
+        return out(nested ? replies.cwdRemotes : replies.remotes);
+      }
+      if (verb === "symbolic-ref --short -q HEAD") return out(replies.branch);
+      if (verb.startsWith("rev-parse --abbrev-ref"))
+        return out(replies.upstream);
+      if (verb.startsWith("symbolic-ref --short -q refs/remotes/")) {
+        return out(replies.head);
+      }
+      return none;
+    };
+  }
+
+  async function setup(replies: Replies) {
+    return await harness({ repo: { remotes: "" }, git: git(replies) });
+  }
+
+  const ORIGIN = verbose({ origin: "https://github.com/acme/app.git" });
+  const FORKED = verbose({
+    origin: "https://github.com/me/app.git",
+    upstream: "https://github.com/acme/app.git",
+  });
+
+  it("本机：有 upstream 同仓库就是基仓库同名分支", async () => {
+    const h = await setup({
+      remotes: ORIGIN,
+      branch: "feat/x",
+      upstream: "origin/feat/x",
+      head: "origin/main",
+    });
+    expect(await h.service.branchAt(WS, h.root)).toEqual({
+      repo: "github.com/acme/app",
+      branch: "feat/x",
+      head: { repo: "github.com/acme/app", owner: "acme", name: "app" },
+    });
+  });
+
+  it("本机：upstream 指向 fork 时 head 是 fork 仓库，分支名取 upstream 的", async () => {
+    const h = await setup({
+      remotes: FORKED,
+      branch: "work",
+      upstream: "origin/feat/y",
+    });
+    expect(await h.service.branchAt(WS, h.root)).toEqual({
+      repo: "github.com/acme/app",
+      branch: "feat/y",
+      head: { repo: "github.com/me/app", owner: "me", name: "app" },
+    });
+  });
+
+  it("本机：没有 upstream 按基仓库同名分支", async () => {
+    const h = await setup({ remotes: FORKED, branch: "feat/z" });
+    expect(await h.service.branchAt(WS, h.root)).toMatchObject({
+      branch: "feat/z",
+      head: { owner: "acme" },
+    });
+  });
+
+  it("游离 HEAD、默认分支、不是 git 都答 null", async () => {
+    const detached = await setup({ remotes: ORIGIN });
+    expect(await detached.service.branchAt(WS, detached.root)).toBeNull();
+    const onDefault = await setup({
+      remotes: ORIGIN,
+      branch: "trunk",
+      head: "origin/trunk",
+    });
+    expect(await onDefault.service.branchAt(WS, onDefault.root)).toBeNull();
+    const heuristic = await setup({ remotes: ORIGIN, branch: "main" });
+    expect(await heuristic.service.branchAt(WS, heuristic.root)).toBeNull();
+    const notGit = await setup({ remotes: ORIGIN, branch: "x", top: "" });
+    expect(await notGit.service.branchAt(WS, notGit.root)).toBeNull();
+  });
+
+  it("嵌套 clone 用 cwd 自己的 remote 选基仓库", async () => {
+    const h = await setup({
+      remotes: ORIGIN,
+      cwdRemotes: verbose({ origin: "https://github.com/other/lib.git" }),
+      branch: "feat/n",
+    });
+    expect(await h.service.branchAt(WS, join(h.root, "lib"))).toMatchObject({
+      repo: "github.com/other/lib",
+    });
+  });
+
+  it("平台不认识的主机答 null", async () => {
+    const h = await setup({
+      remotes: verbose({ origin: "https://git.unknown.test/a/b.git" }),
+      branch: "feat/q",
+    });
+    expect(await h.service.branchAt(WS, h.root)).toBeNull();
+  });
+
+  const HOST_REMOTES = [
+    {
+      name: "origin",
+      fetchUrl: "https://[redacted]@github.com/acme/app.git",
+      pushUrl: "",
+      redacted: true,
+    },
+  ];
+
+  it("执行主机：读 git.status 的分支，按基仓库同名分支", async () => {
+    const paths: string[] = [];
+    const h = await harness({
+      repo: { remotes: "" },
+      remoteHost: async () => HOST_REMOTES,
+      remoteStatus: async (_target, path) => {
+        paths.push(path);
+        return { branch: "feat/r" };
+      },
+    });
+    const root = h.root;
+    expect(await h.service.branchAt(WS, join(root, "pkg"))).toEqual({
+      repo: "github.com/acme/app",
+      branch: "feat/r",
+      head: { repo: "github.com/acme/app", owner: "acme", name: "app" },
+    });
+    expect(paths).toEqual(["pkg"]);
+    expect(await h.service.branchAt(WS, "/elsewhere")).toBeNull();
+  });
+
+  it("执行主机不可达或游离 HEAD 答 null", async () => {
+    const down = await harness({
+      repo: { remotes: "" },
+      remoteHost: async () => HOST_REMOTES,
+      remoteStatus: async () => {
+        throw new Error("offline");
+      },
+    });
+    expect(await down.service.branchAt(WS, down.root)).toBeNull();
+    const detached = await harness({
+      repo: { remotes: "" },
+      remoteHost: async () => HOST_REMOTES,
+      remoteStatus: async () => ({ branch: null }),
+    });
+    expect(await detached.service.branchAt(WS, detached.root)).toBeNull();
+    const gone = await harness({
+      repo: { remotes: "" },
+      remoteHost: async () => {
+        throw new Error("offline");
+      },
+    });
+    expect(await gone.service.branchAt(WS, gone.root)).toBeNull();
   });
 });
