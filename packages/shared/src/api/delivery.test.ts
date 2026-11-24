@@ -51,3 +51,20 @@ describe("delivery wire schemas", () => {
     ).toBe(false);
   });
 });
+
+describe("delivery.changed as a workspace event", () => {
+  it("is part of the workspace event union", async () => {
+    const { workspaceEventSchema } = await import("./events.js");
+    const frame = {
+      type: "delivery.changed",
+      boardId: "b",
+      nodeId: "n",
+      lane: "inReview",
+      phrase: "checksRunning",
+    };
+    expect(workspaceEventSchema.safeParse(frame).success).toBe(true);
+    expect(
+      workspaceEventSchema.safeParse({ ...frame, lane: "nope" }).success,
+    ).toBe(false);
+  });
+});

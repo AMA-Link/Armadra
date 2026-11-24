@@ -100,6 +100,12 @@ export const deliveryChangedPayloadSchema = z.object({
   /** PR details changed while lane and phrase did not: re-read the route. */
   pullsChanged: z.boolean().optional(),
 });
+/** The workspace-event frame: the payload plus its type tag. */
+export const deliveryChangedEventSchema = deliveryChangedPayloadSchema.extend({
+  type: z.literal("delivery.changed"),
+});
+export type DeliveryChangedEvent = z.infer<typeof deliveryChangedEventSchema>;
+
 export type DeliveryChangedPayload = z.infer<
   typeof deliveryChangedPayloadSchema
 >;
