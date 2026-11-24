@@ -9,6 +9,8 @@
  * 远端的错误原话不往外传，只有 {@link ForgeError} 的固定种类。
  */
 
+import type { PullSnapshot } from "@armadra/shared";
+
 /** 识别出的平台。Forgejo 与 Gitea 同一套 API，记作 `gitea`。 */
 export const FORGE_KINDS = ["github", "gitea", "gitlab"] as const;
 export type ForgeKind = (typeof FORGE_KINDS)[number];
@@ -338,6 +340,15 @@ export interface MergeInput {
 }
 
 /**
+ * 平台读到的一份 PR 快照（契约 §115）：没有 `repo`（调用方知道）、`fetchedAtMs` 与
+ * `stale`（存储与读取时才有）。不含标题以外的任何散文。
+ */
+export type ForgePullSnapshot = Omit<
+  PullSnapshot,
+  "repo" | "fetchedAtMs" | "stale"
+>;
+
+/**
  * 一个平台的实现。每个方法都对着**这台机器配置的** API 根，仓库只给 owner 与
  * 名字，从不让请求重新指向别的服务。
  */
@@ -380,6 +391,12 @@ export interface Forge {
     repo: ForgeRepo,
     number: number,
   ): Promise<readonly ForgeReviewer[]>;
+  /**
+   * 一次读全一个 PR 的状态、评审结论、检查、可合并性与父 PR（契约 §115）。
+   * 没实现的（测试里的假平台）由 `snapshotOf` 用 `getPull + checks +
+   * pullReviewers` 拼出。
+   */
+  pullSnapshot?(repo: ForgeRepo, number: number): Promise<ForgePullSnapshot>;
   /** PR 的提交，按时间从早到晚，最多 {@link MAX_COMMITS} 个。 */
   pullCommits(repo: ForgeRepo, number: number): Promise<readonly ForgeCommit[]>;
   /** 筛选下拉的候选：标签、里程碑、可指派的人。 */
