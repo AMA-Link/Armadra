@@ -184,3 +184,144 @@ describe("模板升级（契约 §15.6 追加）", () => {
     ).toBe(true);
   });
 });
+
+describe("草案 v2（契约 §15.1 追加）", () => {
+  function v2(): Record<string, unknown> {
+    const draft = sample();
+    draft.version = 2;
+    draft.description = "# 说明";
+    draft.contract = {
+      text: "共享约定",
+      owns: { reviewerA: ["src/a/"], lead: ["docs/**"] },
+    };
+    (draft.roles as Record<string, unknown>[])[0]!.tier = "strong";
+    const collect = (draft.steps as Record<string, unknown>[])[2]!;
+    collect.verify = { commands: ["pnpm test"], checklist: ["无遗漏"] };
+    collect.maxRetries = 1;
+    return draft;
+  }
+
+  it("reads v1, v2 and old revision numbers", () => {
+    for (const version of [1, 2, 4]) {
+      const draft = sample();
+      draft.version = version;
+      expect(workflowDraftSchema.safeParse(draft).success).toBe(true);
+    }
+    expect(
+      workflowDraftSchema.safeParse({ ...sample(), version: 0 }).success,
+    ).toBe(false);
+  });
+
+  it("accepts v2 fields and does not rewrite them", () => {
+    const parsed = workflowDraftSchema.parse(v2());
+    expect(parsed.contract?.owns?.reviewerA).toEqual(["src/a/"]);
+    expect(parsed.roles[0]?.tier).toBe("strong");
+    const plain = workflowDraftSchema.parse(sample());
+    expect("contract" in plain).toBe(false);
+    expect("description" in plain).toBe(false);
+    const collect = plain.steps[2]!;
+    expect("verify" in collect).toBe(false);
+    expect("maxRetries" in collect).toBe(false);
+  });
+
+  it("rejects bad tier, verify, maxRetries and owns", () => {
+    const tier = v2();
+    (tier.roles as Record<string, unknown>[])[0]!.tier = "ultra";
+    expect(workflowDraftSchema.safeParse(tier).success).toBe(false);
+
+    const empty = v2();
+    (empty.steps as Record<string, unknown>[])[2]!.verify = {
+      commands: [],
+      checklist: null,
+    };
+    expect(workflowDraftSchema.safeParse(empty).success).toBe(false);
+
+    const retries = v2();
+    (retries.steps as Record<string, unknown>[])[2]!.maxRetries = 4;
+    expect(workflowDraftSchema.safeParse(retries).success).toBe(false);
+
+    const orphan = v2();
+    const step = (orphan.steps as Record<string, unknown>[])[2]!;
+    delete step.verify;
+    expect(workflowDraftSchema.safeParse(orphan).success).toBe(false);
+
+    const owns = v2();
+    (owns.contract as { owns: Record<string, string[]> }).owns.ghost = ["x"];
+    expect(workflowDraftSchema.safeParse(owns).success).toBe(false);
+
+    const long = v2();
+    (long.contract as { text: string }).text = "x".repeat(6001);
+    expect(workflowDraftSchema.safeParse(long).success).toBe(false);
+
+    const many = v2();
+    (many.steps as Record<string, unknown>[])[2]!.verify = {
+      commands: ["a", "b", "c", "d", "e"],
+    };
+    expect(workflowDraftSchema.safeParse(many).success).toBe(false);
+  });
+
+  it("run steps and events carry optional round, verdict and reason", () => {
+    const base = {
+      stepId: "s3",
+      kind: "collect",
+      role: "lead",
+      status: "waiting",
+      nodeId: null,
+      startedAt: null,
+      endedAt: null,
+      reason: "verifyFailed",
+      outputs: [],
+      decision: null,
+      note: null,
+    };
+    const run = (step: Record<string, unknown>) =>
+      workflowRunSchema.safeParse({
+        id: "r",
+        templateId: "t",
+        templateVersion: 1,
+        title: "x",
+        workspaceId: "w",
+        boardId: "b",
+        frameId: null,
+        params: {},
+        status: "waiting",
+        reason: null,
+        roles: {},
+        startedAt: "2026-11-24T00:00:00.000Z",
+        endedAt: null,
+        steps: [step],
+      }).success;
+    expect(run(base)).toBe(true);
+    expect(
+      run({
+        ...base,
+        round: 2,
+        verdict: { pass: false, issues: [{ role: "reviewerA", text: "漏了" }] },
+      }),
+    ).toBe(true);
+    expect(run({ ...base, round: 1, verdict: null })).toBe(true);
+    expect(run({ ...base, round: -1 })).toBe(false);
+    expect(
+      workspaceEventSchema.safeParse({
+        type: "workflow.run",
+        runId: "r",
+        boardId: "b",
+        status: "waiting",
+        stepId: "s3",
+        stepStatus: "waiting",
+        round: 1,
+      }).success,
+    ).toBe(true);
+    expect(
+      workspaceEventSchema.safeParse({
+        type: "workflow.gate",
+        runId: "r",
+        boardId: "b",
+        stepId: "s3",
+        label: "s3",
+        state: "waiting",
+        reason: "verdictMissing",
+      }).success,
+    ).toBe(true);
+  });
+});

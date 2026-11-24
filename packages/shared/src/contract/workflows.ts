@@ -47,6 +47,8 @@ const draftRowWire = z.object({
   status: z.enum(WORKFLOW_DRAFT_STATUSES),
   templateId: z.string().nullable(),
   draft: jsonObjectSchema,
+  /** 草案的提示（档位不生效的角色 id 等）；旧服务器不带。 */
+  hints: z.object({ tierIgnored: z.array(z.string()) }).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -170,6 +172,8 @@ export const workflows = {
       templateRef.extend({
         name: z.string().optional(),
         template: jsonObjectSchema.optional(),
+        /** 模板修订号：等于库里的才改，不等 409 `template_version_stale`。 */
+        baseVersion: z.number().int().min(1),
       }),
     )
     .output(
