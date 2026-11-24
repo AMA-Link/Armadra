@@ -243,3 +243,35 @@ describe("agentNodesOfBoard", () => {
     expect(listed).toHaveLength(2); // lead 与 a
   });
 });
+
+describe("node links (契约 §116)", () => {
+  function link(nodeId: string, number: number): void {
+    fixture.database
+      .prepare(
+        "INSERT INTO node_pull_links (node_id, workspace_id, repo, number, head_ref, url, linked_at) VALUES (?, ?, ?, ?, 'x', 'u', 1)",
+      )
+      .run(nodeId, fixture.workspaceId, REPO, number);
+  }
+
+  it("a node with no work item gets the pulls linked by branch", () => {
+    const node = fixture.agentNode("branchy", "claude");
+    link(node, 7);
+    saveSnapshot(fixture.database, REPO, snap(), NOW);
+    const facts = deliveryFacts(fixture.database, node, NOW);
+    expect(facts.taskId).toBeNull();
+    expect(facts.pulls.map((pull) => pull.state)).toEqual(["open"]);
+  });
+
+  it("merges bound and linked pulls, de-duplicated by repo and number", async () => {
+    const member = await dispatch("t1");
+    bind("t1", 7);
+    link(member, 7);
+    link(member, 8);
+    saveSnapshot(fixture.database, REPO, snap(), NOW);
+    saveSnapshot(fixture.database, REPO, snap({ number: 8 }), NOW);
+    const numbers = pullsOfNode(fixture.database, member, NOW).map(
+      (pull) => pull.number,
+    );
+    expect(numbers).toEqual([7, 8]);
+  });
+});

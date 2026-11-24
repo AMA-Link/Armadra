@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import type { AgentState, DeliveryStatus, PullSnapshot } from "@armadra/shared";
 import { getAgentStatus } from "../agent/status";
 import { type DeliveryFacts, deliveryStatus } from "./delivery";
+import { linkedPulls } from "./node-pulls";
 import { loadSnapshots } from "./pull-snapshots";
 import type { TaskRun } from "./task-runs";
 import { itemsOfNode, stageOf } from "./work-items";
@@ -32,9 +33,9 @@ function latestItem(
 /**
  * 一个节点名下的 PR 快照。
  *
- * 接缝（P2）：现在只取最近那个工作项绑定的 pull 线程；节点关联的 PR
- * （`node-pulls.ts` 的 `linkedPulls`）并入这里，按 (repo, number) 去重，绑定优先。
- * 还没读到快照的 PR 先不出现。
+ * 两个来源，按 (repo, number) 去重，绑定优先：最近那个工作项绑定的 pull 线程，
+ * 和按分支找到的节点关联（`node-pulls.ts` 的 `linkedPulls`，契约 §116）。没有
+ * 工作项、只靠分支关联的节点也有 PR。还没读到快照的 PR 先不出现。
  */
 export function pullsOfNode(
   database: DatabaseSync,
@@ -49,6 +50,10 @@ export function pullsOfNode(
       repo: thread.repo,
       number: thread.number,
     });
+  }
+  for (const link of linkedPulls(database, nodeId)) {
+    const key = `${link.repo}#${link.number}`;
+    if (!keys.has(key)) keys.set(key, link);
   }
   return loadSnapshots(database, [...keys.values()], nowMs);
 }

@@ -113,6 +113,51 @@ describe("GET …/boards/{boardId}/delivery", () => {
     expect(body.nodes[0]?.pulls).toHaveLength(1);
   });
 
+  it("lists an agent node that has no work item but a branch-linked pull (taskId null)", async () => {
+    insertNode("a1", { kind: "terminal", agent: { id: "claude" } });
+    fx.database
+      .prepare(
+        "INSERT INTO node_pull_links (node_id, workspace_id, repo, number, head_ref, url, linked_at) VALUES ('a1', ?, 'h/o/r', 7, 'x', 'u', 1)",
+      )
+      .run(ws);
+    saveSnapshot(
+      fx.database,
+      "h/o/r",
+      {
+        number: 7,
+        url: "u",
+        title: "t",
+        state: "open",
+        draft: false,
+        baseRef: "main",
+        headRef: "x",
+        headSha: "s",
+        fromFork: false,
+        review: "approved",
+        checks: { read: true, headSha: "s", rollup: "success", failing: [] },
+        mergeable: "mergeable",
+        parent: { kind: "none" },
+      },
+      NOW,
+    );
+    const body = (
+      await fx.call("GET", `/api/workspaces/${ws}/boards/${board}/delivery`)
+    ).body as {
+      nodes: {
+        taskId: unknown;
+        lane: string;
+        phrase: string;
+        pulls: unknown[];
+      }[];
+    };
+    expect(body.nodes[0]).toMatchObject({
+      taskId: null,
+      lane: "readyToMerge",
+      phrase: "approved",
+    });
+    expect(body.nodes[0]?.pulls).toHaveLength(1);
+  });
+
   it("answers 404 for a board of another workspace", async () => {
     const other = createWorkspace(fx.database, {
       name: "o",
