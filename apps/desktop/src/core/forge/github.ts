@@ -61,6 +61,8 @@ import {
   MAX_LIMIT,
   MAX_NUMBER,
   type MergeInput,
+  type ForgePullSnapshot,
+  ForgeError as ForgeErrorClass,
   forgeError,
   rollupOf,
   validRefName,
@@ -78,6 +80,14 @@ import {
   searchDocument,
   searchVariables,
 } from "./github-search";
+import type { PullParent } from "@armadra/shared";
+import {
+  PARENT_DOCUMENT,
+  SNAPSHOT_DOCUMENT,
+  type SnapshotData,
+  parentOf,
+  snapshotFromNode,
+} from "./github-snapshot";
 import { hexColor, names, pageSize, text } from "./wire";
 import {
   type WireRepository,
@@ -646,6 +656,74 @@ export class GithubForge implements Forge {
         linkedIssues: more.linkedIssues,
         authorAssociation: more.authorAssociation,
       };
+    });
+  }
+
+  /**
+   * 快照（契约 §115）。GraphQL 读不到时退回 REST 的 PR：状态照给，评审、检查与
+   * 父 PR 记为「没读到」，不假装成「无需评审」。
+   */
+  pullSnapshot(repo: ForgeRepo, number: number): Promise<ForgePullSnapshot> {
+    return this.run(async () => {
+      const { client, ref } = this.target(repo);
+      try {
+        const data = (await client.graphql(SNAPSHOT_DOCUMENT, {
+          owner: ref.owner,
+          name: ref.name,
+          number,
+        })) as SnapshotData;
+        const node = data?.repository?.pr;
+        if (node === undefined || node === null) throw forgeError("notFound");
+        const base = node.baseRefName ?? "";
+        const fallback = data?.repository?.defaultBranchRef?.name;
+        let parent: PullParent = { kind: "unknown" };
+        if (node.state !== "OPEN" || base === "") {
+          parent = { kind: "none" };
+        } else if (fallback !== undefined && fallback !== "") {
+          if (base === fallback) {
+            parent = { kind: "none" };
+          } else {
+            try {
+              parent = parentOf(
+                await client.graphql(PARENT_DOCUMENT, {
+                  owner: ref.owner,
+                  name: ref.name,
+                  base,
+                }),
+              );
+            } catch {
+              parent = { kind: "unknown" };
+            }
+          }
+        }
+        return snapshotFromNode(node, parent);
+      } catch (error) {
+        if (error instanceof ForgeErrorClass && error.kind === "notFound")
+          throw error;
+        const result = await api.pull(
+          client,
+          ref,
+          numbered(number),
+          [],
+          this.service.now(),
+        );
+        const pull = fromGithubPull(result.pull, true);
+        return {
+          number: pull.number,
+          url: pull.url,
+          title: pull.title,
+          state: pull.state,
+          draft: pull.draft,
+          baseRef: pull.baseRef,
+          headRef: pull.headRef,
+          headSha: pull.headSha,
+          fromFork: pull.fromFork,
+          review: "unknown",
+          checks: { read: false },
+          mergeable: pull.mergeable,
+          parent: { kind: "unknown" },
+        };
+      }
     });
   }
 

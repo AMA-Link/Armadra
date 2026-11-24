@@ -156,6 +156,32 @@ export function recordThreadEvent(
   return Number(changes.changes) > 0;
 }
 
+/**
+ * 某个提交上已经记过的检查事件（契约 §115）：条数，和最后一条的结论（没有是
+ * `null`）。事件 id 是 `pr-checks:<key>:<sha>:<序号>:<结论>`，旧格式
+ * `pr-checks:<key>:<sha>:<结论>` 也算一条。按前缀精确比对，不用 LIKE：仓库名里
+ * 可能有 `_`。
+ */
+export function lastChecks(
+  database: DatabaseSync,
+  itemId: string,
+  key: string,
+  sha: string,
+): { count: number; rollup: string | null } {
+  const prefix = `pr-checks:${key}:${sha}:`;
+  const rows = database
+    .prepare(
+      "SELECT event_id FROM thread_events WHERE item_id = ? AND kind = 'checks' " +
+        "AND substr(event_id, 1, ?) = ? ORDER BY rowid DESC",
+    )
+    .all(itemId, prefix.length, prefix) as { event_id: string }[];
+  const last = rows[0]?.event_id;
+  return {
+    count: rows.length,
+    rollup: last === undefined ? null : last.slice(last.lastIndexOf(":") + 1),
+  };
+}
+
 /** 这个机器人在这个 PR 上已经投过几条（记账不投的不算）。 */
 export function botRounds(
   database: DatabaseSync,

@@ -14,6 +14,9 @@
  *     「已排上」字段，详情从时间线最后一条排程 / 撤销事件读。
  */
 
+import type { PullChecks, PullParent, PullReview } from "@armadra/shared";
+import { checksOf as checksOfSummary } from "./snapshot";
+import { reviewVerdict, settleMergeable } from "./gitea-snapshot";
 import {
   type CreatePullInput,
   DEFAULT_LIMIT,
@@ -22,6 +25,7 @@ import {
   type ForgeCheckState,
   type ForgeBranchDeletion,
   type ForgeChecks,
+  type ForgePullSnapshot,
   type ForgeCommit,
   type ForgeFacets,
   type ForgeReviewer,
@@ -143,6 +147,7 @@ interface WireBranch {
 }
 /** `GET /repos/{o}/{r}/branches/{b}`。 */
 interface WireRepoBranch {
+  required_approvals?: number;
   name?: string;
   commit?: { id?: string } | null;
   protected?: boolean;
@@ -174,6 +179,7 @@ interface WirePull {
 }
 /** `GET /repos/{o}/{r}` 里管合并方式的几项；老版本缺字段时按允许。 */
 interface WireRepo {
+  default_branch?: string;
   allow_merge_commits?: boolean;
   allow_squash_merge?: boolean;
   allow_rebase?: boolean;
@@ -386,6 +392,7 @@ interface WireReview {
   user?: WireUser | null;
   state?: string;
   dismissed?: boolean;
+  official?: boolean;
   submitted_at?: string;
 }
 interface WireCommit {
@@ -578,8 +585,14 @@ export interface GiteaOptions {
 export class GiteaForge implements Forge {
   readonly kind = "gitea" as const;
   private readonly http: ForgeTransport;
+  private readonly apiBase: string;
+  private readonly defaults = new Map<
+    string,
+    { readonly branch: string; readonly at: number }
+  >();
 
   constructor(options: GiteaOptions) {
+    this.apiBase = options.apiBase;
     this.http = new ForgeTransport({
       base: options.apiBase,
       token: options.token,
@@ -1047,6 +1060,151 @@ export class GiteaForge implements Forge {
     }
     const checks = await this.statusList(repo, pull.headSha);
     return { headSha: pull.headSha, rollup: rollupOf(checks), checks };
+  }
+
+  /** 仓库的默认分支，按仓库缓存一小时。 */
+  private async defaultBranch(repo: ForgeRepo): Promise<string> {
+    const key = `${repo.owner}/${repo.name}`;
+    const hit = this.defaults.get(key);
+    if (hit !== undefined && Date.now() - hit.at < 3_600_000) return hit.branch;
+    const value = decodeJson<WireRepo>(await this.http.get(repoPath(repo)));
+    const branch = text(value.default_branch, 255);
+    if (branch === "") throw forgeError("unavailable", "RESPONSE_MALFORMED");
+    this.defaults.set(key, { branch, at: Date.now() });
+    return branch;
+  }
+
+  /**
+   * 谁的 head 是这个 PR 的 base 且还开着。先按 base+head 精确取（1.18 起），取不到
+   * 再翻 open 列表（最多 2 页 100 条）；翻完没找到但列表没到底，答 `unknown`。
+   */
+  private async parentOf(repo: ForgeRepo, base: string): Promise<PullParent> {
+    const found = (value: WirePull): PullParent => ({
+      kind: "open",
+      number: count(value.number),
+      url: webUrl(value.html_url),
+    });
+    const defaultBranch = await this.defaultBranch(repo);
+    if (base === defaultBranch) return { kind: "none" };
+    try {
+      const exact = decodeJson<WirePull>(
+        await this.http.get(
+          repoPath(
+            repo,
+            `/pulls/${branchPath(defaultBranch)}/${branchPath(base)}`,
+          ),
+        ),
+      );
+      if (exact.state === "open" && exact.merged !== true) return found(exact);
+    } catch (error) {
+      if (!(error instanceof ForgeError) || error.kind !== "notFound") {
+        throw error;
+      }
+    }
+    for (let page = 1; page <= 2; page += 1) {
+      const response = await this.http.get(repoPath(repo, "/pulls"), {
+        state: "open",
+        limit: "50",
+        ...(page > 1 ? { page: String(page) } : {}),
+      });
+      const values = decodeJson<WirePull[] | null>(response) ?? [];
+      if (!Array.isArray(values)) {
+        throw forgeError("unavailable", "RESPONSE_MALFORMED");
+      }
+      const match = values.find(
+        (value) =>
+          value.head?.ref === base &&
+          !forked(value.head?.repo_id, value.base?.repo_id),
+      );
+      if (match !== undefined) return found(match);
+      if (response.nextPage <= page) return { kind: "none" };
+    }
+    return { kind: "unknown" };
+  }
+
+  /**
+   * 评审结论：官方的「要求修改」优先；否则看 base 分支的保护规则：未保护或
+   * `required_approvals` 为 0 是无需评审，官方批准数够了是已批准，不够是还需评审；
+   * 字段缺失（老版本）或读不到是 `unknown`。
+   */
+  private async reviewOf(
+    repo: ForgeRepo,
+    number: number,
+    base: string,
+  ): Promise<PullReview> {
+    let reviews: readonly WireReview[] | undefined;
+    try {
+      reviews = await this.readAll<WireReview>(
+        repoPath(repo, `/pulls/${numbered(number)}/reviews`),
+      );
+    } catch {
+      reviews = undefined;
+    }
+    const verdict = reviewVerdict(reviews, undefined);
+    if (verdict !== "pending") return verdict;
+    try {
+      const branch = decodeJson<WireRepoBranch>(
+        await this.http.get(repoPath(repo, `/branches/${branchPath(base)}`)),
+      );
+      return reviewVerdict(reviews, branch) as PullReview;
+    } catch {
+      return "unknown";
+    }
+  }
+
+  /** 快照（契约 §115）。 */
+  async pullSnapshot(
+    repo: ForgeRepo,
+    number: number,
+  ): Promise<ForgePullSnapshot> {
+    const pull = await this.pullOnly(repo, number);
+    const open = pull.state === "open";
+    const mergeable = settleMergeable(
+      `${this.apiBase}|${repo.owner}/${repo.name}#${number}`,
+      open ? pull : undefined,
+    );
+    let checks: PullChecks = { read: false };
+    if (open) {
+      try {
+        if (pull.headSha === "") {
+          checks = { read: true, headSha: "", rollup: "none", failing: [] };
+        } else {
+          const list = await this.statusList(repo, pull.headSha);
+          checks = checksOfSummary({
+            headSha: pull.headSha,
+            rollup: rollupOf(list),
+            checks: list,
+          });
+        }
+      } catch {
+        checks = { read: false };
+      }
+    }
+    let parent: PullParent = { kind: "none" };
+    if (open) {
+      try {
+        parent = await this.parentOf(repo, pull.baseRef);
+      } catch {
+        parent = { kind: "unknown" };
+      }
+    }
+    return {
+      number: pull.number,
+      url: pull.url,
+      title: pull.title,
+      state: pull.state,
+      draft: pull.draft,
+      baseRef: pull.baseRef,
+      headRef: pull.headRef,
+      headSha: pull.headSha,
+      fromFork: pull.fromFork,
+      review: open
+        ? await this.reviewOf(repo, number, pull.baseRef)
+        : "unknown",
+      checks,
+      mergeable,
+      parent,
+    };
   }
 
   async conversation(

@@ -28,6 +28,8 @@
  *     `cancel_merge_when_pipeline_succeeds`。
  */
 
+import type { PullChecks, PullParent, PullReview } from "@armadra/shared";
+import { checksOf as checksOfSummary } from "./snapshot";
 import {
   type CreatePullInput,
   DEFAULT_LIMIT,
@@ -35,6 +37,7 @@ import {
   type ForgeCheck,
   type ForgeCheckState,
   type ForgeChecks,
+  type ForgePullSnapshot,
   type ForgeCommit,
   type ForgeFacets,
   type ForgeReviewer,
@@ -241,6 +244,7 @@ export function gitlabMergeMethods(project: {
   return methods;
 }
 interface WireProject {
+  default_branch?: string;
   merge_method?: string;
   squash_option?: string;
   merge_trains_enabled?: boolean;
@@ -1035,7 +1039,14 @@ export class GitlabForge implements Forge {
   }
 
   async checks(repo: ForgeRepo, number: number): Promise<ForgeChecks> {
-    const raw = await this.rawPull(repo, number);
+    return this.checksOf(repo, await this.rawPull(repo, number));
+  }
+
+  /** 已读到的 MR 上的检查：状态列表，加跑在这个 head 上的那条流水线。 */
+  private async checksOf(
+    repo: ForgeRepo,
+    raw: WireMergeRequest,
+  ): Promise<ForgeChecks> {
     const pull = toPull(raw);
     if (pull.headSha === "") {
       return { headSha: "", rollup: "none", checks: [] };
@@ -1058,6 +1069,118 @@ export class GitlabForge implements Forge {
       });
     }
     return { headSha: pull.headSha, rollup: rollupOf(checks), checks };
+  }
+
+  private readonly defaults = new Map<
+    string,
+    { readonly branch: string; readonly at: number }
+  >();
+
+  /** 项目的默认分支，按仓库缓存一小时。 */
+  private async defaultBranch(repo: ForgeRepo): Promise<string> {
+    const key = `${repo.owner}/${repo.name}`;
+    const hit = this.defaults.get(key);
+    if (hit !== undefined && Date.now() - hit.at < 3_600_000) return hit.branch;
+    const branch = text((await this.project(repo)).default_branch, 255);
+    if (branch === "") throw forgeError("unavailable", "RESPONSE_MALFORMED");
+    this.defaults.set(key, { branch, at: Date.now() });
+    return branch;
+  }
+
+  /** 快照（契约 §115）：一次 MR 读，加状态、批准与父 MR。 */
+  async pullSnapshot(
+    repo: ForgeRepo,
+    number: number,
+  ): Promise<ForgePullSnapshot> {
+    const raw = await this.rawPull(repo, number);
+    const pull = toPull(raw);
+    const open = pull.state === "open";
+    let checks: PullChecks = { read: false };
+    if (open) {
+      try {
+        checks = checksOfSummary(await this.checksOf(repo, raw));
+      } catch {
+        checks = { read: false };
+      }
+    }
+    let parent: PullParent = { kind: "none" };
+    if (open) {
+      try {
+        if (pull.baseRef !== (await this.defaultBranch(repo))) {
+          const list = array<{ iid?: number; web_url?: string }>(
+            decodeJson(
+              await this.http.get(projectPath(repo, "/merge_requests"), {
+                source_branch: pull.baseRef,
+                state: "opened",
+                per_page: "1",
+              }),
+            ),
+          );
+          const found = list[0];
+          parent =
+            found === undefined
+              ? { kind: "none" }
+              : {
+                  kind: "open",
+                  number: count(found.iid),
+                  url: webUrl(found.web_url),
+                };
+        }
+      } catch {
+        parent = { kind: "unknown" };
+      }
+    }
+    return {
+      number: pull.number,
+      url: pull.url,
+      title: pull.title,
+      state: pull.state,
+      draft: pull.draft,
+      baseRef: pull.baseRef,
+      headRef: pull.headRef,
+      headSha: pull.headSha,
+      fromFork: pull.fromFork,
+      review: open ? await this.reviewOf(repo, raw, number) : "unknown",
+      checks,
+      mergeable: pull.mergeable,
+      parent,
+    };
+  }
+
+  /** 评审结论：`requested_changes`、批准数，其次 `not_approved`；读不到是 `unknown`。 */
+  private async reviewOf(
+    repo: ForgeRepo,
+    raw: WireMergeRequest,
+    number: number,
+  ): Promise<PullReview> {
+    if (raw.detailed_merge_status === "requested_changes") {
+      return "changesRequested";
+    }
+    try {
+      const approvals = decodeJson<{
+        approvals_left?: number;
+        approvals_required?: number;
+        approved_by?: unknown[] | null;
+      }>(
+        await this.http.get(
+          projectPath(repo, `/merge_requests/${numbered(number)}/approvals`),
+        ),
+      );
+      const approvers = (approvals.approved_by ?? []).length;
+      const left = approvals.approvals_left;
+      if (typeof left === "number") {
+        if (left === 0 && approvers > 0) return "approved";
+        if (left === 0 && approvals.approvals_required === 0) {
+          return "notRequired";
+        }
+        if (left > 0) return "reviewRequired";
+      }
+    } catch {
+      // 403 / 404 / 暂时不可用：不假装知道。
+    }
+    return raw.detailed_merge_status === "not_approved"
+      ? "reviewRequired"
+      : "unknown";
   }
 
   async conversation(
