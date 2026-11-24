@@ -33,6 +33,7 @@ function row(nodeId: string, patch: Partial<DeliveryRow>): DeliveryRow {
     phrase: "awaitingReview",
     pulls: [],
     offBoardAtMs: null,
+    children: null,
     ...patch,
   };
 }

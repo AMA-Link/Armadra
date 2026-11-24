@@ -1,5 +1,6 @@
 import {
   DELIVERY_PHRASES,
+  type DeliveryChild,
   type DeliveryLane,
   type PullSnapshot,
 } from "@armadra/shared";
@@ -36,6 +37,27 @@ export function phraseKey(lane: DeliveryLane, phrase: string): string {
     : `delivery.phrase.${phrase}`;
 }
 
+/** 一个节点当前批次的子任务计数；`nodes` 是列表，计数帧不带，等重读。 */
+export interface ChildrenInfo {
+  readonly total: number;
+  readonly finished: number;
+  readonly needsYou: number;
+  readonly nodes: readonly DeliveryChild[];
+}
+
+/** 短语的显示文案；`waitingOnChildren` 带 `finished/total`。 */
+export function phraseLabel(
+  t: (key: string, params?: Record<string, string | number>) => string,
+  lane: DeliveryLane,
+  phrase: string,
+  children: ChildrenInfo | null | undefined,
+): string {
+  return t(phraseKey(lane, phrase), {
+    finished: children?.finished ?? 0,
+    total: children?.total ?? 0,
+  });
+}
+
 export const OFF_BOARD_PHRASES = DELIVERY_PHRASES.offBoard;
 
 /** 全部短语 → 色调。键按栏分组，`model.test` 校验与 shared 的短语表一一对应。 */
@@ -48,6 +70,8 @@ export const PHRASE_TONE: Record<string, StatusTone> = {
   resolvingConflicts: "working",
   draft: "idle",
   idle: "idle",
+  waitingOnChildren: "queued",
+  collecting: "working",
   // needsYou
   needsApproval: "attention",
   needsAnswer: "attention",

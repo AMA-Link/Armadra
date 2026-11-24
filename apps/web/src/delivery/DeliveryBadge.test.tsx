@@ -26,6 +26,7 @@ function put(lane: string, phrase: string) {
         phrase,
         pulls: [],
         offBoardAtMs: null,
+        children: null,
       },
     },
   });

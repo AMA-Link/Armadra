@@ -19,6 +19,11 @@ describe("PHRASE_TONE", () => {
     expect(Object.keys(PHRASE_TONE).sort()).toEqual([...all].sort());
   });
 
+  it("gives the sub-task phrases their tones", () => {
+    expect(phraseTone("waitingOnChildren")).toBe("queued");
+    expect(phraseTone("collecting")).toBe("working");
+  });
+
   it("falls back to idle for an unknown phrase", () => {
     expect(phraseTone("somethingNew")).toBe("idle");
   });
