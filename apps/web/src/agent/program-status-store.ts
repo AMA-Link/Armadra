@@ -19,7 +19,7 @@ import type {
   WorkspaceEvent,
 } from "@armadra/shared";
 
-import { sessionDisplay } from "@armadra/shared";
+import { sessionDisplay, stateSourceIsReported } from "@armadra/shared";
 
 import { headerOf, type HeaderState } from "./display";
 import type { MirroredStatus } from "./status-store";
@@ -137,9 +137,7 @@ export function reportedLive(status: AgentStatus | undefined): boolean {
   return Boolean(
     status?.state &&
     !status.restored &&
-    (status.stateSource === "hook" ||
-      status.stateSource === "extension" ||
-      status.stateSource === "acp"),
+    stateSourceIsReported(status.stateSource),
   );
 }
 
