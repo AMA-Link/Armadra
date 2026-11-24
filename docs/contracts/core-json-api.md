@@ -5902,3 +5902,31 @@ Copilot 的 ACP 入口只接受 http / sse 的 MCP 服务器，`session/new.mcpS
 
 - 没有 hook，就没有 hook 带回的 `session_id` 与审批请求：节点状态只靠终端信号（OSC 7501 / 9;4 / 133，`terminal/program-status.ts`）与各 CLI 的会话日志（`timeline/`、`history/`），会话按工作目录和时间推断。
 - 设置 → Agent → 某一家：「零注入启动」一行开关（主机设置）。节点头在该模式下显示「零注入」标记；审批入口显示为停用的按钮、「Agent 设置」里的收件箱唤醒、从的投递与转录共享三项停用，原因一句话：审批、画布工具与协作消息不可用。页面从应用已读的 `["settings"]` 缓存判断，成员读不到设置时按「关」。
+
+## 114. Agent 回合结束信号的补全（`#988`）
+
+> 状态：实施契约（AMA-Link/Armadra#988 H2）。依据 2026-11-23 对七个真实 CLI 的实测。
+
+### 114.1 新增的上报
+
+- `HOOK_CLIENT_REVISION` 由 6 升到 7，`MOD_REVISION` 由 4 升到 5。
+- Codex 多订阅 `PermissionRequest` 与 `Interrupt`，共 10 个 hook。两者都只观察，客户端不输出决定。
+- Claude mod 多挂 `turn.complete`，只看主循环：`aborted` 报 `TurnAborted`，`answer` 报 `TurnEnded`。这两个名字由 mod 发出，不是 Claude 的 hook 事件。Esc 和在权限框选 No 都不发 `Stop`。mod 退回设置 hook（安全模式等）时没有这条信号，回合由静默清扫收尾。
+- Pi、OMP 与 ama 的 `agent_end` 载荷多带 `stopReason`，要继续的回合带 `willContinue`。
+
+### 114.2 状态判定
+
+| 事实                                                                        | 结果                                               |
+| --------------------------------------------------------------------------- | -------------------------------------------------- |
+| 提问工具返回，或 OpenCode `question.replied` / `question.rejected`          | 关闭待回答，本回合的结束记为 `done`                |
+| OpenCode `question.asked`、Copilot `elicitation_dialog`、OMP `ask` 工具调用 | `waiting`                                          |
+| OpenCode `permission.replied`                                               | `working`                                          |
+| OpenCode `session.error(MessageAbortedError)`                               | `done`，`interrupted = true`                       |
+| OpenCode `session.error` 之后的 `session.idle`                              | 保留已有的 `errored` / `interrupted`               |
+| `agent_end` 的 `stopReason` 为 `error` / `aborted`                          | `done`，`errored` / `interrupted` 为 `true`        |
+| `TurnEnded` 到达时仍是 `blocked`                                            | `done`，`interrupted = true`；随后的 `Stop` 可覆盖 |
+| Copilot 可恢复的 `model_call` 错误后 120 秒无新上报                         | 下一轮 60 秒清扫记 `done`，`errored = true`        |
+
+模型接口报错时 Codex 不发任何 hook，节点由静默清扫收尾，这里不靠猜测提前判失败。
+
+没有新 procedure，没有数据库迁移，`agent.status` 的形状不变。

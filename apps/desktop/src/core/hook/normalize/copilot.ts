@@ -49,14 +49,12 @@ import {
  * The discriminator is `notification_type`, and the only value attested by a
  * primary source is `permission_prompt`.
  *
- * So exactly one value is translated, to `waiting`, and every other value is
+ * Two values are translated, both to `waiting`: `permission_prompt`, and
+ * `elicitation_dialog` (measured on 1.0.110, 2026-11-23). Every other value is
  * dropped:
  *
  *   * a **shell completion** is not a state of the node — the turn that
  *     started the command is still running, and `postToolUse` already says so;
- *   * an **elicitation dialog** is plausibly `waiting` too, but no source
- *     names its `notification_type`, and inventing the string would make the
- *     mapping fire on nothing or on the wrong thing;
  *   * **agent completion** already has an authoritative event in `agentStop`,
  *     which carries the stop reason; a second, asynchronous `done` from a
  *     notification could only arrive later and overwrite a newer turn.
@@ -186,7 +184,17 @@ function errorOccurred(
   agentId: string,
   payload: Payload,
 ): AgentEvent | undefined {
-  if (flag(payload, "recoverable", "recoverable") !== false) return undefined;
+  if (flag(payload, "recoverable", "recoverable") !== false) {
+    if (text(payload, "error_context", "errorContext") !== "model_call") {
+      return undefined;
+    }
+    const retrying = stateEvent(nodeId, agentId, WORKING);
+    retrying.modelError = true;
+    const failure = field(payload, "error", "error");
+    retrying.lastMessage =
+      failure === undefined ? undefined : text(failure, "message", "message");
+    return retrying;
+  }
   const event = stateEvent(nodeId, agentId, DONE);
   event.errored = true;
   const error = field(payload, "error", "error");
@@ -209,7 +217,9 @@ function notification(
   payload: Payload,
 ): AgentEvent | undefined {
   const kind = text(payload, "notification_type", "notificationType");
-  if (kind !== "permission_prompt") return undefined;
+  if (kind !== "permission_prompt" && kind !== "elicitation_dialog") {
+    return undefined;
+  }
   return stateEvent(nodeId, agentId, WAITING);
 }
 

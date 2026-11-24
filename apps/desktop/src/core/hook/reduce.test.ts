@@ -89,6 +89,55 @@ describe("the agent state machine", () => {
     expect(memory.doneAt).toBeDefined();
   });
 
+  it("ends a turn cleanly once its question was answered", () => {
+    const memory = memoryWith({ awaitingInput: true });
+    const answered = working("n");
+    answered.questionClosed = true;
+    expect(reduce(at(0), current(WAITING), memory, answered)?.state).toBe(
+      WORKING,
+    );
+    expect(memory.awaitingInput).toBe(false);
+    const done = stateEvent("n", "claude", DONE);
+    expect(reduce(at(1), current(WORKING), memory, done)?.state).toBe(DONE);
+  });
+
+  it("lets a settling idle keep the verdict already on the row", () => {
+    const memory = newMemory();
+    const failed: Current = {
+      ...emptyCurrent(),
+      state: DONE,
+      unread: true,
+      errored: true,
+    };
+    const idle = stateEvent("n", "opencode", DONE);
+    idle.keepsVerdict = true;
+    expect(reduce(at(1), failed, memory, idle)).toBeUndefined();
+    // From a running turn it is still the end of that turn.
+    expect(reduce(at(2), current(WORKING), memory, idle)?.state).toBe(DONE);
+  });
+
+  it("counts a turn that ended on an open prompt as interrupted", () => {
+    const ended = stateEvent("n", "claude", DONE);
+    ended.keepsVerdict = true;
+    ended.closesPrompt = true;
+    const declined = reduce(at(0), current("blocked"), newMemory(), ended);
+    expect(declined?.state).toBe(DONE);
+    expect(declined?.interrupted).toBe(true);
+    expect(declined?.pendingId).toBeUndefined();
+    const plain = reduce(at(0), current(WORKING), newMemory(), ended);
+    expect(plain?.interrupted).toBe(false);
+  });
+
+  it("remembers a model error until anything else is reported", () => {
+    const memory = newMemory();
+    const failed = working("n");
+    failed.modelError = true;
+    reduce(at(0), current(WORKING), memory, failed);
+    expect(memory.modelErrorAt).toBe(at(0));
+    reduce(at(1), current(WORKING), memory, working("n"));
+    expect(memory.modelErrorAt).toBeUndefined();
+  });
+
   it("does not let a late working revive a just-finished turn", () => {
     const memory = memoryWith({ doneAt: at(0) });
     const finished: Current = {

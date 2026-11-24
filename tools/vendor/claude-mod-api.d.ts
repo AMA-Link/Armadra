@@ -197,7 +197,17 @@ declare module "claude-code" {
     | "classic.SubagentStop"
     | "classic.SessionEnd";
 
+  /** Read off 2.1.325, newer than the gate; the mod guards its registration. */
+  export type TurnCompleteInput = {
+    agentId?: string;
+    reason: "answer" | "aborted" | "refusal" | "error";
+  };
+
   export interface On {
+    (
+      event: "turn.complete",
+      hook: Hook<TurnCompleteInput, { text: string }>,
+    ): Registration<TurnCompleteInput, { text: string }>;
     (
       event: "session.start",
       hook: Hook<SessionStartInput, { cwd: string }>,

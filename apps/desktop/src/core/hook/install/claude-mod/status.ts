@@ -166,6 +166,23 @@ export const STATUS_REGISTRATIONS = String.raw`
     await armadraWithin($, armadraForward($, e), 800);
     return next(e);
   }).catch(($, e, next) => next(e));
+  // Esc, and No at a permission prompt (reason "answer"), end a turn with no
+  // classic Stop. Main loop only: a subagent's end is not this node's. Read off
+  // 2.1.325, newer than the mod gate: an engine that refuses the name must not
+  // take the rest of the module with it.
+  try {
+    on("turn.complete", async ($, e, next) => {
+      if (e.agentId === undefined && (e.reason === "aborted" || e.reason === "answer")) {
+        void armadraForward($, {
+          ...armadraBase,
+          hook_event_name: e.reason === "aborted" ? "TurnAborted" : "TurnEnded",
+        });
+      }
+      return next(e);
+    }).catch(($, e, next) => next(e));
+  } catch {
+    // Without it such a turn closes through the silence sweep.
+  }
 `;
 
 /** The classic events the mod forwards: the settings hooks', PermissionRequest excepted. */

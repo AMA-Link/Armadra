@@ -201,10 +201,16 @@ describe("canvas injection", () => {
     expect(pairs).toContain(
       `hooks.SessionEnd=[{hooks=[{type="command",command=${JSON.stringify(command)},timeout=1}]}]`,
     );
+    expect(pairs).toContain(
+      `hooks.PermissionRequest=[{hooks=[{type="command",command=${JSON.stringify(command)},timeout=600}]}]`,
+    );
+    expect(pairs).toContain(
+      `hooks.Interrupt=[{hooks=[{type="command",command=${JSON.stringify(command)},timeout=1}]}]`,
+    );
     const tables = pairs.filter(
       (pair) => pair.startsWith("hooks.") && !pair.startsWith("hooks.state="),
     );
-    expect(tables.length).toBe(8);
+    expect(tables.length).toBe(10);
     // Codex has no Notification event; it is not passed.
     expect(pairs.some((pair) => pair.startsWith("hooks.Notification"))).toBe(
       false,
@@ -220,7 +226,7 @@ describe("canvas injection", () => {
         `${JSON.stringify(`${source}:${key}:0:0`)}={trusted_hash=${JSON.stringify(codexHookTrustHash(event, command))}}`,
       );
     }
-    expect(state?.match(/trusted_hash=/g)?.length).toBe(8);
+    expect(state?.match(/trusted_hash=/g)?.length).toBe(10);
     const instructions = pairs.at(-1) as string;
     expect(instructions.startsWith("developer_instructions=")).toBe(true);
     const text = JSON.parse(

@@ -188,6 +188,17 @@ export class HookService {
     return this.auth.writeNodeToken(this.nodeTokenDir(), nodeId);
   }
 
+  /** Nodes whose last report was a model error older than `before` (ms). */
+  modelErrorsBefore(before: number): string[] {
+    const nodes: string[] = [];
+    for (const [nodeId, memory] of this.memory) {
+      if (memory.modelErrorAt !== undefined && memory.modelErrorAt < before) {
+        nodes.push(nodeId);
+      }
+    }
+    return nodes;
+  }
+
   /**
    * Runs `action` against this node's reducer memory. JavaScript has one
    * thread of execution per turn, so the lock the Rust version holds here is

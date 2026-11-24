@@ -55,6 +55,13 @@ export const STALE_WORKING_MINUTES = 20;
  * between two real sessions in one terminal.
  */
 export const SESSION_ECHO_SECONDS = 3;
+/**
+ * How long after a model error with nothing further the turn counts as failed.
+ * Copilot CLI 1.0.110 measured on 2026-11-23: six retries over about 22 s, then
+ * no `agentStop`. The margin is for a slower backoff, and a late report still
+ * corrects the row.
+ */
+export const MODEL_ERROR_SETTLE_SECONDS = 120;
 
 /** The row as it stands before the event is applied. */
 export interface Current {
@@ -87,6 +94,8 @@ export interface Memory {
    */
   turnStartedAt?: number | undefined;
   awaitingInput: boolean;
+  /** When the model error nothing has followed yet was reported. */
+  modelErrorAt?: number | undefined;
 }
 
 export function newMemory(): Memory {
@@ -222,6 +231,9 @@ export function reduce(
     interrupted: current.interrupted,
   };
 
+  // Anything the CLI says after a model error means it did not end there.
+  if (event.modelError !== true) memory.modelErrorAt = undefined;
+
   if (event.kind === "session") {
     next.sessionPhase = event.sessionPhase;
     // The exceptions first: a session event that is talking about the turn
@@ -267,10 +279,21 @@ export function reduce(
     memory.turnStartedAt = now;
     next.pendingId = undefined;
   }
+  if (event.questionClosed === true) memory.awaitingInput = false;
   if (event.awaitingInput === true) memory.awaitingInput = true;
+  if (event.modelError === true) memory.modelErrorAt = now;
 
   // Rule 3: an unanswered question outranks the end of its own turn.
   if (target === DONE && memory.awaitingInput) target = WAITING;
+
+  // The turn's end is already on the row, with its verdict.
+  if (
+    target === DONE &&
+    event.keepsVerdict === true &&
+    current.state === DONE
+  ) {
+    return undefined;
+  }
 
   switch (target) {
     case DONE:
@@ -286,7 +309,9 @@ export function reduce(
       // A `done` always carries a verdict, even when the event says nothing:
       // silence from `Stop` means the turn ended cleanly.
       next.errored = event.errored ?? false;
-      next.interrupted = event.interrupted ?? false;
+      next.interrupted =
+        event.interrupted ??
+        (event.closesPrompt === true && current.state === "blocked");
       break;
     case "blocked":
       next.pendingId = event.pendingId ?? current.pendingId;
@@ -320,6 +345,16 @@ export function staleEvent(nodeId: string, agentId: string): AgentEvent {
   event.errored = false;
   event.interrupted = false;
   event.lastMessage = `stale=true no hook report for ${STALE_WORKING_MINUTES} minutes`;
+  return event;
+}
+
+/** The turn ended on a model error the CLI never closed with a stop event. */
+export function modelErrorEvent(nodeId: string, agentId: string): AgentEvent {
+  const event = stateEvent(nodeId, agentId, DONE);
+  event.errored = true;
+  event.interrupted = false;
+  event.lastMessage =
+    "model request failed and the CLI reported nothing further";
   return event;
 }
 

@@ -3,6 +3,7 @@ import {
   BLOCKED,
   DONE,
   type Payload,
+  WAITING,
   WORKING,
   applyCommon,
   field,
@@ -38,6 +39,16 @@ import {
  * but Armadra's permission semantics are "the CLI is asking"; §3.5 forbids
  * manufacturing a dialog the CLI never opened.
  */
+const OMP_ASK_TOOL = "ask";
+
+/** Custom agents keep their base's reports, so `provider` names OMP for them. */
+function isOmpAsk(agentId: string, payload: Payload): boolean {
+  return (
+    (agentId === "omp" || text(payload, "provider", "provider") === "omp") &&
+    text(payload, "tool_name", "toolName") === OMP_ASK_TOOL
+  );
+}
+
 export function normalize(
   nodeId: string,
   agentId: string,
@@ -62,14 +73,26 @@ export function normalize(
     // `input` is not subscribed by the installer — the prompt already arrives
     // with `before_agent_start` — but a user who registers it by hand should
     // not put the node into an unknown state.
+    case "tool_call":
+    case "tool_execution_start":
+      // OMP's `ask` waits for the person with no event of its own.
+      if (isOmpAsk(agentId, payload)) {
+        event = stateEvent(nodeId, agentId, WAITING);
+        event.awaitingInput = true;
+        event.askKind = OMP_ASK_TOOL;
+        break;
+      }
+      event = stateEvent(nodeId, agentId, WORKING);
+      break;
+    case "tool_result":
+    case "tool_execution_end":
+      event = stateEvent(nodeId, agentId, WORKING);
+      if (isOmpAsk(agentId, payload)) event.questionClosed = true;
+      break;
     case "agent_start":
     case "turn_start":
     case "turn_end":
-    case "tool_call":
-    case "tool_result":
-    case "tool_execution_start":
     case "tool_execution_update":
-    case "tool_execution_end":
     case "auto_retry_start":
     case "input":
       event = stateEvent(nodeId, agentId, WORKING);
@@ -81,7 +104,15 @@ export function normalize(
         return stateEvent(nodeId, agentId, WORKING);
       }
       event = stateEvent(nodeId, agentId, DONE);
-      event.lastMessage = text(payload, "stop_reason", "stopReason");
+      {
+        const reason = text(payload, "stop_reason", "stopReason");
+        event.lastMessage = reason;
+        if (reason === "error") event.errored = true;
+        if (reason === "aborted") {
+          event.interrupted = true;
+          event.questionClosed = true;
+        }
+      }
       break;
     case "agent_settled":
     case "session_stop":

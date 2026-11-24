@@ -5,6 +5,7 @@ import {
   insertSession,
   minutesAgo,
 } from "./fixture";
+import { MODEL_ERROR_SETTLE_SECONDS } from "./reduce";
 import { APPROVAL_TTL_SECONDS, expireApprovalsOnce, sweepOnce } from "./sweep";
 
 /** The silence sweep and the dead-terminal close-out. */
@@ -40,6 +41,21 @@ function statuses(one: HookFixture): AnyStatus[] {
 }
 
 describe("the stale sweeps", () => {
+  it("fails a turn whose last word was a model error", async () => {
+    const one = fixture();
+    let now = new Date();
+    const context = { ...one.context, now: () => now };
+    await one.report({ hook_event_name: "UserPromptSubmit" });
+    one.context.hooks.withMemory(one.nodeId, (memory) => {
+      memory.modelErrorAt = now.getTime();
+    });
+    expect(sweepOnce(context)).toBe(0);
+    now = new Date(now.getTime() + (MODEL_ERROR_SETTLE_SECONDS + 1) * 1000);
+    expect(sweepOnce(context)).toBe(1);
+    expect(one.status()?.state).toBe("done");
+    expect(one.status()?.errored).toBe(true);
+  });
+
   it("closes a node that stopped reporting", async () => {
     const one = fixture();
     await one.report({ hook_event_name: "UserPromptSubmit" });

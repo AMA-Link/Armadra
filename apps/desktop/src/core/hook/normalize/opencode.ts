@@ -3,6 +3,7 @@ import {
   BLOCKED,
   DONE,
   type Payload,
+  WAITING,
   WORKING,
   field,
   sessionEvent,
@@ -45,14 +46,23 @@ export function normalize(
   switch (topic) {
     case "session.idle":
       event = stateEvent(nodeId, agentId, DONE);
+      event.keepsVerdict = true;
       event.hookEvent = "Stop";
       break;
-    case "session.error":
+    case "session.error": {
       event = stateEvent(nodeId, agentId, DONE);
-      event.errored = true;
+      // An interrupt arrives here too, as `MessageAbortedError` (1.19.5).
+      const error = field(properties, "error", "error");
+      if (text(error, "name", "name") === "MessageAbortedError") {
+        event.interrupted = true;
+        event.questionClosed = true;
+      } else {
+        event.errored = true;
+      }
       event.lastMessage = text(properties, "error", "error");
       event.hookEvent = "Stop";
       break;
+    }
     case "message.updated":
       // Only the user's own message opens a turn; the assistant's stream
       // updates the same topic dozens of times per turn.
@@ -77,15 +87,33 @@ export function normalize(
     }
     case "permission.asked":
     case "permission.updated":
-    case "permission.replied":
       event = stateEvent(nodeId, agentId, BLOCKED);
       event.pendingId = permissionId(properties);
       event.askKind = text(properties, "type", "kind") ?? "permission";
       event.lastMessage = text(properties, "title", "title");
-      event.hookEvent =
-        topic === "permission.replied" ? "PostToolUse" : "PermissionRequest";
+      event.hookEvent = "PermissionRequest";
       event.toolName = event.askKind;
       event.toolSummary = event.lastMessage;
+      break;
+    // Answered: the prompt is gone, and the turn goes on or reaches its idle.
+    case "permission.replied":
+      event = stateEvent(nodeId, agentId, WORKING);
+      event.hookEvent = "PostToolUse";
+      event.toolName = text(properties, "type", "kind") ?? "permission";
+      break;
+    case "question.asked":
+      event = stateEvent(nodeId, agentId, WAITING);
+      event.awaitingInput = true;
+      event.askKind = "question";
+      event.hookEvent = "PreToolUse";
+      event.toolName = "question";
+      break;
+    case "question.replied":
+    case "question.rejected":
+      event = stateEvent(nodeId, agentId, WORKING);
+      event.questionClosed = true;
+      event.hookEvent = "PostToolUse";
+      event.toolName = "question";
       break;
     case "session.deleted":
       event = sessionEvent(nodeId, agentId, "end");
@@ -127,7 +155,9 @@ function startingTool(
   const status = text(state, "status", "status");
   if (status !== "pending" && status !== "running") return undefined;
   const name = text(part, "tool", "tool");
-  if (name === undefined) return undefined;
+  // The tool stays `running` while it waits for the person: `question.asked`
+  // speaks for it, and a re-published part must not read as work.
+  if (name === undefined || name === "question") return undefined;
   const callId = text(part, "callID", "callId");
   const summary = summaryOfInput(field(state, "input", "input"));
   return {

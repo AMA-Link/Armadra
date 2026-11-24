@@ -58,7 +58,6 @@ export function normalize(
       event.lastMessage = text(payload, "prompt", "prompt");
       break;
     case "PreToolUse":
-    case "PostToolUse":
       if (asksUser) {
         event = stateEvent(nodeId, agentId, WAITING);
         event.awaitingInput = true;
@@ -66,6 +65,11 @@ export function normalize(
       } else {
         event = stateEvent(nodeId, agentId, WORKING);
       }
+      break;
+    // The tool has returned, so whatever it asked has been answered.
+    case "PostToolUse":
+      event = stateEvent(nodeId, agentId, WORKING);
+      if (asksUser) event.questionClosed = true;
       break;
     case "PermissionRequest":
       event = stateEvent(nodeId, agentId, BLOCKED);
@@ -82,6 +86,7 @@ export function normalize(
         flag(payload, "interrupted", "interrupted") === true
       ) {
         event.interrupted = true;
+        event.questionClosed = true;
       }
       if (errored(payload)) event.errored = true;
       break;
