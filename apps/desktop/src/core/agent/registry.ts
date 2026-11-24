@@ -59,6 +59,8 @@ export {
   STATE_SOURCE_ACP,
   STATE_SOURCE_EXTENSION,
   STATE_SOURCE_HOOK,
+  nodeStateChannel,
+  registerNodeChannelGate,
   stateSourceFor,
   stateSourceIsReported,
 } from "./state-source";

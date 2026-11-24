@@ -87,6 +87,8 @@ export interface StubTerminal {
   readonly drive: Map<string, Partial<DriveTarget>>;
   /** `observed` 的答案，按会话 id。 */
   readonly activity: Map<string, ObservedActivity>;
+  /** 跑在远程主机上的会话 id（`remote` 的答案）。 */
+  readonly remote: Set<string>;
   /** 下一次 `writeSubmit` 抛这个。 */
   submitError: Error | undefined;
   bridge: TerminalBridge;
@@ -99,6 +101,7 @@ export function stubTerminal(): StubTerminal {
     terminated: [],
     drive: new Map(),
     activity: new Map(),
+    remote: new Set(),
     submitError: undefined,
     capture: "",
     foreground: { command: "claude" },
@@ -135,6 +138,7 @@ export function stubTerminal(): StubTerminal {
         stub.submits.push({ sessionId, generation, data, driver });
       },
       observed: (sessionId) => stub.activity.get(sessionId),
+      remote: (sessionId) => stub.remote.has(sessionId),
     },
   };
   return stub;

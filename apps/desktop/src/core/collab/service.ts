@@ -87,6 +87,11 @@ export interface TerminalBridge {
   ): Promise<void | { readonly inputRevision: number }>;
   /** 没有状态适配的会话，终端域对它知道的全部（§4.3 的启发式要的三样）。 */
   observed?(sessionId: string): ObservedActivity | undefined;
+  /**
+   * 这个会话跑在远程执行主机上。状态通道按节点判（`agent/state-source.ts` 的
+   * `nodeStateChannel`）：只读本机文件的通道对远程节点不成立。缺席按本机算。
+   */
+  remote?(sessionId: string): boolean;
   /** Current input fence revision; no inference from terminal output. */
   inputRevision?(sessionId: string): number | undefined;
   /**

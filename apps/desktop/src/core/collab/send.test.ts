@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AgentFixture, agentFixture, callerFor } from "../agent/fixture";
+import { registerNodeChannelGate } from "../agent/registry";
 import { freeLease } from "../drive/lease";
 import { VERBS, controlDispatcher, type ControlOutcome } from "./control";
 import { SendPump } from "./send-pump";
@@ -202,6 +203,45 @@ describe("the gate chain", () => {
       reason: "TARGET_STARTING",
     });
     expect(fixture.terminal.submits).toHaveLength(0);
+  });
+
+  // 通道按节点判（审查 P1-6）：同一个 provider，本机节点会报、远程节点不会，
+  // 后者不能一直排队等一条不会来的首报。
+  describe("the state channel is judged per node", () => {
+    it("treats a node the provider's gate rules out as having no channel", async () => {
+      const off = registerNodeChannelGate("codex", (facts) => !facts.remote);
+      try {
+        fixture.terminal.remote.add(peerSession);
+        target({ stateSource: undefined, state: "starting" });
+        const refused = refusal(await send());
+        expect(refused.code).toBe("TARGET_STATE_UNVERIFIED");
+        expect(fixture.terminal.submits).toHaveLength(0);
+      } finally {
+        off();
+      }
+    });
+
+    it("still waits for the first report on a node the gate lets through", async () => {
+      const off = registerNodeChannelGate("codex", (facts) => !facts.remote);
+      try {
+        target({ stateSource: undefined, state: "starting" });
+        expect(ok(await send())).toMatchObject({
+          outcome: "queued",
+          reason: "TARGET_STARTING",
+        });
+      } finally {
+        off();
+      }
+    });
+
+    it("changes nothing for a provider with no gate, remote or not", async () => {
+      fixture.terminal.remote.add(peerSession);
+      target({ stateSource: undefined, state: "starting" });
+      expect(ok(await send())).toMatchObject({
+        outcome: "queued",
+        reason: "TARGET_STARTING",
+      });
+    });
   });
 
   it("refuses a body over the limit", async () => {

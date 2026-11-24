@@ -936,6 +936,11 @@ export class TerminalManager {
     return record?.inputRevision;
   }
 
+  /** 这个会话跑在 SSH 主机上（读不到本机文件的那一种）；不认识的会话答 `false`。 */
+  isRemote(sessionId: string): boolean {
+    return this.records.get(sessionId)?.spec.sshHostId !== undefined;
+  }
+
   observedActivity(sessionId: string): ObservedActivity | undefined {
     return observedActivityFor(this.records.get(sessionId));
   }
