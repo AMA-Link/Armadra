@@ -16,6 +16,7 @@
 
 import type { PullChecks, PullParent, PullReview } from "@armadra/shared";
 import { checksOf as checksOfSummary } from "./snapshot";
+import { reviewVerdict, settleMergeable } from "./gitea-snapshot";
 import {
   type CreatePullInput,
   DEFAULT_LIMIT,
@@ -575,14 +576,6 @@ export function giteaFilter(
   };
 }
 
-/**
- * Gitea 的 `mergeable: false` 分不出冲突与「还在算」：同一个 head 连续两次读到
- * false 才算冲突，第一次记 `unknown`。按 API 根、仓库与编号记在进程里，Forge
- * 实例被重建也不丢。
- */
-const FALSE_ONCE = new Map<string, string>();
-const MAX_FALSE_ONCE = 2000;
-
 export interface GiteaOptions {
   readonly apiBase: string;
   readonly token: TokenSource;
@@ -1139,42 +1132,21 @@ export class GiteaForge implements Forge {
     number: number,
     base: string,
   ): Promise<PullReview> {
-    let latest: Map<string, string> | undefined;
+    let reviews: readonly WireReview[] | undefined;
     try {
-      const reviews = await this.readAll<WireReview>(
+      reviews = await this.readAll<WireReview>(
         repoPath(repo, `/pulls/${numbered(number)}/reviews`),
       );
-      latest = new Map();
-      for (const value of reviews) {
-        const who = text(value.user?.login, 128);
-        if (
-          who === "" ||
-          value.dismissed === true ||
-          value.official === false
-        ) {
-          continue;
-        }
-        if (value.state === "APPROVED" || value.state === "REQUEST_CHANGES") {
-          latest.set(who, value.state);
-        }
-      }
     } catch {
-      latest = undefined;
+      reviews = undefined;
     }
-    const states = [...(latest?.values() ?? [])];
-    if (states.includes("REQUEST_CHANGES")) return "changesRequested";
-    if (latest === undefined) return "unknown";
+    const verdict = reviewVerdict(reviews, undefined);
+    if (verdict !== "pending") return verdict;
     try {
       const branch = decodeJson<WireRepoBranch>(
         await this.http.get(repoPath(repo, `/branches/${branchPath(base)}`)),
       );
-      if (branch.protected === false) return "notRequired";
-      const required = branch.required_approvals;
-      if (typeof required !== "number") return "unknown";
-      if (required === 0) return "notRequired";
-      return states.filter((state) => state === "APPROVED").length >= required
-        ? "approved"
-        : "reviewRequired";
+      return reviewVerdict(reviews, branch) as PullReview;
     } catch {
       return "unknown";
     }
@@ -1187,19 +1159,10 @@ export class GiteaForge implements Forge {
   ): Promise<ForgePullSnapshot> {
     const pull = await this.pullOnly(repo, number);
     const open = pull.state === "open";
-    const key = `${this.apiBase}|${repo.owner}/${repo.name}#${number}`;
-    let mergeable = pull.mergeable;
-    if (open && mergeable === "conflicting") {
-      if (FALSE_ONCE.get(key) === pull.headSha) {
-        mergeable = "conflicting";
-      } else {
-        if (FALSE_ONCE.size >= MAX_FALSE_ONCE) FALSE_ONCE.clear();
-        FALSE_ONCE.set(key, pull.headSha);
-        mergeable = "unknown";
-      }
-    } else {
-      FALSE_ONCE.delete(key);
-    }
+    const mergeable = settleMergeable(
+      `${this.apiBase}|${repo.owner}/${repo.name}#${number}`,
+      open ? pull : undefined,
+    );
     let checks: PullChecks = { read: false };
     if (open) {
       try {
