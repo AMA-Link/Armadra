@@ -1,3 +1,5 @@
+import { stateSourceIsRunReport } from "../agent/state-source";
+
 export const TASK_STATES = [
   "pending",
   "starting",
@@ -79,7 +81,7 @@ export function considerReport(
     report.sessionId !== task.sessionId ||
     report.generation !== task.generation ||
     !report.verified ||
-    !["hook", "extension"].includes(report.stateSource)
+    !stateSourceIsRunReport(report.stateSource)
   )
     return { kind: "ignore" };
   if (
