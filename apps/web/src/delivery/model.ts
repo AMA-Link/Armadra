@@ -135,6 +135,7 @@ export interface BoardCard {
   readonly phrase: string;
   /** 最落后的排前。 */
   readonly pulls: readonly PullSnapshot[];
+  readonly children: ChildrenInfo | null;
 }
 
 export interface BoardRowLike {
@@ -143,6 +144,7 @@ export interface BoardRowLike {
   readonly phrase: string;
   readonly pulls: readonly PullSnapshot[];
   readonly offBoardAtMs: number | null;
+  readonly children?: ChildrenInfo | null;
 }
 
 export interface BoardView {
@@ -184,6 +186,7 @@ export function buildBoard(
       lane: row.lane,
       phrase: row.phrase,
       pulls: sortPulls(row.pulls),
+      children: row.children ?? null,
     };
     if (row.lane === "offBoard") {
       if (

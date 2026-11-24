@@ -3,7 +3,6 @@ import { ChevronRight, X } from "lucide-react";
 
 import { useT } from "@/app/preferences-store";
 import { cn } from "@/lib/cn";
-import { requestCenterOnNode } from "@/canvas/flow/flow-context";
 import { WorkPanelSheet } from "@/panels/WorkPanelSheet";
 import { useCompactLayout } from "@/platform/layout";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -19,11 +18,12 @@ import { ScrollArea } from "@/ui/scroll-area";
 import { EmptyState } from "@/ui/state";
 import { SheetTitle } from "@/ui/sheet";
 import { StatusPill } from "@/ui/status-pill";
+import { ChildList, reveal } from "./ChildList";
 import {
   BOARD_LANES,
   buildBoard,
   laneKey,
-  phraseKey,
+  phraseLabel,
   phraseTone,
   type BoardCard,
 } from "./model";
@@ -31,12 +31,6 @@ import { useDeliveryBoard } from "./store";
 
 function close(): void {
   useCanvasStore.getState().setPanel("delivery", "closed");
-}
-
-/** 选中并居中到节点（与分派抽屉同一套）。 */
-function reveal(nodeId: string): void {
-  useCanvasStore.getState().selectNodes([nodeId]);
-  requestCenterOnNode(nodeId);
 }
 
 function PullLinks({ card }: { card: BoardCard }) {
@@ -77,9 +71,15 @@ function PullLinks({ card }: { card: BoardCard }) {
 
 function DeliveryCard({ card }: { card: BoardCard }) {
   const t = useT();
+  const [open, setOpen] = React.useState(false);
+  const children = card.children;
   return (
     <Card size="sm" className="gap-2" data-slot="delivery-card">
-      <div className="flex min-w-0 flex-col gap-2 px-(--card-spacing)">
+      <Collapsible
+        open={open}
+        onOpenChange={setOpen}
+        className="flex min-w-0 flex-col gap-2 px-(--card-spacing)"
+      >
         <Button
           type="button"
           variant="ghost"
@@ -93,11 +93,43 @@ function DeliveryCard({ card }: { card: BoardCard }) {
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <StatusPill
             tone={phraseTone(card.phrase)}
-            label={t(phraseKey(card.lane, card.phrase))}
+            label={phraseLabel(t, card.lane, card.phrase, children)}
           />
+          {children !== null && children.needsYou > 0 ? (
+            <StatusPill
+              tone="attention"
+              label={t("delivery.children.needsYou", {
+                count: children.needsYou,
+              })}
+              data-slot="delivery-children-needs-you"
+            />
+          ) : null}
           <PullLinks card={card} />
+          {children === null ? null : (
+            <CollapsibleTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                aria-label={t("delivery.children.toggle")}
+                data-slot="delivery-children-toggle"
+              >
+                <ChevronRight
+                  className={cn("transition-transform", open && "rotate-90")}
+                />
+                <span data-numeric>
+                  {children.finished}/{children.total}
+                </span>
+              </Button>
+            </CollapsibleTrigger>
+          )}
         </div>
-      </div>
+        {children === null ? null : (
+          <CollapsibleContent>
+            <ChildList>{children}</ChildList>
+          </CollapsibleContent>
+        )}
+      </Collapsible>
     </Card>
   );
 }
@@ -193,7 +225,7 @@ function OffBoard({
               </Button>
               <StatusPill
                 tone={phraseTone(card.phrase)}
-                label={t(phraseKey(card.lane, card.phrase))}
+                label={phraseLabel(t, card.lane, card.phrase, card.children)}
               />
               <PullLinks card={card} />
             </li>

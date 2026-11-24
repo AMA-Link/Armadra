@@ -14,7 +14,7 @@ import { TestProviders, installDomPolyfills } from "@/app/test-harness";
 import { usePreferencesStore } from "@/app/preferences-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import { DeliveryPanel } from "./DeliveryPanel";
-import { pull } from "./fixtures";
+import { pull, withChildren } from "./fixtures";
 import { useDeliveryBoard, type DeliveryRow } from "./store";
 
 const center = vi.hoisted(() => vi.fn());
@@ -181,5 +181,39 @@ describe("DeliveryPanel", () => {
     show([]);
     fireEvent.click(screen.getByRole("button", { name: "关闭" }));
     expect(useCanvasStore.getState().panels.delivery).toBe("closed");
+  });
+
+  it("shows sub-task counts, the needs-you hint and a toggleable list", () => {
+    show([
+      row("a", {
+        lane: "working",
+        phrase: "waitingOnChildren",
+        ...withChildren(2, 1, 1, ["b", "c"]),
+      }),
+      row("b", { lane: "needsYou", phrase: "needsApproval" }),
+    ]);
+    const card = lane("进行中").querySelector("[data-slot='delivery-card']")!;
+    expect(card.textContent).toContain("等待子任务 1/2");
+    expect(card.textContent).toContain("1 个子任务需要你");
+    expect(document.querySelector("[data-slot='delivery-child']")).toBeNull();
+    const toggle = within(card as HTMLElement).getByRole("button", {
+      name: "子任务",
+    });
+    fireEvent.click(toggle);
+    const items = document.querySelectorAll("[data-slot='delivery-child']");
+    expect(items).toHaveLength(2);
+    expect(items[0]?.textContent).toContain("待批准");
+    fireEvent.click(within(items[1] as HTMLElement).getByRole("button"));
+    expect(center).toHaveBeenCalledWith("c");
+    fireEvent.click(toggle);
+    expect(document.querySelector("[data-slot='delivery-child']")).toBeNull();
+  });
+
+  it("shows collecting without a list when the batch is empty", () => {
+    show([row("a", { lane: "working", phrase: "collecting" })]);
+    expect(screen.getByText("汇总中")).toBeTruthy();
+    expect(
+      document.querySelector("[data-slot='delivery-children-toggle']"),
+    ).toBeNull();
   });
 });
