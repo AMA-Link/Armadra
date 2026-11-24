@@ -150,6 +150,15 @@ export const COMMANDS = [
     allowInTerminal: false,
     allowWhileTyping: false,
   },
+  // 交付面板同样没有默认键位：入口是右上工具簇与命令面板。
+  {
+    id: "app.delivery",
+    labelKey: "cmd.app.delivery",
+    scope: "app",
+    defaultKeys: both(null),
+    allowInTerminal: false,
+    allowWhileTyping: false,
+  },
   // 问题面板同样没有默认键位：入口是编辑器状态栏上的诊断计数与命令面板，
   // 剩下的 ⌘⇧ 组合都被终端里的东西用着。
   {

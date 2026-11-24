@@ -25,6 +25,7 @@ const SHEET_ALLOWED = [
   // 控制台窄屏导航抽屉（云端控制台 D12，与 shell/LeftSidebar.tsx 同类用途）。
   "cloud/shell/ConsoleShell.tsx",
   "coordinator/DispatchDrawer.tsx",
+  "delivery/DeliveryPanel.tsx",
   "node-observation/NodeObservationDrawer.tsx",
   "panels/ExplorerDrawer.tsx",
   "panels/ResourceDrawer.tsx",

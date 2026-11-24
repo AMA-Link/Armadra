@@ -87,6 +87,12 @@ export function useCommandDispatch(): CommandDispatch {
         case "app.github":
           setPanel("github", panels.github === "closed" ? "drawer" : "closed");
           return;
+        case "app.delivery":
+          setPanel(
+            "delivery",
+            panels.delivery === "closed" ? "drawer" : "closed",
+          );
+          return;
         case "app.quickOpen":
           setPanel("quickOpen", !panels.quickOpen);
           return;

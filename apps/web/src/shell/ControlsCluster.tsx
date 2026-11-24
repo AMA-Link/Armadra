@@ -1,5 +1,6 @@
 import {
   Activity,
+  Columns3,
   FolderTree,
   GitBranch,
   GitPullRequest,
@@ -142,6 +143,20 @@ export function ControlsCluster() {
           }
         >
           <GitPullRequest />
+        </ClusterButton>
+
+        <ClusterButton
+          label={t("delivery.title")}
+          command="app.delivery"
+          active={panels.delivery !== "closed"}
+          onClick={() =>
+            setPanel(
+              "delivery",
+              panels.delivery === "closed" ? "drawer" : "closed",
+            )
+          }
+        >
+          <Columns3 />
         </ClusterButton>
 
         <ClusterButton

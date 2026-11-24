@@ -34,6 +34,7 @@ import { useAgentStatusStore } from "../agent/status-store";
 import { useProgramStatusStore } from "../agent/program-status-store";
 import { useDeliveryStore } from "../agent/delivery-store";
 import { useDependencyStore } from "../agent/dependency-store";
+import { useDeliveryBoard } from "../delivery/store";
 import { useDriveStore } from "../agent/drive-store";
 import { useLanguageStatusStore } from "../editor/language/status-store";
 import { currentSource, localSource, type Source } from "./source";
@@ -137,6 +138,8 @@ function dispatchInSource(event: WorkspaceEvent, sourceId: string): void {
   useDriveStore.getState().handleEvent(event);
   // 依赖等待：帧里没有等待本身，只有「该重读了」（Agent 自动化设计 §6）。
   useDependencyStore.getState().handleEvent(event);
+  // 交付看板（Armadra#988）：`delivery.changed` 只带栏与短语，细节重读路由。
+  useDeliveryBoard.getState().handleEvent(event);
   for (const handler of handlers.get(event.type) ?? [])
     handler(event, sourceId);
 }

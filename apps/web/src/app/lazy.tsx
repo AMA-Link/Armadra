@@ -108,6 +108,11 @@ export const DispatchDrawer = lazy(() =>
     default: module.DispatchDrawer,
   })),
 );
+export const DeliveryPanel = lazy(() =>
+  import("@/delivery/DeliveryPanel").then((module) => ({
+    default: module.DeliveryPanel,
+  })),
+);
 export const WorkflowPanel = lazy(() =>
   import("@/workflow/WorkflowPanel").then((module) => ({
     default: module.WorkflowPanel,
