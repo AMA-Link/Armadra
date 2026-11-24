@@ -284,6 +284,12 @@ export interface WorkspaceEventPayloads {
       "working" | "needsYou" | "inReview" | "readyToMerge" | "offBoard";
     readonly phrase: string;
     readonly pullsChanged?: boolean;
+    /** 子任务计数（只有计数，子节点列表读路由）；没有子任务时缺省。 */
+    readonly children?: {
+      readonly total: number;
+      readonly finished: number;
+      readonly needsYou: number;
+    };
   };
   "workflow.reply": {
     readonly replyId: string;

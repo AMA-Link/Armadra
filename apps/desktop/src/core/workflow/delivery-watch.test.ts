@@ -217,3 +217,165 @@ describe("DeliveryWatch", () => {
     expect(frames.at(-1)).toMatchObject({ nodeId: node, pullsChanged: true });
   });
 });
+
+describe("DeliveryWatch with children", () => {
+  function supervise(child: string): void {
+    fixture.database
+      .prepare(
+        "INSERT INTO edges (id, board_id, source_node_id, target_node_id, kind, role, created_at, updated_at) " +
+          "VALUES (?, ?, ?, ?, 'link', 'supervises', 't', 't')",
+      )
+      .run(`e-${child}`, fixture.boardId, node, child);
+  }
+
+  function childState(child: string, state: string): void {
+    fixture.database
+      .prepare(
+        "INSERT INTO agent_status (node_id, workspace_id, agent_id, state, unread, verified, restored, updated_at, last_event_at) " +
+          "VALUES (?, ?, 'codex', ?, 0, 1, 0, 't', ?) ON CONFLICT(node_id) DO UPDATE SET state = excluded.state",
+      )
+      .run(child, fixture.workspaceId, state, new Date(NOW).toISOString());
+    bus.emit("workspace.event", {
+      workspaceId: fixture.workspaceId,
+      event: { type: "agent.status", status: { nodeId: child, state } },
+    });
+  }
+
+  it("a child's status makes the parent emit, with the counts", () => {
+    setState("done");
+    const child = fixture.agentNode("kid", "codex");
+    supervise(child);
+    childState(child, "working");
+    expect(
+      frames.filter((frame) => frame.nodeId === node).at(-1),
+    ).toMatchObject({
+      lane: "working",
+      phrase: "waitingOnChildren",
+      children: { total: 1, finished: 0, needsYou: 0 },
+    });
+  });
+
+  it("emits when only the counts change", () => {
+    setState("done");
+    const a = fixture.agentNode("a", "codex");
+    const b = fixture.agentNode("b", "codex");
+    supervise(a);
+    supervise(b);
+    childState(a, "working");
+    childState(b, "working");
+    const before = frames.filter((frame) => frame.nodeId === node).length;
+    childState(b, "waiting");
+    const mine = frames.filter((frame) => frame.nodeId === node);
+    expect(mine).toHaveLength(before + 1);
+    expect(mine.at(-1)).toMatchObject({
+      phrase: "waitingOnChildren",
+      children: { total: 2, finished: 0, needsYou: 1 },
+    });
+  });
+
+  it("emits pullsChanged when the child set changed but the counts did not", () => {
+    setState("done");
+    const a = fixture.agentNode("a", "codex");
+    supervise(a);
+    childState(a, "working");
+    const before = frames.filter((frame) => frame.nodeId === node).length;
+    // 同一批里换了一个子节点，计数不变。
+    fixture.database
+      .prepare("DELETE FROM edges WHERE target_node_id = ?")
+      .run(a);
+    const b = fixture.agentNode("b", "codex");
+    supervise(b);
+    childState(b, "working");
+    const mine = frames.filter((frame) => frame.nodeId === node);
+    expect(mine).toHaveLength(before + 1);
+    expect(mine.at(-1)).toMatchObject({
+      pullsChanged: true,
+      children: { total: 1, finished: 0, needsYou: 0 },
+    });
+  });
+
+  it("a work item change refreshes the coordinator", () => {
+    setState("done");
+    const child = fixture.agentNode("kid", "codex");
+    fixture.database
+      .prepare(
+        "INSERT INTO workflow_task_runs (task_id, coordinator_node_id, runner_id, node_id, status, started_at) " +
+          "VALUES ('t9', ?, 'r', ?, 'running', ?)",
+      )
+      .run(node, child, NOW - 1000);
+    bus.emit("workspace.event", {
+      workspaceId: fixture.workspaceId,
+      event: {
+        type: "workflow.task",
+        taskId: "t9",
+        boardId: fixture.boardId,
+        coordinatorNodeId: node,
+        nodeId: child,
+        status: "running",
+      },
+    });
+    expect(
+      frames.filter((frame) => frame.nodeId === node).at(-1),
+    ).toMatchObject({
+      phrase: "waitingOnChildren",
+      children: { total: 1, finished: 0 },
+    });
+  });
+
+  it("a workflow.run step frame refreshes the collect role node", () => {
+    setState("done");
+    const child = fixture.agentNode("kid", "codex");
+    fixture.database
+      .prepare(
+        "INSERT INTO workflow_runs (id, template_id, template_version, template_json, workspace_id, board_id, status, started_at) " +
+          "VALUES ('r1', 't', 1, ?, ?, ?, 'running', 1)",
+      )
+      .run(
+        JSON.stringify({
+          steps: [
+            { id: "s1", kind: "prompt" },
+            { id: "c", kind: "collect", from: ["s1"] },
+          ],
+        }),
+        fixture.workspaceId,
+        fixture.boardId,
+      );
+    const step = fixture.database.prepare(
+      "INSERT INTO workflow_run_steps (run_id, step_id, kind, status, node_id, started_at) VALUES ('r1', ?, ?, ?, ?, ?)",
+    );
+    step.run("s1", "prompt", "running", child, NOW - 1000);
+    step.run("c", "collect", "running", node, NOW - 500);
+    bus.emit("workspace.event", {
+      workspaceId: fixture.workspaceId,
+      event: {
+        type: "workflow.run",
+        runId: "r1",
+        boardId: fixture.boardId,
+        status: "running",
+        stepId: "s1",
+        stepStatus: "running",
+      },
+    });
+    expect(
+      frames.filter((frame) => frame.nodeId === node).at(-1),
+    ).toMatchObject({
+      lane: "working",
+      phrase: "waitingOnChildren",
+      children: { total: 1, finished: 0 },
+    });
+  });
+
+  it("does not subscribe to board.changed", () => {
+    setState("done");
+    const before = frames.length;
+    bus.emit("workspace.event", {
+      workspaceId: fixture.workspaceId,
+      event: {
+        type: "board.changed",
+        boardId: fixture.boardId,
+        updatedAt: "t",
+      },
+    });
+    expect(frames).toHaveLength(before);
+  });
+});
