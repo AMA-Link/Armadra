@@ -1,4 +1,4 @@
-import { AGENT_IDS } from "./agents.js";
+import { type InjectedAgentId, injectedAgentIds } from "./agents.js";
 
 /**
  * 零注入启动（契约 §113，#975）：设置 `agents.<id>.bareLaunch` 为真时，这家
@@ -9,8 +9,12 @@ import { AGENT_IDS } from "./agents.js";
 /** 节点终端环境里的零注入标记；启动器只看它是否非空。 */
 export const BARE_LAUNCH_ENV = "ARMADRA_BARE";
 
-/** 有注入、因而有这个开关的 Agent：内置的那几家，自定义条目不在其中。 */
-export const BARE_LAUNCH_AGENT_IDS = AGENT_IDS;
+/**
+ * 有注入、因而有这个开关的 Agent：内置的、有画布注入的那几家（没有注入的内置
+ * Agent 没有可关的东西，契约 §120），自定义条目不在其中。
+ */
+export const BARE_LAUNCH_AGENT_IDS =
+  injectedAgentIds() as readonly InjectedAgentId[];
 
 export function supportsBareLaunch(agentId: string): boolean {
   return (BARE_LAUNCH_AGENT_IDS as readonly string[]).includes(agentId);

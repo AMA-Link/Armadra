@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BARE_LAUNCH_AGENT_IDS,
   BARE_LAUNCH_ENV,
   bareLaunchOf,
   supportsBareLaunch,
 } from "./agent-bare-launch.js";
+import { AGENT_IDS, injectedAgentIds } from "./agents.js";
 import { completionSettingsSchema } from "./api/settings.js";
 
 describe("bareLaunchOf", () => {
@@ -30,6 +32,22 @@ describe("bareLaunchOf", () => {
     expect(supportsBareLaunch("custom:x")).toBe(false);
     expect(supportsBareLaunch("custom")).toBe(false);
     expect(BARE_LAUNCH_ENV).toBe("ARMADRA_BARE");
+  });
+});
+
+describe("which built-ins have the switch (§120)", () => {
+  it("is every built-in that has an injection, in registry order", () => {
+    expect([...BARE_LAUNCH_AGENT_IDS]).toEqual([...injectedAgentIds()]);
+    for (const id of AGENT_IDS) {
+      expect(supportsBareLaunch(id), id).toBe(
+        (injectedAgentIds() as readonly string[]).includes(id),
+      );
+    }
+  });
+
+  it("leaves out a built-in that is declared without injection", () => {
+    expect(injectedAgentIds(["a", "b", "c"], ["b"])).toEqual(["a", "c"]);
+    expect(injectedAgentIds(["a", "b"], [])).toEqual(["a", "b"]);
   });
 });
 
