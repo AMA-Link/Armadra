@@ -1,4 +1,5 @@
 import { workflowDomain } from "../../workflow/registry";
+import { recordVerdict, runById, verifyingStepsOf } from "../../workflow/store";
 import { DomainError } from "../../workspaces/support";
 import type { Caller } from "../nodes";
 import { type Args, Refusal, Refused } from "../refusals";
@@ -48,5 +49,102 @@ export function workflowPropose(
   return result(
     `草案「${row.draft.title}」已经交上去了，画布上会出现一张草案卡，等人确认后存为模板。`,
     { draftId: row.id, status: row.status, title: row.draft.title },
+  );
+}
+
+const MAX_ISSUES = 16;
+const MAX_ISSUE_LENGTH = 500;
+
+function badRequest(message: string): Refused {
+  return new Refused(400, "bad_request", message);
+}
+
+/**
+ * `workflow-verdict`（§2.6）：汇总角色按收件箱里的验证说明自己执行之后，用它报
+ * 结论。只写 `verdict_json`（只留最近一次）：不推帧、不改步骤状态，判定在引擎
+ * 的 `check` 里。
+ */
+export function workflowVerdict(
+  context: CollabContext,
+  caller: Caller,
+  args: Args,
+): Outcome {
+  const pass = args.flag("pass");
+  const raw = args.all("issue");
+  if (pass === raw.length > 0) {
+    throw badRequest(
+      pass
+        ? "--pass 与 --issue 不能同时给。"
+        : "workflow-verdict 要么 --pass，要么至少一条 --issue '<角色 id>: <问题>'。",
+    );
+  }
+  if (raw.length > MAX_ISSUES) {
+    throw badRequest(`--issue 最多 ${MAX_ISSUES} 条。`);
+  }
+  for (const text of raw) {
+    if ([...text].length > MAX_ISSUE_LENGTH) {
+      throw badRequest(`每条 --issue 最多 ${MAX_ISSUE_LENGTH} 个字。`);
+    }
+  }
+
+  const mine = verifyingStepsOf(context.database, caller.node.id)
+    .map((entry) => ({ entry, run: runById(context.database, entry.runId) }))
+    .filter(({ entry, run }) => {
+      const step = run?.template.steps.find((s) => s.id === entry.stepId);
+      return step?.kind === "collect" && step.verify != null;
+    });
+  const wanted = args.text("step");
+  const picked =
+    wanted === undefined
+      ? mine
+      : mine.filter(({ entry }) => entry.stepId === wanted);
+  if (picked.length === 0) {
+    throw new Refused(
+      409,
+      "no_verifying_step",
+      "你不是任何一个正在验证的汇总步骤的角色节点。",
+    );
+  }
+  if (picked.length > 1) {
+    throw badRequest(
+      `你同时在验证多个步骤，用 --step 指明：${picked
+        .map(({ entry }) => entry.stepId)
+        .join("、")}。`,
+    );
+  }
+  const { entry, run } = picked[0]!;
+  const roles = new Set((run?.template.roles ?? []).map((role) => role.id));
+
+  const issues = raw.map((line) => {
+    const colon = line.indexOf(":");
+    const head = colon > 0 ? line.slice(0, colon).trim() : "";
+    if (head === "" || !roles.has(head)) {
+      return { role: null, text: line };
+    }
+    const text = line.slice(colon + 1).trim();
+    if (text === "") throw badRequest(`角色 \`${head}\` 后面没有写问题。`);
+    return { role: head, text };
+  });
+
+  if (args.flag("dry-run")) {
+    return result("（演练）结论会记下。", { dryRun: true });
+  }
+  const at = (context.now?.() ?? new Date()).getTime();
+  const written = recordVerdict(context.database, entry.runId, entry.stepId, {
+    round: entry.round,
+    pass,
+    issues,
+    at,
+  });
+  if (!written) {
+    throw new Refused(
+      409,
+      "no_verifying_step",
+      "这一步已经不在验证中，结论没有记下。",
+    );
+  }
+  return result(
+    pass ? "已记下：通过。" : `已记下：不通过，${issues.length} 条问题。`,
+    { runId: entry.runId, stepId: entry.stepId, round: entry.round },
   );
 }
