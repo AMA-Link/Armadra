@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { useDeliverySync } from "@/delivery/sync";
 import { OverlaySuspense, type OverlayShape } from "./OverlayFallback";
 import {
   DeviceApprovalPrompt,
@@ -17,6 +18,7 @@ import {
   HandoffDialog,
   HandoffHistoryDrawer,
   CodeActionMenu,
+  DeliveryPanel,
   DispatchDrawer,
   EditPreviewDialog,
   MergeDialog,
@@ -87,6 +89,7 @@ export function Overlays() {
   const attach = useAttachSessionStore((state) => state.request !== null);
   useLinkFragments();
   useSourcesBootstrap();
+  useDeliverySync();
 
   return (
     <Suspense fallback={null}>
@@ -162,6 +165,9 @@ export function Overlays() {
       </Gate>
       <Gate open={panels.dispatch !== "closed"} shape="drawer">
         <DispatchDrawer />
+      </Gate>
+      <Gate open={panels.delivery !== "closed"} shape="drawer">
+        <DeliveryPanel />
       </Gate>
       {/* 事件流驱动的四个：必须先订阅，不能等状态。 */}
       <ControlConfirmDialog />

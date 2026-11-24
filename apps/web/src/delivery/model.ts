@@ -102,3 +102,78 @@ export function sortPulls(pulls: readonly DeliveryPull[]): DeliveryPull[] {
 
 /** 移出看板的条目保留多久（设计 D7）：24 小时，或到节点开始下一回合。 */
 export const OFF_BOARD_KEEP_MS = 24 * 60 * 60 * 1000;
+
+/** 看板上的一张卡：节点标题加它的交付状态。 */
+export interface BoardCard {
+  readonly nodeId: string;
+  readonly title: string;
+  readonly lane: DeliveryLane;
+  readonly phrase: string;
+  /** 最落后的排前。 */
+  readonly pulls: readonly DeliveryPull[];
+}
+
+export interface BoardRowLike {
+  readonly nodeId: string;
+  readonly lane: DeliveryLane;
+  readonly phrase: string;
+  readonly pulls: readonly DeliveryPull[];
+  readonly offBoardAtMs: number | null;
+}
+
+export interface BoardView {
+  readonly lanes: Readonly<Record<BoardLane, readonly BoardCard[]>>;
+  readonly merged: readonly BoardCard[];
+  readonly closed: readonly BoardCard[];
+}
+
+/** 一张卡有多落后：取它最落后的那个 PR；没有 PR 的排在同栏最后。 */
+function cardRank(card: BoardCard): number {
+  return card.pulls.length === 0
+    ? Number.POSITIVE_INFINITY
+    : pullRank(card.pulls[0]!);
+}
+
+/**
+ * 把行分到四栏与终态区。只列画布上还有的节点（`titles` 的键）；终态条目只留
+ * 24 小时内的（D7）。同栏里有问题的优先，其次按标题，顺序稳定。
+ */
+export function buildBoard(
+  rows: readonly BoardRowLike[],
+  titles: ReadonlyMap<string, string>,
+  now: number,
+): BoardView {
+  const lanes: Record<BoardLane, BoardCard[]> = {
+    needsYou: [],
+    working: [],
+    inReview: [],
+    readyToMerge: [],
+  };
+  const merged: BoardCard[] = [];
+  const closed: BoardCard[] = [];
+  for (const row of rows) {
+    const title = titles.get(row.nodeId);
+    if (title === undefined) continue;
+    const card: BoardCard = {
+      nodeId: row.nodeId,
+      title,
+      lane: row.lane,
+      phrase: row.phrase,
+      pulls: sortPulls(row.pulls),
+    };
+    if (row.lane === "offBoard") {
+      if (
+        row.offBoardAtMs === null ||
+        now - row.offBoardAtMs >= OFF_BOARD_KEEP_MS
+      )
+        continue;
+      (row.phrase === "merged" ? merged : closed).push(card);
+    } else {
+      lanes[row.lane].push(card);
+    }
+  }
+  const byRank = (a: BoardCard, b: BoardCard) =>
+    cardRank(a) - cardRank(b) || a.title.localeCompare(b.title);
+  for (const lane of BOARD_LANES) lanes[lane].sort(byRank);
+  return { lanes, merged, closed };
+}

@@ -71,6 +71,7 @@ import { push } from "./push";
 import { credentials } from "./credentials";
 import { mobileConnect } from "./mobile-connect";
 import { coordinator } from "./coordinator";
+import { delivery } from "./delivery";
 import { forge } from "./forge";
 import { mail } from "./mail";
 import { diagnostics } from "./diagnostics";
@@ -162,6 +163,7 @@ export const MESSAGE_MODULES = {
   credentials,
   "mobile-connect": mobileConnect,
   coordinator,
+  delivery,
   forge,
   mail,
   diagnostics,

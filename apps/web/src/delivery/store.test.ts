@@ -59,15 +59,13 @@ describe("delivery store", () => {
 
   it("re-reads when pullsChanged is set", async () => {
     await useDeliveryBoard.getState().refresh("w1", "b1");
-    useDeliveryBoard
-      .getState()
-      .handleEvent(
-        changed({
-          lane: "inReview",
-          phrase: "awaitingReview",
-          pullsChanged: true,
-        }),
-      );
+    useDeliveryBoard.getState().handleEvent(
+      changed({
+        lane: "inReview",
+        phrase: "awaitingReview",
+        pullsChanged: true,
+      }),
+    );
     await Promise.resolve();
     expect(board).toHaveBeenCalledTimes(2);
   });

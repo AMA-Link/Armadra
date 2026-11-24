@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { DELIVERY_LANES, DELIVERY_PHRASES } from "@armadra/shared";
 
-import { PHRASE_TONE, pullRank, sortPulls, phraseTone } from "./model";
+import { translate } from "@/i18n";
+import {
+  BOARD_LANES,
+  PHRASE_TONE,
+  laneKey,
+  phraseKey,
+  phraseTone,
+  pullRank,
+  sortPulls,
+} from "./model";
 import { pull } from "./fixtures";
 
 describe("PHRASE_TONE", () => {
@@ -45,4 +54,22 @@ describe("sortPulls", () => {
       pullRank(pull()),
     );
   });
+});
+
+describe("i18n keys", () => {
+  it.each(["zh-CN", "en"] as const)(
+    "every lane and phrase has a %s label",
+    (locale) => {
+      for (const lane of BOARD_LANES) {
+        const key = laneKey(lane);
+        expect(translate(locale, key), key).not.toBe(key);
+      }
+      for (const lane of DELIVERY_LANES) {
+        for (const phrase of DELIVERY_PHRASES[lane]) {
+          const key = phraseKey(lane, phrase);
+          expect(translate(locale, key), key).not.toBe(key);
+        }
+      }
+    },
+  );
 });

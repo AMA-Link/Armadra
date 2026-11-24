@@ -75,6 +75,8 @@ export interface PanelState {
   workflow: "closed" | "drawer";
   /** 协调者（ama）的分派抽屉（设计系统 §5.4）：看哪个协调者在 `coordinator/store.ts`。 */
   dispatch: "closed" | "drawer";
+  /** 交付看板：四栏（需要你、进行中、审查中、可合并），Armadra#988。 */
+  delivery: "closed" | "drawer";
   /** 额度、用量与成本看板（§4.2）。抽屉或右侧常驻浮卡。 */
   usage: "closed" | "drawer" | "pinned";
   /** 右侧工作面板的「GitHub」页（Git/GitHub 设计 §1 / 画布平台设计 §4）。 */
