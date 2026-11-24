@@ -15,6 +15,8 @@
  */
 
 import { collab } from "../agent";
+import { amaSupportsTier } from "../agent/launch";
+import { storedProbe } from "../agent/probe";
 import { setStallSource } from "../agent/stalled";
 import { loadSession } from "../collab/nodes";
 import { deliverPullBatch } from "../collab/pr-fanout";
@@ -78,6 +80,17 @@ export function install(context: CoreContext): WorkflowDomain | undefined {
     database,
     engine,
     collab: () => collab(),
+    tier: () => {
+      const settings = collab()?.settings;
+      return settings === undefined
+        ? undefined
+        : {
+            settings,
+            amaSupportsTier: amaSupportsTier(
+              storedProbe("ama")?.version ?? undefined,
+            ),
+          };
+    },
   });
   installWorkflowRoutes(context.server, service);
   installDeliveryRoutes(context.server, { database });

@@ -342,6 +342,7 @@ describe("模板升级", () => {
       "PUT",
       `/api/workflows/templates/${templateId}`,
       {
+        baseVersion: 1,
         template: body(
           [
             { name: "scope", type: "string" },
@@ -422,6 +423,7 @@ describe("模板升级", () => {
       "PUT",
       `/api/workflows/templates/${templateId}`,
       {
+        baseVersion: 1,
         template: body(
           [
             { name: "scope", type: "string" },
@@ -462,6 +464,7 @@ describe("模板升级", () => {
       "PUT",
       `/api/workflows/templates/${templateId}`,
       {
+        baseVersion: 2,
         template: body(
           [{ name: "target", type: "string", default: "src" }],
           3,

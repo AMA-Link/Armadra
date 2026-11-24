@@ -353,7 +353,10 @@ async function scheduleOnce({
   };
   const updated = await api(`/api/workflows/templates/${template.id}`, {
     method: "PUT",
-    body: JSON.stringify({ template: revised }),
+    body: JSON.stringify({
+      template: revised,
+      baseVersion: template.version,
+    }),
   });
   const listed = updated.frozenSchedules?.find(
     (item) => item.scheduleId === planId,
