@@ -19,6 +19,7 @@ import {
   sessionName,
 } from "./backend";
 import { TerminalManager } from "./manager";
+import type { TerminalManagerOptions } from "./manager-types";
 import type { Lease } from "../drive/lease";
 import { fixture, type Fixture } from "../workspaces/fixture";
 
@@ -247,6 +248,7 @@ export function harness(
   options: {
     singlePty?: boolean;
     limits?: { terminalsPerPrincipal: number; agentsPerWorkspace: number };
+    onStart?: TerminalManagerOptions["onStart"];
   } = {},
 ): Harness {
   open = fixture([]);
@@ -270,6 +272,7 @@ export function harness(
     database,
     backends: new Map([["tmux", backend]]),
     effective: "tmux",
+    ...(options.onStart === undefined ? {} : { onStart: options.onStart }),
     ...(options.limits === undefined ? {} : { limits: () => options.limits! }),
     onProgramStatus: (event) => {
       programs.push({

@@ -171,6 +171,7 @@ export class TerminalManager {
     dormantAfterSeconds: number;
   };
   private readonly onExit: TerminalManagerOptions["onExit"];
+  private readonly onStart: TerminalManagerOptions["onStart"];
   private stopping = false;
   private readonly sequenceDirectory: string | undefined;
   /** 程序自报的状态（契约 §53），只在内存里。 */
@@ -188,6 +189,7 @@ export class TerminalManager {
     this.policy = options.policy ?? (() => DEFAULT_POLICY);
     this.limitGate = new LimitGate(options.database, options.limits);
     this.onExit = options.onExit;
+    this.onStart = options.onStart;
     this.attachments = new AttachmentBook(this.clock);
     this.drives = new TerminalDriveBook({
       database: this.database,
@@ -516,6 +518,18 @@ export class TerminalManager {
     this.drives.remember(record.id, driveRef(record));
     this.attachments.register(record.id);
     this.records.set(record.id, record);
+    try {
+      this.onStart?.({
+        workspaceId: record.workspaceId,
+        sessionId: record.id,
+        nodeId: record.ownerNodeId,
+      });
+    } catch (error) {
+      this.log("会话起来的通知失败", {
+        sessionId: record.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private forget(sessionId: string): void {
@@ -934,6 +948,12 @@ export class TerminalManager {
   inputRevision(sessionId: string): number | undefined {
     const record = this.records.get(sessionId);
     return record?.inputRevision;
+  }
+
+  /** 这个会话 PTY 的进程号；没有活着的记录或读不到答 `undefined`。 */
+  pidOf(sessionId: string): number | undefined {
+    const record = this.records.get(sessionId);
+    return record === undefined || record.exited ? undefined : record.pid;
   }
 
   /** 这个会话跑在 SSH 主机上（读不到本机文件的那一种）；不认识的会话答 `false`。 */

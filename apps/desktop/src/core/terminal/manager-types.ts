@@ -120,6 +120,15 @@ export interface TerminalManagerOptions {
   readonly now?: () => string;
   readonly clock?: () => number;
   readonly log?: (message: string, fields?: Record<string, unknown>) => void;
+  /**
+   * 一个会话起来了（新建、接回、接管都算）。时间线的状态读取槽在这里开：槽不等
+   * 任何上报（`timeline/sources/state-slot.ts`）。监听者抛错不影响终端创建。
+   */
+  readonly onStart?: (event: {
+    workspaceId: string;
+    sessionId: string;
+    nodeId: string | null;
+  }) => void;
   readonly onExit?: (event: {
     workspaceId: string;
     sessionId: string;

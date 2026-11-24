@@ -33,7 +33,7 @@ import {
   sshHostOf,
 } from "../acp";
 import { acpSwitching } from "../acp/routes";
-import { rowLiveness, timelineDomainOf } from "../timeline";
+import { timelineDomainOf } from "../timeline";
 import { loadNode } from "../collab/nodes";
 import { canvasEnvironment } from "../agent/canvas-launch";
 import { type StallKind, stalledOf } from "../agent/stalled";
@@ -63,6 +63,7 @@ import { SshBackend } from "./ssh/backend";
 import { permissionWaitEnvironment } from "../hook/approvals";
 import { issueNodeToken } from "../hook/tokens";
 import { TerminalManager } from "./manager";
+import { linkTimeline, sessionStarted } from "./timeline-link";
 import type { ProgramStatusWire } from "./program-status-book";
 import { humanActor } from "../drive/lease";
 import {
@@ -240,6 +241,7 @@ export function install(
         },
       });
     },
+    onStart: (event) => sessionStarted(context, event.nodeId),
     onExit: (event) => {
       context.bus.emit("workspace.event", {
         workspaceId: event.workspaceId,
@@ -252,15 +254,7 @@ export function install(
       });
     },
   });
-  // 会话时间线（契约 §82）重启后没有活动记录时，按真实的存活情况补
-  // `idle` / `sleeping` / `exited`。
-  timelineDomainOf(context.server)?.setLiveness((sessionId) =>
-    manager.isAlive(sessionId)
-      ? "alive"
-      : rowLiveness(context.db.database, sessionId) === "sleeping"
-        ? "sleeping"
-        : "gone",
-  );
+  linkTimeline(context, manager);
 
   /**
    * Start-up recovery, and the gate every terminal answer waits behind.
