@@ -66,7 +66,7 @@ CREATE TABLE agent_status (
  session_id TEXT, pending_id TEXT, verified INTEGER NOT NULL DEFAULT 0,
  restored INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL,
  transcript_path TEXT, last_event_at TEXT, session_phase TEXT,
- errored INTEGER, interrupted INTEGER, ended_by TEXT
+ errored INTEGER, interrupted INTEGER, ended_by TEXT, done_at TEXT
 )`);
   database
     .prepare("INSERT INTO boards (id, workspace_id) VALUES ('b', 'ws')")
