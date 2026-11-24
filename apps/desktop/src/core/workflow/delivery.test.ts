@@ -12,6 +12,10 @@ import {
   deliveryStatus,
 } from "./delivery";
 
+function read(rollup: "pending" | "success" | "failure" | "neutral" | "none") {
+  return { read: true, headSha: "sha", rollup, failing: [] } as const;
+}
+
 const AGENT: DeliveryAgentFacts = {
   state: "done",
   pending: false,
@@ -26,7 +30,7 @@ function pull(over: Partial<DeliveryPull> = {}): DeliveryPull {
     state: "open",
     draft: false,
     review: "notRequired",
-    checks: { read: true, rollup: "success" },
+    checks: read("success"),
     mergeable: "mergeable",
     parent: { kind: "none" },
     stale: false,
@@ -52,9 +56,9 @@ function build(c: Case): DeliveryFacts {
   };
 }
 
-const ok = { checks: { read: true, rollup: "success" } } as const;
-const failing = { checks: { read: true, rollup: "failure" } } as const;
-const pending = { checks: { read: true, rollup: "pending" } } as const;
+const ok = { checks: read("success") } as const;
+const failing = { checks: read("failure") } as const;
+const pending = { checks: read("pending") } as const;
 
 const CASES: readonly Case[] = [
   // 第 1 步：离开看板
@@ -330,12 +334,12 @@ const CASES: readonly Case[] = [
   },
   {
     name: "5 neutral 算通过",
-    pulls: [{ checks: { read: true, rollup: "neutral" } }],
+    pulls: [{ checks: read("neutral") }],
     expect: { lane: "readyToMerge", phrase: "mergeable" },
   },
   {
     name: "5 none 且已读算通过",
-    pulls: [{ checks: { read: true, rollup: "none" } }],
+    pulls: [{ checks: read("none") }],
     expect: { lane: "readyToMerge", phrase: "mergeable" },
   },
   {
@@ -379,7 +383,7 @@ const CASES: readonly Case[] = [
     name: "6 waitingOnBase 先于其余",
     pulls: [
       {
-        parent: { kind: "open" },
+        parent: { kind: "open", number: 1, url: "u" },
         review: "reviewRequired",
         ...pending,
       },

@@ -1,6 +1,7 @@
 import type {
   AgentState,
   DeliveryStatus,
+  PullSnapshot,
   WorkItemStage,
 } from "@armadra/shared";
 
@@ -18,30 +19,10 @@ export interface DeliveryAgentFacts {
   readonly endedBy: "stale" | "terminated" | "modelError" | null;
 }
 
-// TODO(#988): P1 合并后改为 `Pick<PullSnapshot, "state" | "draft" | "review"
-// | "checks" | "mergeable" | "parent" | "stale">`，字段与 P1 冻结定义一致。
-export interface DeliveryPull {
-  readonly state: "open" | "merged" | "closed";
-  readonly draft: boolean;
-  readonly review:
-    | "approved"
-    | "changesRequested"
-    | "reviewRequired"
-    | "notRequired"
-    | "unknown";
-  readonly checks:
-    | {
-        readonly read: true;
-        readonly rollup: "pending" | "success" | "failure" | "neutral" | "none";
-      }
-    | { readonly read: false };
-  readonly mergeable: "mergeable" | "conflicting" | "unknown";
-  readonly parent:
-    | { readonly kind: "none" }
-    | { readonly kind: "open" }
-    | { readonly kind: "unknown" };
-  readonly stale: boolean;
-}
+export type DeliveryPull = Pick<
+  PullSnapshot,
+  "state" | "draft" | "review" | "checks" | "mergeable" | "parent" | "stale"
+>;
 
 export interface DeliveryFacts {
   readonly agent: DeliveryAgentFacts | null;

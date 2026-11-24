@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { pullSnapshotSchema } from "./pulls.js";
+
 /**
  * Delivery status of an Agent node (Armadra#988): four board lanes plus
  * "off board", each with a fixed phrase set. The lane and phrase are derived
@@ -72,60 +74,15 @@ export const deliveryStatusSchema = z.union(
   ],
 ) as unknown as z.ZodType<DeliveryStatus>;
 
-// TODO(#988): once P1 lands, replace the shapes below with `PullSnapshot` from
-// ./pulls.ts. They mirror the frozen P1 definition exactly.
-const deliveryPullReviewSchema = z.enum([
-  "approved",
-  "changesRequested",
-  "reviewRequired",
-  "notRequired",
-  "unknown",
-]);
-const deliveryPullChecksSchema = z.discriminatedUnion("read", [
-  z.object({
-    read: z.literal(true),
-    headSha: z.string(),
-    rollup: z.enum(["pending", "success", "failure", "neutral", "none"]),
-    failing: z.array(z.string()),
-  }),
-  z.object({ read: z.literal(false) }),
-]);
-const deliveryPullParentSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("none") }),
-  z.object({
-    kind: z.literal("open"),
-    number: z.number().int(),
-    url: z.string(),
-  }),
-  z.object({ kind: z.literal("unknown") }),
-]);
-export const deliveryPullSchema = z.object({
-  repo: z.string(),
-  number: z.number().int(),
-  url: z.string(),
-  title: z.string(),
-  state: z.enum(["open", "merged", "closed"]),
-  draft: z.boolean(),
-  baseRef: z.string(),
-  headRef: z.string(),
-  headSha: z.string(),
-  fromFork: z.boolean(),
-  review: deliveryPullReviewSchema,
-  checks: deliveryPullChecksSchema,
-  mergeable: z.enum(["mergeable", "conflicting", "unknown"]),
-  parent: deliveryPullParentSchema,
-  fetchedAtMs: z.number(),
-  stale: z.boolean(),
-});
-export type DeliveryPull = z.infer<typeof deliveryPullSchema>;
-
 /** GET /api/workspaces/:workspaceId/boards/:boardId/delivery */
 export const deliveryNodeSchema = z.object({
   nodeId: z.string(),
   taskId: z.string().nullable(),
   lane: deliveryLaneSchema,
   phrase: z.string(),
-  pulls: z.array(deliveryPullSchema),
+  pulls: z.array(pullSnapshotSchema),
+  /** When every PR left the board (merged or closed); null while any is open or there is none. */
+  endedAtMs: z.number().nullable().optional(),
 });
 export type DeliveryNode = z.infer<typeof deliveryNodeSchema>;
 
