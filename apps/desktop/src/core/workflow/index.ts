@@ -19,7 +19,7 @@ import { setStallSource } from "../agent/stalled";
 import { loadSession } from "../collab/nodes";
 import { deliverPullBatch } from "../collab/pr-fanout";
 import { publishIntake, recordIntakeEvent } from "../collab/intake-fanout";
-import { forgeService } from "../forge/registry";
+import { forgeService, workspaceRepository } from "../forge/registry";
 import {
   deliverRecoveryHint,
   recordInterrupted,
@@ -37,6 +37,7 @@ import {
   ProgressWatchdog,
 } from "./progress-watchdog";
 import { IntakeWatch } from "./intake-watch";
+import { NodePullLinker, snapshotTargets } from "./node-pulls";
 import { PrWatch } from "./pr-watch";
 import { installWorkflowRoutes } from "./routes";
 import { type WorkflowDomain, setWorkflowDomain } from "./registry";
@@ -167,6 +168,8 @@ export function install(context: CoreContext): WorkflowDomain | undefined {
   const pulls = new PrWatch({
     database,
     forge: forgeService,
+    // 画布节点关联的 PR（契约 §116）：只刷快照，不读讨论、不投递。
+    snapshotTargets: (nowMs) => snapshotTargets(database, nowMs),
     deliver: (run, thread, batch) => {
       const ctx = collab();
       if (ctx !== undefined) deliverPullBatch(ctx, run, thread, batch);
@@ -192,6 +195,14 @@ export function install(context: CoreContext): WorkflowDomain | undefined {
     },
     log: (message, fields) => context.log.info(message, fields),
   });
+  // 节点 → PR 关联（契约 §116）：回合结束与每 60 秒按分支找 PR，只写关联表。
+  const nodePulls = new NodePullLinker({
+    database,
+    forge: forgeService,
+    repositories: workspaceRepository,
+    bus: context.bus,
+    log: (message, fields) => context.log.info(message, fields),
+  });
   const tasks = new TaskWatch({
     database,
     bus: context.bus,
@@ -200,6 +211,11 @@ export function install(context: CoreContext): WorkflowDomain | undefined {
     onTick: () => {
       watchdog.scan();
       recovery.scan();
+      void nodePulls.tick().catch((error: unknown) => {
+        context.log.info("节点关联没有跑完", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
       void pulls.tick().catch((error: unknown) => {
         context.log.info("PR 轮询没有跑完", {
           error: error instanceof Error ? error.message : String(error),
@@ -222,6 +238,7 @@ export function install(context: CoreContext): WorkflowDomain | undefined {
     service,
     stop: async () => {
       tasks.stop();
+      nodePulls.stop();
       offStatus();
       clearTimeout(firstScan);
       setStallSource(undefined);

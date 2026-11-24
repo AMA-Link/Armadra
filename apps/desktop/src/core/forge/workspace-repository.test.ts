@@ -946,7 +946,6 @@ describe("branchAt（契约 §116）", () => {
 
   it("执行主机：读 git.status 的分支，按基仓库同名分支", async () => {
     const paths: string[] = [];
-    let root = "";
     const h = await harness({
       repo: { remotes: "" },
       remoteHost: async () => HOST_REMOTES,
@@ -955,7 +954,7 @@ describe("branchAt（契约 §116）", () => {
         return { branch: "feat/r" };
       },
     });
-    root = h.root;
+    const root = h.root;
     expect(await h.service.branchAt(WS, join(root, "pkg"))).toEqual({
       repo: "github.com/acme/app",
       branch: "feat/r",

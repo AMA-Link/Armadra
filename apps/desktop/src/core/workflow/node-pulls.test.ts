@@ -20,6 +20,8 @@ import {
   nodesOfPull,
   snapshotTargets,
 } from "./node-pulls";
+import { PrWatch } from "./pr-watch";
+import { loadSnapshots } from "./pull-snapshots";
 import { bindThread } from "./threads";
 import { recordTaskStart } from "./task-runs";
 
@@ -362,6 +364,44 @@ describe("snapshotTargets", () => {
     ).toEqual([1, 3]);
     // 终态的关联仍在，供「移出看板」。
     expect(count("node_pull_links")).toBe(3);
+  });
+});
+
+describe("through PrWatch", () => {
+  it("refreshes the snapshot of a linked pull and writes nothing else", async () => {
+    const a = node("a", "feat/x");
+    heads.set("acme:feat/x", [5]);
+    await linker.tick();
+    expect(linkedPulls(fixture.database, a)).toHaveLength(1);
+    const reads: string[] = [];
+    const remote = {
+      getPull: async () => (reads.push("getPull"), pull(5)),
+      checks: async () => ({
+        headSha: "a".repeat(40),
+        rollup: "success" as const,
+        checks: [],
+      }),
+      pullReviewers: async () => [],
+      conversation: async () => (reads.push("conversation"), { items: [] }),
+    };
+    const seen: string[] = [];
+    const watch = new PrWatch({
+      database: fixture.database,
+      forge: () =>
+        ({ forgeForReady: async () => remote }) as unknown as ForgeService,
+      clock: () => clock,
+      deliver: () => seen.push("deliver"),
+      onSettled: () => seen.push("settled"),
+      snapshotTargets: (nowMs) => snapshotTargets(fixture.database, nowMs),
+    });
+    await watch.tick();
+    expect(reads).toEqual(["getPull"]);
+    expect(seen).toEqual([]);
+    expect(
+      loadSnapshots(fixture.database, [{ repo: REPO, number: 5 }], clock),
+    ).toMatchObject([{ number: 5, state: "open", stale: false }]);
+    expect(count("thread_events")).toBe(0);
+    expect(count("agent_mailbox")).toBe(0);
   });
 });
 
