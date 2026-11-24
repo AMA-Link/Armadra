@@ -208,25 +208,10 @@ export function ingest(
     // No revision: the core draws one from the session's own counter, after
     // the same gates (contract §57.2). One it cannot draw (no counter file)
     // leaves the report without a binding, as the hook client's would be.
-    const usable =
-      verdict === "verified" &&
-      /^[A-Za-z0-9_-]{1,80}$/.test(posted.sessionId) &&
-      Number.isSafeInteger(posted.generation) &&
-      posted.generation >= 0 &&
-      isCurrentNodeSession(context.database, nodeId, posted, agentId);
-    if (!usable) return ACCEPTED;
-    const revision = allocateSourceRevision(
-      context.hooks.dataDir,
-      posted.sessionId,
-      posted.generation,
-    );
-    if (revision !== undefined) {
-      binding = {
-        sessionId: posted.sessionId,
-        generation: posted.generation,
-        sourceRevision: String(revision),
-      };
-    }
+    if (verdict !== "verified") return ACCEPTED;
+    const drawn = drawBinding(context, nodeId, agentId, posted);
+    if (drawn === "refused") return ACCEPTED;
+    binding = drawn;
   }
 
   const payload = request.payload ?? null;
@@ -269,10 +254,74 @@ export function ingest(
   }
 
   apply(context, owner.workspaceId, agentId, event, payload);
+  settleReport(context, {
+    nodeId,
+    agentId,
+    event,
+    payload,
+    verified: verdict === "verified",
+    binding,
+  });
+  return ACCEPTED;
+}
+
+/**
+ * Draws the source revision for a binding that came without one (contract
+ * §57.2), after the gates a posted binding passes: the session must be the one
+ * this node is running, for this agent. `"refused"` is a binding the gates
+ * rejected; `undefined` is one that passed but has no counter to draw from, so
+ * the report goes on without a binding.
+ *
+ * Shared by `ingest` (a hook client that posted `{sessionId, generation}`) and
+ * {@link import("./report").reportInternal} (a core-side source that knows its
+ * own terminal session).
+ */
+export function drawBinding(
+  context: Pick<IngestContext, "database" | "hooks">,
+  nodeId: string,
+  agentId: string,
+  posted: Pick<PostedBinding, "sessionId" | "generation">,
+): TerminalBinding | undefined | "refused" {
+  const usable =
+    /^[A-Za-z0-9_-]{1,80}$/.test(posted.sessionId) &&
+    Number.isSafeInteger(posted.generation) &&
+    posted.generation >= 0 &&
+    isCurrentNodeSession(context.database, nodeId, posted, agentId);
+  if (!usable) return "refused";
+  const revision = allocateSourceRevision(
+    context.hooks.dataDir,
+    posted.sessionId,
+    posted.generation,
+  );
+  if (revision === undefined) return undefined;
+  return {
+    sessionId: posted.sessionId,
+    generation: posted.generation,
+    sourceRevision: String(revision),
+  };
+}
+
+/**
+ * What follows an applied report, the same for a posted one and a core-side
+ * one: the coordinator's prompt follow-up, the timeline's doorbell, and the run
+ * report a bound, verified source also writes. Never throws.
+ */
+export function settleReport(
+  context: IngestContext,
+  report: {
+    readonly nodeId: string;
+    readonly agentId: string;
+    readonly event: AgentEvent;
+    readonly payload: unknown;
+    readonly verified: boolean;
+    readonly binding?: TerminalBinding | undefined;
+  },
+): void {
+  const { nodeId, event } = report;
   // A new turn's prompt: the coordinator's follow-up routing reads it for
   // work-item references (contract §93.4). Never throws into the request.
   if (
-    verdict === "verified" &&
+    report.verified &&
     event.newTurn === true &&
     event.lastMessage !== undefined
   ) {
@@ -287,13 +336,13 @@ export function ingest(
   } catch (error) {
     context.log.debug("timeline source hook failed", { nodeId, error });
   }
-  if (binding !== undefined) {
+  if (report.binding !== undefined) {
     try {
       recordTrustedReport(
         context.database,
-        binding,
+        report.binding,
         event,
-        payload,
+        report.payload,
         context.bus,
       );
     } catch (error) {
@@ -303,7 +352,6 @@ export function ingest(
       });
     }
   }
-  return ACCEPTED;
 }
 
 /**
