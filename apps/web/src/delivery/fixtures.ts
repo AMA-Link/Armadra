@@ -1,7 +1,9 @@
-import type { DeliveryNode, DeliveryPull } from "@armadra/shared";
+import type { DeliveryNode } from "@armadra/shared";
+
+type Pull = DeliveryNode["pulls"][number];
 
 /** 测试夹具：一个 PR 与一个节点，字段按需覆盖。 */
-export function pull(patch: Partial<DeliveryPull> = {}): DeliveryPull {
+export function pull(patch: Partial<Pull> = {}): Pull {
   return {
     repo: "acme/app",
     number: 1,

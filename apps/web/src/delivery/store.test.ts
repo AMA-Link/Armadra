@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { WorkspaceEvent } from "@armadra/shared";
+import type { DeliveryChangedEvent, WorkspaceEvent } from "@armadra/shared";
 
 import { deliveryApi } from "./api";
 import { node, pull } from "./fixtures";
@@ -7,13 +7,7 @@ import { offBoardVisible, useDeliveryBoard } from "./store";
 import { OFF_BOARD_KEEP_MS } from "./model";
 
 function changed(
-  patch: Partial<{
-    boardId: string;
-    nodeId: string;
-    lane: string;
-    phrase: string;
-    pullsChanged: boolean;
-  }> = {},
+  patch: Partial<Omit<DeliveryChangedEvent, "type">> = {},
 ): WorkspaceEvent {
   return {
     type: "delivery.changed",
@@ -22,7 +16,7 @@ function changed(
     lane: "needsYou",
     phrase: "ciFailing",
     ...patch,
-  } as unknown as WorkspaceEvent;
+  };
 }
 
 let board: ReturnType<typeof vi.spyOn>;
@@ -83,7 +77,6 @@ describe("delivery store", () => {
     const { handleEvent } = useDeliveryBoard.getState();
     handleEvent(changed({ boardId: "other" }));
     handleEvent({ type: "board.changed" } as unknown as WorkspaceEvent);
-    handleEvent(changed({ phrase: undefined as unknown as string }));
     expect(useDeliveryBoard.getState().rows.n1?.lane).toBe("inReview");
   });
 
@@ -116,7 +109,8 @@ describe("delivery store", () => {
         node({
           lane: "offBoard",
           phrase: "merged",
-          pulls: [pull({ state: "merged", fetchedAtMs: 10_000 })],
+          pulls: [pull({ state: "merged" })],
+          endedAtMs: 10_000,
         }),
       ],
     });
@@ -127,9 +121,32 @@ describe("delivery store", () => {
     expect(offBoardVisible(row, 10_000 + OFF_BOARD_KEEP_MS)).toBe(false);
   });
 
-  it("a node that starts its next turn leaves the off-board area", async () => {
+  it("never shows an off-board row without endedAtMs", async () => {
+    board.mockResolvedValue({
+      nodes: [node({ lane: "offBoard", phrase: "closed" })],
+    });
+    await useDeliveryBoard.getState().refresh("w1", "b1");
+    const row = useDeliveryBoard.getState().rows.n1!;
+    expect(row.offBoardAtMs).toBeNull();
+    expect(offBoardVisible(row, 0)).toBe(false);
+  });
+
+  it("a frame into off board re-reads the route for endedAtMs", async () => {
+    await useDeliveryBoard.getState().refresh("w1", "b1");
     board.mockResolvedValueOnce({
-      nodes: [node({ lane: "offBoard", phrase: "merged" })],
+      nodes: [node({ lane: "offBoard", phrase: "merged", endedAtMs: 5_000 })],
+    });
+    useDeliveryBoard
+      .getState()
+      .handleEvent(changed({ lane: "offBoard", phrase: "merged" }));
+    await vi.waitFor(() =>
+      expect(useDeliveryBoard.getState().rows.n1?.offBoardAtMs).toBe(5_000),
+    );
+  });
+
+  it("a frame back onto the board clears the off-board time", async () => {
+    board.mockResolvedValueOnce({
+      nodes: [node({ lane: "offBoard", phrase: "merged", endedAtMs: 5_000 })],
     });
     await useDeliveryBoard.getState().refresh("w1", "b1");
     useDeliveryBoard

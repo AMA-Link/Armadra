@@ -1,7 +1,7 @@
 import {
   DELIVERY_PHRASES,
   type DeliveryLane,
-  type DeliveryPull,
+  type PullSnapshot,
 } from "@armadra/shared";
 
 import type { StatusTone } from "@/ui/status-pill";
@@ -82,7 +82,7 @@ export function phraseTone(phrase: string): StatusTone {
  * 一个 PR 离「可合并」有多远，数字越小越落后。多个 PR 时最落后的排前
  * （设计「边界」：最落后的一个说话）。
  */
-export function pullRank(pull: DeliveryPull): number {
+export function pullRank(pull: PullSnapshot): number {
   if (pull.state !== "open") return 7;
   if (pull.mergeable === "conflicting") return 0;
   if (pull.checks.read && pull.checks.rollup === "failure") return 1;
@@ -94,7 +94,7 @@ export function pullRank(pull: DeliveryPull): number {
 }
 
 /** 最落后的在前；同一档按 PR 编号。不改原数组。 */
-export function sortPulls(pulls: readonly DeliveryPull[]): DeliveryPull[] {
+export function sortPulls(pulls: readonly PullSnapshot[]): PullSnapshot[] {
   return [...pulls].sort(
     (a, b) => pullRank(a) - pullRank(b) || a.number - b.number,
   );
@@ -110,14 +110,14 @@ export interface BoardCard {
   readonly lane: DeliveryLane;
   readonly phrase: string;
   /** 最落后的排前。 */
-  readonly pulls: readonly DeliveryPull[];
+  readonly pulls: readonly PullSnapshot[];
 }
 
 export interface BoardRowLike {
   readonly nodeId: string;
   readonly lane: DeliveryLane;
   readonly phrase: string;
-  readonly pulls: readonly DeliveryPull[];
+  readonly pulls: readonly PullSnapshot[];
   readonly offBoardAtMs: number | null;
 }
 

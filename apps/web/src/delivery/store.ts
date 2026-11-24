@@ -1,9 +1,8 @@
 import { create } from "zustand";
 import {
-  deliveryChangedPayloadSchema,
   type DeliveryLane,
   type DeliveryNode,
-  type DeliveryPull,
+  type PullSnapshot,
   type WorkspaceEvent,
 } from "@armadra/shared";
 
@@ -24,7 +23,7 @@ export interface DeliveryRow {
   readonly taskId: string | null;
   readonly lane: DeliveryLane;
   readonly phrase: string;
-  readonly pulls: readonly DeliveryPull[];
+  readonly pulls: readonly PullSnapshot[];
   /** 进入终态（移出看板）的时刻；不在终态为 `null`。D7 的 24 小时从这里数。 */
   readonly offBoardAtMs: number | null;
 }
@@ -40,31 +39,15 @@ interface DeliveryState {
   reset: () => void;
 }
 
-/** 终态的起点：最后一次读到的 PR 时间（终态一旦记下就不再轮询），没有就取现在。 */
-function offBoardSince(node: DeliveryNode, now: number): number | null {
-  if (node.lane !== "offBoard") return null;
-  const fetched = node.pulls.map((pull) => pull.fetchedAtMs);
-  return fetched.length === 0 ? now : Math.max(...fetched);
-}
-
-export function rowFromNode(
-  node: DeliveryNode,
-  now: number,
-  previous?: DeliveryRow,
-): DeliveryRow {
-  const since =
-    node.lane !== "offBoard"
-      ? null
-      : previous?.lane === "offBoard" && previous.offBoardAtMs !== null
-        ? previous.offBoardAtMs
-        : offBoardSince(node, now);
+export function rowFromNode(node: DeliveryNode): DeliveryRow {
   return {
     nodeId: node.nodeId,
     taskId: node.taskId,
     lane: node.lane,
     phrase: node.phrase,
     pulls: node.pulls,
-    offBoardAtMs: since,
+    // core 给的进入终态时刻；没有这个值的终态条目不显示（设计 D7）。
+    offBoardAtMs: node.lane === "offBoard" ? (node.endedAtMs ?? null) : null,
   };
 }
 
@@ -98,10 +81,9 @@ export const useDeliveryBoard = create<DeliveryState>((set, get) => ({
       .board(workspaceId, boardId, sourceById(sourceId))
       .then((answer) => {
         if (!same()) return;
-        const now = Date.now();
         const rows: Record<string, DeliveryRow> = {};
         for (const node of answer.nodes) {
-          rows[node.nodeId] = rowFromNode(node, now, get().rows[node.nodeId]);
+          rows[node.nodeId] = rowFromNode(node);
         }
         set({ loaded: true, rows });
       })
@@ -116,36 +98,36 @@ export const useDeliveryBoard = create<DeliveryState>((set, get) => ({
     return promise;
   },
   handleEvent: (event) => {
-    if ((event as { type: string }).type !== "delivery.changed") return;
-    const parsed = deliveryChangedPayloadSchema.safeParse(event);
-    if (!parsed.success) return;
-    const change = parsed.data;
+    if (event.type !== "delivery.changed") return;
     const { boardId, workspaceId, rows } = get();
     if (boardId === null || workspaceId === null) return;
-    if (change.boardId !== boardId) return;
+    if (event.boardId !== boardId) return;
     if (get().sourceId !== activeSourceId()) return;
-    const previous = rows[change.nodeId];
+    const previous = rows[event.nodeId];
     if (
       previous !== undefined &&
-      previous.lane === change.lane &&
-      previous.phrase === change.phrase &&
-      change.pullsChanged !== true
+      previous.lane === event.lane &&
+      previous.phrase === event.phrase &&
+      event.pullsChanged !== true
     ) {
       return;
     }
-    const now = Date.now();
     const row: DeliveryRow = {
-      nodeId: change.nodeId,
+      nodeId: event.nodeId,
       taskId: previous?.taskId ?? null,
-      lane: change.lane,
-      phrase: change.phrase,
+      lane: event.lane,
+      phrase: event.phrase,
       pulls: previous?.pulls ?? [],
       offBoardAtMs:
-        change.lane !== "offBoard" ? null : (previous?.offBoardAtMs ?? now),
+        event.lane === "offBoard" ? (previous?.offBoardAtMs ?? null) : null,
     };
-    set({ rows: { ...rows, [change.nodeId]: row } });
-    // 新出现的节点没有 PR 明细，PR 变了也一样：读一遍路由补上。
-    if (previous === undefined || change.pullsChanged === true) {
+    set({ rows: { ...rows, [event.nodeId]: row } });
+    // 帧里没有 PR 明细与终态时刻：新节点、PR 变了、刚进终态都读一遍路由补上。
+    if (
+      previous === undefined ||
+      event.pullsChanged === true ||
+      (event.lane === "offBoard" && previous.offBoardAtMs === null)
+    ) {
       void get().refresh(workspaceId, boardId);
     }
   },
