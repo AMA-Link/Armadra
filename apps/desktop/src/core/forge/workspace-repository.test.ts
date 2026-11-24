@@ -834,7 +834,7 @@ describe("branchAt（契约 §116）", () => {
   function git(replies: Replies): GitReader {
     return async (dir, args) => {
       const verb = args.join(" ");
-      const nested = dir.endsWith("/lib");
+      const nested = /[\\/]lib$/.test(dir);
       const none = { status: 1, stdout: "" };
       const out = (stdout: string | undefined) =>
         stdout === undefined ? none : { status: 0, stdout: `${stdout}\n` };
