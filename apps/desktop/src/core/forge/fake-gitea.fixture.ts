@@ -50,6 +50,9 @@ export interface FakeNote {
   body: string;
   /** 评审的结论（`APPROVED` / `REQUEST_CHANGES` / `COMMENT` / `PENDING`）。 */
   state?: string;
+  /** 评审是否算数（缺省算）；撤销（dismiss）后不算。 */
+  official?: boolean;
+  dismissed?: boolean;
   /** 秒，从夹具的起点算。 */
   at: number;
 }
@@ -75,13 +78,26 @@ export interface FakeGitea {
     { context: string; status: string; target_url: string }[]
   >;
   /** 仓库里的分支：名字 → head 与是否受保护。 */
-  readonly branches: Map<string, { sha: string; protected: boolean }>;
+  readonly branches: Map<
+    string,
+    { sha: string; protected: boolean; requiredApprovals?: number }
+  >;
   /** 仓库的合并方式开关（`GET /repos/{o}/{r}` 答这几项）。 */
   readonly repository: {
     allow_merge_commits?: boolean;
     allow_squash_merge?: boolean;
     allow_rebase?: boolean;
+    default_branch?: string;
   };
+  /** 改一个提交上某个上下文的状态（没有就新增）。 */
+  setStatus(sha: string, context: string, status: string): void;
+  /** 记一条评审，答它的编号。 */
+  addReview(
+    number: number,
+    login: string,
+    state: string,
+    extra?: Partial<FakeNote>,
+  ): number;
   /** 下一条匹配的请求答这个状态（一次性）。 */
   failNext(method: string, path: RegExp, status: number): void;
   close(): Promise<void>;
@@ -125,11 +141,15 @@ export async function startFakeGitea(): Promise<FakeGitea> {
     { context: string; status: string; target_url: string }[]
   >();
   const failures: { method: string; path: RegExp; status: number }[] = [];
-  const branches = new Map<string, { sha: string; protected: boolean }>();
+  const branches = new Map<
+    string,
+    { sha: string; protected: boolean; requiredApprovals?: number }
+  >();
   const repository: FakeGitea["repository"] = {
     allow_merge_commits: true,
     allow_squash_merge: true,
     allow_rebase: true,
+    default_branch: "main",
   };
   let root = "";
 
@@ -426,6 +446,9 @@ export async function startFakeGitea(): Promise<FakeGitea> {
         name,
         commit: { id: branch.sha, message: "" },
         protected: branch.protected,
+        ...(branch.requiredApprovals === undefined
+          ? {}
+          : { required_approvals: branch.requiredApprovals }),
       });
     }
     if ((match = rest.match(/^\/issues\/(\d+)\/comments$/))) {
@@ -451,6 +474,8 @@ export async function startFakeGitea(): Promise<FakeGitea> {
           user: { login: note.login },
           body: note.body,
           state: note.state ?? "COMMENT",
+          official: note.official ?? true,
+          dismissed: note.dismissed ?? false,
           html_url: `${root}/${OWNER}/${REPO}/pulls/${number}#issuecomment-${note.id}`,
           submitted_at: iso(note.at),
         })),
@@ -464,6 +489,23 @@ export async function startFakeGitea(): Promise<FakeGitea> {
         statuses: list,
         total_count: list.length,
       });
+    }
+    // `GET /pulls/{base}/{head}`：按 base 与 head 精确取（1.18 起）。
+    if (
+      method === "GET" &&
+      (match = rest.match(/^\/pulls\/([^/\d][^/]*)\/(.+)$/))
+    ) {
+      const base = decodeURIComponent(match[1]!);
+      const head = match[2]!
+        .split("/")
+        .map((part) => decodeURIComponent(part))
+        .join("/");
+      const found = pulls.find(
+        (item) =>
+          item.base === base && item.head === head && item.state === "open",
+      );
+      if (found === undefined) return send(404, { message: "not found" });
+      return send(200, pullJson(found));
     }
     send(404, { message: "not found" });
   });
@@ -481,6 +523,23 @@ export async function startFakeGitea(): Promise<FakeGitea> {
     statuses,
     branches,
     repository,
+    setStatus: (sha, context, status) => {
+      const list = statuses.get(sha) ?? [];
+      const found = list.find((item) => item.context === context);
+      if (found === undefined) {
+        list.push({ context, status, target_url: "" });
+      } else {
+        found.status = status;
+      }
+      statuses.set(sha, list);
+    },
+    addReview: (number, login, state, extra = {}) => {
+      const list = reviews.get(number) ?? [];
+      const id = Math.max(0, ...list.map((note) => note.id)) + 1;
+      list.push({ id, login, body: "", state, at: 1000 + id, ...extra });
+      reviews.set(number, list);
+      return id;
+    },
     failNext: (method, path, status) => failures.push({ method, path, status }),
     close: () =>
       new Promise<void>((resolve) => {
