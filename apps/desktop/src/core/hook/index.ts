@@ -8,6 +8,7 @@ import { timelineDomainOf } from "../timeline";
 import { startApprovalSweep } from "./approvals";
 import type { IngestContext } from "./ingest";
 import { HookServer } from "./server";
+import { installInternalReporter } from "./report";
 import { HookService, hookService, setHookService } from "./service";
 import { markAgentStatusRestored } from "./store";
 import { startStaleSweep } from "./sweep";
@@ -79,6 +80,7 @@ export async function install(context: CoreContext): Promise<HookDomain> {
     },
   };
 
+  installInternalReporter(ingestContext);
   markAgentStatusRestored(context.db.database);
   installRoutes(context, service);
 
@@ -172,7 +174,10 @@ export async function install(context: CoreContext): Promise<HookDomain> {
       for (const stop of stopSweeps) stop();
       await server.close();
       service.withdraw();
-      if (hookService() === service) setHookService(undefined);
+      if (hookService() === service) {
+        setHookService(undefined);
+        installInternalReporter(undefined);
+      }
     },
   };
 }
