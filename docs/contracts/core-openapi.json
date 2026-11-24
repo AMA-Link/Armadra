@@ -6852,6 +6852,43 @@
                                 {
                                   "type": "object",
                                   "properties": {
+                                    "boardId": {
+                                      "type": "string"
+                                    },
+                                    "nodeId": {
+                                      "type": "string"
+                                    },
+                                    "lane": {
+                                      "enum": [
+                                        "working",
+                                        "needsYou",
+                                        "inReview",
+                                        "readyToMerge",
+                                        "offBoard"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "phrase": {
+                                      "type": "string"
+                                    },
+                                    "pullsChanged": {
+                                      "type": "boolean"
+                                    },
+                                    "type": {
+                                      "const": "delivery.changed"
+                                    }
+                                  },
+                                  "required": [
+                                    "boardId",
+                                    "nodeId",
+                                    "lane",
+                                    "phrase",
+                                    "type"
+                                  ]
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
                                     "type": {
                                       "const": "schedule.fired"
                                     },

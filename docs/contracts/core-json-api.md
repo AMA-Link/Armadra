@@ -2670,9 +2670,9 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 
 <!-- rpc:begin contract=§35.4 -->
 
-| procedure           | kind         | input                                                | output                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | errors                                                                                     | scope         | 自  | 原路径 |
-| ------------------- | ------------ | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------- | --- | ------ |
-| `workspaces.events` | subscription | `{ workspaceId: string, cursor?: "now" \| integer }` | 迭代：`agent.context`、`agent.status`、`agent.subagent`、`agent.approval`、`agent.delivery`、`acp.turn`、`acp.driver`、`acp.starting`、`terminal.exit`、`terminal.lease`、`terminal.hibernation`、`terminal.program`、`timeline.delta`、`timeline.activity`、`board.changed`、`canvas.presence`、`board.comment`、`node.created`、`ssh.prompt`、`workspace.updated`、`control.confirm`、`resource.sample`、`browser.session`、`browser.download`、`browser.lease`、`browser.tabs`、`browser.dialog`、`browser.fileChooser`、`browser.activity`、`language.session`、`language.server`、`file.changed`、`workflow.draft`、`workflow.run`、`workflow.gate`、`workflow.task`、`workflow.reply`、`workflow.intake`、`schedule.fired`、`schedule.failed`、`schedule.attention`、`cloud.tunnel`、`devices.pending`、`devices.changed`、`devices.endorsed`、`connect.used`、`resources.threshold`、`cursor` | `forbidden`、`not_found`、`snapshot_required`、`cursor_ahead`、`overflow`、`limit_reached` | `events:read` | 1.4 | —      |
+| procedure           | kind         | input                                                | output                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | errors                                                                                     | scope         | 自  | 原路径 |
+| ------------------- | ------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ------------- | --- | ------ |
+| `workspaces.events` | subscription | `{ workspaceId: string, cursor?: "now" \| integer }` | 迭代：`agent.context`、`agent.status`、`agent.subagent`、`agent.approval`、`agent.delivery`、`acp.turn`、`acp.driver`、`acp.starting`、`terminal.exit`、`terminal.lease`、`terminal.hibernation`、`terminal.program`、`timeline.delta`、`timeline.activity`、`board.changed`、`canvas.presence`、`board.comment`、`node.created`、`ssh.prompt`、`workspace.updated`、`control.confirm`、`resource.sample`、`browser.session`、`browser.download`、`browser.lease`、`browser.tabs`、`browser.dialog`、`browser.fileChooser`、`browser.activity`、`language.session`、`language.server`、`file.changed`、`workflow.draft`、`workflow.run`、`workflow.gate`、`workflow.task`、`workflow.reply`、`workflow.intake`、`delivery.changed`、`schedule.fired`、`schedule.failed`、`schedule.attention`、`cloud.tunnel`、`devices.pending`、`devices.changed`、`devices.endorsed`、`connect.used`、`resources.threshold`、`cursor` | `forbidden`、`not_found`、`snapshot_required`、`cursor_ahead`、`overflow`、`limit_reached` | `events:read` | 1.4 | —      |
 
 <!-- rpc:end -->
 
@@ -6020,3 +6020,70 @@ Copilot 的 ACP 入口只接受 http / sse 的 MCP 服务器，`session/new.mcpS
 
 - 远程执行主机上的 fork 第一版不识别（同名分支才对得上）。
 - 分支共用时参与竞争的只是这一遍查到的节点；回合结束超过 30 分钟又没有 `done` 事件的节点不参与。
+
+## 117. Agent 节点的交付状态（`#988`）
+
+一个带 Agent 的终端节点在画板上处在哪一栏、一句什么话，由 Agent 状态、工作项阶段（§90.2）与 PR 快照（§115）推出，是纯函数的结果，没有人能直接写它。节点关联的 PR 见 §116。
+
+### 117.1 栏与短语
+
+栏有五个：`working`、`needsYou`、`inReview`、`readyToMerge`、`offBoard`。每栏的短语固定：
+
+| 栏             | 短语                                                                                                                                                                            |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `working`      | `working`、`queued`、`fixingCi`、`addressingReview`、`resolvingConflicts`、`draft`、`idle`                                                                                      |
+| `needsYou`     | `needsApproval`、`needsAnswer`、`readyForReview`、`blocked`、`failed`、`deliveryFailed`、`interrupted`、`exited`、`noSignal`、`ciFailing`、`mergeConflicts`、`changesRequested` |
+| `inReview`     | `awaitingReview`、`checksRunning`、`waitingOnBase`、`mergeabilityUnknown`                                                                                                       |
+| `readyToMerge` | `mergeable`、`approved`                                                                                                                                                         |
+| `offBoard`     | `merged`、`closed`                                                                                                                                                              |
+
+线上类型与 schema 在 `packages/shared/src/api/delivery.ts`（`DELIVERY_LANES`、`DELIVERY_PHRASES`、`DeliveryStatus`）。页面遇到不认识的栏或短语（更新的 core）时，把这一行当作没有状态，不让整块画板解析失败。
+
+### 117.2 推导顺序
+
+输入：Agent 事实（`state`、`pendingId` 是否非空、`errored`、`interrupted`、`endedBy`）、工作项阶段、工作项结论（`merged` / `closed`，自己开的 PR 结束时）、名下的 PR 快照。按顺序取第一个命中的：
+
+1. **离开看板**：有 PR 且没有一个是 `open`，`offBoard`：有任何一个 `merged` 为 `merged`，否则 `closed`。没有 PR 快照而工作项有结论时同样处理。部分已合并的 PR 在后面的步骤里被忽略。
+2. **需要人**（`needsYou`），按顺序：`pendingId` 非空或 `state = blocked` 为 `needsApproval`；阶段 `person/answer` 或 `state = waiting` 为 `needsAnswer`；`person/delivery` 为 `deliveryFailed`；`person/review` 为 `readyForReview`；`person/blocked` 为 `blocked`；`endedBy = terminated` 为 `exited`；`endedBy = stale` 为 `noSignal`；`person/failed` 或 `errored` 为 `failed`；`interrupted` 为 `interrupted`。`errored` 与 `interrupted` 一直保持到下一回合开始。
+3. **没有 open 的 PR，或有草稿**：`working` 栏。短语依次：阶段 `working/queued` 为 `queued`；`state = working` 为 `working`；有草稿为 `draft`；否则 `idle`。
+4. 对每个 open 的非草稿 PR 单独判定，取**最落后**的一个。落后程度：草稿 < 有问题 < 审查中 < 可合并；同一档里按下面的短语次序。
+5. **有问题**，优先级依次：检查读到且为 `failure`（CI）、`mergeable = conflicting`（冲突）、`review = changesRequested`（要求修改）。`state = working` 时在 `working` 栏，短语为 `fixingCi` / `resolvingConflicts` / `addressingReview`；否则在 `needsYou` 栏，短语为 `ciFailing` / `mergeConflicts` / `changesRequested`。
+6. **可合并**（`readyToMerge`）要同时满足：`review` 为 `approved` 或 `notRequired`；检查已读且 `rollup` 为 `success`、`neutral` 或 `none`；`mergeable = mergeable`；`parent.kind = none`；快照不是 `stale`。`review = approved` 时短语为 `approved`，否则 `mergeable`。
+7. **其余**是 `inReview`，短语依次：父 PR 为 `open` 时 `waitingOnBase`；检查为 `pending` 或没读到时 `checksRunning`；`review` 为 `reviewRequired` 或 `unknown` 时 `awaitingReview`；其余（可合并性未知、父 PR 未知、快照过期）为 `mergeabilityUnknown`。
+
+边界：`review = unknown` 与 `notRequired` 不同，前者不算可合并；`rollup = none` 且已读算通过，没读到不算；`mergeable = unknown` 不算可合并；快照过期时除了不能判为可合并，其余照常；已合并或关闭的终态不会再变。
+
+### 117.3 `ended_by`
+
+迁移 0070：`ALTER TABLE agent_status ADD COLUMN ended_by TEXT`，取值 `stale` / `terminated` / `modelError` 或 NULL。只有合成收尾（久无上报的清扫、回合中终端退出、模型报错后 CLI 没有收尾）会写，真正的结束或新回合开始都会清掉。`lastMessage` 里原有的标记保留。`agent.status` 帧与 `AgentStatus` 多一个可选字段 `endedBy`；`HOOK_CLIENT_REVISION` 不变。
+
+### 117.4 「空闲」的澄清（§90.2）
+
+§90.2 第 6 步「节点空闲且没有未读」里的「节点空闲」，实际判定为：有状态记录、`state = done`，并且 `endedBy` 为空、`errored` 不是 `true`、`interrupted` 不是 `true`，即**干净结束的回合**。没有状态记录（还没收到第一条上报）、合成收尾（终端死掉、无信号、模型报错）、失败或被打断的回合都不算空闲，阶段仍是 `working`，重启恢复扫描（§101.5）照旧认得。§90.2 的原文不改。
+
+### 117.5 路由
+
+`GET /api/workspaces/{workspaceId}/boards/{boardId}/delivery`，`canvas:read`；画板不属于该工作空间 `404`。只列这块画板上带 Agent 的终端节点：
+
+```
+{ nodes: [{
+    nodeId: string, taskId: string | null,   // 节点最近的工作项
+    lane: DeliveryLane, phrase: string,
+    pulls: PullSnapshot[],                   // §115.1；工作项绑定的 PR，还没读到快照的不出现
+    endedAtMs?: number | null                // 离开看板（offBoard）的时刻，其余为 null
+}] }
+```
+
+`endedAtMs` 取 PR 快照里最晚的读取时刻（终态的快照不再被轮询，读取时刻就是记下终态的时刻）；没有快照时取工作项的结束时刻。页面用它做「已离开」的保留期。
+
+### 117.6 事件
+
+`delivery.changed`，工作空间事件：
+
+```
+{ type: "delivery.changed", boardId, nodeId, lane, phrase, pullsChanged?: boolean }
+```
+
+core 内存里记每个节点上一次的 `lane|phrase`，变了才发；PR 细节变了而栏与短语没变时发一帧带 `pullsChanged: true`，页面据此重读 §117.5。帧里没有 PR 正文。重启后第一次重算多发一帧。触发源：`agent.status`、`workflow.task`、PR 快照指纹变化（§115.4）。
+
+没有新 procedure，不改已有节号；HTTP 契约只增字段，不升版本号。
