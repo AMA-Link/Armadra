@@ -3,6 +3,7 @@
   "root": [
     ".claude",
     ".coderabbit.yaml",
+    ".dockerignore",
     ".gitattributes",
     ".githooks",
     ".github",

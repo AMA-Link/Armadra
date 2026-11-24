@@ -3,14 +3,14 @@
 `apps/server/docker/` 是服务器壳（`@armadra/server`）的容器打包。怎么部署、证书怎么来、备份与升级见
 [服务器部署指南](../../../docs/guides/server-deployment.md)；这里只说明文件。
 
-| 文件                      | 作用                                                                                       |
-| ------------------------- | ------------------------------------------------------------------------------------------ |
-| `Dockerfile`              | 两段构建：编页面、服务器壳与 node-pty，运行段只留 `/app`；非 root（uid 10001）、`/data` 卷 |
-| `Dockerfile.dockerignore` | 构建上下文（仓库根）里不进镜像的东西                                                       |
-| `entrypoint.sh`           | 把 `ARMADRA_*` 环境拼成 `serve` 参数；没有对外来源拒绝启动（退出码 64）                    |
-| `healthcheck.mjs`         | 容器里经回环打 `/health`                                                                   |
-| `backup.mjs`              | `docker compose exec armadra node /app/docker/backup.mjs`：不停服的一致性备份              |
-| `compose.yml`             | 直接对公网、ACME 自动证书的示例                                                            |
+| 文件                      | 作用                                                                                                               |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `Dockerfile`              | 三段构建：宿主架构原生编页面与服务器壳、按目标架构编 node-pty，运行段只留 `/app`；非 root（uid 10001）、`/data` 卷 |
+| `Dockerfile.dockerignore` | 构建上下文（仓库根）里不进镜像的东西                                                                               |
+| `entrypoint.sh`           | 把 `ARMADRA_*` 环境拼成 `serve` 参数；没有对外来源拒绝启动（退出码 64）                                            |
+| `healthcheck.mjs`         | 容器里经回环打 `/health`                                                                                           |
+| `backup.mjs`              | `docker compose exec armadra node /app/docker/backup.mjs`：不停服的一致性备份                                      |
+| `compose.yml`             | 直接对公网、ACME 自动证书的示例                                                                                    |
 
 ```sh
 # 仓库根目录

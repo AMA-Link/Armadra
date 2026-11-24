@@ -1,15 +1,20 @@
 # BuildKit 按「<Dockerfile>.dockerignore」就近读取；上下文是仓库根。
-**/node_modules
-**/.pnpm-store
-**/out
-**/dist
-**/target
-**/coverage
 .git
 .github
 .claude
+**/node_modules
+**/.pnpm-store
+.pnpm-store
+**/dist
+**/out
+**/release
+**/coverage
+**/target
+target
+target-main
 docs
-apps/desktop/release
+apps/mobile/*
+!apps/mobile/package.json
 tools/dev-stack/.data
 **/*.db
 **/*.db-shm
