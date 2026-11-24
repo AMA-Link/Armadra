@@ -1,7 +1,15 @@
 // @vitest-environment node
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 
@@ -38,6 +46,40 @@ function files(directory: string): string[] {
       ? files(join(directory, entry.name))
       : [join(directory, entry.name)],
   );
+}
+
+function inspectProductionDist(outDir: string) {
+  if (!existsSync(outDir)) {
+    throw new Error(
+      `ARMADRA_WEB_BUILT_DIST directory does not exist: ${outDir}`,
+    );
+  }
+  const output = files(outDir);
+  const hasIndex = output.some(
+    (file) =>
+      relative(outDir, file) === "index.html" ||
+      file.endsWith("/index.html") ||
+      file.endsWith("\\index.html"),
+  );
+  const showcaseFiles = output
+    .map((file) => relative(outDir, file))
+    .filter((file) => /showcase/i.test(file));
+  const leaks = output
+    .filter((file) => /\.(js|html|css)$/.test(file))
+    .flatMap((file) => {
+      const text = readFileSync(file, "utf8");
+      return MARKERS.filter((marker) => text.includes(marker)).map(
+        (marker) => `${relative(outDir, file)}: ${marker}`,
+      );
+    });
+  return { hasIndex, showcaseFiles, leaks };
+}
+
+function assertCleanProductionDist(outDir: string) {
+  const { hasIndex, showcaseFiles, leaks } = inspectProductionDist(outDir);
+  expect(hasIndex).toBe(true);
+  expect(showcaseFiles).toEqual([]);
+  expect(leaks).toEqual([]);
 }
 
 const temporary: string[] = [];
@@ -77,10 +119,45 @@ describe("设计展示页不进生产构建", () => {
     expect(relative(webRoot, input as string)).toBe("index.html");
   });
 
+  it("静态校验能拦住预构建 dist 里的展示页文件名、标记串与缺失入口", () => {
+    const clean = mkdtempSync(join(tmpdir(), "armadra-showcase-clean-"));
+    const dirty = mkdtempSync(join(tmpdir(), "armadra-showcase-dirty-"));
+    const empty = mkdtempSync(join(tmpdir(), "armadra-showcase-empty-"));
+    temporary.push(clean, dirty, empty);
+
+    mkdirSync(join(clean, "assets"), { recursive: true });
+    writeFileSync(join(clean, "index.html"), "<!doctype html><html></html>");
+    writeFileSync(join(clean, "assets/app.js"), "console.log('production');");
+    writeFileSync(join(clean, "assets/app.css"), "body { margin: 0; }");
+    assertCleanProductionDist(clean);
+
+    mkdirSync(join(dirty, "assets"), { recursive: true });
+    writeFileSync(join(dirty, "index.html"), "<!doctype html><html></html>");
+    writeFileSync(join(dirty, "showcase.html"), "<!doctype html>");
+    writeFileSync(
+      join(dirty, "assets/app.js"),
+      `export const x = "${MARKERS[0]}";`,
+    );
+    const report = inspectProductionDist(dirty);
+    expect(report.hasIndex).toBe(true);
+    expect(report.showcaseFiles).toEqual(["showcase.html"]);
+    expect(report.leaks).toEqual([
+      `${join("assets", "app.js")}: ${MARKERS[0]}`,
+    ]);
+
+    expect(inspectProductionDist(empty).hasIndex).toBe(false);
+  });
+
   it(
     "生产构建的 dist/ 里没有展示页的入口与代码",
     { timeout: 300_000 },
     async () => {
+      const prebuilt = process.env.ARMADRA_WEB_BUILT_DIST?.trim();
+      if (prebuilt) {
+        assertCleanProductionDist(resolve(prebuilt));
+        return;
+      }
+
       const data = mkdtempSync(join(tmpdir(), "armadra-showcase-config-"));
       const outDir = mkdtempSync(join(tmpdir(), "armadra-showcase-dist-"));
       temporary.push(data, outDir);
@@ -103,20 +180,7 @@ describe("设计展示页不进生产构建", () => {
         process.env.NODE_ENV = nodeEnv;
       }
 
-      const output = files(outDir);
-      expect(output.some((file) => file.endsWith("index.html"))).toBe(true);
-      expect(
-        output.filter((file) => /showcase/i.test(relative(outDir, file))),
-      ).toEqual([]);
-      const leaks = output
-        .filter((file) => /\.(js|html|css)$/.test(file))
-        .flatMap((file) => {
-          const text = readFileSync(file, "utf8");
-          return MARKERS.filter((marker) => text.includes(marker)).map(
-            (marker) => `${relative(outDir, file)}: ${marker}`,
-          );
-        });
-      expect(leaks).toEqual([]);
+      assertCleanProductionDist(outDir);
     },
   );
 });

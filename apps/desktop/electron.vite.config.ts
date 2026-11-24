@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
@@ -279,49 +279,89 @@ export function copyAgentBundle(
   return copied;
 }
 
-function buildCore(): Plugin {
+export function resolveReuseWebDist(
+  command: "serve" | "build",
+  env: NodeJS.ProcessEnv = process.env,
+  webRoot: string = web,
+): boolean {
+  if (command !== "build" || env.ARMADRA_REUSE_WEB_DIST !== "1") {
+    return false;
+  }
+  const indexHtml = resolve(webRoot, "dist/index.html");
+  if (!existsSync(indexHtml)) {
+    throw new Error(
+      `ARMADRA_REUSE_WEB_DIST=1 requires a pre-built web bundle at ${indexHtml}`,
+    );
+  }
+  return true;
+}
+
+export function copyWebDist(
+  from: string = resolve(web, "dist"),
+  to: string = resolve(here, "out/renderer"),
+): void {
+  const indexHtml = join(from, "index.html");
+  if (!existsSync(indexHtml)) {
+    throw new Error(
+      `ARMADRA_REUSE_WEB_DIST=1 requires a pre-built web bundle at ${indexHtml}`,
+    );
+  }
+  rmSync(to, { recursive: true, force: true });
+  cpSync(from, to, { recursive: true });
+}
+
+function buildCore({ reuseWebDist = false } = {}): Plugin {
   return {
     name: "armadra-core-bundle",
     apply: "build",
     async closeBundle() {
-      await build(coreConfig);
-      await build(cliConfig);
-      await build(sessionHostConfig);
-      await build(sessionHostShutdownConfig);
-      await build(agentHostConfig);
+      await Promise.all([
+        build(coreConfig),
+        build(cliConfig),
+        build(sessionHostConfig).then(() => build(sessionHostShutdownConfig)),
+        build(agentHostConfig),
+      ]);
       copyAgentBundle();
+      if (reuseWebDist) {
+        copyWebDist();
+      }
     },
   };
 }
 
-export default defineConfig(({ command, mode }) => ({
-  main: {
-    plugins: [
-      externalizeDepsPlugin({ exclude: BUNDLED_WORKSPACE_PACKAGES }),
-      buildCore(),
-    ],
-    build: {
-      rollupOptions: {
-        // `entry` 是包的入口（`package.json` 的 `main`）：先判 `Armadra serve`，再
-        // `require("./index")`。两个入口各自一份文件，没有共享块。
-        input: {
-          entry: resolve(here, "src/main/entry.ts"),
-          index: resolve(here, "src/main/index.ts"),
+export default defineConfig(({ command, mode }) => {
+  const reuseWebDist = resolveReuseWebDist(command);
+  return {
+    main: {
+      plugins: [
+        externalizeDepsPlugin({ exclude: BUNDLED_WORKSPACE_PACKAGES }),
+        buildCore({ reuseWebDist }),
+      ],
+      build: {
+        rollupOptions: {
+          // `entry` 是包的入口（`package.json` 的 `main`）：先判 `Armadra serve`，再
+          // `require("./index")`。两个入口各自一份文件，没有共享块。
+          input: {
+            entry: resolve(here, "src/main/entry.ts"),
+            index: resolve(here, "src/main/index.ts"),
+          },
+          external: EXTERNAL,
+          output: cjs,
         },
-        external: EXTERNAL,
-        output: cjs,
       },
     },
-  },
-  preload: {
-    plugins: [externalizeDepsPlugin({ exclude: BUNDLED_WORKSPACE_PACKAGES })],
-    build: {
-      rollupOptions: {
-        input: { index: resolve(here, "src/preload/index.ts") },
-        external: EXTERNAL,
-        output: cjs,
+    preload: {
+      plugins: [externalizeDepsPlugin({ exclude: BUNDLED_WORKSPACE_PACKAGES })],
+      build: {
+        rollupOptions: {
+          input: { index: resolve(here, "src/preload/index.ts") },
+          external: EXTERNAL,
+          output: cjs,
+        },
       },
     },
-  },
-  ...(externalRenderer ? {} : { renderer: renderer(command, mode) }),
-}));
+    ...(externalRenderer || reuseWebDist
+      ? {}
+      : { renderer: renderer(command, mode) }),
+  };
+});

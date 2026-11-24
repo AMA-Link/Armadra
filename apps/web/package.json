@@ -8,6 +8,7 @@
     "dev": "vite --port 1420",
     "prebuild": "pnpm --filter @armadra/shared build",
     "build": "tsc -b && vite build",
+    "build:vite": "vite build",
     "test": "vitest run",
     "typecheck": "tsc -b --pretty false"
   },
