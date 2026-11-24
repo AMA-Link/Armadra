@@ -6,7 +6,10 @@ import { test } from "node:test";
 import {
   findChrome,
   loadManifest,
+  parseShard,
+  partitionShards,
   runTier,
+  shardEntries,
   sortEntries,
   validateManifest,
 } from "./e2e.mjs";
@@ -564,6 +567,178 @@ test("an entry that needs Claude Code is skipped with the reason when there is n
       manifest: { entries },
     });
     assert.equal(withIt.entries[0].status, "passed");
+  } finally {
+    remove();
+  }
+});
+
+test("parseShard validates 1-based <index>/<total> bounds", () => {
+  assert.deepEqual(parseShard("1/1"), { index: 1, total: 1 });
+  assert.deepEqual(parseShard("2/3"), { index: 2, total: 3 });
+  assert.deepEqual(parseShard({ index: 3, total: 3 }), { index: 3, total: 3 });
+  for (const invalid of [
+    "",
+    "0/3",
+    "4/3",
+    "1/0",
+    "-1/3",
+    "1.5/3",
+    "1/3/5",
+    "abc",
+    { index: 0, total: 2 },
+    { index: 3, total: 2 },
+  ]) {
+    assert.throws(() => parseShard(invalid), /invalid/, String(invalid));
+  }
+});
+
+test("LPT sharding spreads Tier-A 15-min probes across 3 balanced Linux shards", () => {
+  const tierA = manifest.entries.filter((entry) => entry.tier === "a");
+  const isRunnableOnLinuxCi = (entry) =>
+    (entry.platforms === undefined || entry.platforms.includes("linux")) &&
+    !entry.devStack &&
+    !entry.requires?.some((need) =>
+      ["cloud", "claude", "claude-acp", "webkit"].includes(need),
+    );
+
+  const buckets = partitionShards(tierA, 3, {
+    isRunnable: isRunnableOnLinuxCi,
+  });
+  assert.equal(buckets.length, 3);
+
+  // Union of the 3 shards equals tier A with zero duplicates or omissions.
+  const seen = buckets.flatMap((bucket) => bucket.entries.map((e) => e.id));
+  assert.equal(new Set(seen).size, tierA.length);
+  assert.deepEqual([...seen].sort(), tierA.map((e) => e.id).sort());
+
+  // Each heavy 15-min runnable probe lands on its own shard.
+  const heavy = ["agent-e2e-self-test", "design-showcase", "ui-features-e2e"];
+  for (const bucket of buckets) {
+    const heavyInShard = bucket.entries
+      .filter((entry) => heavy.includes(entry.id))
+      .map((entry) => entry.id);
+    assert.equal(
+      heavyInShard.length,
+      1,
+      `expected 1 heavy probe per shard, got ${JSON.stringify(heavyInShard)}`,
+    );
+  }
+
+  // Runnable timeout budgets are balanced across all 3 shards.
+  const maxMinutes = Math.max(...buckets.map((b) => b.minutes));
+  const minMinutes = Math.min(...buckets.map((b) => b.minutes));
+  assert.ok(
+    maxMinutes - minMinutes <= 10,
+    `expected balanced shard budgets, got ${buckets.map((b) => b.minutes).join("/")}`,
+  );
+
+  // shardEntries(1..3) agrees with partitionShards and preserves sortEntries order.
+  for (let i = 1; i <= 3; i += 1) {
+    const slice = shardEntries(tierA, `${i}/3`, {
+      isRunnable: isRunnableOnLinuxCi,
+    });
+    assert.deepEqual(slice, buckets[i - 1].entries);
+    assert.deepEqual(slice, sortEntries(slice));
+  }
+});
+
+test("runTier --shard partitions runnable and skipped probes without skewing load", async () => {
+  const { root, remove } = fixture();
+  try {
+    const entries = [
+      // Two 20-min entries that will be skipped (darwin-only & missing cloud):
+      // they must NOT occupy two shards' heavy slots and force both runnable
+      // 15-min entries onto the third shard.
+      {
+        id: "mac-heavy-1",
+        tier: "a",
+        script: "fail.mjs",
+        platforms: ["darwin"],
+        timeoutMinutes: 20,
+      },
+      {
+        id: "cloud-heavy-2",
+        tier: "a",
+        script: "fail.mjs",
+        requires: ["cloud"],
+        timeoutMinutes: 20,
+      },
+      {
+        id: "real-heavy-a",
+        tier: "a",
+        script: "pass.mjs",
+        args: ["{out}"],
+        timeoutMinutes: 15,
+      },
+      {
+        id: "real-heavy-b",
+        tier: "a",
+        script: "pass.mjs",
+        args: ["{out}"],
+        timeoutMinutes: 15,
+      },
+      {
+        id: "real-heavy-c",
+        tier: "a",
+        script: "pass.mjs",
+        args: ["{out}"],
+        timeoutMinutes: 15,
+      },
+      {
+        id: "real-light",
+        tier: "a",
+        script: "pass.mjs",
+        args: ["{out}"],
+        devStack: true,
+        timeoutMinutes: 5,
+      },
+    ];
+
+    const stackCalls = [];
+    const summaries = [];
+    for (const shard of ["1/3", "2/3", "3/3"]) {
+      const summary = await runTier({
+        tier: "a",
+        shard,
+        root,
+        out: join(root, `out-${shard.replace("/", "-")}`),
+        log: quiet,
+        platform: "linux",
+        env: { ARMADRA_DEV_STACK: "1", PATH: process.env.PATH },
+        probe: { ...present, cloud: () => null },
+        devStack: {
+          up: () => (stackCalls.push(`up:${shard}`), 0),
+          down: () => (stackCalls.push(`down:${shard}`), 0),
+        },
+        manifest: { entries },
+      });
+      assert.equal(summary.status, "passed");
+      assert.equal(summary.shard, shard);
+      summaries.push(summary);
+    }
+
+    // Every shard ran exactly one of the three 15-min real probes.
+    for (const summary of summaries) {
+      const heavyRan = summary.entries.filter((e) =>
+        e.id.startsWith("real-heavy-"),
+      );
+      assert.equal(heavyRan.length, 1);
+      assert.equal(heavyRan[0].status, "passed");
+    }
+
+    // All 6 entries were accounted for across the 3 shards (4 passed, 2 skipped).
+    const allRecords = summaries.flatMap((s) => s.entries);
+    assert.equal(allRecords.length, 6);
+    assert.equal(allRecords.filter((e) => e.status === "passed").length, 4);
+    assert.equal(allRecords.filter((e) => e.status === "skipped").length, 2);
+
+    // dev-stack only spun up on the single shard that received `real-light`.
+    assert.equal(stackCalls.length, 2);
+
+    await assert.rejects(
+      runTier({ tier: "a", shard: "0/3", log: quiet }),
+      /invalid --shard/,
+    );
   } finally {
     remove();
   }
