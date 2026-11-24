@@ -7,9 +7,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   type DeliveryAgentFacts,
+  type DeliveryChildFact,
   type DeliveryFacts,
   type DeliveryPull,
   deliveryStatus,
+  deliveryWave,
 } from "./delivery";
 
 function read(rollup: "pending" | "success" | "failure" | "neutral" | "none") {
@@ -44,7 +46,25 @@ interface Case {
   readonly stage?: WorkItemStage | null;
   readonly itemResult?: "merged" | "closed" | null;
   readonly pulls?: readonly Partial<DeliveryPull>[];
+  readonly children?: readonly Partial<DeliveryChildFact>[];
+  readonly idleAtMs?: number | null;
+  readonly collect?: "running" | "escalated" | null;
   readonly expect: DeliveryStatus;
+  readonly counts?: readonly [total: number, finished: number, needs: number];
+}
+
+let childSeq = 0;
+function child(over: Partial<DeliveryChildFact>): DeliveryChildFact {
+  childSeq += 1;
+  return {
+    nodeId: `c${childSeq}`,
+    source: "task",
+    finished: false,
+    startedAtMs: null,
+    endedAtMs: null,
+    needsYou: false,
+    ...over,
+  };
 }
 
 function build(c: Case): DeliveryFacts {
@@ -53,6 +73,9 @@ function build(c: Case): DeliveryFacts {
     stage: c.stage ?? null,
     itemResult: c.itemResult ?? null,
     pulls: (c.pulls ?? []).map((p) => pull(p)),
+    children: (c.children ?? []).map((x) => child(x)),
+    idleAtMs: c.idleAtMs ?? null,
+    collect: c.collect ?? null,
   };
 }
 
@@ -440,11 +463,138 @@ const CASES: readonly Case[] = [
     pulls: [{ review: "reviewRequired" }, { ...pending }],
     expect: { lane: "inReview", phrase: "checksRunning" },
   },
+  {
+    name: "父在等子任务",
+    agent: { state: "done" },
+    idleAtMs: 3,
+    children: [
+      { startedAtMs: 1 },
+      { startedAtMs: 1, finished: true, endedAtMs: 2 },
+    ],
+    expect: { lane: "working", phrase: "waitingOnChildren" },
+    counts: [2, 1, 0],
+  },
+  {
+    name: "子任务等人，父在等子任务",
+    agent: { state: "done" },
+    children: [{ startedAtMs: 1, needsYou: true }],
+    expect: { lane: "working", phrase: "waitingOnChildren" },
+    counts: [1, 0, 1],
+  },
+  {
+    name: "父自己等人",
+    agent: { pending: true },
+    children: [{ startedAtMs: 1 }],
+    expect: { lane: "needsYou", phrase: "needsApproval" },
+    counts: [1, 0, 0],
+  },
+  {
+    name: "计数不倒退",
+    agent: { state: "done" },
+    idleAtMs: 3,
+    children: [
+      { startedAtMs: 0, finished: true, endedAtMs: 6 },
+      { startedAtMs: 1, finished: true, endedAtMs: 2 },
+      { startedAtMs: 5 },
+    ],
+    expect: { lane: "working", phrase: "waitingOnChildren" },
+    counts: [3, 2, 0],
+  },
+  {
+    name: "父空闲不掉计数",
+    agent: { state: "done" },
+    idleAtMs: 0.5,
+    children: [
+      { startedAtMs: 0 },
+      { startedAtMs: 0, finished: true, endedAtMs: 0.3 },
+    ],
+    expect: { lane: "working", phrase: "waitingOnChildren" },
+    counts: [2, 1, 0],
+  },
+  {
+    name: "汇总中（事件驱动）",
+    agent: { state: "working" },
+    idleAtMs: 5,
+    children: [{ startedAtMs: 6, finished: true, endedAtMs: 8 }],
+    expect: { lane: "working", phrase: "collecting" },
+    counts: [1, 1, 0],
+  },
+  {
+    name: "汇总中（collect）",
+    agent: { state: "done" },
+    collect: "running",
+    expect: { lane: "working", phrase: "collecting" },
+  },
+  {
+    name: "旧批次不算",
+    agent: { state: "working" },
+    idleAtMs: 9,
+    children: [{ startedAtMs: 1, finished: true, endedAtMs: 2 }],
+    expect: { lane: "working", phrase: "working" },
+  },
+  {
+    name: "验证升级",
+    agent: { state: "done" },
+    collect: "escalated",
+    expect: { lane: "needsYou", phrase: "blocked" },
+  },
+  {
+    name: "子未完不离开看板",
+    agent: { state: "done" },
+    pulls: [{ state: "merged" }],
+    children: [{ startedAtMs: 1 }],
+    expect: { lane: "working", phrase: "waitingOnChildren" },
+  },
+  {
+    name: "任务子任务优先于 PR",
+    agent: { state: "done" },
+    pulls: [{ ...failing }],
+    children: [{ startedAtMs: 1 }],
+    expect: { lane: "working", phrase: "waitingOnChildren" },
+  },
+  {
+    name: "连线子节点不盖住 PR",
+    agent: { state: "done" },
+    pulls: [{ ...failing }],
+    children: [{ source: "edge", finished: false }],
+    expect: { lane: "needsYou", phrase: "ciFailing" },
+  },
+  {
+    name: "连线子节点替换空闲",
+    agent: { state: "done" },
+    children: [{ source: "edge", finished: false }],
+    expect: { lane: "working", phrase: "waitingOnChildren" },
+  },
+  {
+    name: "无状态行的连线子节点（不收集）",
+    agent: { state: "done" },
+    expect: { lane: "working", phrase: "idle" },
+  },
 ];
 
 describe("deliveryStatus", () => {
   it.each(CASES)("$name", (c) => {
-    expect(deliveryStatus(build(c))).toEqual(c.expect);
+    const facts = build(c);
+    expect(deliveryStatus(facts)).toEqual(c.expect);
+    if (c.counts !== undefined) {
+      const wave = deliveryWave(facts);
+      expect([wave?.total, wave?.finished, wave?.needsYou]).toEqual(c.counts);
+    }
+  });
+
+  it("orders wave nodes: unfinished first, then by end time descending", () => {
+    const wave = deliveryWave(
+      build({
+        name: "",
+        expect: { lane: "working", phrase: "idle" },
+        children: [
+          { nodeId: "a", startedAtMs: 0, finished: true, endedAtMs: 2 },
+          { nodeId: "b", startedAtMs: 0, finished: true, endedAtMs: 5 },
+          { nodeId: "c", startedAtMs: 0 },
+        ],
+      }),
+    );
+    expect(wave?.nodes.map((n) => n.nodeId)).toEqual(["c", "b", "a"]);
   });
 
   it("every phrase of every lane is reachable from some case", () => {

@@ -1,5 +1,7 @@
 import type {
   AgentState,
+  DeliveryChildSource,
+  DeliveryChildrenSummary,
   DeliveryStatus,
   PullSnapshot,
   WorkItemStage,
@@ -31,6 +33,83 @@ export interface DeliveryFacts {
   /** 工作项因自己开的 PR 合并或关闭而结束，而没有快照时用。 */
   readonly itemResult: "merged" | "closed" | null;
   readonly pulls: readonly DeliveryPull[];
+  /** 子节点事实；缺省 []。 */
+  readonly children?: readonly DeliveryChildFact[];
+  /** 父节点上次进入 `done` 的时刻；缺省 null。 */
+  readonly idleAtMs?: number | null;
+  /** 本节点的 `collect` 步骤；缺省 null。 */
+  readonly collect?: "running" | "escalated" | null;
+}
+
+export interface DeliveryChildFact {
+  readonly nodeId: string;
+  readonly source: DeliveryChildSource;
+  readonly finished: boolean;
+  readonly startedAtMs: number | null;
+  readonly endedAtMs: number | null;
+  readonly needsYou: boolean;
+}
+
+export interface DeliveryWave extends DeliveryChildrenSummary {
+  readonly nodes: readonly DeliveryChildFact[];
+  /** 未结束、来源为 task / workflow 的子任务数。 */
+  readonly unfinishedOwned: number;
+  /** 未结束、只有连线来源的子节点数。 */
+  readonly unfinishedEdges: number;
+}
+
+/**
+ * 「这一批」子任务（设计 §1.3）：有未结束的子任务时以它们为种子，否则以结束时刻
+ * 不早于 `idleAtMs` 的已结束子任务为种子，再按开始时刻向前扩张到时间区间连通。
+ */
+export function deliveryWave(facts: DeliveryFacts): DeliveryWave | null {
+  const all = facts.children ?? [];
+  const idleAt = facts.idleAtMs ?? null;
+  const unfinished = all.filter((child) => !child.finished);
+  const ended = all.filter((child) => child.finished);
+  const wave = new Set<DeliveryChildFact>(
+    unfinished.length > 0
+      ? unfinished
+      : ended.filter(
+          (child) =>
+            idleAt === null ||
+            (child.endedAtMs !== null && child.endedAtMs >= idleAt),
+        ),
+  );
+  if (wave.size === 0) return null;
+
+  for (;;) {
+    const starts = [...wave]
+      .map((child) => child.startedAtMs)
+      .filter((value): value is number => value !== null);
+    if (starts.length === 0) break;
+    const earliest = Math.min(...starts);
+    const grown = ended.filter(
+      (child) =>
+        !wave.has(child) &&
+        child.endedAtMs !== null &&
+        child.endedAtMs >= earliest,
+    );
+    if (grown.length === 0) break;
+    for (const child of grown) wave.add(child);
+  }
+
+  const members = [...wave];
+  const open = members.filter((child) => !child.finished);
+  const nodes = [
+    ...open,
+    ...members
+      .filter((child) => child.finished)
+      .sort((a, b) => (b.endedAtMs ?? 0) - (a.endedAtMs ?? 0)),
+  ];
+  return {
+    total: members.length,
+    finished: members.length - open.length,
+    needsYou: members.filter((child) => child.needsYou).length,
+    nodes,
+    unfinishedOwned: open.filter((child) => child.source !== "edge").length,
+    unfinishedEdges: open.filter((child) => child.source === "edge").length,
+  };
 }
 
 function offBoard(facts: DeliveryFacts): DeliveryStatus | undefined {
@@ -166,20 +245,34 @@ function place(pull: DeliveryPull): Placed {
 }
 
 export function deliveryStatus(facts: DeliveryFacts): DeliveryStatus {
-  const gone = offBoard(facts);
-  if (gone !== undefined) return gone;
+  const wave = deliveryWave(facts);
+  const owned = wave?.unfinishedOwned ?? 0;
+  const edges = wave?.unfinishedEdges ?? 0;
+  const collect = facts.collect ?? null;
+  const working = facts.agent?.state === "working";
+
+  // 还有未结束的子任务或在汇总时，PR 已结束也不离开看板。
+  if (owned === 0 && collect !== "running") {
+    const gone = offBoard(facts);
+    if (gone !== undefined) return gone;
+  }
 
   const human = needsYou(facts);
   if (human !== undefined) return human;
+  if (collect === "escalated") return { lane: "needsYou", phrase: "blocked" };
+  if (owned > 0) return { lane: "working", phrase: "waitingOnChildren" };
+  if (collect === "running" || (working && edges === 0 && wave !== null)) {
+    return { lane: "working", phrase: "collecting" };
+  }
 
   const open = facts.pulls.filter((pull) => pull.state === "open");
   const hasDraft = open.some((pull) => pull.draft);
-  const working = facts.agent?.state === "working";
   if (open.length === 0 || hasDraft) {
     if (facts.stage === "working/queued") {
       return { lane: "working", phrase: "queued" };
     }
     if (working) return { lane: "working", phrase: "working" };
+    if (edges > 0) return { lane: "working", phrase: "waitingOnChildren" };
     if (hasDraft) return { lane: "working", phrase: "draft" };
     return { lane: "working", phrase: "idle" };
   }
