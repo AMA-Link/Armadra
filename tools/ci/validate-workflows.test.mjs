@@ -495,3 +495,41 @@ test("tier B runs on every system its entries name, reports failures as issues a
     "nightly.yml: reads RELEASE_TOKEN; tier B may use only the default GITHUB_TOKEN",
   ]);
 });
+
+test("CI, nightly, and release skip unused Electron binary downloads, shard tier A, and reuse web dist", () => {
+  const read = (name) =>
+    parseYaml(readFileSync(join(root, ".github/workflows", name), "utf8"));
+  const ci = read("ci.yml");
+  const nightly = read("nightly.yml");
+  const release = read("release.yml");
+
+  for (const [name, wf] of [
+    ["ci.yml", ci],
+    ["nightly.yml", nightly],
+    ["release.yml", release],
+  ]) {
+    assert.equal(
+      String(wf.env?.ELECTRON_SKIP_BINARY_DOWNLOAD),
+      "1",
+      `${name} should set ELECTRON_SKIP_BINARY_DOWNLOAD=1`,
+    );
+  }
+
+  // Tier A is sharded 3 ways on ubuntu-latest with distinct artifact names.
+  assert.deepEqual(
+    ci.jobs.e2e.strategy.matrix.include.map((item) => item.shard),
+    ["1/3", "2/3", "3/3"],
+  );
+  assert.deepEqual(
+    ci.jobs.e2e.strategy.matrix.include.map((item) => item.slug),
+    ["1-of-3", "2-of-3", "3-of-3"],
+  );
+  const uploadE2e = ci.jobs.e2e.steps.at(-1);
+  assert.equal(uploadE2e.with.name, "e2e-tier-a-${{ matrix.slug }}");
+
+  // Desktop build in CI check reuses the pre-built web dist.
+  const desktopBuild = ci.jobs.check.steps.find(
+    (step) => step.name === "桌面壳构建（不打包）",
+  );
+  assert.equal(String(desktopBuild.env?.ARMADRA_REUSE_WEB_DIST), "1");
+});

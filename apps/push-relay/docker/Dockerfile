@@ -7,7 +7,7 @@
 # 构建上下文是仓库根：中继直接打包 apps/desktop/src/core/push 里的 APNs / FCM
 # 客户端与信封形状，单拿 apps/push-relay 一个目录造不出来。两段：
 #
-#   build    只装中继及其依赖闭包，esbuild 打成一个 out/main.js。
+#   build    在宿主架构（$BUILDPLATFORM）原生装中继依赖闭包，esbuild 打成一个 out/main.js。
 #   runtime  node 运行时，没有 npm / 包管理器 / shell 工具，非 root 用户 armadra
 #            （uid 10001）；运行时不写任何文件，根文件系统可以只读。
 #
@@ -16,7 +16,7 @@
 
 ARG NODE_IMAGE=node:24.22.2-bookworm-slim
 
-FROM ${NODE_IMAGE} AS build
+FROM --platform=$BUILDPLATFORM ${NODE_IMAGE} AS build
 
 ENV CI=1 \
     ELECTRON_SKIP_BINARY_DOWNLOAD=1 \
@@ -25,9 +25,26 @@ ENV CI=1 \
 RUN corepack enable
 
 WORKDIR /src
+
+# 先复制工作区清单、补丁与安装钩子脚本，源码改动不击穿依赖安装层。
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches ./patches
+COPY tools/vendor ./tools/vendor
+COPY tools/hooks/install.mjs ./tools/hooks/install.mjs
+COPY apps/desktop/scripts/ensure-node-pty.mjs apps/desktop/scripts/verify-node-pty.mjs ./apps/desktop/scripts/
+COPY packages/shared/package.json ./packages/shared/package.json
+COPY packages/board/package.json ./packages/board/package.json
+COPY apps/web/package.json ./apps/web/package.json
+COPY apps/desktop/package.json ./apps/desktop/package.json
+COPY apps/server/package.json ./apps/server/package.json
+COPY apps/push-relay/package.json ./apps/push-relay/package.json
+COPY apps/mobile/package.json ./apps/mobile/package.json
+
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --store-dir /root/.local/share/pnpm/store --filter @armadra/push-relay...
+
 COPY . .
-RUN pnpm install --frozen-lockfile --filter @armadra/push-relay... \
- && pnpm --filter @armadra/push-relay build \
+RUN pnpm --filter @armadra/push-relay build \
  && mkdir -p /app/docker \
  && cp apps/push-relay/out/main.js /app/main.js \
  && cp apps/push-relay/docker/healthcheck.mjs /app/docker/healthcheck.mjs

@@ -119,9 +119,17 @@ describe("挑检查", () => {
     assert.ok(ids(plan.statics).includes("portability:check"));
     assert.ok(!ids(plan.statics).includes("release:test"));
     assert.deepEqual(ids(plan.builds), ["build:desktop"]);
+    assert.equal(plan.builds[0].env, undefined);
     assert.ok(ids(plan.tests).includes("test:desktop"));
     assert.ok(ids(plan.tests).includes("test:server"));
     assert.ok(!ids(plan.tests).includes("test:web"));
+  });
+
+  it("同时规划 web 与 desktop 构建时，desktop 带 ARMADRA_REUSE_WEB_DIST=1", () => {
+    const plan = planChecks(["packages/shared/src/index.ts"], { base: SHA });
+    assert.deepEqual(ids(plan.builds), ["build:web", "build:desktop"]);
+    assert.equal(plan.builds[0].env, undefined);
+    assert.deepEqual(plan.builds[1].env, { ARMADRA_REUSE_WEB_DIST: "1" });
   });
 
   it("只改测试文件不构建", () => {

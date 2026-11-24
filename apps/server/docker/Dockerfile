@@ -5,57 +5,102 @@
 #   docker build -f apps/server/docker/Dockerfile -t armadra-server .
 #
 # 构建上下文是仓库根：服务器壳直接打包 apps/desktop/src/core，页面产物来自
-# apps/web，单拿 apps/server 一个目录造不出来。两段：
+# apps/web，单拿 apps/server 一个目录造不出来。三段：
 #
-#   build    装全仓依赖、编页面与服务器壳、给 node-pty 现编 Linux 原生模块、
-#            打 hook 客户端；只留 /app 一棵树。
-#   runtime  node 运行时 + tmux / git / bash，非 root 用户 armadra（uid 10001），
-#            数据只在 /data 卷里；入口脚本把 ARMADRA_* 环境拼成 serve 的参数，
-#            没有对外来源就拒绝启动。
+#   js-build   在宿主架构（$BUILDPLATFORM）原生装依赖、编页面、服务器壳与 hook 客户端，
+#              多架构构建只跑一次且不走 QEMU。
+#   pty-build  按目标架构只装 @armadra/desktop 并现编 Linux node-pty 原生模块；
+#              不拷业务源码，锁文件与补丁未变时直接命中层缓存。
+#   runtime    node 运行时 + tmux / git / bash，非 root 用户 armadra（uid 10001），
+#              数据只在 /data 卷里；入口脚本把 ARMADRA_* 环境拼成 serve 的参数，
+#              没有对外来源就拒绝启动。
 #
 # 可选：--build-arg WITH_CHROMIUM=1 在 runtime 里装 Debian 的 Chromium（服务器壳
 # 上的浏览器节点用它），入口脚本设 ARMADRA_BROWSER_PATH。缺省不装：解压后多约 770 MiB。
 
 ARG NODE_IMAGE=node:24.22.2-bookworm-slim
 
-FROM ${NODE_IMAGE} AS build
+FROM --platform=$BUILDPLATFORM ${NODE_IMAGE} AS js-build
 
 ENV CI=1 \
     ELECTRON_SKIP_BINARY_DOWNLOAD=1 \
     COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 
-# node-pty 在 Linux 上没有预编译产物，按 Node ABI 现编一份要编译器。
-RUN apt-get update \
- && apt-get install -y --no-install-recommends python3 make g++ \
- && rm -rf /var/lib/apt/lists/* \
- && corepack enable
+RUN corepack enable
 
 WORKDIR /src
+
+# 先复制工作区清单、补丁与安装钩子脚本，源码改动不击穿依赖安装层。
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches ./patches
+COPY tools/vendor ./tools/vendor
+COPY tools/hooks/install.mjs ./tools/hooks/install.mjs
+COPY apps/desktop/scripts/ensure-node-pty.mjs apps/desktop/scripts/verify-node-pty.mjs ./apps/desktop/scripts/
+COPY packages/shared/package.json ./packages/shared/package.json
+COPY packages/board/package.json ./packages/board/package.json
+COPY apps/web/package.json ./apps/web/package.json
+COPY apps/desktop/package.json ./apps/desktop/package.json
+COPY apps/server/package.json ./apps/server/package.json
+COPY apps/push-relay/package.json ./apps/push-relay/package.json
+COPY apps/mobile/package.json ./apps/mobile/package.json
+
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --store-dir /root/.local/share/pnpm/store
+
 COPY . .
-RUN pnpm install --frozen-lockfile \
- && pnpm libs:build \
- && pnpm --filter @armadra/web build \
- && pnpm --filter @armadra/server build \
- && node apps/desktop/scripts/ensure-node-pty.mjs --prebuilt
 
 # /app/out/main.js 是服务器壳；core 在它旁边找 ../cli/armadra-hook.js（hook
 # 客户端，Agent CLI 每个事件 fork 一次）与 out/agent*/（随包的 ama）。
-# node-pty 是唯一的外部原生模块，连同编好的 build/ 复制成普通目录（pnpm 的
-# 符号链接在下一段里不存在）。迁移目录在检出里是往上找到的，镜像里没有检出，
-# 复制到 /app/migrations 并由 ARMADRA_CORE_MIGRATIONS_DIR 指过去。
-RUN mkdir -p /app/node_modules /app/cli \
+# 迁移目录在检出里是往上找到的，镜像里没有检出，复制到 /app/migrations 并由
+# ARMADRA_CORE_MIGRATIONS_DIR 指过去。
+RUN pnpm libs:build \
+ && pnpm --filter @armadra/web run build:vite \
+ && pnpm --filter @armadra/server build \
+ && mkdir -p /app/node_modules /app/cli \
  && cp -r apps/server/out /app/out \
  && cp -r apps/desktop/src/core/db/migrations /app/migrations \
  && rm -f /app/out/*.map \
  && cp -r apps/web/dist /app/web \
- && cp -rL apps/desktop/node_modules/node-pty /app/node_modules/node-pty \
- && rm -rf /app/node_modules/node-pty/src /app/node_modules/node-pty/deps \
  && pnpm --filter @armadra/server exec esbuild ../desktop/src/cli/armadra-hook/main.ts \
       --bundle --platform=node --format=cjs --target=node22 --external:electron \
       --log-level=warning --outfile=/app/cli/armadra-hook.js
 COPY apps/server/docker/entrypoint.sh apps/server/docker/healthcheck.mjs \
      apps/server/docker/backup.mjs /app/docker/
 RUN chmod 0755 /app/docker/entrypoint.sh
+
+FROM ${NODE_IMAGE} AS pty-build
+
+ENV CI=1 \
+    ELECTRON_SKIP_BINARY_DOWNLOAD=1 \
+    COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+
+# node-pty 在 Linux 上没有预编译产物，按目标架构与 Node ABI 现编一份。
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 make g++ \
+ && rm -rf /var/lib/apt/lists/* \
+ && corepack enable
+
+WORKDIR /src
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches ./patches
+COPY tools/vendor ./tools/vendor
+COPY tools/hooks/install.mjs ./tools/hooks/install.mjs
+COPY apps/desktop/scripts/ensure-node-pty.mjs apps/desktop/scripts/verify-node-pty.mjs ./apps/desktop/scripts/
+COPY packages/shared/package.json ./packages/shared/package.json
+COPY packages/board/package.json ./packages/board/package.json
+COPY apps/web/package.json ./apps/web/package.json
+COPY apps/desktop/package.json ./apps/desktop/package.json
+COPY apps/server/package.json ./apps/server/package.json
+COPY apps/push-relay/package.json ./apps/push-relay/package.json
+COPY apps/mobile/package.json ./apps/mobile/package.json
+
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --store-dir /root/.local/share/pnpm/store --filter @armadra/desktop \
+ && node apps/desktop/scripts/ensure-node-pty.mjs --prebuilt \
+ && mkdir -p /out-pty \
+ && cp -rL apps/desktop/node_modules/node-pty /out-pty/node-pty \
+ && rm -rf /out-pty/node-pty/src /out-pty/node-pty/deps
 
 FROM ${NODE_IMAGE} AS runtime
 
@@ -90,7 +135,8 @@ RUN if [ "$WITH_CHROMIUM" = "1" ]; then \
         > /etc/chromium.d/armadra; \
     fi
 
-COPY --from=build /app /app
+COPY --from=js-build /app /app
+COPY --from=pty-build /out-pty/node-pty /app/node_modules/node-pty
 
 ENV NODE_ENV=production \
     NODE_PATH=/app/node_modules \

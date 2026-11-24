@@ -8,9 +8,10 @@
 触发：`pull_request`，以及推到 `main`。同一分支的新提交会取消上一次运行
 （`concurrency` + `cancel-in-progress`）。权限只有 `contents: read`。
 
-先跑 `changes` 作业比较改动的文件：只改 Markdown、`docs/`、`.github/ISSUE_TEMPLATE/`（`docs/contracts/`
+先跑 `changes` 作业（`fetch-depth: 1`，缺基点时按需浅取 `$BASE`）比较改动的文件：只改 Markdown、`docs/`、`.github/ISSUE_TEMPLATE/`（`docs/contracts/`
 与 `THIRD_PARTY_NOTICES.md` 除外）时只跑 `docs` 作业（`pnpm format:check`、`pnpm repo:check`），
-下面的 `check` 矩阵与 `e2e` 都跳过；其余改动照常全跑。标签推送一律全跑。
+下面的 `check` 矩阵与 `e2e` 都跳过；其余改动照常全跑。标签推送一律全跑。`ci.yml`、`nightly.yml` 与
+`release.yml` 顶层均设 `ELECTRON_SKIP_BINARY_DOWNLOAD=1`，跳过 `node_modules/electron` 用不到的运行时下载（打包由 `electron-builder` 独立拉取并缓存）。
 
 一个作业 `check`，矩阵三行：
 
@@ -20,19 +21,18 @@
 | `macos-15`       | macos-aarch64  |
 | `windows-latest` | windows-x86_64 |
 
-三行跑同一串步骤（另有一个只在 ubuntu 上跑的 `e2e` 作业，见 §1.1）：
+三行跑同一套流程（另有一个只在 ubuntu 上分三片并行的 `e2e` 作业，见 §1.1）：
 
-1. `pnpm install --frozen-lockfile`
-2. `pnpm check`（libs:build、prettier、`lint`、typecheck、`repo:check`、
-   `ci:workflows`、`release:check`、`notices:check`）；ESLint 只有 error 让它失败
-3. `pnpm repo:test`（含 `tools/lint-config.test.mjs`）、`pnpm release:test`
-4. `pnpm -r --workspace-concurrency=1 --if-present test` / `typecheck`、`pnpm --filter @armadra/web build`；
+1. `pnpm install --frozen-lockfile`，并由 `actions/cache` 恢复各包 `node_modules/.cache`（prettier、ESLint、tsc 增量缓存）
+2. `node tools/ci/check-ci.mjs`：先 `libs:build`，再并行扇出检查并记录每步耗时与失败尾部日志。Linux 跑 `--mode full`（`contract:check`、`format:check`、`lint`、`typecheck`、`repo:check`、`board:budget`、`portability:check`、`ci:workflows`、`release:check`、`notices:check`、`repo:test`、`release:test`、`controller:real:test`）；macOS 与 Windows 跑 `--mode platform`（`format:check`、`typecheck`、`repo:check`、`portability:check`、`repo:test`、`release:test`、`controller:real:test`），不重复与平台无关的纯 AST / 许可证扫描
+3. `pnpm --filter @armadra/web run build:vite`（`libs:build` 与 `typecheck` 已在上一步完成，这里只构建一次页面产物）
+4. `pnpm -r --workspace-concurrency=1 --if-present test`（带 `ARMADRA_WEB_BUILT_DIST` 让 `showcase/production.test.ts` 直接核对刚编好的 `apps/web/dist`，不再在单测里重跑一遍 `vite build`）；
    Linux 那一行的 `test` 带 `ARMADRA_COVERAGE=1`，web、desktop、server 出 lcov 并作为
    `coverage-lcov` 产物上传（只出报告，不设门槛）。各包的测试逐个跑：每个 vitest
    自己按核数开 worker，desktop 与 web 两套叠在一起时用例的墙钟时间被拉长一倍以上，
    超时类偶发都出在这一段
-5. `pnpm plugin:test` 与 `pnpm controller:real:test`（纯客户端和真实验收只读预检的单测，不调用模型或 CI 账号）
-6. `pnpm --filter @armadra/desktop build`（不打包）
+5. `pnpm plugin:test`（便携插件安装路径在三个平台逐一验证）
+6. `ARMADRA_REUSE_WEB_DIST=1 pnpm --filter @armadra/desktop build`（不打包：直接把第 3 步的 `apps/web/dist` 拷进 `out/renderer`，`core` / `cli` / `session-host` / `agent-host` 子包并行编译）
 7. Linux/macOS：`plugin:build` 与 controller 的真 Unix socket/PTY、取消、大日志、重启和四个精确崩溃边界；内层为确定性假 CLI，不替代真实双 Agent 验收。
 
 几条不显然的决定：
@@ -44,12 +44,12 @@
 - **`.gitattributes` 把全仓统一成 LF。** Windows runner 默认
   `core.autocrlf=true`，而 `prettier --check` 是按字节比对，CRLF 工作副本会让它红。
 - **桌面壳只构建，不打包。** `pnpm --filter @armadra/desktop build` 把
-  main / preload / renderer / core 四个 target 过一遍 electron-vite，要的是三个
+  main / preload / renderer（复用 `apps/web/dist`）/ core 等子包过一遍 electron-vite，要的是三个
   平台上构建图都通得过。打包要平台特定的证书 / 公证输入，是发布流水线的事。壳与
   core 自己的单测（vitest + `node --test scripts/*.test.mjs`）在第 4 步的
   `pnpm -r --if-present test` 里已经跑过，不重复。
 
-缓存：只有 `actions/setup-node` 的 `cache: pnpm`。R7d 之后仓库里没有第二条工具链，
+缓存：`actions/setup-node` 的 `cache: pnpm`，以及 `check` 作业对 `node_modules/.cache`、`apps/*/node_modules/.cache`、`packages/*/node_modules/.cache` 的增量缓存。R7d 之后仓库里没有第二条工具链，
 Rust 与 Go 的 setup、缓存与检查步骤一并删除。
 
 ### 1.1 端到端分档
@@ -59,18 +59,20 @@ A 档与 B 档由 `tools/ci/e2e.mjs` 执行，清单是 `tools/ci/e2e.d/` 目录
 
 ```sh
 pnpm libs:build
-pnpm --filter @armadra/web build
-pnpm --filter @armadra/desktop build
+pnpm --filter @armadra/web run build:vite
+ARMADRA_REUSE_WEB_DIST=1 pnpm --filter @armadra/desktop build
 pnpm --filter @armadra/server build
+pnpm --filter @armadra/push-relay build
 node apps/desktop/scripts/ensure-node-pty.mjs   # Linux：给 Node 编一份 node-pty
 node tools/ci/e2e.mjs --tier a            # 全部 A 档
+node tools/ci/e2e.mjs --tier a --shard 1/3 # 按最长耗时优先（LPT）均衡切三片中的第 1 片
 node tools/ci/e2e.mjs --tier a --only server-e2e
 node tools/ci/e2e.mjs --tier b --list     # 只列出清单
 ```
 
 | 档  | 在哪跑                                                       | 失败时   |
 | --- | ------------------------------------------------------------ | -------- |
-| A   | `ci.yml` 的 `e2e` 作业（ubuntu，每个 PR 与 main）            | 阻断合并 |
+| A   | `ci.yml` 的 `e2e` 作业（ubuntu 三分片并行，每个 PR 与 main） | 阻断合并 |
 | B   | `nightly.yml`（每天一次，main 没有新提交就跳过；可手动触发） | 开 issue |
 | C   | 手动，需要真实账号或真机                                     | —        |
 
@@ -82,11 +84,13 @@ node tools/ci/e2e.mjs --tier b --list     # 只列出清单
   运行顺序由加载器定：先 A 档后 B 档，同档按 `id` 排序，与文件添加先后无关。
   `tools/ci/e2e.test.mjs` 校验清单形状、文件名与 `id` 一致、脚本存在、A 档必有的
   五条，以及旧的单文件 `tools/ci/e2e.json` 没有被合并带回来。
-- **逐条记账，跑完全部再判。** 每条探针的输出写进 `<out>/<id>/output.log`，
+- **逐条记账，分片均衡执行，跑完本片再判。** 每条探针的输出写进 `<out>/<id>/output.log`，
   探针自己的 `result.json` 与截图也落在 `<out>/<id>/`；汇总在 `<out>/result.json`
-  （默认 `target/e2e/<档>/`）。任一条失败或超时，退出码非零，但后面的条目照跑。
-  超时按进程组杀，探针起的 Chrome、core 与 Vite 一起收掉。CI 把整个目录作为
-  `e2e-tier-a` 产物上传。
+  （默认 `target/e2e/<档>/`）。`--shard <index>/<total>` 只对当前环境下真会执行的探针按
+  `timeoutMinutes` 降序（同耗时按 `id` 升序）做最长处理时间优先（LPT）分桶，把 15 分钟重探针
+  分散到不同 runner，跳过项轮询挂入分片而不占耗时预算；片内仍按 `id` 升序跑。任一条失败或超时，退出码非零，但后面的条目照跑。
+  超时按进程组杀，探针起的 Chrome、core 与 Vite 一起收掉。CI 的三片分别上传为
+  `e2e-tier-a-1-of-3`、`e2e-tier-a-2-of-3`、`e2e-tier-a-3-of-3` 产物。
 - **dev-stack 门控。** `ARMADRA_DEV_STACK=1` 且 `docker info` 答得上时，先
   `pnpm dev-stack up`、跑完 `down`；否则 `devStack` 条目记 `skipped`，不算失败。
   `up` 本身失败时这些条目记 `failed`。
@@ -142,13 +146,14 @@ node tools/ci/e2e.mjs --tier b --list     # 只列出清单
 工作流里的所有 checkout 都用 `ref: ${{ inputs.tag || github.sha }}`：手动补发一个
 标签时，构建的必须是那个标签的树，而不是触发它的分支的 HEAD。
 
-| 作业       | runner         | 做什么                                                  |
-| ---------- | -------------- | ------------------------------------------------------- |
-| `verify`   | ubuntu-latest  | 各处版本与标签一致、全量测试、工作流与发布脚本自检      |
-| `build`    | 六行矩阵，见下 | 打桌面包、改名，上传 `release-<target>`                 |
-| `web`      | ubuntu-latest  | 打前端产物 `armadra-web_<version>.tar.gz`               |
-| `notarize` | ubuntu-latest  | 只报告哪些平台缺签名 secret，不阻断                     |
-| `assemble` | ubuntu-latest  | 校验清单、`latest.json`、说明，并创建 **draft** Release |
+| 作业       | runner         | 做什么                                                             |
+| ---------- | -------------- | ------------------------------------------------------------------ |
+| `verify`   | ubuntu-latest  | 各处版本与标签一致、`check-ci --mode full` 并行检查、各包单测      |
+| `build`    | 六行矩阵，见下 | 打桌面包、改名，上传 `release-<target>`                            |
+| `web`      | ubuntu-latest  | 打前端产物 `armadra-web_<version>.tar.gz`                          |
+| `android`  | ubuntu-latest  | 配有上传密钥时构建页面与手机壳 `www`、打签名 release APK（带缓存） |
+| `notarize` | ubuntu-latest  | 只报告哪些平台缺签名 secret，不阻断                                |
+| `assemble` | ubuntu-latest  | 校验清单、`latest.json`、说明，并创建 **draft** Release            |
 
 构建矩阵的六个目标与 `tools/release/artifacts.mjs` 的 `TARGETS` 一一对应，
 `pnpm ci:workflows` 会校验这一点。矩阵里原本还有一列 Rust 三元组，只有组件包用它，
@@ -265,7 +270,7 @@ AppImageKit 12）里 arm64 的运行时动态链接**无版本号**的 `libz.so`
   警告，那样的包退回 `armadra-hook.cmd`。
 - **macOS**：不需要额外依赖。签名与公证见 §2.6。
 
-缓存：只有 `actions/setup-node` 的 `cache: pnpm`。
+缓存：`actions/setup-node` 的 `cache: pnpm`；Android 作业（`release.yml` 的 `android` 与 `nightly.yml` 的 `mobile-android`）开启 `actions/setup-java` 的 `cache: gradle`，iOS 夜间作业（`mobile-ios`）缓存 SwiftPM 包目录；`server-image.yml` 与 `push-relay-image.yml` 在 `$BUILDPLATFORM` 原生编译 JS 产物并按各自的 `scope` 隔离 BuildKit GHA 缓存。
 
 所有多行 `run` 都写 `shell: bash` 与 `set -euo pipefail`：Windows 默认的 pwsh 只看
 最后一条命令的退出码，`pnpm ci:workflows` 会拦住漏写 `shell` 的 Windows 步骤。

@@ -24,6 +24,7 @@ permissions:
 env:
   PNPM_VERSION: "12.21.0"
   NODE_VERSION: "24"
+  ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
 
 jobs:
   # 定时触发时，main 的提交与上次成功的 nightly 相同就跳过（workspace#9）；手动触发照跑。
@@ -112,8 +113,8 @@ jobs:
           set -euo pipefail
           pnpm libs:build
           pnpm --filter @armadra/web build
-          pnpm --filter @armadra/server build
-          pnpm --filter @armadra/desktop dist
+          # dist.mjs 自己先编 @armadra/server，这里直接复用上面的 web/dist。
+          ARMADRA_REUSE_WEB_DIST=1 pnpm --filter @armadra/desktop dist
           ls -l apps/desktop/release
 
       - name: 校验 Linux 的 glibc 基线
@@ -273,8 +274,17 @@ jobs:
           set -euo pipefail
           pnpm libs:build
           pnpm --filter @armadra/web build
-          pnpm --filter @armadra/desktop build
+          ARMADRA_REUSE_WEB_DIST=1 pnpm --filter @armadra/desktop build
           pnpm --filter @armadra/mobile sync
+      - name: 缓存 SwiftPM 包依赖
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            target/mobile/ios/SourcePackages
+          key: swiftpm-ios-${{ runner.os }}-${{ hashFiles('apps/mobile/ios/**/Package.resolved', 'apps/mobile/ios/**/Package.swift', 'apps/mobile/package.json', 'pnpm-lock.yaml') }}
+          restore-keys: |
+            swiftpm-ios-${{ runner.os }}-
       - name: ArmadraNativeKit 单测（钉扎判定、推送解密、深链）
         run: swift test --package-path apps/mobile/ios/ArmadraNativeKit
       # Capacitor 的二进制包从 GitHub Releases 下，偶尔超时（#955，nightly 44428271578）。
@@ -347,6 +357,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+          cache: gradle
       - run: pnpm install --frozen-lockfile
         timeout-minutes: 10
       - name: 构建页面、core 与手机壳的 www
@@ -356,7 +367,7 @@ jobs:
           set -euo pipefail
           pnpm libs:build
           pnpm --filter @armadra/web build
-          pnpm --filter @armadra/desktop build
+          ARMADRA_REUSE_WEB_DIST=1 pnpm --filter @armadra/desktop build
           node apps/desktop/scripts/ensure-node-pty.mjs
           pnpm --filter @armadra/mobile sync
       - name: armadra-native-core 单测（钉扎判定、推送解密、深链）与 debug APK

@@ -1,7 +1,7 @@
 /**
  * End-to-end tiers.
  *
- *   node tools/ci/e2e.mjs --tier a [--only id,id] [--out dir] [--list]
+ *   node tools/ci/e2e.mjs --tier a [--shard index/total] [--only id,id] [--out dir] [--list]
  *
  * Runs every probe in tools/ci/e2e.d/ that belongs to the tier, one after
  * another, and writes <out>/result.json with one record per entry. Any failure
@@ -124,6 +124,102 @@ export function sortEntries(entries) {
       rank(left) - rank(right) ||
       String(left?.id ?? "").localeCompare(String(right?.id ?? ""), "en"),
   );
+}
+
+/**
+ * Parse a 1-based `--shard <index>/<total>` specification (or `{ index, total }`).
+ * Rejects anything outside `1 <= index <= total` with positive integers.
+ */
+export function parseShard(spec) {
+  if (spec && typeof spec === "object") {
+    const { index, total } = spec;
+    if (
+      Number.isInteger(index) &&
+      Number.isInteger(total) &&
+      total >= 1 &&
+      index >= 1 &&
+      index <= total
+    ) {
+      return { index, total };
+    }
+    throw new Error(
+      `invalid shard ${JSON.stringify(spec)}; expected 1 <= index <= total`,
+    );
+  }
+  const match = /^(\d+)\/(\d+)$/.exec(String(spec ?? "").trim());
+  if (!match) {
+    throw new Error(
+      `invalid --shard ${spec}; expected <index>/<total> (e.g. 1/3)`,
+    );
+  }
+  const index = Number(match[1]);
+  const total = Number(match[2]);
+  if (!(total >= 1 && index >= 1 && index <= total)) {
+    throw new Error(`invalid --shard ${spec}; expected 1 <= index <= total`);
+  }
+  return { index, total };
+}
+
+/**
+ * Deterministically partition `entries` across `total` shards using Longest
+ * Processing Time first (`timeoutMinutes` descending, then `id` ascending,
+ * assigning each runnable entry to the shard with the smallest accumulated
+ * `timeoutMinutes`, ties broken by lower shard index).
+ *
+ * Entries where `isRunnable(entry)` is false (platform mismatch or optional
+ * host requirements absent) will be recorded immediately as `skipped` in 0s;
+ * they are distributed round-robin without adding weight to `minutes`, so they
+ * never starve a shard of real work while every entry still appears in one
+ * shard's `result.json`.
+ */
+export function partitionShards(
+  entries,
+  total,
+  { isRunnable = () => true } = {},
+) {
+  if (!Number.isInteger(total) || total < 1) {
+    throw new Error(
+      `invalid shard count ${total}; expected a positive integer`,
+    );
+  }
+  const buckets = Array.from({ length: total }, () => ({
+    minutes: 0,
+    entries: [],
+  }));
+  const runnable = [];
+  const skipped = [];
+  for (const entry of sortEntries(entries)) {
+    if (isRunnable(entry)) runnable.push(entry);
+    else skipped.push(entry);
+  }
+  runnable.sort(
+    (left, right) =>
+      (right.timeoutMinutes ?? 0) - (left.timeoutMinutes ?? 0) ||
+      String(left.id).localeCompare(String(right.id), "en"),
+  );
+  for (const entry of runnable) {
+    let bestIndex = 0;
+    for (let index = 1; index < buckets.length; index += 1) {
+      if (buckets[index].minutes < buckets[bestIndex].minutes) {
+        bestIndex = index;
+      }
+    }
+    buckets[bestIndex].entries.push(entry);
+    buckets[bestIndex].minutes += entry.timeoutMinutes ?? 0;
+  }
+  skipped.forEach((entry, offset) => {
+    buckets[offset % total].entries.push(entry);
+  });
+  return buckets.map((bucket) => ({
+    minutes: bucket.minutes,
+    entries: sortEntries(bucket.entries),
+  }));
+}
+
+export function shardEntries(entries, shard, options) {
+  if (shard === undefined || shard === null) return sortEntries(entries);
+  const { index, total } = parseShard(shard);
+  return partitionShards(entries, total, options)[index - 1].entries;
 }
 
 /** Structural problems with a manifest, as plain sentences. */
@@ -296,6 +392,7 @@ function runEntry(entry, { root, out, env, log }) {
  */
 export async function runTier({
   tier,
+  shard,
   manifest = loadManifest(),
   root = ROOT,
   out = join(root, "target/e2e", tier),
@@ -319,15 +416,16 @@ export async function runTier({
 }) {
   if (!TIERS.includes(tier))
     throw new Error(`unknown tier ${tier}; use one of ${TIERS.join(", ")}`);
+  const parsedShard = shard === undefined ? null : parseShard(shard);
   const problems = validateManifest(manifest, root);
   if (problems.length > 0)
     throw new Error(`tools/ci/e2e.d:\n  ${problems.join("\n  ")}`);
-  const selected = manifest.entries.filter(
+  const tierSelected = manifest.entries.filter(
     (entry) => entry.tier === tier && (!only || only.includes(entry.id)),
   );
   if (only) {
     const unknown = only.filter(
-      (id) => !selected.some((entry) => entry.id === id),
+      (id) => !tierSelected.some((entry) => entry.id === id),
     );
     if (unknown.length > 0)
       throw new Error(`not in tier ${tier}: ${unknown.join(", ")}`);
@@ -336,19 +434,50 @@ export async function runTier({
 
   const runsHere = (entry) =>
     entry.platforms === undefined || entry.platforms.includes(platform);
+  const tierNeeds = (what) =>
+    tierSelected.some(
+      (entry) => runsHere(entry) && entry.requires?.includes(what),
+    );
+  const tierUsesDevStack = tierSelected.some(
+    (entry) => runsHere(entry) && entry.devStack,
+  );
+  const docker =
+    tierNeeds("docker") || (tierUsesDevStack && env.ARMADRA_DEV_STACK === "1")
+      ? probe.docker()
+      : false;
+  const cloud = tierNeeds("cloud") ? (probe.cloud?.() ?? null) : null;
+  const webkit = tierNeeds("webkit") ? (probe.webkit?.() ?? false) : false;
+  const claude = tierNeeds("claude")
+    ? (probe.claude?.() ?? { reason: "no Claude Code probe" })
+    : undefined;
+  const claudeAcp = tierNeeds("claude-acp")
+    ? (probe.claudeAcp?.() ?? { reason: "no claude-agent-acp probe" })
+    : undefined;
+
+  const isRunnable = (entry) => {
+    if (!runsHere(entry)) return false;
+    if (entry.devStack && (env.ARMADRA_DEV_STACK !== "1" || !docker))
+      return false;
+    if (entry.requires?.includes("webkit") && !webkit) return false;
+    if (entry.requires?.includes("claude") && claude?.program === undefined)
+      return false;
+    if (
+      entry.requires?.includes("claude-acp") &&
+      claudeAcp?.program === undefined
+    )
+      return false;
+    if (entry.requires?.includes("cloud") && !cloud) return false;
+    return true;
+  };
+
+  const selected = parsedShard
+    ? shardEntries(tierSelected, parsedShard, { isRunnable })
+    : tierSelected;
+
   const needs = (what) =>
     selected.some((entry) => runsHere(entry) && entry.requires?.includes(what));
   const chrome = needs("chrome") ? probe.chrome() : null;
   const tmux = needs("tmux") ? probe.tmux() : false;
-  const docker = needs("docker") ? probe.docker() : false;
-  const cloud = needs("cloud") ? (probe.cloud?.() ?? null) : null;
-  const webkit = needs("webkit") ? (probe.webkit?.() ?? false) : false;
-  const claude = needs("claude")
-    ? (probe.claude?.() ?? { reason: "no Claude Code probe" })
-    : undefined;
-  const claudeAcp = needs("claude-acp")
-    ? (probe.claudeAcp?.() ?? { reason: "no claude-agent-acp probe" })
-    : undefined;
   const childEnv = {
     ...env,
     ...(claude?.program ? { ARMADRA_CLAUDE_BIN: claude.program } : {}),
@@ -359,12 +488,12 @@ export async function runTier({
     ...(cloud ? { ARMADRA_DEV_STACK_CLOUD_SRC: cloud } : {}),
   };
 
-  // The dev-stack is brought up once for the whole tier, and only when asked.
+  // The dev-stack is brought up once for the whole tier/shard, and only when asked.
   let stack = { state: "off", reason: "ARMADRA_DEV_STACK is not 1" };
   if (selected.some((entry) => runsHere(entry) && entry.devStack)) {
     if (env.ARMADRA_DEV_STACK !== "1")
       stack = { state: "off", reason: "ARMADRA_DEV_STACK is not 1" };
-    else if (!probe.docker())
+    else if (!docker)
       stack = { state: "off", reason: "Docker is not available" };
     else {
       log("== dev-stack up\n");
@@ -378,6 +507,9 @@ export async function runTier({
 
   const summary = {
     tier,
+    ...(parsedShard
+      ? { shard: `${parsedShard.index}/${parsedShard.total}` }
+      : {}),
     status: "passed",
     startedAt: new Date().toISOString(),
     platform: `${platform}-${process.arch}`,
@@ -503,6 +635,9 @@ function parseArgs(argv) {
     };
     if (arg === "--tier") options.tier = value();
     else if (arg.startsWith("--tier=")) options.tier = arg.slice(7);
+    else if (arg === "--shard") options.shard = parseShard(value());
+    else if (arg.startsWith("--shard="))
+      options.shard = parseShard(arg.slice(8));
     else if (arg === "--only")
       options.only = value().split(",").filter(Boolean);
     else if (arg.startsWith("--only="))
@@ -514,7 +649,7 @@ function parseArgs(argv) {
   }
   if (!options.tier)
     throw new Error(
-      "usage: node tools/ci/e2e.mjs --tier a|b [--only id,id] [--out dir] [--list]",
+      "usage: node tools/ci/e2e.mjs --tier a|b [--shard index/total] [--only id,id] [--out dir] [--list]",
     );
   return options;
 }
@@ -534,9 +669,41 @@ async function main() {
       console.error(`tools/ci/e2e.d:\n  ${problems.join("\n  ")}`);
       return 1;
     }
-    for (const entry of manifest.entries.filter(
+    const tierEntries = manifest.entries.filter(
       (item) => item.tier === options.tier,
-    ))
+    );
+    const listed = options.shard
+      ? shardEntries(tierEntries, options.shard, {
+          isRunnable: (entry) => {
+            if (
+              entry.platforms !== undefined &&
+              !entry.platforms.includes(process.platform)
+            )
+              return false;
+            if (entry.devStack && process.env.ARMADRA_DEV_STACK !== "1")
+              return false;
+            if (entry.requires?.includes("webkit") && !hasWebkit())
+              return false;
+            if (
+              entry.requires?.includes("claude") &&
+              findClaude(process.env)?.program === undefined
+            )
+              return false;
+            if (
+              entry.requires?.includes("claude-acp") &&
+              findClaudeAcp(process.env)?.program === undefined
+            )
+              return false;
+            if (
+              entry.requires?.includes("cloud") &&
+              !findCloudSource(process.env, ROOT)
+            )
+              return false;
+            return true;
+          },
+        })
+      : tierEntries;
+    for (const entry of listed)
       console.log(
         `${entry.id}${entry.devStack ? " (dev-stack)" : ""}${entry.platforms ? ` [${entry.platforms.join(", ")}]` : ""}  ${entry.script}`,
       );

@@ -1,0 +1,21 @@
+# 容器构建上下文忽略列表（仓库根）。
+.git
+.github
+.claude
+**/node_modules
+**/.pnpm-store
+.pnpm-store
+**/dist
+**/out
+**/release
+**/coverage
+**/target
+target
+target-main
+docs
+apps/mobile/*
+!apps/mobile/package.json
+tools/dev-stack/.data
+**/*.db
+**/*.db-shm
+**/*.db-wal

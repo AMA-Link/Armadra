@@ -19,6 +19,7 @@
     "repo:test": "node --test tools/board-budget.test.mjs tools/repo-check.test.mjs tools/lint-config.test.mjs tools/contract/generate.test.mjs tools/portability-check.test.mjs tools/hooks/*.test.mjs",
     "contract": "node tools/contract/generate.mjs",
     "contract:check": "node tools/contract/generate.mjs --check",
+    "ci:check": "node tools/ci/check-ci.mjs",
     "ci:workflows": "node tools/ci/validate-workflows.mjs",
     "release:check": "node tools/release/version.mjs check",
     "notices": "node tools/notices.mjs",
