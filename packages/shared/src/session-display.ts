@@ -1,4 +1,5 @@
 import type { ProgramStatus } from "./api/terminals.js";
+import { stateSourceIsObserved } from "./domain/primitives.js";
 import type { ActivityPhase, SessionActivity } from "./domain/timeline.js";
 import { type HumanNeed, agentHumanNeed, isProcessGone } from "./human-need.js";
 
@@ -135,7 +136,9 @@ function detailOf(activity: SessionActivity | undefined): string | undefined {
 /** 上报在这个 core 进程里是活的：它说了算（`observed` 只是猜测，不算）。 */
 function reportedLive(status: DisplayStatus | undefined): boolean {
   return Boolean(
-    status?.state && !status.restored && status.stateSource !== "observed",
+    status?.state &&
+    !status.restored &&
+    !stateSourceIsObserved(status.stateSource),
   );
 }
 
