@@ -5465,7 +5465,7 @@ core 的工作流域搭任务行兜底扫描（每 60 秒，§15.7）的便车�
 - **游标**：线程里评论与评审读到过的最晚的远端时刻（没有就是 `boundAt`），读的时候**回退 5 秒**；比它更早的讨论不算新事件（绑定之前的不回灌）。回退窗口里已经入账的不会重复。
 - **事件与去重**：每个事件先过 `thread_events` 账表，`(item_id, event_id)` 唯一，已经入账的不再算，所以重放同一段响应、重启后从头再读都不会产生第二条。事件 id 确定：
   - `pr-comment:<repo>#<n>:<评论 id>`、`pr-review:<repo>#<n>:<评审 id>`（评论 id 即 §103.2 的带前缀编号）；
-  - `pr-checks:<repo>#<n>:<head sha>:<success|failure>`：只有成功与失败算，进行中不算；head 提交或结论变了才算一次；
+  - `pr-checks:<repo>#<n>:<head sha>:<序号>:<pending|success|failure>`：事件 id 带序号，规则见 §115.3（旧格式 `…:<head sha>:<success|failure>` 仍能读到、仍计数）；
   - `pr-state:<repo>#<n>:<merged|closed>`；
   - `issue` 线程：`issue-comment:<repo>#<n>:<评论 id>`、`issue-state:<repo>#<n>:closed`。游标、机器人轮数与终态按前缀分开算，同一仓库里同号的 issue 与 PR 互不影响。
 - **分发对 issue 的写法**（§103.4）：正文写「绑定的 issue」，读取指针 GitHub 给 `gh issue view <n> --repo <owner>/<名字> --comments`；协调者的概要写「issue #n 有 1 条新评论 / 已关闭」。
@@ -5930,3 +5930,49 @@ Copilot 的 ACP 入口只接受 http / sse 的 MCP 服务器，`session/new.mcpS
 模型接口报错时 Codex 不发任何 hook，节点由静默清扫收尾，这里不靠猜测提前判失败。
 
 没有新 procedure，没有数据库迁移，`agent.status` 的形状不变。
+
+## 115. PR 快照与检查事件的序号（`#988`）
+
+### 115.1 `PullSnapshot`
+
+`packages/shared/src/api/pulls.ts`（含 zod schema）。一个 PR 一份，平台无关，不含 PR 正文与评论原文：
+
+| 字段                                                          | 说明                                                                                                  |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `repo`、`number`、`url`、`title`                              | `repo` 写作 `<host>/<owner>/<name>`，与线程键同写法                                                   |
+| `state`、`draft`、`baseRef`、`headRef`、`headSha`、`fromFork` | `state` 为 `open` / `merged` / `closed`                                                               |
+| `review`                                                      | `approved` / `changesRequested` / `reviewRequired` / `notRequired` / `unknown`                        |
+| `checks`                                                      | `{read: true, headSha, rollup: pending/success/failure/neutral/none, failing[≤3]}` 或 `{read: false}` |
+| `mergeable`                                                   | `mergeable` / `conflicting` / `unknown`                                                               |
+| `parent`                                                      | 这个 PR 的 base 分支是不是另一个仍开着的 PR 的 head：`none` / `open {number, url}` / `unknown`        |
+| `fetchedAtMs`、`stale`                                        | `stale` 读时算：超过 10 分钟没刷新，或最近一次刷新失败，不落库                                        |
+
+`rollup: "none"` 且 `read: true` 表示读到了、这个提交上没有任何检查；`read: false` 是没读到，两者不等价。
+
+### 115.2 各平台的判定
+
+`Forge.pullSnapshot?(repo, number)`；没实现的平台由 `snapshotOf` 用 `getPull + checks + pullReviewers` 拼，此时 `review` 只会是 `approved` / `changesRequested` / `unknown`（拼出来的结果没有「无需评审」的凭据），`parent` 为 `unknown`。
+
+- GitHub：一次 GraphQL 读状态、`reviewDecision`、最近的有态度评审、最后一个提交的检查汇总；`reviewDecision` 为空时，有生效中的「要求修改」记 `changesRequested`，否则 `notRequired`。base 不是默认分支时再查一次「谁的 head 是这个 base」（失败记 `unknown`）。GraphQL 整体读不到时退回 REST 的 PR：状态照给，`review: unknown`、`checks: {read: false}`、`parent: unknown`。
+- GitLab：`detailed_merge_status = requested_changes` 记 `changesRequested`；否则读 `approvals`：`approvals_left = 0` 且有人批准记 `approved`，`approvals_required = 0` 记 `notRequired`，`approvals_left > 0` 记 `reviewRequired`；读不到时 `not_approved` 记 `reviewRequired`，其余 `unknown`。父 MR 按 `source_branch = <base>` 查，默认分支按仓库缓存一小时。
+- Gitea / Forgejo：官方（`official`）且未撤销的「要求修改」优先；否则读 base 分支：未保护或 `required_approvals = 0` 为 `notRequired`，官方批准数够了为 `approved`，不够为 `reviewRequired`，字段缺失（老版本）或读不到为 `unknown`。`mergeable: false` 分不出冲突与「还在算」：同一个 head 连续两次读到才记 `conflicting`，第一次记 `unknown`。父 PR 先按 `pulls/{默认分支}/{base}` 精确取，取不到再翻 open 列表（至多 2 页 100 条），翻完没到底记 `unknown`。
+- 已合并或已关闭的 PR 不再读检查、评审与父 PR（`review: unknown`、`checks: {read: false}`、`parent: none`）。
+
+### 115.3 检查事件 id 与序号
+
+事件 id 为 `pr-checks:<key>:<head sha>:<序号>:<pending|success|failure>`，`<序号>` 是这个提交上已记的检查事件条数（旧格式的行也算）。按账表（`thread_events`）判断：
+
+1. 这次的结论与这个提交上最后记下的相同，不记；
+2. `pending`：记一行，`delivered = 0`，不投递，只用来隔开前后两次相同的结论；
+3. `success` / `failure`：记一行并投递；
+4. `neutral`、`none`、没读到：不记。
+
+所以「失败 → 重跑中 → 失败」「失败 → 成功 → 失败」每次失败都有新 id。重跑在两次轮询之间结束、没读到 `pending` 时仍只投一次，这是拉取式轮询的限制。判断只看落盘的账，重放同一段响应、重启后重读都不会出第二条。
+
+### 115.4 存储与刷新
+
+迁移 0068 `pull_snapshots(repo, number, snapshot_json, fingerprint, fetched_at, failed_at)`，主键 `(repo, number)`；`fingerprint` 是键排序后的稳定串的 SHA-256，用来判断「变没变」。刷新不另起轮询器：`PrWatch` 每次读工作项线程时用一次 `snapshotOf` 取代原来的 `getPull` 与 `checks`，写表后指纹变了（含首次）调用 `onSnapshot`；读失败只标 `failed_at`。
+
+`PrWatchOptions.snapshotTargets(nowMs)` 给出只刷快照的 PR（`{repo, number, workspaceId}`）：不读讨论、不记账、不投递；本遍已被工作项线程刷新过、或离上次成功不足 `SNAPSHOT_ONLY_MIN_MS`（120 秒）的跳过；与线程共用每遍的上限与退避。
+
+没有新 procedure，不改已有节号；HTTP 与事件形状不变。
