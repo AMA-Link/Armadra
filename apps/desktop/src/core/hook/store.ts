@@ -74,6 +74,8 @@ export interface AgentStatusRow {
   readonly errored?: boolean;
   readonly interrupted?: boolean;
   readonly endedBy?: AgentEndedBy;
+  /** When the row last entered `done` (RFC 3339); absent if it never has. */
+  readonly doneAt?: string;
   /**
    * Not a column: the reducer attaches the event's message (or the stale
    * sweep's marker) to the copy it publishes. A row read back from SQLite
@@ -108,7 +110,7 @@ export interface AgentStatusPatch {
 const SELECT =
   "SELECT node_id, workspace_id, agent_id, state, state_source, unread, session_id, " +
   "pending_id, verified, restored, updated_at, transcript_path, last_event_at, " +
-  "session_phase, errored, interrupted, ended_by FROM agent_status ";
+  "session_phase, errored, interrupted, ended_by, done_at FROM agent_status ";
 
 type Row = Record<string, unknown>;
 
@@ -167,6 +169,9 @@ function statusFromRow(row: Row): AgentStatusRow {
     ...(endedByOf(row.ended_by) === undefined
       ? {}
       : { endedBy: endedByOf(row.ended_by) as AgentEndedBy }),
+    ...(optionalText(row.done_at) === undefined
+      ? {}
+      : { doneAt: optionalText(row.done_at) as string }),
   };
 }
 
@@ -204,14 +209,16 @@ export function upsertAgentStatus(
   database
     .prepare(
       "INSERT INTO agent_status (node_id, workspace_id, agent_id, state, state_source, unread, session_id, pending_id, " +
-        "verified, restored, updated_at, transcript_path, last_event_at, session_phase, errored, interrupted, ended_by) " +
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?) " +
+        "verified, restored, updated_at, transcript_path, last_event_at, session_phase, errored, interrupted, ended_by, done_at) " +
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?) " +
         "ON CONFLICT(node_id) DO UPDATE SET workspace_id = excluded.workspace_id, agent_id = excluded.agent_id, " +
         "state = excluded.state, state_source = excluded.state_source, unread = excluded.unread, session_id = excluded.session_id, " +
         "pending_id = excluded.pending_id, verified = excluded.verified, restored = 0, updated_at = excluded.updated_at, " +
         "transcript_path = excluded.transcript_path, session_phase = excluded.session_phase, " +
         "errored = excluded.errored, interrupted = excluded.interrupted, ended_by = excluded.ended_by, " +
-        "last_event_at = COALESCE(excluded.last_event_at, agent_status.last_event_at)",
+        "last_event_at = COALESCE(excluded.last_event_at, agent_status.last_event_at), " +
+        "done_at = CASE WHEN excluded.state = 'done' AND agent_status.state IS NOT 'done' " +
+        "THEN COALESCE(excluded.last_event_at, excluded.updated_at) ELSE agent_status.done_at END",
     )
     .run(
       patch.nodeId,
@@ -230,6 +237,7 @@ export function upsertAgentStatus(
       patch.errored === undefined ? null : patch.errored ? 1 : 0,
       patch.interrupted === undefined ? null : patch.interrupted ? 1 : 0,
       patch.endedBy ?? null,
+      patch.state === "done" ? (patch.lastEventAt ?? now) : null,
     );
   const written = getAgentStatus(database, patch.nodeId);
   if (written === undefined) {

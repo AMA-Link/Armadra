@@ -35,3 +35,24 @@ export function node(patch: Partial<DeliveryNode> = {}): DeliveryNode {
     ...patch,
   };
 }
+
+/** 测试夹具：带子任务计数与列表的节点。 */
+export function withChildren(
+  total: number,
+  finished: number,
+  needsYou = 0,
+  ids: readonly string[] = [],
+): Pick<DeliveryNode, "children"> {
+  return {
+    children: {
+      total,
+      finished,
+      needsYou,
+      nodes: ids.map((nodeId) => ({
+        nodeId,
+        source: "task" as const,
+        finished: false,
+      })),
+    },
+  };
+}

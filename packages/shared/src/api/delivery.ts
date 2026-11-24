@@ -27,6 +27,8 @@ export const DELIVERY_PHRASES = {
     "resolvingConflicts",
     "draft",
     "idle",
+    "waitingOnChildren",
+    "collecting",
   ],
   needsYou: [
     "needsApproval",
@@ -74,6 +76,25 @@ export const deliveryStatusSchema = z.union(
   ],
 ) as unknown as z.ZodType<DeliveryStatus>;
 
+export const DELIVERY_CHILD_SOURCES = ["task", "workflow", "edge"] as const;
+export type DeliveryChildSource = (typeof DELIVERY_CHILD_SOURCES)[number];
+
+export const deliveryChildrenSummarySchema = z.object({
+  total: z.number().int().min(0),
+  finished: z.number().int().min(0),
+  needsYou: z.number().int().min(0),
+});
+export type DeliveryChildrenSummary = z.infer<
+  typeof deliveryChildrenSummarySchema
+>;
+
+export const deliveryChildSchema = z.object({
+  nodeId: z.string(),
+  source: z.enum(DELIVERY_CHILD_SOURCES),
+  finished: z.boolean(),
+});
+export type DeliveryChild = z.infer<typeof deliveryChildSchema>;
+
 /** GET /api/workspaces/:workspaceId/boards/:boardId/delivery */
 export const deliveryNodeSchema = z.object({
   nodeId: z.string(),
@@ -83,6 +104,11 @@ export const deliveryNodeSchema = z.object({
   pulls: z.array(pullSnapshotSchema),
   /** When every PR left the board (merged or closed); null while any is open or there is none. */
   endedAtMs: z.number().nullable().optional(),
+  /** The current batch of child tasks; null or absent when there is none. */
+  children: deliveryChildrenSummarySchema
+    .extend({ nodes: z.array(deliveryChildSchema) })
+    .nullable()
+    .optional(),
 });
 export type DeliveryNode = z.infer<typeof deliveryNodeSchema>;
 
@@ -99,6 +125,8 @@ export const deliveryChangedPayloadSchema = z.object({
   phrase: z.string(),
   /** PR details changed while lane and phrase did not: re-read the route. */
   pullsChanged: z.boolean().optional(),
+  /** Counts only; the child list is read from the route. */
+  children: deliveryChildrenSummarySchema.nullable().optional(),
 });
 /** The workspace-event frame: the payload plus its type tag. */
 export const deliveryChangedEventSchema = deliveryChangedPayloadSchema.extend({

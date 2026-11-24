@@ -52,8 +52,41 @@ describe("GET …/boards/{boardId}/delivery", () => {
           phrase: "idle",
           pulls: [],
           endedAtMs: null,
+          children: null,
         },
       ],
+    });
+  });
+
+  it("carries the current batch of children of a supervising node", async () => {
+    insertNode("lead", { kind: "terminal", agent: { id: "ama" } });
+    insertNode("kid", { kind: "terminal", agent: { id: "codex" } });
+    fx.database
+      .prepare(
+        "INSERT INTO edges (id, board_id, source_node_id, target_node_id, kind, role, created_at, updated_at) " +
+          "VALUES ('e1', ?, 'lead', 'kid', 'link', 'supervises', 't', 't')",
+      )
+      .run(board);
+    fx.database
+      .prepare(
+        "INSERT INTO agent_status (node_id, workspace_id, agent_id, state, unread, verified, restored, updated_at, last_event_at) " +
+          "VALUES ('kid', ?, 'codex', 'working', 0, 1, 0, 't', ?)",
+      )
+      .run(ws, new Date(NOW).toISOString());
+    const body = (
+      await fx.call("GET", `/api/workspaces/${ws}/boards/${board}/delivery`)
+    ).body as {
+      nodes: { nodeId: string; phrase: string; children: unknown }[];
+    };
+    const lead = body.nodes.find((node) => node.nodeId === "lead");
+    expect(lead).toMatchObject({
+      phrase: "waitingOnChildren",
+      children: {
+        total: 1,
+        finished: 0,
+        needsYou: 0,
+        nodes: [{ nodeId: "kid", source: "edge", finished: false }],
+      },
     });
   });
 

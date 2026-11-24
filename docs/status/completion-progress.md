@@ -4457,3 +4457,16 @@ nightly 在 `b8353492`（运行 37338174906）之后连续失败。逐个作业�
 接口假设（按 `docs/armadra/plans/forge-auto-detect.md`）：`forge.workspaceRepository` / `forge.selectWorkspaceRemote`（入参 `workspaceId`、`remote`，答复同形状）、`forge.hosts`、`forge.setReuseLocalLogins`（入参 `{ enabled }`，答复不读）。
 
 没做 / 限制：与真实 core 的端到端要等 core 线合并；showcase 只加了 remote 下拉样本，主机表与找不到登录的后备靠组件测试覆盖。
+
+## 交付状态的子任务阶段（Refs #995，2026-11-24）
+
+做了什么：
+
+- **共享层与纯函数**：`working` 栏加 `waitingOnChildren` / `collecting`；`deliveryStatus` 多读子节点、父节点上次进入 `done` 的时刻与本节点的 `collect` 步骤；「这一批」由 `deliveryWave` 按时间区间连通算出，计数不倒退（契约 §118）。
+- **迁移 0071**：`agent_status.done_at`（进入 `done` 的时刻，由 upsert 维护）与 `workflow_task_runs(coordinator_node_id, status)` 索引。
+- **收集**（`workflow/delivery-children.ts`）：`childrenOf` 三来源与去重、`collectStateOf`、`parentsOf` 三方向；`deliveryFacts` 对子节点不递归（连线成环不卡）；路由节点带 `children`。
+- **推送**：`DeliveryWatch` 在子节点状态、工作项、工作流步骤变化时同时重算父节点，去重键带计数，集合变而计数不变发 `pullsChanged`；不订阅 `board.changed`。
+
+实测：`delivery.test.ts`、`delivery-children.test.ts`、`delivery-facts.test.ts`、`delivery-routes.test.ts`、`delivery-watch.test.ts`、迁移与 hook store 用例通过；`pnpm --filter @armadra/desktop typecheck`、`pnpm repo:check` 通过。
+
+没做 / 限制：页面（卡片的 n/m、子任务等人提示）在 web 线（叠在 #999 上）；连线变了不立即重算，要等下一个状态事件。验证命令不由 core 执行，由汇总角色自己跑。

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeliveryChangedEvent, WorkspaceEvent } from "@armadra/shared";
 
 import { deliveryApi } from "./api";
-import { node, pull } from "./fixtures";
+import { node, pull, withChildren } from "./fixtures";
 import { offBoardVisible, useDeliveryBoard } from "./store";
 import { OFF_BOARD_KEEP_MS } from "./model";
 
@@ -153,5 +153,45 @@ describe("delivery store", () => {
       .getState()
       .handleEvent(changed({ lane: "working", phrase: "working" }));
     expect(useDeliveryBoard.getState().rows.n1?.offBoardAtMs).toBeNull();
+  });
+
+  it("keeps the child list when a count frame arrives", async () => {
+    board.mockResolvedValue({
+      nodes: [node({ ...withChildren(2, 0, 0, ["c1", "c2"]) })],
+    });
+    await useDeliveryBoard.getState().refresh("w1", "b1");
+    useDeliveryBoard.getState().handleEvent(
+      changed({
+        lane: "working",
+        phrase: "waitingOnChildren",
+        children: { total: 2, finished: 1, needsYou: 1 },
+      }),
+    );
+    const children = useDeliveryBoard.getState().rows.n1?.children;
+    expect(children).toMatchObject({ total: 2, finished: 1, needsYou: 1 });
+    expect(children?.nodes.map((c) => c.nodeId)).toEqual(["c1", "c2"]);
+    expect(board).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-reads when the batch size changes and clears on null", async () => {
+    board.mockResolvedValue({
+      nodes: [node({ ...withChildren(2, 0, 0, ["c1", "c2"]) })],
+    });
+    await useDeliveryBoard.getState().refresh("w1", "b1");
+    useDeliveryBoard.getState().handleEvent(
+      changed({
+        lane: "working",
+        phrase: "waitingOnChildren",
+        children: { total: 3, finished: 0, needsYou: 0 },
+      }),
+    );
+    await Promise.resolve();
+    expect(board).toHaveBeenCalledTimes(2);
+    useDeliveryBoard
+      .getState()
+      .handleEvent(
+        changed({ lane: "working", phrase: "working", children: null }),
+      );
+    expect(useDeliveryBoard.getState().rows.n1?.children).toBeNull();
   });
 });

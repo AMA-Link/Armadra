@@ -40,6 +40,7 @@ export interface AgentStatus {
   readonly errored?: boolean;
   readonly interrupted?: boolean;
   readonly endedBy?: "stale" | "terminated" | "modelError";
+  readonly doneAt?: string;
 }
 
 interface StatusRow {
@@ -60,12 +61,13 @@ interface StatusRow {
   readonly errored: number | null;
   readonly interrupted: number | null;
   readonly ended_by: string | null;
+  readonly done_at: string | null;
 }
 
 const SELECT =
   "SELECT node_id, workspace_id, agent_id, state, state_source, unread, session_id, " +
   "pending_id, verified, restored, updated_at, transcript_path, last_event_at, " +
-  "session_phase, errored, interrupted, ended_by FROM agent_status ";
+  "session_phase, errored, interrupted, ended_by, done_at FROM agent_status ";
 
 /**
  * An absent optional field is **omitted**, not null: the Rust row marks every
@@ -93,6 +95,7 @@ function statusOf(row: StatusRow): AgentStatus {
     ...(row.errored === null ? {} : { errored: row.errored !== 0 }),
     ...(row.interrupted === null ? {} : { interrupted: row.interrupted !== 0 }),
     ...optional("endedBy", row.ended_by),
+    ...optional("doneAt", row.done_at),
   } as AgentStatus;
 }
 

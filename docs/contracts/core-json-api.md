@@ -6031,7 +6031,7 @@ Copilot 的 ACP 入口只接受 http / sse 的 MCP 服务器，`session/new.mcpS
 
 | 栏             | 短语                                                                                                                                                                            |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `working`      | `working`、`queued`、`fixingCi`、`addressingReview`、`resolvingConflicts`、`draft`、`idle`                                                                                      |
+| `working`      | `working`、`queued`、`fixingCi`、`addressingReview`、`resolvingConflicts`、`draft`、`idle`、`waitingOnChildren`、`collecting`（后两个见 §118）                                  |
 | `needsYou`     | `needsApproval`、`needsAnswer`、`readyForReview`、`blocked`、`failed`、`deliveryFailed`、`interrupted`、`exited`、`noSignal`、`ciFailing`、`mergeConflicts`、`changesRequested` |
 | `inReview`     | `awaitingReview`、`checksRunning`、`waitingOnBase`、`mergeabilityUnknown`                                                                                                       |
 | `readyToMerge` | `mergeable`、`approved`                                                                                                                                                         |
@@ -6087,3 +6087,44 @@ Copilot 的 ACP 入口只接受 http / sse 的 MCP 服务器，`session/new.mcpS
 core 内存里记每个节点上一次的 `lane|phrase`，变了才发；PR 细节变了而栏与短语没变时发一帧带 `pullsChanged: true`，页面据此重读 §117.5。帧里没有 PR 正文。重启后第一次重算多发一帧。触发源：`agent.status`、`workflow.task`、PR 快照指纹变化（§115.4，绑定的与按分支关联的节点都会重算）、节点关联集合变化（§116）。
 
 没有新 procedure，不改已有节号；HTTP 契约只增字段，不升版本号。
+
+## 118. 交付状态的子任务阶段（`#995`）
+
+> 状态：实施契约（AMA-Link/Armadra#995）。在 §117 之上多读三条事实，不加 `AGENT_STATES`，不改 hook 契约。节号合并时取。
+
+`working` 栏多两个短语：`waitingOnChildren`（等待子任务 n/m）与 `collecting`（汇总中）。子任务等人只在父节点的 `children.needsYou` 上提示，父节点不换栏。
+
+### 118.1 子节点
+
+只收与父节点同一块画板、带 Agent 的终端节点；同一子节点出现在多个来源时取优先的一条：工作项 > 工作流 > 连线。
+
+| `source`   | 来源                                                                                                   | 结束                                                   |
+| ---------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ |
+| `task`     | `workflow_task_runs.coordinator_node_id` 为父节点，`running` 或最近 24 小时内结束                      | `status` 不是 `running`                                |
+| `workflow` | 父节点作为角色、运行为 `running` / `waiting` 且步骤不在终态的 `collect` 步骤，其 `from` 里各步骤的节点 | 来源步骤在 `done` / `failed` / `skipped` / `cancelled` |
+| `edge`     | `supervises` 连线的目标，且有 `agent_status` 行（`state` 为空的不收）                                  | `state = done` 且没有待答审批                          |
+
+### 118.2 「这一批」
+
+无状态、按时间区间连通：有未结束的子任务时以它们为种子，否则以结束时刻不早于父节点上次进入 `done` 的时刻（迁移 0071 的 `agent_status.done_at`，NULL 取全部）的已结束子任务为种子；再把结束时刻不早于当前集合最早开始时刻的已结束子任务加进来，直到不再变化。种子为空则没有这一批（`children = null`）。`total` 为这一批的数量，`finished` 为其中已结束的，`needsYou` 为其中自己落在 `needsYou` 栏的（子节点只算自己，不递归）。
+
+### 118.3 推导顺序的增补
+
+在 §117.2 上：只有 `task` / `workflow` 来源的未结束子任务（或本节点的 `collect` 步骤 `running`）时，不离开看板。其后顺序为：自己需要人（照旧，`children` 照常带出）→ `collect` 步骤 `waiting` 为 `needsYou` / `blocked` → 有 `task` / `workflow` 来源的未结束子任务为 `working` / `waitingOnChildren` → `collect` 步骤 `running`，或 `state = working` 且这一批全部已结束（种子来自 `done_at`）为 `working` / `collecting` → 其余照 §117.2。只有 `edge` 来源的子节点在跑时，只在「没有 open PR 或有草稿」那一步替换 `idle` 为 `waitingOnChildren`，不盖住 PR 的判定（CI 失败仍是 `needsYou` / `ciFailing`）。
+
+验证命令由汇总角色自己执行，core 不执行。
+
+### 118.4 线上形状
+
+`GET …/boards/{boardId}/delivery`（§117.5）每个节点多一个可选字段 `children`：
+
+```
+children?: { total: number, finished: number, needsYou: number,
+             nodes: [{ nodeId: string, source: "task" | "workflow" | "edge", finished: boolean }] } | null
+```
+
+`nodes` 未结束的在前，其后按结束时刻倒序。`delivery.changed`（§117.6）多一个可选字段 `children?: { total, finished, needsYou }`（只有计数，没有这一批时缺省）。去重键为 `lane|phrase|total/finished/needsYou`；计数没变而子节点集合变了，发带 `pullsChanged: true` 的一帧，页面重读路由。
+
+触发源在 §117.6 之上增加：子节点的 `agent.status`、`workflow.task`（子节点与协调者两端）、`workflow.run`（运行里各步骤的节点），都会同时重算它们的父节点。不订阅 `board.changed`：连线变了要等下一个状态事件才收敛。
+
+只增字段与短语，页面遇到不认识的短语按 §117.1 当作没有状态；不升版本号。

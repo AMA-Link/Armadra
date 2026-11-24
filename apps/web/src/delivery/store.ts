@@ -9,7 +9,7 @@ import {
 import { activeSourceId } from "@/sources/scope";
 import { sourceById } from "@/api/source";
 import { deliveryApi } from "./api";
-import { OFF_BOARD_KEEP_MS } from "./model";
+import { OFF_BOARD_KEEP_MS, type ChildrenInfo } from "./model";
 
 /**
  * 交付状态在页面上的镜像（Armadra#988 P4）。栏与短语由 core 推导，页面不算：
@@ -26,6 +26,8 @@ export interface DeliveryRow {
   readonly pulls: readonly PullSnapshot[];
   /** 进入终态（移出看板）的时刻；不在终态为 `null`。D7 的 24 小时从这里数。 */
   readonly offBoardAtMs: number | null;
+  /** 当前批次的子任务；没有为 `null`。 */
+  readonly children: ChildrenInfo | null;
 }
 
 interface DeliveryState {
@@ -48,6 +50,7 @@ export function rowFromNode(node: DeliveryNode): DeliveryRow {
     pulls: node.pulls,
     // core 给的进入终态时刻；没有这个值的终态条目不显示（设计 D7）。
     offBoardAtMs: node.lane === "offBoard" ? (node.endedAtMs ?? null) : null,
+    children: node.children ?? null,
   };
 }
 
@@ -104,11 +107,21 @@ export const useDeliveryBoard = create<DeliveryState>((set, get) => ({
     if (event.boardId !== boardId) return;
     if (get().sourceId !== activeSourceId()) return;
     const previous = rows[event.nodeId];
+    const summary = event.children ?? null;
+    const before = previous?.children ?? null;
+    const countsSame =
+      (summary === null && before === null) ||
+      (summary !== null &&
+        before !== null &&
+        summary.total === before.total &&
+        summary.finished === before.finished &&
+        summary.needsYou === before.needsYou);
     if (
       previous !== undefined &&
       previous.lane === event.lane &&
       previous.phrase === event.phrase &&
-      event.pullsChanged !== true
+      event.pullsChanged !== true &&
+      countsSame
     ) {
       return;
     }
@@ -120,12 +133,16 @@ export const useDeliveryBoard = create<DeliveryState>((set, get) => ({
       pulls: previous?.pulls ?? [],
       offBoardAtMs:
         event.lane === "offBoard" ? (previous?.offBoardAtMs ?? null) : null,
+      // 计数帧直接更新，列表（nodes）保留，批次成员变了才重读。
+      children:
+        summary === null ? null : { ...summary, nodes: before?.nodes ?? [] },
     };
     set({ rows: { ...rows, [event.nodeId]: row } });
     // 帧里没有 PR 明细与终态时刻：新节点、PR 变了、刚进终态都读一遍路由补上。
     if (
       previous === undefined ||
       event.pullsChanged === true ||
+      (summary !== null && summary.total !== (before?.total ?? 0)) ||
       (event.lane === "offBoard" && previous.offBoardAtMs === null)
     ) {
       void get().refresh(workspaceId, boardId);

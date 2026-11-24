@@ -72,3 +72,72 @@ describe("agent_status.state vocabulary (S11)", () => {
     expect("AGENT_STATES" in statusModule).toBe(false);
   });
 });
+
+describe("agent_status.done_at (#995)", () => {
+  function put(state: string, lastEventAt: string | undefined, now: string) {
+    return upsertAgentStatus(
+      fixture.database,
+      {
+        nodeId: "node-done",
+        workspaceId: fixture.workspaceId,
+        agentId: "claude",
+        state,
+        stateSource: "hook",
+        unread: false,
+        sessionId: "ses-1",
+        pendingId: undefined,
+        verified: true,
+        transcriptPath: undefined,
+        sessionPhase: undefined,
+        errored: undefined,
+        interrupted: undefined,
+        lastEventAt,
+      },
+      now,
+    );
+  }
+
+  it("is written when a first insert is already done", () => {
+    const row = put(
+      "done",
+      "2026-01-01T00:00:01.000Z",
+      "2026-01-01T00:00:02.000Z",
+    );
+    expect(row.doneAt).toBe("2026-01-01T00:00:01.000Z");
+  });
+
+  it("falls back to the write time without an event time", () => {
+    const row = put("done", undefined, "2026-01-01T00:00:02.000Z");
+    expect(row.doneAt).toBe("2026-01-01T00:00:02.000Z");
+  });
+
+  it("is written on entering done, kept on done to done, untouched by working", () => {
+    expect(
+      put("working", "2026-01-01T00:00:01.000Z", "2026-01-01T00:00:01.000Z")
+        .doneAt,
+    ).toBeUndefined();
+    expect(
+      put("done", "2026-01-01T00:00:05.000Z", "2026-01-01T00:00:05.000Z")
+        .doneAt,
+    ).toBe("2026-01-01T00:00:05.000Z");
+    expect(
+      put("done", "2026-01-01T00:00:09.000Z", "2026-01-01T00:00:09.000Z")
+        .doneAt,
+    ).toBe("2026-01-01T00:00:05.000Z");
+    expect(
+      put("working", "2026-01-01T00:00:10.000Z", "2026-01-01T00:00:10.000Z")
+        .doneAt,
+    ).toBe("2026-01-01T00:00:05.000Z");
+    expect(
+      put("done", "2026-01-01T00:00:20.000Z", "2026-01-01T00:00:20.000Z")
+        .doneAt,
+    ).toBe("2026-01-01T00:00:20.000Z");
+  });
+
+  it("is read back by the agent status reader", () => {
+    put("done", "2026-01-01T00:00:01.000Z", "2026-01-01T00:00:01.000Z");
+    expect(
+      statusModule.getAgentStatus(fixture.database, "node-done")?.doneAt,
+    ).toBe("2026-01-01T00:00:01.000Z");
+  });
+});
