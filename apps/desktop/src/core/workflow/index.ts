@@ -39,6 +39,7 @@ import {
 import { IntakeWatch } from "./intake-watch";
 import { NodePullLinker, snapshotTargets } from "./node-pulls";
 import { PrWatch } from "./pr-watch";
+import { installDeliveryRoutes } from "./delivery-routes";
 import { installWorkflowRoutes } from "./routes";
 import { type WorkflowDomain, setWorkflowDomain } from "./registry";
 import { WorkflowService } from "./service";
@@ -78,6 +79,7 @@ export function install(context: CoreContext): WorkflowDomain | undefined {
     collab: () => collab(),
   });
   installWorkflowRoutes(context.server, service);
+  installDeliveryRoutes(context.server, { database });
   engine.start();
   // 协调者分派出去的任务：没人 `wait` 时也落结束（契约 §15.7）。
   // 进展看门狗（契约 §91）搭任务行兜底扫描的便车，不另开定时器。
