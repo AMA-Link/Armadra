@@ -244,6 +244,7 @@ export function gitlabMergeMethods(project: {
   return methods;
 }
 interface WireProject {
+  id?: number;
   default_branch?: string;
   merge_method?: string;
   squash_option?: string;
@@ -800,6 +801,56 @@ export class GitlabForge implements Forge {
       unsupported: filter.unsupported,
       ...pagePollInterval(response),
     };
+  }
+
+  /** fork 项目的 id，按「owner/name」缓存；读不到记 null 并短暂缓存。 */
+  private readonly projectIds = new Map<
+    string,
+    { readonly id: number | null; readonly at: number }
+  >();
+
+  private async projectId(path: ForgeRepo): Promise<number | null> {
+    const key = `${path.owner}/${path.name}`;
+    const hit = this.projectIds.get(key);
+    const ttl = hit?.id === null ? 300_000 : 3_600_000;
+    if (hit !== undefined && Date.now() - hit.at < ttl) return hit.id;
+    const id = await this.project(path).then(
+      (project) => (typeof project.id === "number" ? project.id : null),
+      () => null,
+    );
+    this.projectIds.set(key, { id, at: Date.now() });
+    return id;
+  }
+
+  /** head 分支上开着的 MR；fork 按 `source_project_id` 区分（契约 §116）。 */
+  async pullsByHead(
+    repo: ForgeRepo,
+    head: { owner: string; ref: string; name?: string },
+  ): Promise<readonly ForgePull[]> {
+    const response = await this.http.get(projectPath(repo, "/merge_requests"), {
+      source_branch: head.ref,
+      state: "opened",
+      per_page: "20",
+    });
+    const raw = array<WireMergeRequest>(decodeJson(response));
+    const sameRepo =
+      head.owner === repo.owner &&
+      (head.name === undefined || head.name === repo.name);
+    if (sameRepo) {
+      return raw
+        .map(toPull)
+        .filter((pull) => pull.state === "open" && !pull.fromFork);
+    }
+    const id = await this.projectId({
+      ...repo,
+      owner: head.owner,
+      name: head.name ?? repo.name,
+    });
+    if (id === null) return [];
+    return raw
+      .filter((value) => value.source_project_id === id)
+      .map(toPull)
+      .filter((pull) => pull.state === "open");
   }
 
   async getPull(repo: ForgeRepo, number: number): Promise<ForgePull> {

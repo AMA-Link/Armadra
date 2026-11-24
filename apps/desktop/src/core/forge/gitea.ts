@@ -17,12 +17,13 @@
 import type { PullChecks, PullParent, PullReview } from "@armadra/shared";
 import { checksOf as checksOfSummary } from "./snapshot";
 import { reviewVerdict, settleMergeable } from "./gitea-snapshot";
+import { checkState, fileStatus, splitDiff } from "./gitea-wire";
+export { splitDiff };
 import {
   type CreatePullInput,
   DEFAULT_LIMIT,
   type Forge,
   type ForgeCheck,
-  type ForgeCheckState,
   type ForgeBranchDeletion,
   type ForgeChecks,
   type ForgePullSnapshot,
@@ -40,7 +41,6 @@ import {
   MAX_CONVERSATION_PAGES,
   ForgeError,
   type ForgeFile,
-  type ForgeFileStatus,
   type ForgeIssue,
   type ForgeIssueState,
   type ForgeAutoMerge,
@@ -144,6 +144,7 @@ interface WireBranch {
   ref?: string;
   sha?: string;
   repo_id?: number;
+  repo?: { full_name?: string } | null;
 }
 /** `GET /repos/{o}/{r}/branches/{b}`。 */
 interface WireRepoBranch {
@@ -324,68 +325,6 @@ export function forked(head: unknown, base: unknown): boolean {
 /** 分支名进路径：逐段编码，斜杠留着（Gitea 的分支路由吃整条剩余路径）。 */
 function branchPath(name: string): string {
   return name.split("/").map(encodeURIComponent).join("/");
-}
-
-function fileStatus(value: string | undefined): ForgeFileStatus {
-  switch (value) {
-    case "added":
-      return "added";
-    case "deleted":
-      return "removed";
-    case "renamed":
-      return "renamed";
-    case "changed":
-    case "modified":
-      return "modified";
-    default:
-      return "other";
-  }
-}
-
-function checkState(value: string | undefined): ForgeCheckState {
-  switch (value) {
-    case "success":
-      return "success";
-    case "failure":
-    case "error":
-      return "failure";
-    case "warning":
-      return "neutral";
-    default:
-      return "pending";
-  }
-}
-
-/**
- * 把一份统一差异按文件切开，键是新路径（删除的文件是旧路径）。补丁从第一个
- * `@@` 开始，与 GitHub 的 `patch` 字段同一个起点；二进制文件没有 `@@`，不在表里。
- */
-export function splitDiff(diff: string): Map<string, string> {
-  const patches = new Map<string, string>();
-  const blocks = diff.split(/^(?=diff --git )/m);
-  for (const block of blocks) {
-    if (!block.startsWith("diff --git ")) continue;
-    const lines = block.split("\n");
-    let path = "";
-    for (const line of lines) {
-      if (line.startsWith("@@")) break;
-      if (line.startsWith("+++ b/")) path = line.slice(6);
-      else if (line.startsWith("rename to ")) path = path || line.slice(10);
-      else if (line.startsWith("--- a/") && path === "") path = line.slice(6);
-    }
-    if (path === "") {
-      // 没有 `---` / `+++` 的块（纯改名、二进制）：头里 a/ 与 b/ 等长时取 b/。
-      const header = (lines[0] ?? "").slice("diff --git ".length);
-      const half = (header.length - 1) / 2;
-      if (Number.isInteger(half) && header.startsWith("a/")) {
-        path = header.slice(half + 1).replace(/^b\//, "");
-      }
-    }
-    const hunk = block.indexOf("\n@@");
-    if (path === "" || hunk < 0) continue;
-    patches.set(path, block.slice(hunk + 1).replace(/\n$/, ""));
-  }
-  return patches;
 }
 
 interface WireReview {
@@ -930,6 +869,59 @@ export class GiteaForge implements Forge {
     };
   }
 
+  /** head 分支上开着的 PR（契约 §116）：先按默认分支精确取，再翻 open 列表。 */
+  async pullsByHead(
+    repo: ForgeRepo,
+    head: { owner: string; ref: string; name?: string },
+  ): Promise<readonly ForgePull[]> {
+    const full = `${head.owner}/${head.name ?? repo.name}`.toLowerCase();
+    const mine = (value: WirePull): boolean =>
+      value.state === "open" &&
+      value.merged !== true &&
+      value.head?.ref === head.ref &&
+      (value.head.repo?.full_name ?? "").toLowerCase() === full;
+    const spelled =
+      head.owner === repo.owner ? head.ref : `${head.owner}:${head.ref}`;
+    try {
+      const exact = decodeJson<WirePull>(
+        await this.http.get(
+          repoPath(
+            repo,
+            `/pulls/${branchPath(await this.defaultBranch(repo))}/${branchPath(spelled)}`,
+          ),
+        ),
+      );
+      if (mine(exact)) return [toPull(exact)];
+    } catch (error) {
+      if (!(error instanceof ForgeError) || error.kind !== "notFound") {
+        throw error;
+      }
+    }
+    return (await this.scanOpen(repo, mine)).hits.map(toPull);
+  }
+
+  /** 翻 open 列表（最多 2 页 100 条），到有命中的那一页为止；`complete` 是翻到底了。 */
+  private async scanOpen(
+    repo: ForgeRepo,
+    test: (value: WirePull) => boolean,
+  ): Promise<{ hits: WirePull[]; complete: boolean }> {
+    for (let page = 1; page <= 2; page += 1) {
+      const response = await this.http.get(repoPath(repo, "/pulls"), {
+        state: "open",
+        limit: "50",
+        ...(page > 1 ? { page: String(page) } : {}),
+      });
+      const values = decodeJson<WirePull[] | null>(response) ?? [];
+      if (!Array.isArray(values)) {
+        throw forgeError("unavailable", "RESPONSE_MALFORMED");
+      }
+      const hits = values.filter(test);
+      const complete = response.nextPage <= page;
+      if (hits.length > 0 || complete) return { hits, complete };
+    }
+    return { hits: [], complete: false };
+  }
+
   /** 详情：开着的 PR 再从时间线读「检查通过后合并」排上了没有。 */
   async getPull(repo: ForgeRepo, number: number): Promise<ForgePull> {
     const pull = await this.pullOnly(repo, number);
@@ -1101,24 +1093,15 @@ export class GiteaForge implements Forge {
         throw error;
       }
     }
-    for (let page = 1; page <= 2; page += 1) {
-      const response = await this.http.get(repoPath(repo, "/pulls"), {
-        state: "open",
-        limit: "50",
-        ...(page > 1 ? { page: String(page) } : {}),
-      });
-      const values = decodeJson<WirePull[] | null>(response) ?? [];
-      if (!Array.isArray(values)) {
-        throw forgeError("unavailable", "RESPONSE_MALFORMED");
-      }
-      const match = values.find(
-        (value) =>
-          value.head?.ref === base &&
-          !forked(value.head?.repo_id, value.base?.repo_id),
-      );
-      if (match !== undefined) return found(match);
-      if (response.nextPage <= page) return { kind: "none" };
-    }
+    const scan = await this.scanOpen(
+      repo,
+      (value) =>
+        value.head?.ref === base &&
+        !forked(value.head?.repo_id, value.base?.repo_id),
+    );
+    const match = scan.hits[0];
+    if (match !== undefined) return found(match);
+    if (scan.complete) return { kind: "none" };
     return { kind: "unknown" };
   }
 

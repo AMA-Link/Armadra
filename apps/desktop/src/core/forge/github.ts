@@ -727,6 +727,31 @@ export class GithubForge implements Forge {
     });
   }
 
+  pullsByHead(
+    repo: ForgeRepo,
+    head: {
+      readonly owner: string;
+      readonly ref: string;
+      readonly name?: string;
+    },
+  ): Promise<readonly ForgePull[]> {
+    return this.run(async () => {
+      const { client, ref } = this.target(repo);
+      const response = await client.get(
+        `/repos/${ref.owner}/${ref.name}/pulls`,
+        {
+          head: `${head.owner}:${head.ref}`,
+          state: "open",
+          per_page: "10",
+        },
+      );
+      const atMs = this.service.now();
+      return decodeArray<WirePull>(response.body).map((value) =>
+        fromGithubPull(toPull(value, ref, [], atMs)),
+      );
+    });
+  }
+
   createPull(repo: ForgeRepo, input: CreatePullInput): Promise<ForgePull> {
     return this.run(async () => {
       if (!validRefName(input.head) || !validRefName(input.base)) {
