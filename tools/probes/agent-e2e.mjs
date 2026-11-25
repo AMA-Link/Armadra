@@ -51,6 +51,8 @@
 //      `--only 17` 单跑，要 ARMADRA_E2E_REAL=1，真 OpenCode、免费模型。
 //   18. 工作流 v2（#996）：见 agent-e2e/scenario-18-workflow-v2.mjs；`--only 18` 单跑，假 CLI
 //      两角色 + 带 verify 的 collect（退回再通过、maxRetries 0 升级成关卡）与 .ama/workflows 往返。
+//   19. 终端 grok 审批卡的画布答复（#1027）：见 agent-e2e/scenario-19-grok-card-answer.mjs；
+//      `--only 19` 单跑，真 grok 1.0.92 + 脚本化模型（不要账号），允许 / 拒绝各 20 轮与负例。
 //   10. 六家互读（设计 cli-collaboration §8）：六种 CLI 各起一个交互式 TUI 节点
 //      连成环，下游 `context summary / transcript` 读上游、沿环 send、拒收一条
 //      排队看回执、交接 prepare → accept、会话索引与成本每家都有。没装或认证
@@ -115,6 +117,7 @@ import scenario15 from "./agent-e2e/scenario-15-intake.mjs";
 import scenario16 from "./agent-e2e/scenario-16-handoff.mjs";
 import scenario17 from "./agent-e2e/scenario-17-opencode-approval.mjs";
 import scenario18 from "./agent-e2e/scenario-18-workflow-v2.mjs";
+import scenario19 from "./agent-e2e/scenario-19-grok-card-answer.mjs";
 import { cliPrerequisites, planScenarios } from "./agent-e2e/preflight.mjs";
 import { homedir } from "node:os";
 
@@ -141,6 +144,7 @@ const STANDALONE = new Set([
   "16",
   "17",
   "18",
+  "19",
 ]);
 
 async function main() {
@@ -238,6 +242,11 @@ async function main() {
   if (only.has("18")) {
     report.safety.before ??= fingerprint();
     await scenario18();
+  }
+  // 场景 19：终端 grok 审批卡在画布里答复（#1027），真 grok + 脚本化模型，自己起 core。
+  if (only.has("19")) {
+    report.safety.before ??= fingerprint();
+    await scenario19();
   }
   for (const [id, reason] of Object.entries(plan.skip))
     scenario(id).skip(reason);
