@@ -737,6 +737,32 @@ describe("workflow v2 injection", () => {
     expect(statuses(run.id).c).toBe("done");
   });
 
+  it("counts the step's own turn end when its prompt came first, and gives up waiting for it after the grace (#1034)", async () => {
+    const { run, lead } = await startVerifying();
+    delivered(lead);
+    await engine.progress(run.id);
+    startTurn(lead, "汇总并验证\n（来源步骤的结论……）");
+    verdict(run.id, 0, true);
+    report(lead, "done");
+    await engine.progress(run.id);
+    expect(statuses(run.id).c).toBe("done");
+
+    // 另一次运行：只见到别人的提示词，自己的从没出现；过了时限照旧放行。
+    resetSendLimits();
+    const second = await startVerifying();
+    delivered(second.lead);
+    await engine.progress(second.run.id);
+    startTurn(second.lead, WAKE);
+    report(second.lead, "done");
+    await engine.progress(second.run.id);
+    expect(statuses(second.run.id).c).toBe("running");
+    clock += 130_000;
+    verdict(second.run.id, 0, true);
+    report(second.lead, "done");
+    await engine.progress(second.run.id);
+    expect(statuses(second.run.id).c).toBe("done");
+  });
+
   it("a wake turn between two rounds of a collect does not settle the new round (#1034)", async () => {
     const { run, dev, ui, lead } = await startVerifying();
     delivered(lead);
