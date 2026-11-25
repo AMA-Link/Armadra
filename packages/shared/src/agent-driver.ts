@@ -37,6 +37,7 @@ export const TRANSCRIPT_AGENT_IDS = [
   "ama",
   "copilot",
   "grok",
+  "agy",
 ] as const;
 
 export function hasTranscript(baseAgentId: string): boolean {

@@ -42,6 +42,7 @@ import {
 import { mapHookActivity } from "./hook-activity";
 import { opencodeTranscript } from "./opencode";
 import { amaTranscript, ompTranscript, piTranscript } from "./pi";
+import { agyTranscript } from "./agy";
 import { TimelineSink } from "./sink";
 import {
   type StatFn,
@@ -76,6 +77,7 @@ export {
 
 /** 登记的适配器。键是 `baseAgent` 之后的代理 id。 */
 export const ADAPTERS: Readonly<Record<string, TranscriptAdapter>> = {
+  agy: agyTranscript,
   claude: claudeAdapter,
   codex: codexAdapter,
   opencode: opencodeTranscript,
@@ -95,6 +97,12 @@ export function transcriptAdapterFor(
 }
 
 const REAP_INTERVAL_MS = 60_000;
+
+/** 没有 hook 的 CLI 找会话的间隔：刚起来时勤一点，会话早已稳定之后放慢。 */
+export const DISCOVER_FAST_MS = 2_000;
+export const DISCOVER_SLOW_MS = 10_000;
+/** 起来多久之内算「刚起来」。 */
+const DISCOVER_FAST_WINDOW_MS = 2 * 60_000;
 
 interface Source {
   readonly timelineId: string;
@@ -156,6 +164,8 @@ export class SourceManager {
   private readonly timers: TailTimers;
   private reaper: unknown;
   private closed = false;
+  /** 没有 hook 的 CLI 的会话上，正在按间隔找会话的那些（键是终端会话 id）。 */
+  private readonly discovering = new Map<string, unknown>();
 
   constructor(
     private readonly domain: TimelineDomain,
@@ -278,12 +288,87 @@ export class SourceManager {
       const row = this.runningSession(nodeId, sessionId);
       if (row === undefined) return;
       this.openSlot(row, nodeId);
+      this.scheduleDiscovery(row, nodeId);
     } catch (error) {
       this.options.log?.warn("开状态读取槽失败", {
         nodeId,
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  /* ------------------- 没有 hook 的 CLI：自己去找会话 ------------------- */
+
+  /**
+   * 适配器声明了 `discover` 的 CLI（今天是终端里的 Antigravity）：会话一起来就按间隔
+   * 问它「这个终端此刻在哪个会话里」，答出来就建来源、会话换了（`/new`）就改线索。
+   * 只用于观察级展示：不写 `agent_status`、不进任何门。会话行不再是 `running` 时停。
+   */
+  private scheduleDiscovery(row: SessionRow, nodeId: string): void {
+    if (this.closed || this.discovering.has(row.id)) return;
+    const adapter = transcriptAdapterFor(row.agentId);
+    if (adapter?.discover === undefined) return;
+    this.discovering.set(row.id, undefined);
+    this.discoverStep(row, nodeId, adapter);
+  }
+
+  private discoverStep(
+    row: SessionRow,
+    nodeId: string,
+    adapter: TranscriptAdapter,
+  ): void {
+    if (this.closed || !this.discovering.has(row.id)) return;
+    try {
+      if (this.runningSession(nodeId, row.id) === undefined) {
+        this.discovering.delete(row.id);
+        return;
+      }
+      const found = adapter.discover?.({
+        pid: this.facts?.pid(row.id),
+        remote: this.facts?.remote(row.id) ?? false,
+        cwd: row.cwd,
+        startedAtMs: row.createdAtMs,
+      });
+      if (found !== undefined)
+        this.adoptDiscovered(row, nodeId, adapter, found);
+    } catch (error) {
+      this.options.log?.warn("找终端会话的来源失败", {
+        sessionId: row.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    const young = this.timers.now() - row.createdAtMs < DISCOVER_FAST_WINDOW_MS;
+    const handle = this.timers.setTimeout(
+      () => this.discoverStep(row, nodeId, adapter),
+      young ? DISCOVER_FAST_MS : DISCOVER_SLOW_MS,
+    );
+    if (this.discovering.has(row.id)) this.discovering.set(row.id, handle);
+  }
+
+  private adoptDiscovered(
+    row: SessionRow,
+    nodeId: string,
+    adapter: TranscriptAdapter,
+    found: { readonly sessionId: string; readonly transcriptPath: string },
+  ): void {
+    const existing = this.sources.get(row.id);
+    if (existing !== undefined) {
+      if (existing.hint.transcriptPath === found.transcriptPath) return;
+      existing.hint = {
+        ...existing.hint,
+        sessionId: found.sessionId,
+        transcriptPath: found.transcriptPath,
+      };
+      existing.runner.relocate();
+      return;
+    }
+    this.create(row, nodeId, adapter, {
+      agentId: baseAgent(row.agentId || adapter.agentId),
+      sessionId: found.sessionId,
+      transcriptPath: found.transcriptPath,
+      cwd: row.cwd,
+      startedAtMs: row.createdAtMs,
+    });
   }
 
   private pokeSlot(nodeId: string, event: AgentEvent): void {
@@ -714,8 +799,21 @@ export class SourceManager {
     }[];
     let opened = 0;
     for (const session of rows) {
-      if (stateSlotProviderFor(baseAgent(session.agent_id ?? "")) === undefined)
-        continue;
+      const agent = baseAgent(session.agent_id ?? "");
+      if (ADAPTERS[agent]?.discover !== undefined) {
+        this.scheduleDiscovery(
+          {
+            id: session.id,
+            workspaceId: session.workspace_id,
+            agentId: session.agent_id ?? "",
+            cwd: session.cwd,
+            createdAtMs: Date.parse(session.created_at) || 0,
+            generation: Number(session.generation) || 0,
+          },
+          session.nodeId,
+        );
+      }
+      if (stateSlotProviderFor(agent) === undefined) continue;
       try {
         const open = this.openSlot(
           {
@@ -782,6 +880,9 @@ export class SourceManager {
   }
 
   private drop(source: Source): void {
+    const handle = this.discovering.get(source.timelineId);
+    if (handle !== undefined) this.timers.clearTimeout(handle);
+    this.discovering.delete(source.timelineId);
     source.runner.stop();
     this.sources.delete(source.timelineId);
   }
@@ -799,6 +900,10 @@ export class SourceManager {
     this.closed = true;
     if (this.reaper !== undefined) this.timers.clearTimeout(this.reaper);
     this.reaper = undefined;
+    for (const handle of this.discovering.values()) {
+      if (handle !== undefined) this.timers.clearTimeout(handle);
+    }
+    this.discovering.clear();
     for (const source of [...this.sources.values()]) this.drop(source);
     for (const open of [...this.slots.values()]) this.dropSlot(open);
   }
