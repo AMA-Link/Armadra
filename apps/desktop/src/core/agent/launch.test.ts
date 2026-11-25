@@ -437,12 +437,13 @@ describe("workflow tier launch", () => {
   });
 
   it("gates on the probed ama version", () => {
-    expect(AMA_TIER_SINCE).toBe("0.22.0");
+    expect(AMA_TIER_SINCE).toBe("0.23.0");
     expect(amaSupportsTier(undefined)).toBe(false);
     expect(amaSupportsTier("0.21.9")).toBe(false);
-    expect(amaSupportsTier("0.22.0")).toBe(true);
+    expect(amaSupportsTier("0.22.0")).toBe(false);
+    expect(amaSupportsTier("0.23.0")).toBe(true);
     expect(amaSupportsTier("v1.0.0")).toBe(true);
-    expect(amaSupportsTier("0.22.0-beta.1")).toBe(false);
+    expect(amaSupportsTier("0.23.0-beta.1")).toBe(false);
     expect(amaSupportsTier("garbage")).toBe(false);
   });
 });

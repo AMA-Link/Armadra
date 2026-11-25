@@ -254,7 +254,7 @@ export function canResume(settings: AgentSettings, agentId: string): boolean {
 }
 
 /** ama 从这一版起认 `--tier`（登记在 `tools/release/version.mjs`）。 */
-export const AMA_TIER_SINCE = "0.22.0";
+export const AMA_TIER_SINCE = "0.23.0";
 
 function versionParts(version: string): number[] | undefined {
   const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(version.trim());
@@ -274,7 +274,7 @@ export function amaSupportsTier(version: string | undefined): boolean {
     const b = need[i] ?? 0;
     if (a !== b) return a > b;
   }
-  // 预发布版（0.22.0-beta）低于正式版。
+  // 预发布版（0.23.0-beta）低于正式版。
   return !/^v?\d+\.\d+\.\d+-/.test(version.trim());
 }
 

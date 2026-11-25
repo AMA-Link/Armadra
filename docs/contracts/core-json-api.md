@@ -6199,7 +6199,7 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
 ### 119.5 档位
 
 - `role.model` 非空：用它，档位不起作用。
-- ama 角色：探测到的 ama 版本 ≥ `AMA_TIER_SINCE`（现为 `0.22.0`，`core/agent/launch.ts`，同时登记在 `tools/release/version.mjs` 的版本位点里作为门槛，不随发版跟进）时，启动行带 `--tier <档位>`，节点数据写 `agent.tier`；探测不到或低于该版本（预发布版低于正式版）则忽略，草案行 `hints.tierIgnored` 列出它。
+- ama 角色：探测到的 ama 版本 ≥ `AMA_TIER_SINCE`（现为 `0.23.0`，`core/agent/launch.ts`，同时登记在 `tools/release/version.mjs` 的版本位点里作为门槛，不随发版跟进）时，启动行带 `--tier <档位>`，节点数据写 `agent.tier`；探测不到或低于该版本（预发布版低于正式版）则忽略，草案行 `hints.tierIgnored` 列出它。
 - 其它 CLI：只有 `claude` 有内置映射（`light` → `haiku`，`standard` → `sonnet`，`strong` 与 `max` → `opus`），且该 CLI 能选模型时写成 `agent.model`；否则忽略并进 `hints.tierIgnored`。没有用户自定义映射。
 
 ### 119.6 迁移
