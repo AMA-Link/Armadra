@@ -24,6 +24,7 @@ const BUILTIN: readonly [BuiltinAgentId, RegExp][] = [
   ["omp", /\boh-my-pi\b|\bomp\b/i],
   ["pi", /\bpi[- ](?:coding[- ])?agent\b/i],
   ["ama", /\bama\b|@armadra\.(?:com|dev)$/i],
+  ["agy", /\bantigravity\b|\bagy\b/i],
 ];
 const OTHER = /\bgemini\b|\bcursor\b|\baider\b|\bdevin\b|\[bot\]|\bai agent\b/i;
 

@@ -178,6 +178,7 @@
   --color-agent-omp: var(--agent-omp);
   --color-agent-copilot: var(--agent-copilot);
   --color-agent-ama: var(--agent-ama);
+  --color-agent-agy: var(--agent-agy);
   --color-agent-claude-text: var(--agent-claude-text);
   --color-agent-codex-text: var(--agent-codex-text);
   --color-agent-opencode-text: var(--agent-opencode-text);
@@ -185,6 +186,7 @@
   --color-agent-omp-text: var(--agent-omp-text);
   --color-agent-copilot-text: var(--agent-copilot-text);
   --color-agent-ama-text: var(--agent-ama-text);
+  --color-agent-agy-text: var(--agent-agy-text);
   --color-on-agent: var(--on-agent);
 
   /* ── 成员色（§2.5） ──────────────────────────────────────────────── */

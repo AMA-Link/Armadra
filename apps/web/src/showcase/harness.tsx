@@ -45,7 +45,16 @@ const SURFACES = [
   "--surface-raised",
   "--surface-overlay",
 ];
-const AGENTS = ["claude", "codex", "opencode", "pi", "omp", "copilot", "ama"];
+const AGENTS = [
+  "claude",
+  "codex",
+  "opencode",
+  "pi",
+  "omp",
+  "copilot",
+  "ama",
+  "agy",
+];
 const STATUS: [string, string, string][] = [
   ["--danger", "--danger-text", "--danger-soft"],
   ["--warn", "--warn-text", "--warn-soft"],

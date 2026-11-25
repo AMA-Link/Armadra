@@ -18,7 +18,16 @@ import { tokenContrast, type ContrastPair } from "../harness";
  * 色块下方印 token 名与浏览器里实测的对比度——读的是计算样式，不是源文件。
  */
 
-const AGENTS = ["claude", "codex", "opencode", "pi", "omp", "copilot", "ama"];
+const AGENTS = [
+  "claude",
+  "codex",
+  "opencode",
+  "pi",
+  "omp",
+  "copilot",
+  "ama",
+  "agy",
+];
 const SURFACES = [
   "--bg",
   "--panel",

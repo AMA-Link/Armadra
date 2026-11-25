@@ -99,6 +99,7 @@ const AGENT_COLORS: Record<string, string> = {
   "--agent-omp": "#d4a373",
   "--agent-copilot": "#a371f7",
   "--agent-ama": "#1cb5c9",
+  "--agent-agy": "#ec6fa8",
 };
 
 /** 设计系统 §2.4：每个内置 Agent 一个文字色，两套主题各自声明。 */
