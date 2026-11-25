@@ -32,8 +32,9 @@ export function linkTimeline(
 export function sessionStarted(
   context: CoreContext,
   nodeId: string | null,
+  sessionId: string,
 ): void {
   if (nodeId !== null) {
-    timelineDomainOf(context.server)?.sources.onSessionStart(nodeId);
+    timelineDomainOf(context.server)?.sources.onSessionStart(nodeId, sessionId);
   }
 }

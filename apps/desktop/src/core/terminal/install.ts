@@ -241,7 +241,7 @@ export function install(
         },
       });
     },
-    onStart: (event) => sessionStarted(context, event.nodeId),
+    onStart: (event) => sessionStarted(context, event.nodeId, event.sessionId),
     onExit: (event) => {
       context.bus.emit("workspace.event", {
         workspaceId: event.workspaceId,

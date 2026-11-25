@@ -49,4 +49,39 @@ describe("槽要的会话事实", () => {
     expect(manager.isRemote(session.id)).toBe(false);
     expect(manager.isRemote("nope")).toBe(false);
   });
+
+  it("core 重启后接回的 SSH 会话：主机取自节点数据，仍算远程", async () => {
+    const { manager, database } = harness();
+    database
+      .prepare(
+        "INSERT INTO boards (id, workspace_id, name, created_at, updated_at) VALUES ('b1', 'ws', 'main', '2026-09-20T00:00:00Z', '2026-09-20T00:00:00Z')",
+      )
+      .run();
+    const insertNode = (id: string, data: unknown) =>
+      database
+        .prepare(
+          "INSERT INTO nodes (id, board_id, type, x, y, title, color, data_json, created_at, updated_at) VALUES (?, 'b1', 'terminal', 0, 0, 'n', '#000', ?, '2026-09-20T00:00:00Z', '2026-09-20T00:00:00Z')",
+        )
+        .run(id, JSON.stringify(data));
+    insertNode("node-ssh", { kind: "terminal", ssh: { hostId: "host-1" } });
+    insertNode("node-local", { kind: "terminal" });
+    const remote = await spawn(manager, "node-ssh");
+    const local = await spawn(manager, "node-local");
+    const adopt = (id: string) => {
+      const row = database
+        .prepare(
+          "SELECT session_key, generation FROM terminal_sessions WHERE id = ?",
+        )
+        .get(id) as { session_key: string; generation: number };
+      (
+        manager as unknown as {
+          rememberAdopted(key: string, generation: number, pid: number): void;
+        }
+      ).rememberAdopted(row.session_key, Number(row.generation), 99);
+    };
+    adopt(remote.id);
+    adopt(local.id);
+    expect(manager.isRemote(remote.id)).toBe(true);
+    expect(manager.isRemote(local.id)).toBe(false);
+  });
 });

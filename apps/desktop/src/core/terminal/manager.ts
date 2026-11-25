@@ -304,6 +304,11 @@ export class TerminalManager {
     const kindOfRow = String(row.backend_kind) as BackendKind;
     const shell = String(row.shell);
     const command = (row.command as string | null) ?? undefined;
+    // 接回的 SSH 会话没有创建时的请求可查，主机取自节点数据（`data.ssh.hostId`），
+    // 否则 `isRemote` 与休眠的「remote」挡板都会把它当本机会话。
+    const ownerNode = (row.owner_node_id as string | null) ?? null;
+    const sshHostId =
+      ownerNode === null ? undefined : adoptedSshHost(this.database, ownerNode);
     this.remember({
       id,
       key,
@@ -331,6 +336,7 @@ export class TerminalManager {
         args: [],
         env: [],
         size: { cols: DEFAULT_COLS, rows: DEFAULT_ROWS },
+        ...(sshHostId === undefined ? {} : { sshHostId }),
       },
     });
   }
@@ -1343,4 +1349,19 @@ export class TerminalManager {
 /** 事件要带的那点身份：租约属于会话，徽标画在节点上。 */
 function driveRef(record: SessionRecord): DriveSessionRef {
   return { workspaceId: record.workspaceId, nodeId: record.ownerNodeId };
+}
+
+/** 节点数据里的 SSH 主机（`data.ssh.hostId`）；不是 SSH 节点答 `undefined`。 */
+function adoptedSshHost(
+  database: DatabaseSync,
+  nodeId: string,
+): string | undefined {
+  const row = database
+    .prepare(
+      "SELECT json_extract(data_json, '$.ssh.hostId') AS host_id FROM nodes WHERE id = ?",
+    )
+    .get(nodeId) as { host_id: unknown } | undefined;
+  return typeof row?.host_id === "string" && row.host_id !== ""
+    ? row.host_id
+    : undefined;
 }
