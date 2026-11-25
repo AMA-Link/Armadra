@@ -322,13 +322,12 @@ describe("AgySessionResolver", () => {
 
 describe("transcriptOf", () => {
   it("prefers transcript.jsonl, falls back to transcript_full.jsonl when only that exists", () => {
-    const logs = `${STATE}/brain/${A}/.system_generated/logs`;
-    expect(transcriptOf(STATE, A, () => true)).toBe(`${logs}/transcript.jsonl`);
-    expect(transcriptOf(STATE, A, () => false)).toBe(
-      `${logs}/transcript.jsonl`,
-    );
+    const logs = join(STATE, "brain", A, ".system_generated", "logs");
+    const primary = join(logs, "transcript.jsonl");
+    expect(transcriptOf(STATE, A, () => true)).toBe(primary);
+    expect(transcriptOf(STATE, A, () => false)).toBe(primary);
     expect(transcriptOf(STATE, A, (path) => path.endsWith("_full.jsonl"))).toBe(
-      `${logs}/transcript_full.jsonl`,
+      join(logs, "transcript_full.jsonl"),
     );
   });
 });
