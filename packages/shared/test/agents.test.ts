@@ -103,7 +103,7 @@ describe("agent registry", () => {
     expect(AGENT_REGISTRY.claude.sessionIdFlag).toBe("--session-id");
   });
 
-  // docs/design/agent-agy.md: agy is the first built-in without a status
+  // #997: agy is the first built-in without a status
   // source or an injection; its terminal state is OSC 7501 and nothing else.
   it("registers Antigravity as a display-only terminal agent", () => {
     const agy = AGENT_REGISTRY.agy;

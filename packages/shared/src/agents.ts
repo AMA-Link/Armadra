@@ -406,7 +406,7 @@ export const AGENT_REGISTRY: Readonly<Record<BuiltinAgentId, AgentDefinition>> =
       // (an unknown `--conversation` is ignored and a new one starts), and a
       // terminal agy has no status source to learn the id from. Resume is an
       // ACP matter (`session/load`) until the hook lands
-      // (docs/design/agent-agy.md batch 3).
+      // (#997, the hook batch).
       exitCommand: "/exit",
       // No hook, no resume, no usage: its terminal state is OSC 7501 (display
       // only, contract §53). `contextLink` and `browser` are the node's links
