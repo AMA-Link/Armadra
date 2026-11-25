@@ -24,6 +24,7 @@ import type {
 
 import { TestProviders, installDomPolyfills } from "@/app/test-harness";
 import { usePreferencesStore } from "@/app/preferences-store";
+import { RuntimeRequestError } from "@/api/request";
 import { useCanvasStore } from "@/store/canvas-store";
 
 /** 功能开关（#295）：这里测的是功能本身，按开着测。 */
@@ -47,6 +48,9 @@ const api = vi.hoisted(() => ({
   updateTemplate: vi.fn(),
   upgradeSchedules: vi.fn(),
   deleteTemplate: vi.fn(),
+  files: vi.fn(),
+  importFile: vi.fn(),
+  exportTemplate: vi.fn(),
   runs: vi.fn(),
   startRun: vi.fn(),
   cancelRun: vi.fn(),
@@ -101,6 +105,7 @@ const TEMPLATE: WorkflowTemplateJson = {
   name: "双人审查",
   version: 1,
   createdFromDraft: null,
+  fileRef: null,
   template: BODY,
   createdAt: "2026-10-01T00:00:00.000Z",
   updatedAt: "2026-10-01T00:00:00.000Z",
@@ -287,6 +292,73 @@ describe("模板库与起跑", () => {
     );
     await waitFor(() => expect(useWorkflowView.getState().tab).toBe("runs"));
     expect(useWorkflowView.getState().expanded).toBe("run-9");
+  });
+});
+
+describe("导出到 .ama/workflows", () => {
+  function open() {
+    render(
+      <TestProviders>
+        <TemplateLibrary templates={[TEMPLATE]} runs={[]} />
+      </TestProviders>,
+    );
+    fireEvent.keyDown(screen.getByLabelText("更多"), { key: "Enter" });
+  }
+
+  beforeEach(() => {
+    useCanvasStore.setState({ workspace: { id: "ws" } as never });
+  });
+
+  it("菜单里导出当前工作空间，不带覆盖", async () => {
+    api.exportTemplate.mockResolvedValue({
+      path: ".ama/workflows/a.md",
+      id: "a",
+    });
+    open();
+    fireEvent.click(await screen.findByText("导出到 .ama/workflows"));
+    await waitFor(() =>
+      expect(api.exportTemplate).toHaveBeenCalledWith("tpl-1", {
+        workspaceId: "ws",
+        overwrite: false,
+      }),
+    );
+  });
+
+  it("文件已存在（409）弹确认，确认后带 overwrite 再导出；取消则不再发", async () => {
+    api.exportTemplate
+      .mockRejectedValueOnce(
+        new RuntimeRequestError(
+          409,
+          ".ama/workflows/a-0190bbbb.md 已经存在。",
+          "workflow_file_exists",
+        ),
+      )
+      .mockResolvedValue({ path: ".ama/workflows/a.md", id: "a" });
+    open();
+    fireEvent.click(await screen.findByText("导出到 .ama/workflows"));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText("覆盖已有的文件？")).toBeTruthy();
+    // 确认框写明要覆盖的目标文件（默认 id 撞车时带后缀）。
+    expect(
+      within(dialog).getByText(".ama/workflows/a-0190bbbb.md"),
+    ).toBeTruthy();
+    fireEvent.click(within(dialog).getByText("取消"));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(api.exportTemplate).toHaveBeenCalledTimes(1);
+
+    api.exportTemplate.mockRejectedValueOnce(
+      new RuntimeRequestError(409, "exists", "workflow_file_exists"),
+    );
+    fireEvent.keyDown(screen.getByLabelText("更多"), { key: "Enter" });
+    fireEvent.click(await screen.findByText("导出到 .ama/workflows"));
+    const again = await screen.findByRole("alertdialog");
+    fireEvent.click(within(again).getByText("覆盖"));
+    await waitFor(() =>
+      expect(api.exportTemplate).toHaveBeenLastCalledWith("tpl-1", {
+        workspaceId: "ws",
+        overwrite: true,
+      }),
+    );
   });
 });
 

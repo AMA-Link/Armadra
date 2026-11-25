@@ -40,6 +40,23 @@ const updatedTemplateSchema = z.object({
   template: workflowTemplateSchema,
   frozenSchedules: z.array(workflowFrozenScheduleSchema).default([]),
 });
+/** `.ama/workflows` 里的一份文件（契约 §121）。 */
+const workflowFileSchema = z.object({
+  id: z.string(),
+  path: z.string(),
+  title: z.string().nullable(),
+  valid: z.boolean(),
+  error: z.string().nullable(),
+  templateId: z.string().nullable(),
+});
+export type WorkflowFileEntry = z.infer<typeof workflowFileSchema>;
+const filesSchema = z.object({ files: z.array(workflowFileSchema) });
+const importedSchema = z.object({
+  template: workflowTemplateSchema,
+  change: z.enum(["created", "updated", "unchanged"]),
+  frozenSchedules: z.array(workflowFrozenScheduleSchema).default([]),
+});
+const exportedSchema = z.object({ path: z.string(), id: z.string() });
 const runsSchema = z.object({ runs: z.array(workflowRunSchema) });
 const runSchema = z.object({ run: workflowRunSchema });
 
@@ -94,6 +111,20 @@ export const workflowsApi = {
   deleteTemplate: async (templateId: string) => {
     await currentClient().workflows.deleteTemplate({ templateId });
   },
+  files: async (workspaceId: string) =>
+    filesSchema.parse(await currentClient().workflows.files({ workspaceId }))
+      .files,
+  importFile: async (workspaceId: string, id: string) =>
+    importedSchema.parse(
+      await currentClient().workflows.importFile({ workspaceId, id }),
+    ),
+  exportTemplate: async (
+    templateId: string,
+    input: { workspaceId: string; id?: string; overwrite?: boolean },
+  ) =>
+    exportedSchema.parse(
+      await currentClient().workflows.exportTemplate({ templateId, ...input }),
+    ),
   runs: async (filter: {
     templateId?: string;
     boardId?: string;
@@ -127,6 +158,7 @@ const KNOWN_CODES = new Set([
   "invalid_draft",
   "draft_not_pending",
   "template_version_stale",
+  "workflow_file_exists",
   "run_finished",
   "gate_not_waiting",
   "forbidden",
@@ -139,4 +171,21 @@ export function workflowErrorKey(error: unknown): string {
     if (KNOWN_CODES.has(error.code)) return `workflow.error.${error.code}`;
   }
   return "workflow.error.generic";
+}
+
+/**
+ * 409 `workflow_file_exists` 的原话以目标路径开头（`<path> 已经存在。`，契约 §121.2）：
+ * 取出来给确认框显示；认不出就没有。
+ */
+export function existingFilePath(error: unknown): string | null {
+  if (!(error instanceof RuntimeRequestError)) return null;
+  return /^(\S+\.md)(?:\s|$)/.exec(error.coreMessage)?.[1] ?? null;
+}
+
+/** 导出时目标文件已经在了（409 `workflow_file_exists`）：问人要不要覆盖。 */
+export function isFileExists(error: unknown): boolean {
+  return (
+    error instanceof RuntimeRequestError &&
+    error.code === "workflow_file_exists"
+  );
 }
