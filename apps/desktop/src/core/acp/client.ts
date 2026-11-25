@@ -342,16 +342,12 @@ export class AcpProcess {
       options.extRequests !== undefined &&
       Object.keys(options.extRequests).length > 0
         ? {
-            onExtRequest: ((
+            // 固定版本的类型里还没有这个键（升级之后有）：展开进来的键不受多余属性检查。
+            onExtRequest: (
               method: string,
               params: unknown,
               signal: AbortSignal,
-            ) =>
-              this.holdExt(
-                method,
-                params,
-                signal,
-              )) as unknown as AcpClientOptions["onElicitation"],
+            ) => this.holdExt(method, params, signal),
           }
         : {}),
       // 旧版客户端不认这个键、也不声明这个能力：不传，线路与之前逐字节相同。
@@ -683,8 +679,10 @@ export class AcpProcess {
 
   /**
    * `_` 开头的扩展请求（计划审批）：进**同一张**审批挂起表，卡片正文是计划，选项是
-   * 批准 / 拒绝；人答 → 适配器的映射函数 → 应答 JSON。没有审批消费者、被取消、进程
-   * 退出、对端撤回都按拒绝回；从不替人批准。
+   * 批准 / 拒绝。**只有人点了批准才回成功的 result**；拒绝、没选、没有审批消费者、
+   * 取消都抛 `RpcError`（-32800），错误不可能被读成批准。应答形状没核实过的规格
+   * （`verified: false`）不挂卡，回 -32601。对端撤回请求、会话取消、连接关闭时上游客户端
+   * 自己决定回什么（-32800）；进程退出了就没有人可回。
    */
   private holdExt(
     method: string,
@@ -692,7 +690,7 @@ export class AcpProcess {
     signal: AbortSignal,
   ): Promise<unknown> {
     const spec = this.options.extRequests?.[method];
-    if (spec === undefined) {
+    if (spec === undefined || !spec.verified) {
       return Promise.reject(
         new RpcError(RPC_ERRORS.methodNotFound, `unknown method: ${method}`),
       );
@@ -703,9 +701,11 @@ export class AcpProcess {
         new RpcError(RPC_ERRORS.invalidParams, `bad params for ${method}`),
       );
     }
-    // 没有人会看到这张卡：不一直挂着，按拒绝回（不是批准）。
+    const declined = () =>
+      new RpcError(RPC_ERRORS.requestCancelled, "plan was not approved");
+    // 没有人会看到这张卡（无人值守）：不挂着，也不批准——回错误。
     if (this.options.onPermission === undefined) {
-      return Promise.resolve(spec.reply("reject", params));
+      return Promise.reject(declined());
     }
     this.nextPermission += 1;
     const pending: AcpPendingPermission = {
@@ -718,14 +718,23 @@ export class AcpProcess {
       ],
       createdAt: Date.now(),
     };
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       this.pending.set(pending.id, {
         pending,
         resolve: (result) => {
           const outcome = result.outcome;
-          const approved =
-            outcome.outcome === "selected" && outcome.optionId === "approve";
-          resolve(spec.reply(approved ? "approve" : "reject", params));
+          if (
+            outcome.outcome !== "selected" ||
+            outcome.optionId !== "approve"
+          ) {
+            reject(declined());
+            return;
+          }
+          try {
+            resolve(spec.reply(params));
+          } catch (error) {
+            reject(error);
+          }
         },
       });
       const aborted = () => this.drop(pending.id);
