@@ -536,4 +536,16 @@ describe("useBoardSync", () => {
     );
     await waitFor(() => expect(positionOf()).toBe(0));
   });
+
+  it("没有画布的工作空间别处建了一块后自动切过去（#1015）", async () => {
+    vi.mocked(runtimeApi.listBoards).mockResolvedValueOnce([]);
+    const { result } = renderHook(() => useBoardSync(), { wrapper });
+    await waitFor(() => expect(result.current.boards.data).toEqual([]));
+    expect(useCanvasStore.getState().boardId).toBeNull();
+
+    await act(() => result.current.boards.refetch());
+    await waitFor(() =>
+      expect(useCanvasStore.getState().boardId).toBe(board.id),
+    );
+  });
 });
