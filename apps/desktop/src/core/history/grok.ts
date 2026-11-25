@@ -267,7 +267,7 @@ export function recordMs(line: Record<string, unknown>): number | undefined {
 
 /**
  * 一行的稳定 id：`params._meta.eventId`（grok 自己给的，每个会话内唯一），没有再用
- * `timestamp_us`，再没有就取行内容的摘要。整段重读得到同一个 id，写入是幂等的。
+ * `timestamp_us`，再没有就取整行内容的摘要（含 `timestamp` 秒）。整段重读得到同一个 id，写入是幂等的。
  */
 export function recordId(line: Record<string, unknown>): string {
   const meta = asRecord(asRecord(line.params)?._meta);
@@ -277,8 +277,10 @@ export function recordId(line: Record<string, unknown>): string {
   if (typeof line.timestamp_us === "number" && line.timestamp_us > 0) {
     return String(line.timestamp_us);
   }
+  // 摘要取整行（含 `timestamp` 秒）：同一会话里两条内容相同的行（连着两个「ok」）
+  // 时间不同，不会撞成同一个 id。
   return createHash("sha1")
-    .update(JSON.stringify(line.params ?? line))
+    .update(JSON.stringify(line))
     .digest("hex")
     .slice(0, 16);
 }

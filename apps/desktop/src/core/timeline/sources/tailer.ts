@@ -374,6 +374,10 @@ export class TailRunner {
     for (const handle of this.pokeTimers) this.timers.clearTimeout(handle);
     this.pokeTimers = [];
     if (then !== undefined) this.after.push(then);
+    // 还在等新文件：这一响就是最好的时机，马上再找一次。
+    if (this.relocateRequested || this.relocateWaiting) {
+      this.relocateFresh = true;
+    }
     this.pokeTimers.push(
       this.timers.setTimeout(() => this.readNow(), POKE_DELAY_MS),
       this.timers.setTimeout(() => {
@@ -428,9 +432,16 @@ export class TailRunner {
   relocate(): void {
     this.relocateRequested = true;
     this.relocateFresh = true;
+    this.relocateWaiting = false;
     this.relocateSince = this.timers.now();
   }
   private relocateSince = 0;
+  /**
+   * 等过了 {@link RELOCATE_GIVE_UP_MS} 还没等到新文件：不再每半秒找，但也不丢——CLI 可能
+   * 很久之后才发第一条提示（`/new` 之后的会话文件那时才建），那时必须能跟上。按
+   * {@link LOCATE_RETRY_MS} 慢速继续找，`poke()` 时立刻再找一次，找到就清掉。
+   */
+  private relocateWaiting = false;
 
   /** 要求重新定位、还没找到新文件：标记一直留着，按 {@link RELOCATE_RETRY_MS} 再找。 */
   private relocateRequested = false;
@@ -445,6 +456,7 @@ export class TailRunner {
     if (
       this.path !== undefined &&
       !this.relocateRequested &&
+      !this.relocateWaiting &&
       this.statFn(this.path) !== undefined
     ) {
       return;
@@ -461,10 +473,12 @@ export class TailRunner {
         now - this.relocateSince >= RELOCATE_GIVE_UP_MS
       ) {
         this.relocateRequested = false;
+        this.relocateWaiting = true;
       }
       return;
     }
     this.relocateRequested = false;
+    this.relocateWaiting = false;
     if (located === this.path) return;
     this.leave();
     this.unwatch();
@@ -514,9 +528,11 @@ export class TailRunner {
         ? LOCATE_RETRY_MS
         : this.relocateRequested
           ? RELOCATE_RETRY_MS
-          : this.watching
-            ? SAFETY_POLL_MS
-            : POLL_INTERVAL_MS;
+          : this.relocateWaiting
+            ? LOCATE_RETRY_MS
+            : this.watching
+              ? SAFETY_POLL_MS
+              : POLL_INTERVAL_MS;
     this.poll = this.timers.setTimeout(() => this.onPoll(), interval);
   }
 
@@ -568,7 +584,7 @@ export class TailRunner {
       this.readNow();
       return;
     }
-    if (this.relocateRequested) {
+    if (this.relocateRequested || this.relocateWaiting) {
       // 还在等新文件：每一拍都再找一次。
       this.readNow();
       return;

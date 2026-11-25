@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { FakeTimers } from "../testing";
 import {
+  LOCATE_RETRY_MS,
   POKE_SETTLE_MS,
   RELOCATE_GIVE_UP_MS,
   POLL_INTERVAL_MS,
@@ -312,7 +313,7 @@ describe("TailRunner", () => {
     runner.stop();
   });
 
-  it("gives up waiting for a path that never appears", () => {
+  it("drops to slow retries for a path that does not appear", () => {
     writeFileSync(file, row(1));
     const timers = new FakeTimers();
     const reads: ReadResult[] = [];
@@ -328,9 +329,50 @@ describe("TailRunner", () => {
     timers.advance(RELOCATE_GIVE_UP_MS + 5_000);
     const settled = calls;
     timers.advance(60_000);
-    // 放弃之后只剩平常的兜底，不再每半秒找一次。
-    expect(calls - settled).toBeLessThan(5);
+    // 快速重试放弃之后改成每 5 秒一次（不是每半秒），而且一直找下去。
+    expect(calls - settled).toBeGreaterThan(5);
+    expect(calls - settled).toBeLessThanOrEqual(14);
     expect(runner.currentPath).toBe(file);
+    runner.stop();
+  });
+
+  it("still follows a file that only appears long after the wait gave up", () => {
+    const other = join(dir, "much-later.jsonl");
+    writeFileSync(file, row(1));
+    const timers = new FakeTimers();
+    const reads: ReadResult[] = [];
+    let located: string | undefined = file;
+    const runner = runnerOn(timers, fakeWatch(), reads, () => located);
+    runner.start();
+    located = undefined;
+    runner.relocate();
+    // `/new` 之后四十秒才发第一条提示：快速重试早已放弃，仍在慢速找。
+    timers.advance(40_000);
+    expect(runner.currentPath).toBe(file);
+    writeFileSync(other, row(2));
+    located = other;
+    timers.advance(LOCATE_RETRY_MS + 1_000);
+    expect(runner.currentPath).toBe(other);
+    expect(numbers(reads)).toEqual([1, 2]);
+    runner.stop();
+  });
+
+  it("looks again at once when poked while still waiting", () => {
+    const other = join(dir, "poked.jsonl");
+    writeFileSync(file, row(1));
+    const timers = new FakeTimers();
+    const reads: ReadResult[] = [];
+    let located: string | undefined = file;
+    const runner = runnerOn(timers, fakeWatch(), reads, () => located);
+    runner.start();
+    located = undefined;
+    runner.relocate();
+    timers.advance(40_000);
+    writeFileSync(other, row(2));
+    located = other;
+    runner.poke();
+    timers.advance(POKE_SETTLE_MS);
+    expect(runner.currentPath).toBe(other);
     runner.stop();
   });
 
