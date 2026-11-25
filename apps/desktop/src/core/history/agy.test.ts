@@ -203,6 +203,10 @@ describe("路径与键", () => {
   it("工作区 URI 转成路径，坏的是空串；时间戳转成 UTC，从未写过的是 undefined", () => {
     expect(cwdOf('["file:///work/my%20app"]')).toBe("/work/my app");
     expect(cwdOf('["file:///a","file:///b"]')).toBe("/a");
+    // 多个工作区时取第一项（不做目录前缀之类的过滤）。
+    expect(cwdOf('["file:///work/second","file:///work/first"]')).toBe(
+      "/work/second",
+    );
     expect(cwdOf("[]")).toBe("");
     expect(cwdOf("not json")).toBe("");
     expect(cwdOf('["https://example.com"]')).toBe("");
