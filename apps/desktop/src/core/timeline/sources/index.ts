@@ -145,7 +145,7 @@ export interface TerminalFacts {
   answerCards?(
     sessionId: string,
     nodeId: string,
-    launch: CardLaunch,
+    launch: () => CardLaunch,
   ): Promise<{ readonly open: boolean; readonly reason?: string }>;
 }
 

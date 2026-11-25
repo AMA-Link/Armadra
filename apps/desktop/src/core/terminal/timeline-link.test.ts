@@ -21,6 +21,7 @@ let probed: (string | undefined)[];
 
 beforeEach(() => {
   probed = [];
+  reads = 0;
   linkTimeline(
     { db: { database: {} } } as unknown as CoreContext,
     {} as TerminalManager,
@@ -41,8 +42,12 @@ afterEach(() => {
   resetGrokVersionProbe();
 });
 
+let reads = 0;
 const ask = (mode: string | undefined) =>
-  facts.answerCards!("session", "node", { mode, exe: "/opt/grok/bin/grok" });
+  facts.answerCards!("session", "node", () => {
+    reads += 1;
+    return { mode, exe: "/opt/grok/bin/grok", exact: true };
+  });
 
 describe("linkTimeline 的 answerCards", () => {
   it("设置关着（缺省）：{ open: false, reason: setting_off }，不探版本", async () => {
@@ -54,6 +59,8 @@ describe("linkTimeline 的 answerCards", () => {
     });
     settings.value = false;
     expect(await ask("plan")).toEqual({ open: false, reason: "setting_off" });
+    // 设置关着，连 grok 进程的 argv 都不读。
+    expect(reads).toBe(0);
   });
 
   it("设置开着但进程不是 --permission-mode 起的：mode_excluded", async () => {

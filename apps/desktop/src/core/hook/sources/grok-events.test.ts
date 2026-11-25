@@ -134,7 +134,7 @@ function open(options: { remote?: boolean } = {}) {
       ? {}
       : {
           answerCards: async (launch) => {
-            launches.push(launch);
+            launches.push(launch());
             await gateHold;
             return cardGate ?? { open: false };
           },
@@ -798,13 +798,21 @@ describe("终端审批卡：建记录与结案（契约 §127）", () => {
       args: ["/opt/grok/bin/grok", "--permission-mode", "plan"],
     });
     const slot = await waitingOn();
-    expect(launches[0]).toEqual({ mode: "plan", exe: "/opt/grok/bin/grok" });
+    expect(launches[0]).toEqual({
+      mode: "plan",
+      exe: "/opt/grok/bin/grok",
+      exact: false,
+    });
     slot.stop();
   });
 
   it("读不到进程：mode 是 undefined，交给门去拒", async () => {
     const slot = await waitingOn();
-    expect(launches[0]).toEqual({ mode: undefined, exe: undefined });
+    expect(launches[0]).toEqual({
+      mode: undefined,
+      exe: undefined,
+      exact: false,
+    });
     slot.stop();
   });
 
@@ -832,6 +840,20 @@ describe("终端审批卡：建记录与结案（契约 §127）", () => {
     expect(logged).toContain("grok card parsed");
     expect(logged).not.toContain("Yes, proceed");
     expect(logged).not.toContain("out.txt");
+    // 字段只有这几个：画面、命令、路径这类东西没有地方可以混进去。
+    for (const entry of debugLog) {
+      expect(
+        Object.keys(entry.fields as object).every((name) =>
+          ["key", "parsed", "lines", "open", "reason"].includes(name),
+        ),
+      ).toBe(true);
+    }
+    expect(
+      Object.keys(
+        debugLog.find((entry) => entry.message === "grok card parsed")
+          ?.fields as object,
+      ).sort(),
+    ).toEqual(["key", "lines", "parsed"]);
     expect(
       debugLog.find((e) => e.message === "grok card parsed")?.fields,
     ).toMatchObject({ parsed: true, lines: expect.any(Number) });

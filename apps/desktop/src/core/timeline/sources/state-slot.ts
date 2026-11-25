@@ -28,6 +28,8 @@ import type { StatFn, TailTimers, WatchFn } from "./tailer";
 export interface CardLaunch {
   readonly mode: string | undefined;
   readonly exe: string | undefined;
+  /** argv 是逐个参数原样读到的（Linux）；否则是一整行按空白切开的。 */
+  readonly exact: boolean;
 }
 
 export type StateSlotLevel = "reported" | "observed";
@@ -55,7 +57,7 @@ export interface StateSlotContext {
    * 这个节点的审批卡现在可不可以在终端里代答（两道门与启动模式都过了，契约 §127）。
    * 缺省 / 没装配 = 不可以。只有问「要不要为这张卡建审批记录」时用。
    */
-  answerCards?(launch: CardLaunch): Promise<{
+  answerCards?(launch: () => CardLaunch): Promise<{
     readonly open: boolean;
     readonly reason?: string;
   }>;

@@ -307,6 +307,7 @@ export function readProcessInfo(pid: number): GrokProcessInfo | undefined {
       }
       return {
         exe,
+        exact: true,
         args: raw
           .toString("utf8")
           .split("\u0000")
@@ -1133,7 +1134,8 @@ class GrokSlot implements StateSlot {
         this.cardTries.set(key, 3);
         return;
       }
-      const gate = await answerCards(this.launchOf(request.sessionId));
+      // argv 在门里最后才读：设置关着或清单是空的，不会为 grok 读进程。
+      const gate = await answerCards(() => this.launchOf(request.sessionId));
       this.context.log.debug("grok card gate", { key, ...gate });
       if (!gate.open) {
         // 门关着：这张卡不再问（开了设置之后的下一张卡才算）。设置开着却建不了

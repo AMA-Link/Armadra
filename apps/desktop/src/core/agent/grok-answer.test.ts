@@ -1,4 +1,12 @@
-import { readFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import type { execFile } from "node:child_process";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -19,6 +27,7 @@ import {
   cardAnswerGate,
   grokAnswerGate,
   launchOfProcess,
+  probeGrokVersion,
   registerGrokCardSource,
   resetGrokVersionProbe,
   useGrokVerifiedVersions,
@@ -90,7 +99,7 @@ beforeEach(() => {
   // 两道门与模式：清单有这个版本、设置开、节点是 `--permission-mode` 启动的。
   useGrokVerifiedVersions(["1.0.92"]);
   resetGrokVersionProbe("1.0.92");
-  launch = { mode: "auto-edit", exe: "/opt/grok/bin/grok" };
+  launch = { mode: "auto-edit", exe: "/opt/grok/bin/grok", exact: true };
   record();
 });
 
@@ -369,7 +378,7 @@ describe("答复时门与节点还得成立（预检里再核一遍）", () => {
   });
 });
 
-describe("cardAnswerGate：三样先过，才探版本", () => {
+describe("cardAnswerGate：先设置与清单，再读进程，最后才探版本", () => {
   const probeOnce = () => {
     let exes: (string | undefined)[] = [];
     return {
@@ -380,32 +389,62 @@ describe("cardAnswerGate：三样先过，才探版本", () => {
       },
     };
   };
-  const at = (mode: string | undefined): GrokLaunch => ({
-    mode,
-    exe: "/opt/grok/bin/grok",
-  });
+  /** 读进程的次数：设置关着或清单是空的，一次都不该读。 */
+  const reads = () => {
+    let count = 0;
+    return {
+      count: () => count,
+      launch:
+        (mode: string | undefined, exact = true) =>
+        (): GrokLaunch => {
+          count += 1;
+          return { mode, exe: "/opt/grok/bin/grok", exact };
+        },
+    };
+  };
 
-  it("清单是空的（缺省）、设置关、模式不在范围：一次都不探", async () => {
+  it("设置关、清单是空的：不读进程、不探版本", async () => {
     for (const input of [
-      { verified: [], setting: true, launch: at("auto-edit") },
-      { verified: ["1.0.92"], setting: false, launch: at("auto-edit") },
-      { verified: ["1.0.92"], setting: true, launch: at("default") },
-      { verified: ["1.0.92"], setting: true, launch: at(undefined) },
+      { verified: [] as string[], setting: true },
+      { verified: ["1.0.92"], setting: false },
+      { verified: ["1.0.92"], setting: undefined },
     ]) {
       const probe = probeOnce();
-      const gate = await cardAnswerGate({ ...input, probe: probe.probe });
+      const read = reads();
+      const gate = await cardAnswerGate({
+        ...input,
+        launch: read.launch("auto-edit"),
+        probe: probe.probe,
+      });
       expect(gate.open).toBe(false);
+      expect(read.count()).toBe(0);
       expect(probe.exes()).toEqual([]);
     }
   });
 
-  it("三样都过了才探一次，探的是进程实际跑的那个可执行文件；版本在清单里才开", async () => {
+  it("模式不在范围：读了进程，但不探版本", async () => {
+    for (const mode of ["default", undefined]) {
+      const probe = probeOnce();
+      const read = reads();
+      const gate = await cardAnswerGate({
+        verified: ["1.0.92"],
+        setting: true,
+        launch: read.launch(mode),
+        probe: probe.probe,
+      });
+      expect(gate).toMatchObject({ open: false, reason: "mode_excluded" });
+      expect(read.count()).toBe(1);
+      expect(probe.exes()).toEqual([]);
+    }
+  });
+
+  it("都过了才探一次，探的是进程实际跑的那个可执行文件；版本在清单里才开", async () => {
     const probe = probeOnce();
     expect(
       await cardAnswerGate({
         verified: ["1.0.92"],
         setting: true,
-        launch: at("plan"),
+        launch: reads().launch("plan"),
         probe: probe.probe,
       }),
     ).toEqual({ open: true });
@@ -414,7 +453,7 @@ describe("cardAnswerGate：三样先过，才探版本", () => {
       await cardAnswerGate({
         verified: ["1.0.93"],
         setting: true,
-        launch: at("plan"),
+        launch: reads().launch("plan"),
         probe: probe.probe,
       }),
     ).toMatchObject({ open: false, reason: "unverified_version" });
@@ -426,28 +465,92 @@ describe("cardAnswerGate：三样先过，才探版本", () => {
       await cardAnswerGate({
         verified: ["1.0.92"],
         setting: true,
-        launch: { mode: "plan", exe: undefined },
+        launch: () => ({ mode: "plan", exe: undefined, exact: true }),
       }),
     ).toMatchObject({ open: false, reason: "unverified_version" });
+  });
+
+  it("非 Linux（整行按空白切开）：argv 认出的模式还得与节点声明的一致才开", async () => {
+    const gate = (declared: string | undefined) =>
+      cardAnswerGate({
+        verified: ["1.0.92"],
+        setting: true,
+        launch: reads().launch("auto-edit", false),
+        declared: () => declared,
+        probe: probeOnce().probe,
+      });
+    expect(await gate("auto-edit")).toEqual({ open: true });
+    expect(await gate("plan")).toMatchObject({ reason: "mode_excluded" });
+    expect(await gate(undefined)).toMatchObject({ reason: "mode_excluded" });
+    // Linux（逐个参数原样读到）不看声明的。
+    expect(
+      await cardAnswerGate({
+        verified: ["1.0.92"],
+        setting: true,
+        launch: reads().launch("auto-edit", true),
+        declared: () => "plan",
+        probe: probeOnce().probe,
+      }),
+    ).toEqual({ open: true });
+  });
+});
+
+describe("版本缓存：路径 + 修改时间 + 大小", () => {
+  it("同一路径的文件换了（自更新），旧答案不作数", async () => {
+    resetGrokVersionProbe();
+    const dir = mkdtempSync(join(tmpdir(), "armadra-grok-ver-"));
+    const exe = join(dir, "grok");
+    const run = (version: string) =>
+      ((
+        _file: string,
+        _args: string[],
+        _options: unknown,
+        callback: (error: null, out: string, err: string) => void,
+      ) => {
+        callback(null, `grok ${version} (x)`, "");
+      }) as unknown as typeof execFile;
+    try {
+      writeFileSync(exe, "one");
+      chmodSync(exe, 0o755);
+      expect(await probeGrokVersion(exe, run("1.0.92"))).toBe("1.0.92");
+      // 没换文件：缓存（第二次给的版本不会被用到）。
+      expect(await probeGrokVersion(exe, run("9.9.9"))).toBe("1.0.92");
+      // 换了文件（大小不同）：重新探。
+      writeFileSync(exe, "two-longer");
+      expect(await probeGrokVersion(exe, run("1.0.93"))).toBe("1.0.93");
+      // 文件没了：探不到。
+      rmSync(exe);
+      expect(await probeGrokVersion(exe, run("1.0.93"))).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
 describe("launchOfProcess：按 argv 认权限模式", () => {
   const mode = (...args: string[]) =>
     launchOfProcess({ exe: "/g/grok", args: ["/g/grok", ...args] }).mode;
+  /** `ps` 给的一整行，按空白切开（非 Linux 的读法）。 */
+  const ps = (line: string) =>
+    launchOfProcess({ exe: "/g/grok", args: line.split(/\s+/) });
+
   it("acceptEdits 与 plan，两种写法", () => {
     expect(mode("--permission-mode", "acceptEdits")).toBe("auto-edit");
     expect(mode("--permission-mode", "plan")).toBe("plan");
     expect(mode("--permission-mode=acceptEdits")).toBe("auto-edit");
   });
-  it("多次出现取最后一个", () => {
+  it("旗标出现不止一次就读不出来（grok 自己不接受重复的旗标）", () => {
     expect(
       mode("--permission-mode", "plan", "--permission-mode", "default"),
-    ).toBe("default");
+    ).toBeUndefined();
+    expect(
+      mode("--permission-mode=plan", "--permission-mode", "plan"),
+    ).toBeUndefined();
   });
-  it("没有旗标、别的取值、读不到 argv 都不是可放开的模式", () => {
+  it("没有旗标、值不在表里、读不到 argv 都不是可放开的模式", () => {
     expect(mode()).toBeUndefined();
-    expect(mode("--permission-mode", "default")).toBe("default");
+    expect(mode("--permission-mode", "default")).toBeUndefined();
+    expect(mode("--permission-mode", "bypassPermissions")).toBeUndefined();
     expect(mode("--always-approve")).toBeUndefined();
     expect(launchOfProcess(undefined).mode).toBeUndefined();
     expect(launchOfProcess({ exe: "/g/grok" }).mode).toBeUndefined();
@@ -455,6 +558,67 @@ describe("launchOfProcess：按 argv 认权限模式", () => {
   it("-- 之后是用户的提示词，写什么都不算", () => {
     expect(mode("--", "please", "--permission-mode", "plan")).toBeUndefined();
     expect(mode("--permission-mode", "plan", "--", "x")).toBe("plan");
+  });
+
+  describe("冒充：ps 的一整行里，引号内的提示词不能当旗标", () => {
+    const gate = (line: string, declared: string | undefined) =>
+      cardAnswerGate({
+        verified: ["1.0.92"],
+        setting: true,
+        launch: () => ps(line),
+        declared: () => declared,
+        probe: async () => "1.0.92",
+      });
+
+    it('grok "why does --permission-mode acceptEdits not work"', async () => {
+      const line = 'grok "why does --permission-mode acceptEdits not work"';
+      // 单看 argv 会被当成旗标……
+      expect(ps(line).mode).toBe("auto-edit");
+      // ……但节点不是这么声明的，门不开。
+      for (const declared of [undefined, "plan", "default"]) {
+        expect(await gate(line, declared)).toMatchObject({
+          open: false,
+          reason: "mode_excluded",
+        });
+      }
+    });
+
+    it('grok --rules "never pass --permission-mode acceptEdits"', async () => {
+      const line = 'grok --rules "never pass --permission-mode acceptEdits"';
+      // 收尾的引号黏在值上（`acceptEdits"`），这一行本身就认不出；写成别的样子
+      // （引号不在值后面）就和上一个例子一样，要靠声明的模式挡住。
+      expect(ps(line).mode).toBeUndefined();
+      expect(
+        ps('grok --rules "never pass --permission-mode acceptEdits please"')
+          .mode,
+      ).toBe("auto-edit");
+      for (const declared of [undefined, "plan"]) {
+        expect(await gate(line, declared)).toMatchObject({
+          open: false,
+          reason: "mode_excluded",
+        });
+      }
+    });
+
+    it('grok --permission-mode default "say --permission-mode=plan"', async () => {
+      const line =
+        'grok --permission-mode default "say --permission-mode=plan"';
+      // 旗标出现两次：读不出来，节点声明什么都不开。
+      expect(ps(line).mode).toBeUndefined();
+      for (const declared of [undefined, "plan", "default"]) {
+        expect(await gate(line, declared)).toMatchObject({
+          open: false,
+          reason: "mode_excluded",
+        });
+      }
+    });
+
+    it("真实的一行：旗标、声明一致、提示词在 -- 之后", async () => {
+      const line =
+        "grok --permission-mode acceptEdits --rules x -- hello --permission-mode plan";
+      expect(ps(line).mode).toBe("auto-edit");
+      expect(await gate(line, "auto-edit")).toEqual({ open: true });
+    });
   });
 });
 
