@@ -27,6 +27,8 @@ import { accessSync, constants as fsConstants, statSync } from "node:fs";
 import {
   AcpClient,
   type AcpClientOptions,
+  RPC_ERRORS,
+  RpcError,
   type AcpContentBlock,
   type AcpImplementationInfo,
   type AcpPermissionOption,
@@ -39,6 +41,12 @@ import {
 
 import { STDERR_TAIL_BYTES } from "../language/limits";
 import { redactSecrets } from "../terminal/ssh/redact";
+import {
+  type AcpExtRequestSpec,
+  planToolCall,
+  scrubOwnMeta,
+} from "./ext-requests";
+import { clientAcceptsExtRequest } from "./mcp";
 import type {
   AcpElicitationParams,
   AcpElicitationResult,
@@ -115,6 +123,18 @@ export interface AcpPendingPermission {
   readonly toolCall: AcpToolCallUpdate;
   readonly options: readonly AcpPermissionOption[];
   readonly createdAt: number;
+  /**
+   * 这一条是 `_` 开头的扩展请求（`holdExt`）挂的，不是 `session/request_permission`。
+   * **只有 core 会写**这几个字段（Agent 的请求体里没有它们的位置）：会话层据此不替它
+   * 自动放行（`autoApproveOwnTool`）。
+   */
+  readonly origin?: "ext";
+  /** core 写的卡片种类：`plan` = 计划审批，页面据此换标题。 */
+  readonly card?: "plan";
+  /** 计划卡的正文：纯文本，已清洗、截断（`ext-requests.ts` 的 `plainBody`）。 */
+  readonly body?: string;
+  /** 正文被截断时，原文的字符数。 */
+  readonly bodyChars?: number;
 }
 
 /** 一条挂起的 `elicitation/create`（契约 §26.1）。 */
@@ -235,6 +255,11 @@ export interface AcpSpawnOptions {
     settlement: AcpElicitationSettlement,
   ) => void;
   /**
+   * 这家会发来的、要人决定的 `_` 开头的扩展请求（适配器表的 `extRequests`）。客户端
+   * 声明了 `features.extRequest` 才会接上；没声明（固定版本还没有）不传回调，线路不变。
+   */
+  readonly extRequests?: Readonly<Record<string, AcpExtRequestSpec>>;
+  /**
    * `terminal/*` 请求（客户端有这个能力时才会有）。给了它才在 `initialize` 声明
    * `terminal: true`；旧版客户端不认，线路与之前逐字节相同。
    */
@@ -328,6 +353,19 @@ export class AcpProcess {
       onUpdate: (notification) => options.onUpdate?.(notification),
       onPermission: (params, signal) => this.hold(params, signal),
       onProtocolError: (_line, reason) => options.onProtocolError?.(reason),
+      // 旧版客户端没有 `onExtRequest`、也不声明 `features.extRequest`：不传，行为不变。
+      ...(clientAcceptsExtRequest() &&
+      options.extRequests !== undefined &&
+      Object.keys(options.extRequests).length > 0
+        ? {
+            // 固定版本的类型里还没有这个键（升级之后有）：展开进来的键不受多余属性检查。
+            onExtRequest: (
+              method: string,
+              params: unknown,
+              signal: AbortSignal,
+            ) => this.holdExt(method, params, signal),
+          }
+        : {}),
       // 旧版客户端不认这个键、也不声明这个能力：不传，线路与之前逐字节相同。
       ...(acpClientFeatures().elicitation
         ? {
@@ -639,12 +677,87 @@ export class AcpProcess {
     const pending: AcpPendingPermission = {
       id: `perm-${this.pid}-${this.nextPermission}`,
       sessionId: params.sessionId,
-      toolCall: params.toolCall,
+      // `armadra/` 是 core 的命名空间：Agent 发来的这类键一律丢掉。
+      toolCall: scrubOwnMeta(params.toolCall),
       options: [...params.options],
       createdAt: Date.now(),
     };
     return new Promise((resolve) => {
       this.pending.set(pending.id, { pending, resolve });
+      const aborted = () => this.drop(pending.id);
+      if (signal.aborted) {
+        aborted();
+        return;
+      }
+      signal.addEventListener("abort", aborted, { once: true });
+      this.options.onPermission?.(pending);
+    });
+  }
+
+  /**
+   * `_` 开头的扩展请求（计划审批）：进**同一张**审批挂起表，卡片正文是计划，选项是
+   * 批准 / 拒绝。**只有人点了批准才回成功的 result**；拒绝、没选、没有审批消费者、
+   * 取消都抛 `RpcError`（-32800），错误不可能被读成批准。应答形状没核实过的规格
+   * （`verified: false`）不挂卡，回 -32601。对端撤回请求、会话取消、连接关闭时上游客户端
+   * 自己决定回什么（-32800）；进程退出了就没有人可回。
+   */
+  private holdExt(
+    method: string,
+    params: unknown,
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    const spec = this.options.extRequests?.[method];
+    if (spec === undefined || !spec.verified) {
+      return Promise.reject(
+        new RpcError(RPC_ERRORS.methodNotFound, `unknown method: ${method}`),
+      );
+    }
+    const card = spec.card(params);
+    if (card === undefined) {
+      return Promise.reject(
+        new RpcError(RPC_ERRORS.invalidParams, `bad params for ${method}`),
+      );
+    }
+    const declined = () =>
+      new RpcError(RPC_ERRORS.requestCancelled, "plan was not approved");
+    // 没有人会看到这张卡（无人值守）：不挂着，也不批准——回错误。
+    if (this.options.onPermission === undefined) {
+      return Promise.reject(declined());
+    }
+    this.nextPermission += 1;
+    const pending: AcpPendingPermission = {
+      id: `perm-${this.pid}-${this.nextPermission}`,
+      sessionId: card.sessionId,
+      toolCall: planToolCall(card),
+      options: [
+        { optionId: "approve", name: "Approve", kind: "allow_once" },
+        { optionId: "reject", name: "Reject", kind: "reject_once" },
+      ],
+      createdAt: Date.now(),
+      origin: "ext",
+      card: "plan",
+      body: card.body,
+      ...(card.bodyChars === undefined ? {} : { bodyChars: card.bodyChars }),
+    };
+    return new Promise((resolve, reject) => {
+      this.pending.set(pending.id, {
+        pending,
+        resolve: (result) => {
+          const outcome = result.outcome;
+          if (
+            outcome.outcome !== "selected" ||
+            outcome.optionId !== "approve"
+          ) {
+            reject(declined());
+            return;
+          }
+          try {
+            resolve(spec.reply(params));
+          } catch (error) {
+            reject(error);
+          }
+        },
+      });
       const aborted = () => this.drop(pending.id);
       if (signal.aborted) {
         aborted();

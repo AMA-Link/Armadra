@@ -357,6 +357,12 @@ export class AcpFeed {
       protocol: "acp",
       ...(toolCallId ? { toolCallId } : {}),
       ...(summary === undefined ? {} : { toolCall: summary }),
+      // core 自己写的卡片种类与正文（`holdExt`），不取自 Agent 的请求体。
+      ...(pending.card === undefined ? {} : { card: pending.card }),
+      ...(pending.body === undefined ? {} : { body: pending.body }),
+      ...(pending.bodyChars === undefined
+        ? {}
+        : { bodyChars: pending.bodyChars }),
       options: pending.options.map((option) => ({
         optionId: option.optionId,
         name: option.name,

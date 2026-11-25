@@ -139,11 +139,14 @@ function WillHappen({ permission }: { permission: AcpPermissionView }) {
  */
 function Details({ permission }: { permission: AcpPermissionView }) {
   const t = useT();
-  const [open, setOpen] = React.useState(false);
   const call = permission.toolCall;
+  // 计划审批的正文就是要看的东西：默认展开；别的卡仍默认收起。种类只认 core 写在视图
+  // 上的 `card`，不看 Agent 的 `toolCall`。
+  const [open, setOpen] = React.useState(permission.card === "plan");
   const diffs = (call.content ?? []).filter((item) => item.type === "diff");
+  const body = permission.card === "plan" ? permission.body : undefined;
   const input = inputPreview(call.rawInput);
-  if (diffs.length === 0 && !input) return null;
+  if (diffs.length === 0 && !input && !body) return null;
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger asChild>
@@ -166,6 +169,25 @@ function Details({ permission }: { permission: AcpPermissionView }) {
               newText={diff.newText}
             />
           ) : null,
+        )}
+        {body && (
+          // 纯文本：不走 markdown、不生成链接；`dir="auto"` 让右到左的计划也按它自己
+          // 的方向显示；限高可滚动，手机上折行不横向撑开。
+          <pre
+            data-slot="approval-text"
+            dir="auto"
+            className="max-h-60 overflow-auto rounded-control bg-sunken px-2 py-1 font-sans text-meta break-words whitespace-pre-wrap"
+          >
+            {body}
+          </pre>
+        )}
+        {body && permission.bodyChars !== undefined && (
+          <p
+            data-slot="approval-truncated"
+            className="text-meta text-muted-foreground"
+          >
+            {t("acp.permission.truncated", { count: permission.bodyChars })}
+          </p>
         )}
         {input && (
           <pre className="max-h-60 overflow-auto rounded-control bg-sunken px-2 py-1 font-mono text-meta whitespace-pre">
@@ -457,7 +479,12 @@ export function PermissionCard({
         {command !== null ? (
           <ApprovalCommand>{command}</ApprovalCommand>
         ) : (
-          <ApprovalText>{mcp?.title ?? permission.toolCall.title}</ApprovalText>
+          <ApprovalText>
+            {mcp?.title ??
+              (permission.card === "plan"
+                ? t("acp.permission.planTitle")
+                : permission.toolCall.title)}
+          </ApprovalText>
         )}
       </ApprovalTitle>
       <WillHappen permission={permission} />

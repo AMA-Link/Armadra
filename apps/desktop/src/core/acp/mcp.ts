@@ -152,6 +152,20 @@ export function clientAcceptsSessionMeta(
 }
 
 /**
+ * `AcpClient` 能不能接 `_` 开头的扩展请求：声明 `features.extRequest`
+ * （AMA-Link/armadra-agent#333，已合并、尚未发版）。固定版本的客户端还没有这个
+ * 声明，一律答不支持——不传 `onExtRequest`，线路与之前逐字节相同。
+ */
+export function clientAcceptsExtRequest(
+  client: { readonly features?: unknown } = AcpClient as {
+    readonly features?: unknown;
+  },
+): boolean {
+  const features = client.features as { extRequest?: unknown } | undefined;
+  return features?.extRequest === true;
+}
+
+/**
  * 适配器行带了 `_meta`、却没有随开会话发出去（`metaInjected === false`）：会话
  * 照常可用，但这家要的规则、插件目录或免审批开关没有生效，要留下一条记录。
  * 没带 `_meta` 的会话（`metaInjected` 缺席）答 `false`。

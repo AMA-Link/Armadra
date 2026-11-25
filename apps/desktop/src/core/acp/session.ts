@@ -1001,6 +1001,9 @@ export class AcpSession implements AcpSessionIdentity {
   private autoApproveOwnTool(pending: AcpPendingPermission): boolean {
     const host = this.host;
     if (host === undefined) return false;
+    // 扩展请求（计划审批）永远交给人：它的卡片是 core 自己挂的，不是 Agent 的工具调用，
+    // 同一个 `toolCallId` 先到过自家工具的 `tool_call` 也不行。
+    if (pending.origin === "ext") return false;
     if (pending.sessionId !== "" && pending.sessionId !== host.sessionId) {
       return false;
     }

@@ -250,6 +250,32 @@ describe("脚本化的 session/update（AcpFeed）", () => {
     expect(json).not.toContain("sk-secret");
   });
 
+  it("计划审批卡：core 自己写的 card / body / bodyChars 进审批条目，toolCall 摘要里没有正文", async () => {
+    await boot();
+    const { feed, rowId } = feedOf();
+    feed.beginTurn("1-1", { text: "go" });
+    feed.permission("p-plan", {
+      id: "p-plan",
+      sessionId: "s",
+      createdAt: 1,
+      options: [{ optionId: "approve", name: "Approve", kind: "allow_once" }],
+      toolCall: { toolCallId: "t-plan", title: "Plan", kind: "switch_mode" },
+      origin: "ext",
+      card: "plan",
+      body: "# Plan\n1. Make the file\n",
+      bodyChars: 99_000,
+    } as never);
+    const approval = items(rowId).find((i) => i.kind === "approval");
+    expect(approval).toMatchObject({
+      card: "plan",
+      body: "# Plan\n1. Make the file\n",
+      bodyChars: 99_000,
+    });
+    expect(
+      JSON.stringify((approval as { toolCall?: unknown }).toolCall),
+    ).not.toContain("Make the file");
+  });
+
   it("图片落成 blob，条目里没有 base64；工具中间状态与 diff 按 toolCallId 合并", async () => {
     await boot();
     const { feed, rowId } = feedOf();

@@ -57,6 +57,7 @@ import {
 import {
   type AcpElicitationSettlement,
   AcpError,
+  type AcpSpawnOptions,
   type AcpExit,
   type AcpPendingElicitation,
   type AcpPendingPermission,
@@ -380,6 +381,8 @@ export interface AcpStartOptions {
   ) => void;
   /** 接 `terminal/*`（B9）；缺席 = 不声明终端能力。 */
   readonly onTerminal?: AcpTerminalHandler;
+  /** 这家要人决定的扩展请求（适配器表的 `extRequests`）；缺席 = 没有。 */
+  readonly extRequests?: AcpSpawnOptions["extRequests"];
   readonly onStderr?: (text: string) => void;
   readonly onExit?: (exit: AcpExit) => void;
 }
@@ -578,6 +581,9 @@ export async function startAcp(
       cwd: launch.cwd,
       ...(launch.env === undefined ? {} : { env: launch.env }),
       clientInfo: ACP_CLIENT_INFO,
+      ...(options.extRequests === undefined
+        ? {}
+        : { extRequests: options.extRequests }),
       ...callbacks,
     });
   }
@@ -1243,6 +1249,9 @@ export function adapterStartOptions(
     env,
     ...(mcpServers.length === 0 ? {} : { mcpServers }),
     ...(sessionMeta === undefined ? {} : { sessionMeta }),
+    ...(adapter.extRequests === undefined
+      ? {}
+      : { extRequests: adapter.extRequests }),
     agentId: adapter.agentId,
     program: target?.program ?? resolved,
     args: [...(target?.args ?? []), ...plan.args],

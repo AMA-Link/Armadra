@@ -5,6 +5,7 @@ import {
   roleFlags,
 } from "@armadra/shared";
 
+import { type AcpExtRequestSpec, GROK_EXIT_PLAN_MODE } from "./ext-requests";
 import { type PermissionMode, PERMISSION_MODES } from "../agent/launch";
 import {
   type AgentId,
@@ -116,6 +117,12 @@ export interface AcpAdapter {
   readonly sessionMeta?: (
     input: AcpSessionMetaInput,
   ) => AcpSessionMeta | undefined;
+  /**
+   * 这家会发给客户端、要人决定的 `_` 开头的扩展请求（方法名 → 怎么呈现、怎么应
+   * 答，见 `ext-requests.ts`）。缺席 = 没有。客户端不声明 `features.extRequest` 时
+   * 不传回调，行为不变。
+   */
+  readonly extRequests?: Readonly<Record<string, AcpExtRequestSpec>>;
   /** 前台进程门认的 argv[0] basename（会话 pid 就是适配器 pid）。 */
   readonly expectedProcess: readonly string[];
   /**
@@ -239,8 +246,9 @@ export const ACP_ADAPTERS: readonly AcpAdapter[] = [
     modes: ACP_MODE_TABLE.agy,
     // 画布工具走 `session/new.mcpServers`（stdio 被接受、模型看得到工具）。终端注入
     // 在 `agy acp` 下没有对应物（没有 `--settings`；`--add-dir` 的零写入 hook 实测不可行，
-    // 见契约 §120），所以不复用。画布说明（`_meta.antigravity.systemPrompt.append`）要等客户端能带
-    // `_meta`（AMA-Link/armadra-agent#327）；在那之前不带 `sessionMeta`。
+    // 见契约 §120），所以不复用。画布说明（`_meta.antigravity.systemPrompt.append`）：客户端
+    // 现在已经能带 `_meta`（armadra-agent#327，固定版本声明了 `features.sessionMeta`），
+    // 这里还没有 `sessionMeta`，所以没有发。
     injection: { mcp: true, reuse: [] },
     expectedProcess: ["agy"],
     canvasTools: "mcp",
@@ -257,12 +265,16 @@ export const ACP_ADAPTERS: readonly AcpAdapter[] = [
     // sessionId 是同一个 UUIDv7；`session/load`（回放历史）与 `session/resume` 都有。
     sessionId: "same",
     resume: "load",
-    // 全自动走启动旗标 `--always-approve`；`_meta.yoloMode` 等 armadra-agent 的会话
-    // `_meta` 通道，到时在这里加 `sessionMeta`。
+    // 全自动走启动旗标 `--always-approve`。客户端现在已经能带 `_meta`（固定版本声明了
+    // `features.sessionMeta`），但这里还没有 `sessionMeta`（`_meta.rules` / `yoloMode` /
+    // `pluginDirs` 一个都没发），见 Armadra#1035。
     modes: ACP_MODE_TABLE.grok,
     // 画布工具走 stdio `mcpServers`（实测 `mcp_server_connected`）。规则、插件目录
-    // 的 `_meta` 注入与终端的 `--rules` / `--allow` 在 G2 与 `_meta` 通道之后。
+    // 的 `_meta` 注入还没接（Armadra#1035）；终端的 `--rules` / `--allow` 在 §123。
     injection: { mcp: true, reuse: [] },
+    // 计划审批（plan 模式提交计划）：先接上管线，plan 模式本身仍关着（见 `NO_ACP_LANDING`）
+    // 到应答形状用真账号核对之后再开（Armadra#1021）。
+    extRequests: { "_x.ai/exit_plan_mode": GROK_EXIT_PLAN_MODE },
     expectedProcess: ["grok", "grok-native"],
     canvasTools: "mcp",
   },

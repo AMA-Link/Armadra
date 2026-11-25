@@ -315,6 +315,15 @@ export const timelineApprovalItemSchema = z.object({
   protocol: z.string().max(40),
   toolCallId: z.string().max(200).optional(),
   toolCall: timelineApprovalCallSchema.optional(),
+  /**
+   * core 自己写的卡片种类（`holdExt`，Agent 写不进来）：`plan` = 计划审批，页面据此
+   * 换成本地化的标题并显示 `body`。不取自 Agent 的请求体。
+   */
+  card: z.literal("plan").optional(),
+  /** 计划卡的正文：纯文本，core 已去掉控制字符、截到 64K 字符。 */
+  body: z.string().max(70_000).optional(),
+  /** 正文被截断时，原文有多少字符（页面写「已截断，共 N 字符」）。 */
+  bodyChars: z.number().int().nonnegative().optional(),
   options: z.array(timelineApprovalOptionSchema),
   state: timelinePendingStateSchema,
   answer: z.object({ optionId: z.string().max(200).optional() }).optional(),
