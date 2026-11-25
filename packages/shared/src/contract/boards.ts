@@ -210,7 +210,7 @@ export const boards = {
   delete: oc
     .input(boardRef)
     .output(z.void())
-    .errors(errors.pick("forbidden", "not_found", "conflict"))
+    .errors(errors.pick("forbidden", "not_found"))
     .meta(
       meta({
         scope: "canvas:write",
