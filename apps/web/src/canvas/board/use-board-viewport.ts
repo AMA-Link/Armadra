@@ -23,11 +23,10 @@ export function useBoardViewportSync(board: DomBoard): void {
       timer = null;
       const latest = pending;
       if (!latest || isOpeningCamera(latest)) return;
-      useCanvasStore.getState().setViewport({
-        x: latest.x,
-        y: latest.y,
-        zoom: clampZoom(latest.zoom),
-      });
+      useCanvasStore.getState().setViewport(
+        { x: latest.x, y: latest.y, zoom: clampZoom(latest.zoom) },
+        { source: "camera" },
+      );
     };
     const stops = [
       board.on("camera", (state) => {

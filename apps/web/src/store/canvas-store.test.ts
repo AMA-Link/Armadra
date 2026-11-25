@@ -865,6 +865,27 @@ describe("setViewport", () => {
     });
     expect(state().saveState).toBe("saved");
   });
+
+  it("相机回写（source: camera）不把相机推回去；程序化写入照推（#1028）", async () => {
+    const { setFlow } = await import("../canvas/flow/flow-context");
+    load([makeNode("sticky")]);
+    const push = vi.fn(() => Promise.resolve(true));
+    // 相机还停在动画中途的一帧，和回写的值不同。
+    setFlow({
+      getViewport: () => ({ x: 100, y: 100, zoom: 1 }),
+      setViewport: push,
+    } as never);
+    try {
+      state().setViewport({ x: 40, y: -20, zoom: 0.5 }, { source: "camera" });
+      expect(push).not.toHaveBeenCalled();
+      expect(state().document?.board.viewport.x).toBe(40);
+
+      state().setViewport({ x: 7, y: 8, zoom: 1 });
+      expect(push).toHaveBeenCalledWith({ x: 7, y: 8, zoom: 1 });
+    } finally {
+      setFlow(null);
+    }
+  });
 });
 
 /**
