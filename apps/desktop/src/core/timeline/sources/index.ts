@@ -410,6 +410,11 @@ export class SourceManager {
   }
 
   private dropSlot(open: OpenSlot): void {
+    // 先出表再 `stop()`：stop 里同步上报会敲门铃叫回这里，槽还在表里就会再 stop
+    // 一次，无限递归。
+    if (this.slots.get(open.sessionId) === open) {
+      this.slots.delete(open.sessionId);
+    }
     try {
       open.slot.stop();
     } catch (error) {
@@ -418,7 +423,6 @@ export class SourceManager {
         error: error instanceof Error ? error.message : String(error),
       });
     }
-    this.slots.delete(open.sessionId);
   }
 
   /* ------------------------------ 会话与来源 ------------------------------ */
