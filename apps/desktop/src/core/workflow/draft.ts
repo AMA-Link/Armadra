@@ -1,3 +1,4 @@
+import { globsOverlap, validateOwnsGlob } from "@armadra/agent/workflow";
 import { DomainError } from "../workspaces/support";
 import { STEP_NOTE_RESERVE } from "./contract";
 import {
@@ -229,7 +230,6 @@ function parseContract(raw: unknown, roleIds: ReadonlySet<string>) {
       if (!roleIds.has(roleId)) {
         throw invalidDraft(`contract.owns 的 \`${roleId}\` 不是草案里的角色。`);
       }
-      // glob 语法与跨角色冲突不在这里查（C2：ama 的 `validateOwnsGlob` / `globsOverlap`）。
       owns[roleId] =
         strings(
           globs,
@@ -238,12 +238,47 @@ function parseContract(raw: unknown, roleIds: ReadonlySet<string>) {
           WORKFLOW_LIMITS.ownsGlob,
         ) ?? [];
     }
+    checkOwnsGlobs(owns);
   }
   const contract: WorkflowContract = {
     ...(contractText === null ? {} : { text: contractText }),
     ...(owns === undefined ? {} : { owns }),
   };
   return contract;
+}
+
+/**
+ * glob 的语法与跨角色冲突，两个函数都来自 ama（`@armadra/agent/workflow`），Armadra
+ * 不自写：同一份方言，ama 单独运行与画布上运行对同一份文件的结论一致。不改写 glob。
+ * 同一角色自己的几条 glob 可以相交。
+ */
+function checkOwnsGlobs(owns: Readonly<Record<string, readonly string[]>>) {
+  const entries = Object.entries(owns);
+  for (const [roleId, globs] of entries) {
+    for (const glob of globs) {
+      const reason = validateOwnsGlob(glob);
+      if (reason !== undefined) {
+        throw invalidDraft(
+          `contract.owns 里 \`${roleId}\` 的 \`${glob}\` 不是合法的 glob：${reason}。`,
+        );
+      }
+    }
+  }
+  for (let left = 0; left < entries.length; left += 1) {
+    const [roleA, globsA] = entries[left] as [string, readonly string[]];
+    for (let right = left + 1; right < entries.length; right += 1) {
+      const [roleB, globsB] = entries[right] as [string, readonly string[]];
+      for (const a of globsA) {
+        for (const b of globsB) {
+          if (globsOverlap(a, b)) {
+            throw invalidDraft(
+              `contract.owns 里 \`${roleA}\` 的 \`${a}\` 与 \`${roleB}\` 的 \`${b}\` 可能指向同一个文件。`,
+            );
+          }
+        }
+      }
+    }
+  }
 }
 
 function parseVerify(raw: unknown, where: string): WorkflowVerify {
