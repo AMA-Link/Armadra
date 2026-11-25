@@ -28,6 +28,7 @@ import { DomainError } from "../workspaces/support";
 import {
   type GitReader,
   type RemoteHostReader,
+  type RemoteBranchesReader,
   type RemoteStatusReader,
   WorkspaceRepositoryService,
 } from "./workspace";
@@ -99,6 +100,7 @@ async function harness(options: {
   warmDeadlineMs?: number;
   git?: GitReader;
   remoteStatus?: RemoteStatusReader;
+  remoteBranches?: RemoteBranchesReader;
 }): Promise<Harness> {
   const fixture = await githubFixture();
   closing.push(() => fixture.close());
@@ -158,6 +160,9 @@ async function harness(options: {
     ...(options.remoteStatus === undefined
       ? {}
       : { remoteStatus: options.remoteStatus }),
+    ...(options.remoteBranches === undefined
+      ? {}
+      : { remoteBranches: options.remoteBranches }),
     ...(options.remoteHost === undefined
       ? {}
       : { remoteHost: options.remoteHost }),
@@ -962,6 +967,99 @@ describe("branchAt（契约 §116）", () => {
     });
     expect(paths).toEqual(["pkg"]);
     expect(await h.service.branchAt(WS, "/elsewhere")).toBeNull();
+  });
+
+  const FORK_REMOTES = [
+    ...HOST_REMOTES,
+    {
+      name: "me",
+      fetchUrl: "https://[redacted]@github.com/dev/app.git",
+      pushUrl: "",
+      redacted: true,
+    },
+  ];
+  const table = (branches: unknown[]) => async () => ({ branches });
+
+  it("执行主机：fork 分支按 upstream 认 head 仓库与分支名", async () => {
+    const paths: string[] = [];
+    const h = await harness({
+      repo: { remotes: "" },
+      remoteHost: async () => FORK_REMOTES,
+      remoteStatus: async () => ({ branch: "local-name" }),
+      remoteBranches: async (_target, path) => {
+        paths.push(path);
+        return {
+          branches: [
+            {
+              name: "local-name",
+              remote: false,
+              upstream: "refs/remotes/me/feat/x",
+              symbolicTarget: null,
+            },
+            {
+              name: "origin/HEAD",
+              remote: true,
+              upstream: null,
+              symbolicTarget: "refs/remotes/origin/main",
+            },
+          ],
+        };
+      },
+    });
+    expect(await h.service.branchAt(WS, h.root)).toEqual({
+      repo: "github.com/acme/app",
+      branch: "feat/x",
+      head: { repo: "github.com/dev/app", owner: "dev", name: "app" },
+    });
+    expect(paths).toEqual(["."]);
+  });
+
+  it("执行主机：upstream 在基仓库、或分支表读不到时按同名分支", async () => {
+    const same = await harness({
+      repo: { remotes: "" },
+      remoteHost: async () => FORK_REMOTES,
+      remoteStatus: async () => ({ branch: "feat/y" }),
+      remoteBranches: table([
+        {
+          name: "feat/y",
+          remote: false,
+          upstream: "refs/remotes/origin/feat/z",
+        },
+      ]),
+    });
+    expect(await same.service.branchAt(WS, same.root)).toMatchObject({
+      branch: "feat/z",
+      head: { repo: "github.com/acme/app" },
+    });
+    const broken = await harness({
+      repo: { remotes: "" },
+      remoteHost: async () => FORK_REMOTES,
+      remoteStatus: async () => ({ branch: "feat/y" }),
+      remoteBranches: async () => {
+        throw new Error("unsupported");
+      },
+    });
+    expect(await broken.service.branchAt(WS, broken.root)).toMatchObject({
+      branch: "feat/y",
+      head: { repo: "github.com/acme/app" },
+    });
+  });
+
+  it("执行主机：fork 的默认分支与 origin/HEAD 指向的分支答 null", async () => {
+    const h = await harness({
+      repo: { remotes: "" },
+      remoteHost: async () => FORK_REMOTES,
+      remoteStatus: async () => ({ branch: "dev" }),
+      remoteBranches: table([
+        { name: "dev", remote: false, upstream: "refs/remotes/origin/dev" },
+        {
+          name: "origin/HEAD",
+          remote: true,
+          symbolicTarget: "refs/remotes/origin/dev",
+        },
+      ]),
+    });
+    expect(await h.service.branchAt(WS, h.root)).toBeNull();
   });
 
   it("执行主机不可达或游离 HEAD 答 null", async () => {
