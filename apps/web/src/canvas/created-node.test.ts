@@ -12,7 +12,7 @@ import { useCanvasStore } from "../store/canvas-store";
 import { dispatchWorkspaceEvent } from "../api/events";
 import {
   PENDING_TTL_MS,
-  TERMINAL_INPUT_CLASS,
+  EDITING_ATTR,
   applyPendingReveal,
   clearPendingReveal,
   isTextEntry,
@@ -62,28 +62,31 @@ describe("shouldRevealCreatedNode", () => {
 });
 
 describe("isTextEntry", () => {
-  const element = (
-    tagName: string,
-    className?: string,
-  ): Parameters<typeof isTextEntry>[0] => ({
-    tagName,
-    isContentEditable: false,
-    classList: { contains: (name: string) => name === className },
+  const field = (tag: string, marked: boolean): HTMLElement => {
+    const el = document.createElement(tag);
+    if (marked) el.setAttribute(EDITING_ATTR, "");
+    return el;
+  };
+
+  it("便签、白板文字、节点改名的输入框（带标记）算编辑", () => {
+    expect(isTextEntry(field("textarea", true))).toBe(true);
+    expect(isTextEntry(field("input", true))).toBe(true);
   });
 
-  it("输入框与富文本算输入", () => {
-    expect(isTextEntry(element("INPUT"))).toBe(true);
-    expect(isTextEntry(element("TEXTAREA"))).toBe(true);
-    expect(isTextEntry({ tagName: "DIV", isContentEditable: true })).toBe(true);
-  });
-
-  it("终端不算：Agent 正是从那里发的动词，换选区既不打断它也不抢焦点", () => {
-    expect(isTextEntry(element("TEXTAREA", TERMINAL_INPUT_CLASS))).toBe(false);
+  it("节点体里的输入框不算：ACP 输入框、编辑器、终端发完消息焦点还在那里（#1028）", () => {
+    expect(isTextEntry(field("textarea", false))).toBe(false);
+    expect(isTextEntry(field("input", false))).toBe(false);
+    const editable = field("div", false);
+    editable.setAttribute("contenteditable", "true");
+    expect(isTextEntry(editable)).toBe(false);
+    const xterm = field("textarea", false);
+    xterm.className = "xterm-helper-textarea";
+    expect(isTextEntry(xterm)).toBe(false);
   });
 
   it("没有焦点元素、或焦点在画布本身时不算输入", () => {
     expect(isTextEntry(null)).toBe(false);
-    expect(isTextEntry(element("DIV"))).toBe(false);
+    expect(isTextEntry(field("div", false))).toBe(false);
   });
 });
 
@@ -177,6 +180,20 @@ describe("node.created", () => {
     expect(setCenter).not.toHaveBeenCalled();
     // 丢掉而不是继续等：节点已经在画布上，不差这一次相机。
     expect(pendingRevealId()).toBe(null);
+  });
+
+  it("焦点停在节点体的输入框（ACP 输入框）里时照样跟过去，在便签 / 改名里则不抢（#1028）", () => {
+    useCanvasStore.getState().setDocument(documentWith([CREATED]));
+    const composer = document.createElement("textarea");
+    document.body.append(composer);
+    composer.focus();
+    expect(noteCreatedNode({ boardId: BOARD, nodeId: CREATED })).toBe(true);
+
+    setCenter.mockClear();
+    composer.setAttribute(EDITING_ATTR, "");
+    expect(noteCreatedNode({ boardId: BOARD, nodeId: CREATED })).toBe(false);
+    expect(setCenter).not.toHaveBeenCalled();
+    composer.remove();
   });
 
   it("等太久就不等了", () => {
