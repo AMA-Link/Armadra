@@ -16,7 +16,9 @@
  * the board, followed with the `wait` verb (`runners.ts`, contract §15.5) —
  * and, when the core set `ARMADRA_PERM_WAIT_SECS`, an approval broker that
  * lets a person answer ama's permission requests on the canvas
- * (`approvals.ts`). Neither ever answers an approval itself.
+ * (`approvals.ts`). Neither ever answers an approval itself. On an ama with
+ * host-api 1.5 it also provides `HostApi.workflows` (`workflows.ts`): a project
+ * workflow file is started by the core, and the run's gates stay on the canvas.
  */
 
 // Types only: the bundle carries none of ama's code, and ama refuses a
@@ -33,6 +35,7 @@ import { addInstructions } from "./instructions.js";
 import { TOOLS_HIDDEN_BY_RESOURCES, registerResources } from "./resources.js";
 import { provideRunners } from "./runners.js";
 import { registerTools } from "./tools.js";
+import { provideWorkflows } from "./workflows.js";
 
 /** The adapter's id in ama's status line and logs. */
 export const ADAPTER_ID = "armadra";
@@ -54,6 +57,7 @@ export function create(api: HostApi): HostAdapter | undefined {
   addInstructions(api, { resources });
   const unsubscribe = subscribeEvents(api);
   unsubscribe.push(provideRunners(api));
+  unsubscribe.push(provideWorkflows(api));
   unsubscribe.push(injectAfterCompaction(api, { resources }));
   installBroker(api);
   return {

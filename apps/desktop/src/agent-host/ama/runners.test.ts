@@ -108,6 +108,19 @@ describe("the canvas runners", () => {
     expect(resultKeyFor("s:t1", 2)).toBe("task:s:t1:result:2");
   });
 
+  it("forwards the requested tier verbatim as --tier, and nothing when absent", async () => {
+    const nodes = new Map<string, string>();
+    const core = scriptedCore((call) =>
+      call.verb === "open-agent" ? openAgentAnswer(nodes, call) : ok({}),
+    );
+    const runner = canvasRunner("claude", deps(core.control));
+    await runner.start(request({ taskId: "a", tier: "strong" } as never));
+    await runner.start(request({ taskId: "b" }));
+    const open = core.calls.filter((call) => call.verb === "open-agent");
+    expect(open[0]!.args.tier).toBe("strong");
+    expect(open[1]!.args).not.toHaveProperty("tier");
+  });
+
   it("starts idempotently: the same task id is the same node", async () => {
     const nodes = new Map<string, string>();
     const core = scriptedCore((call) =>

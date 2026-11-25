@@ -3,7 +3,7 @@ import { canSelectModel } from "../agent/launch";
 import type { WorkflowDraft, WorkflowRole, WorkflowTier } from "./types";
 
 /**
- * 角色档位到启动参数的映射（契约 §15.8）。纯函数。
+ * 角色档位到启动参数的映射（契约 §119.5）。纯函数。
  *
  * - `native`：ama 自己认 `--tier`；
  * - `mapped`：映射成该 CLI 的模型别名；

@@ -148,3 +148,76 @@ export function workflowVerdict(
     { runId: entry.runId, stepId: entry.stepId, round: entry.round },
   );
 }
+
+/**
+ * `workflow-run`（§2.9、契约 §122）：把调用方工作空间里一份项目级工作流文件交给
+ * 画布引擎起跑。文件由 core 自己读，调用方只给 id 与参数；拒绝码同
+ * `POST /api/workflows/runs`。
+ */
+export async function workflowRun(
+  _context: CollabContext,
+  caller: Caller,
+  args: Args,
+): Promise<Outcome> {
+  const domain = workflowDomain();
+  if (domain === undefined) {
+    throw new Refused(503, "internal_error", "工作流域还没有装配好。");
+  }
+  const file = args.text("file");
+  if (file === undefined) {
+    throw badRequest("workflow-run 需要 --file <.ama/workflows 里的文件 id>。");
+  }
+  const params = args.value("params");
+  let parsed: unknown;
+  if (params !== undefined) {
+    try {
+      parsed = typeof params === "string" ? JSON.parse(params) : params;
+    } catch {
+      throw badRequest("--params 必须是 JSON 对象。");
+    }
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed)
+    ) {
+      throw badRequest("--params 必须是 JSON 对象。");
+    }
+  }
+  const hash = args.text("hash");
+  const runId = args.text("run-id");
+  let outcome;
+  try {
+    outcome = await domain.service.runFile(
+      {
+        workspaceId: caller.node.workspaceId,
+        boardId: caller.node.boardId,
+        nodeId: caller.node.id,
+      },
+      {
+        file,
+        hash,
+        runId,
+        params: parsed,
+        dryRun: args.flag("dry-run"),
+      },
+    );
+  } catch (error) {
+    if (error instanceof DomainError) {
+      throw new Refused(error.status, error.code, error.message);
+    }
+    throw error;
+  }
+  if (outcome.dryRun) {
+    return result(`（演练）工作流「${outcome.title}」可以起跑，没有起。`, {
+      dryRun: true,
+    });
+  }
+  const { run, template, url } = outcome;
+  return result(`工作流「${template.name}」已经起跑，在画布上看进度。`, {
+    runId: run.id,
+    templateId: template.id,
+    templateVersion: run.templateVersion,
+    status: run.status,
+    url,
+  });
+}

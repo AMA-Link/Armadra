@@ -1,0 +1,8 @@
+{
+  "id": "agent-workflow-v2-e2e",
+  "tier": "a",
+  "script": "tools/probes/agent-e2e.mjs",
+  "args": ["{out}", "--only", "18"],
+  "requires": ["tmux"],
+  "timeoutMinutes": 10
+}

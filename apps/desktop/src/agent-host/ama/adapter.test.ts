@@ -37,12 +37,14 @@ import {
  */
 function fakeApi(
   env: NodeJS.ProcessEnv,
-  options: { readonly resources?: boolean } = {},
+  options: { readonly resources?: boolean; readonly workflows?: boolean } = {},
 ) {
   const tools: ToolDefinition[] = [];
   const instructions: { text?: string }[] = [];
   const handlers = new Map<string, (event: unknown) => unknown>();
   const resources: ResourceDefinition[] = [];
+  const provided: unknown[] = [];
+  const released = vi.fn();
   const api = {
     version: 1,
     agent: { name: "ama", version: "0.6.2" },
@@ -74,6 +76,16 @@ function fakeApi(
           },
         }
       : {}),
+    ...(options.workflows === true
+      ? {
+          workflows: {
+            provide: (handler: unknown) => {
+              provided.push(handler);
+              return released;
+            },
+          },
+        }
+      : {}),
     events: {
       on: (name: string, handler: (event: unknown) => unknown) => {
         handlers.set(name, handler);
@@ -85,7 +97,7 @@ function fakeApi(
     ui: { notify: vi.fn(), setStatus: vi.fn() },
     log: vi.fn(),
   } as unknown as HostApi;
-  return { api, tools, instructions, handlers, resources };
+  return { api, tools, instructions, handlers, resources, provided, released };
 }
 
 describe("the ama host adapter", () => {
@@ -119,6 +131,27 @@ describe("the ama host adapter", () => {
     expect([...handlers.keys()].sort()).toEqual([...AMA_EVENTS].sort());
     adapter?.dispose?.();
     expect(handlers.size).toBe(0);
+  });
+});
+
+describe("the workflow handler (host-api 1.5)", () => {
+  it("is provided with versions [2] and released on dispose", () => {
+    const { api, provided, released } = fakeApi(
+      { ARMADRA_NODE_ID: "node-1" },
+      { workflows: true },
+    );
+    const adapter = create(api);
+    expect(provided).toHaveLength(1);
+    expect((provided[0] as { versions: number[] }).versions).toEqual([2]);
+    expect(released).not.toHaveBeenCalled();
+    adapter?.dispose?.();
+    expect(released).toHaveBeenCalledTimes(1);
+  });
+
+  it("registers nothing on an ama without workflows.provide", () => {
+    const { api, provided } = fakeApi({ ARMADRA_NODE_ID: "node-1" });
+    expect(create(api)?.id).toBe(ADAPTER_ID);
+    expect(provided).toEqual([]);
   });
 });
 

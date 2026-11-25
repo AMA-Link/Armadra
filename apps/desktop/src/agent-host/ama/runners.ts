@@ -79,6 +79,16 @@ const MAX_TRACKED = 256;
 
 type PermissionMode = SubagentRunRequest["mode"];
 
+/**
+ * ama 请求的档位（`SubagentRunRequest.tier`，@armadra/agent 0.22 起）原样转成
+ * `open-agent --tier`；解释交给 core（`model` 同给时 `model` 优先）。
+ * 0.21 的类型里没有这个字段，所以用一个窄的本地类型读，两边都能编译。
+ */
+function tierArg(request: SubagentRunRequest): Record<string, JsonValue> {
+  const tier = (request as { readonly tier?: unknown }).tier;
+  return typeof tier === "string" && tier !== "" ? { tier } : {};
+}
+
 /** ama's permission mode → the canvas CLI's (§5.3's table). */
 export function canvasMode(mode: PermissionMode): string {
   switch (mode) {
@@ -407,6 +417,7 @@ export function canvasRunner(agentId: string, deps: RunnerDeps): HostRunner {
         ...itemTitle(request.prompt),
         name: `${agentId.replace(/^custom:/, "")} · ${shortId}`.slice(0, 80),
         ...(request.model === undefined ? {} : { model: request.model }),
+        ...tierArg(request),
       };
       const mode = canvasMode(request.mode);
       // What the core may turn down, each with its own code; dropping one is

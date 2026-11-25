@@ -113,6 +113,21 @@ describe("the verb tool table", () => {
     expect(tool.inputSchema.required).toEqual(["id"]);
   });
 
+  it("types workflow-run: file required, params an object, open-agent takes a tier", () => {
+    const run = toolByName("canvas_workflow_run")!;
+    expect(run.inputSchema.required).toEqual(["file"]);
+    expect(run.inputSchema.properties?.["params"]).toMatchObject({
+      type: "object",
+    });
+    expect(toWireArgs(run, { file: "flow", params: { scope: "src" } })).toEqual(
+      { ok: { file: "flow", params: { scope: "src" } } },
+    );
+    expect(toWireArgs(run, {})).toHaveProperty("error");
+    expect(
+      toolByName("canvas_open_agent")!.inputSchema.properties,
+    ).toHaveProperty("tier");
+  });
+
   it("marks browser tools long and generates their flags from the spec", () => {
     const click = toolByName("browser_click")!;
     expect(click.long).toBe(true);

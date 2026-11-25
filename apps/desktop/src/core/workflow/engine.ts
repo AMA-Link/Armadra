@@ -119,6 +119,8 @@ export interface StartRunRequest {
    * 操作标识推出它，重试与复核据此认出「这次已经起过了」。
    */
   readonly runId?: string | undefined;
+  /** 托管运行：发起它的节点（`workflow-run` 的调用方）。 */
+  readonly startedByNodeId?: string | undefined;
 }
 
 export class WorkflowEngine {
@@ -173,12 +175,20 @@ export class WorkflowEngine {
   /* --------------------------------- 起跑 --------------------------------- */
 
   /**
-   * 起一次运行：先把能当场拒绝的全拒掉（参数、权限模式、超长），再建 Frame
-   * 与节点、落库、起节点、推第一步。
+   * 起跑前能当场拒绝的检查（参数、超长、角色 Agent 与权限模式、画布存在）。
+   * 起跑与 dry-run 共用；没有任何写入，文件模板要等它通过才落库。
    */
-  async startRun(request: StartRunRequest): Promise<RunRow> {
+  precheck(request: {
+    readonly template: TemplateRow["template"];
+    readonly params?: unknown;
+    readonly boardId?: string | undefined;
+  }): {
+    readonly params: ReturnType<typeof resolveParams>;
+    readonly boardId: string;
+    readonly workspaceId: string;
+  } {
     const collab = this.requireCollab();
-    const template = request.template.template;
+    const template = request.template;
     const params = resolveParams(template, request.params);
     checkRendered(template, params);
     for (const role of template.roles) {
@@ -209,7 +219,21 @@ export class WorkflowEngine {
     if (workspaceId === undefined) {
       throw new DomainError(404, "not_found", "没有这块画布。");
     }
+    return { params, boardId, workspaceId };
+  }
 
+  /**
+   * 起一次运行：先把能当场拒绝的全拒掉（参数、权限模式、超长），再建 Frame
+   * 与节点、落库、起节点、推第一步。
+   */
+  async startRun(request: StartRunRequest): Promise<RunRow> {
+    const collab = this.requireCollab();
+    const template = request.template.template;
+    const { params, boardId, workspaceId } = this.precheck({
+      template,
+      params: request.params,
+      boardId: request.boardId,
+    });
     const runId = request.runId ?? uuidV7();
     const tierOk = this.options.amaSupportsTier?.() ?? false;
     const roles: LayoutRole[] = template.roles.map((role) => {
@@ -245,6 +269,7 @@ export class WorkflowEngine {
       params,
       roles: layout.roles,
       startedAt: this.clock(),
+      startedByNodeId: request.startedByNodeId ?? null,
     });
     const launch =
       this.options.launch ??

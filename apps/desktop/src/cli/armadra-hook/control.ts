@@ -194,6 +194,19 @@ export function verbTimeoutMs(): number {
 }
 
 /**
+ * `workflow-run` awaits the Frame, the role nodes and the first step's
+ * delivery before it answers (§2.9), which on a loaded machine outlives the
+ * plain verb budget. A timeout makes `send` resend to the next candidate, so
+ * the verb also takes a stable `--run-id` (a repeat answers the run already
+ * started) and gets this longer budget.
+ */
+export const WORKFLOW_RUN_TIMEOUT_MS = 60_000;
+
+export function workflowRunTimeoutMs(): number {
+  return Math.max(WORKFLOW_RUN_TIMEOUT_MS, totalTimeoutMs());
+}
+
+/**
  * `canvas wait` long-polls in the core for its `--timeout` (seconds; the
  * core's `DEFAULT_WAIT_SECONDS` / `MAX_WAIT_SECONDS` in
  * `core/collab/control/wait.ts`, which a test holds these to). Under the plain
@@ -217,6 +230,9 @@ export function callTimeoutMs(
 ): number {
   if (group === "browser") return browserTimeoutMs();
   if (group === "canvas" && verb === "wait") return waitTimeoutMs(args);
+  if (group === "canvas" && verb === "workflow-run") {
+    return workflowRunTimeoutMs();
+  }
   return verbTimeoutMs();
 }
 

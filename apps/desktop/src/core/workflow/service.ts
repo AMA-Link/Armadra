@@ -58,6 +58,7 @@ import {
 } from "../collab/router-replies";
 import { tierHints } from "./tier";
 import { stageOf } from "./work-items";
+import { deepLink } from "../push/triggers";
 import { forgeService } from "../forge/registry";
 import type { ForgeService } from "../forge/service";
 import {
@@ -96,6 +97,7 @@ export interface WorkflowServiceOptions {
 }
 
 const RULES = { validAgentId };
+const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** 一个来源加上规则文件此刻的状态与最近 20 条判定的统计。 */
 export interface SourceView {
@@ -347,6 +349,97 @@ export class WorkflowService {
     );
     pointTemplateAtFile(this.database, template.id, fileRef(workspace.id, id));
     return { path, id };
+  }
+
+  /**
+   * 托管运行（`workflow-run`，契约 §122）：core 自己读调用方工作空间的
+   * `.ama/workflows/<file>.md`，不收调用方给的草案。`hash` 给了且与读到的不同 →
+   * `409 workflow_file_changed`；模板与导入同一条路 upsert；在调用方画板起跑并
+   * 记发起节点。`dryRun` 读、校验、算参数，不落模板也不起跑。
+   */
+  async runFile(
+    caller: {
+      readonly workspaceId: string;
+      readonly boardId: string;
+      readonly nodeId: string;
+    },
+    body: {
+      readonly file: string;
+      readonly hash?: string | undefined;
+      /** 稳定的运行 id（UUID）：同一个 id 重复来，答已经起的那次，不再起第二次。 */
+      readonly runId?: string | undefined;
+      readonly params?: unknown;
+      readonly dryRun?: boolean;
+    },
+  ): Promise<
+    | { readonly dryRun: true; readonly title: string }
+    | {
+        readonly dryRun: false;
+        readonly run: RunRow;
+        readonly template: TemplateRow;
+        readonly url: string;
+      }
+  > {
+    const workspace = this.workspaceOf(caller.workspaceId);
+    const fileId = checkFileId(body.file);
+    const { draft, hash } = await readWorkflowFile(workspace, fileId);
+    if (body.hash !== undefined && body.hash !== hash) {
+      throw new DomainError(
+        409,
+        "workflow_file_changed",
+        "工作流文件在交给画布之后又被改过，请重新读取再起跑。",
+      );
+    }
+    if (body.runId !== undefined && !RUN_ID.test(body.runId)) {
+      throw new DomainError(400, "bad_request", "run-id 必须是 UUID。");
+    }
+    // 与真跑同一套前置检查；通过之前不碰模板库，被拒的起跑不留痕。
+    this.engine.precheck({
+      template: draft,
+      params: body.params,
+      boardId: caller.boardId,
+    });
+    if (body.dryRun === true) {
+      return { dryRun: true, title: draft.title };
+    }
+    if (body.runId !== undefined) {
+      const earlier = runById(this.database, body.runId);
+      if (earlier !== undefined) {
+        // 重试：上一次已经起了，原样答它（同一个 id 只属于起它的工作空间）。
+        if (earlier.workspaceId !== workspace.id) {
+          throw new DomainError(
+            409,
+            "run_id_taken",
+            "这个 run-id 已被别处用掉。",
+          );
+        }
+        return {
+          dryRun: false,
+          run: earlier,
+          template: this.template(earlier.templateId),
+          url: deepLink(earlier.workspaceId, earlier.frameId ?? undefined),
+        };
+      }
+    }
+    const { template } = upsertFileTemplate(
+      this.database,
+      fileRef(workspace.id, fileId),
+      draft,
+      this.clock(),
+    );
+    const run = await this.engine.startRun({
+      template,
+      params: body.params,
+      boardId: caller.boardId,
+      runId: body.runId,
+      startedByNodeId: caller.nodeId,
+    });
+    return {
+      dryRun: false,
+      run,
+      template,
+      url: deepLink(run.workspaceId, run.frameId ?? undefined),
+    };
   }
 
   deleteTemplate(id: string): void {
