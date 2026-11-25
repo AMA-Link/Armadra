@@ -125,16 +125,22 @@ export function candidates(root: string): Candidate[] {
   unreadableRoots.delete(root);
   const next = new Map<string, Candidate[]>();
   const found: Candidate[] = [];
+  let missed = false;
   for (const name of groups) {
     if (found.length >= MAX_FILES_PER_PROVIDER) break;
     const group = join(root, name);
     const listed = groupCandidates(group);
     const kept = listed === "unreadable" ? previous?.get(group) : listed;
-    if (kept === undefined) continue;
+    // 这一组读不了、又没有上一趟可沿用：它的会话这一趟看不见，索引不能拿这份结果对账。
+    if (kept === undefined) {
+      missed = true;
+      continue;
+    }
     next.set(group, kept);
     found.push(...kept);
   }
   lastGood.set(root, next);
+  if (missed) unreadableRoots.add(root);
   return found;
 }
 

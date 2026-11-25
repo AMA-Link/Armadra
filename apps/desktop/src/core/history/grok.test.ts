@@ -241,6 +241,36 @@ describe("Grok 会话索引", () => {
     expect(unreadable(root)).toBe(false);
   });
 
+  it("某个分组读失败：沿用上一趟那一组；从没读成功过的组标记 unreadable，不影响读得了的组", () => {
+    const keep = writeSession("keep", { group: "g-keep" });
+    const flaky = writeSession("flaky", { group: "g-flaky" });
+    const root = roots()[0] as string;
+    expect(
+      candidates(root)
+        .map((one) => one.path)
+        .sort(),
+    ).toEqual([flaky, keep].sort());
+    if (process.platform === "win32" || process.getuid?.() === 0) return;
+    const group = join(root, "g-flaky");
+    chmodSync(group, 0o000);
+    try {
+      expect(
+        candidates(root)
+          .map((one) => one.path)
+          .sort(),
+      ).toEqual([flaky, keep].sort());
+      expect(unreadable(root)).toBe(false);
+      // 重启后第一趟：没有上一趟可沿用，读得了的组照常列出，索引这一趟不对账。
+      forgetListingsForTest();
+      expect(candidates(root).map((one) => one.path)).toEqual([keep]);
+      expect(unreadable(root)).toBe(true);
+    } finally {
+      chmodSync(group, 0o755);
+    }
+    expect(candidates(root)).toHaveLength(2);
+    expect(unreadable(root)).toBe(false);
+  });
+
   it("会话索引：读不了的根不对账（已有的行留着），根没了才清", () => {
     const database = memoryDatabase();
     writeSession(SID);
