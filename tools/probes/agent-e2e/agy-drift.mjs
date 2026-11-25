@@ -34,11 +34,8 @@ export const USED_FLAGS = {
     "--mode",
     "--dangerously-skip-permissions",
     "--model",
-    "--conversation",
-    "--add-dir",
-    "--settings",
   ],
-  acp: ["--dangerously-skip-permissions", "--add-dir"],
+  acp: ["--dangerously-skip-permissions"],
 };
 
 /** `agy --help` / `agy help acp` 里的长旗标名，排序去重。 */

@@ -1,3 +1,4 @@
+import { NON_INJECTED_AGENT_IDS } from "@armadra/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AgentFixture, agentFixture, callerFor } from "../agent/fixture";
 import { registerNodeChannelGate } from "../agent/registry";
@@ -191,10 +192,10 @@ describe("the gate chain", () => {
     });
   });
 
-  // 无注入的内置 CLI（agy）：它在 ACP 下跑完一轮、被切到终端之后，门链看到的是
+  // 无注入的内置 CLI（`NON_INJECTED_AGENT_IDS` 里的每一家）：它在 ACP 下跑完一轮、被切到终端之后，门链看到的是
   // 「没报过」（`driveTarget` 不把 ACP 留下的行算数），而这个 CLI 的注册表里没有
   // 状态通道——只剩显式的 `--unverified`，不会因为旧行写着「空闲」就放行。
-  it.each([["agy", "Antigravity"]])(
+  it.each([...NON_INJECTED_AGENT_IDS])(
     "refuses a terminal %s that was just switched over from ACP",
     async (id) => {
       const agy = fixture.agentNode("Peer", id);
@@ -312,6 +313,37 @@ describe("the gate chain", () => {
   it("refuses sending to yourself — a node is not in its own link document", async () => {
     const refused = refusal(await run(me, "send", { to: me, body: "x" }));
     expect(refused.code).toBe("NOT_LINKED");
+  });
+});
+
+// 第二道保险：状态通道说空闲、画面门又没认出对话框时，程序自己用 OSC 7501 报的
+// `blocked` 仍然拦得住。只做否决，不做放行。
+describe("a target the program itself reports as blocked", () => {
+  it("is queued as awaiting approval even though its state channel says idle", async () => {
+    target({ state: "idle" });
+    fixture.terminal.programs.set(peerSession, { state: "blocked" });
+    const body = ok(await send());
+    expect(body).toMatchObject({
+      outcome: "queued",
+      reason: "TARGET_AWAITING_APPROVAL",
+    });
+    expect(fixture.terminal.submits).toHaveLength(0);
+    const refused = refusal(await send({ "no-queue": true }));
+    expect(refused.code).toBe("TARGET_AWAITING_APPROVAL");
+    expect(fixture.terminal.submits).toHaveLength(0);
+  });
+
+  it("does not let any other self-reported state through or hold anything back", async () => {
+    target({ state: "idle" });
+    fixture.terminal.programs.set(peerSession, { state: "working" });
+    expect(ok(await send())).toMatchObject({ outcome: "delivered" });
+    // 状态通道说在忙时，程序报 `idle` 也放不了行。
+    fixture.terminal.submits.length = 0;
+    resetSendLimits();
+    target({ state: "busy" });
+    fixture.terminal.programs.set(peerSession, { state: "idle" });
+    expect(ok(await send())).toMatchObject({ outcome: "queued" });
+    expect(fixture.terminal.submits).toHaveLength(0);
   });
 });
 

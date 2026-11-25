@@ -1,6 +1,10 @@
 import {
+  closeSync,
   existsSync,
+  openSync,
+  readSync,
   utimesSync,
+  writeSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -27,6 +31,7 @@ import {
   forgetLastGoodForTest,
   forgetSweepForTest,
   isoOf,
+  listUnreadable,
   locate,
   parse,
   probe,
@@ -76,7 +81,7 @@ let previousHome: string | undefined;
 
 beforeEach(() => {
   forgetLastGoodForTest();
-  directory = mkdtempSync(join(tmpdir(), "armadra-agy-history-"));
+  directory = mkdtempSync(join(tmpdir(), "armadra-test-agy-history-"));
   home = join(directory, "home");
   mkdirSync(join(home, ".gemini", "antigravity-cli"), { recursive: true });
   dbPath = join(
@@ -465,8 +470,10 @@ describe("读失败不清空索引", () => {
   it("两次复制之间 WAL 被检查点删掉也算撕裂，重试", () => {
     const writer = tornSetup();
     try {
+      const attempts: number[] = [];
       setCopyHooksForTest({
         betweenCopies: (attempt) => {
+          attempts.push(attempt);
           if (attempt === 1) {
             writer.close();
             // 关库会检查点并删掉 `-wal`。
@@ -475,6 +482,8 @@ describe("读失败不清空索引", () => {
       });
       const found = candidates(dbPath).map((c) => c.path);
       expect(found.sort()).toEqual(["agy:c-old", "agy:c-wal"]);
+      // 走的是 ENOENT 那一支：第二次尝试读到的库已经没有 `-wal` 了。
+      expect(attempts).toEqual([1, 2]);
     } finally {
       try {
         writer.close();
@@ -550,6 +559,103 @@ describe("读失败不清空索引", () => {
     }
   });
 
+  it("只有 WAL 头里的 salt 变了（大小与 mtime 都没动）也算撕裂，重试", () => {
+    const writer = tornSetup();
+    try {
+      const walPath = `${dbPath}-wal`;
+      const attempts: number[] = [];
+      setCopyHooksForTest({
+        betweenCopies: (attempt) => {
+          attempts.push(attempt);
+          if (attempt !== 1) return;
+          const before = statSync(walPath);
+          const header = Buffer.alloc(24);
+          const descriptor = openSync(walPath, "r+");
+          try {
+            readSync(descriptor, header, 0, 24, 0);
+            // 只翻 salt（偏移 16–24）的一个字节，别的一个字节不动。
+            header[16] = (header[16] ?? 0) ^ 0xff;
+            writeSync(descriptor, header, 16, 8, 16);
+          } finally {
+            closeSync(descriptor);
+          }
+          utimesSync(walPath, before.atime, before.mtime);
+          expect(statSync(walPath).size).toBe(before.size);
+        },
+      });
+      candidates(dbPath);
+      expect(attempts.slice(0, 2)).toEqual([1, 2]);
+    } finally {
+      writer.close();
+    }
+  });
+
+  it("查询阶段才抛错（打开与列检查都过了）：换新副本重读，不当作库坏了", () => {
+    createDatabase(MIXED).close();
+    let copies = 0;
+    setCopyHooksForTest({
+      afterCopy: (copy) => {
+        copies += 1;
+        // 第一份副本第 1 页（表结构）完好、其余页写坏：打开与列检查都过，真正
+        // 查行时才 malformed。
+        if (copies === 1) {
+          const bytes = readFileSync(copy);
+          bytes.fill(0xff, 4096);
+          writeFileSync(copy, bytes);
+        }
+      },
+    });
+    const found = candidates(dbPath);
+    expect(found).toHaveLength(3);
+    expect(copies).toBeGreaterThanOrEqual(2);
+    // 最终读成功了：中途那次失败不说话。
+    expect(warnings).toEqual([]);
+  });
+
+  it("重启后的第一趟就读不了：候选为空，但告诉索引「这是读不了」，已有的行不被清掉", () => {
+    createDatabase(MIXED).close();
+    const opened = openDatabase({
+      file: join(directory, "canvas.db"),
+      migrationsDir: migrationsDir(),
+    });
+    try {
+      const index = opened.database;
+      expect(refresh(index, [["agy", dbPath]])).toMatchObject({ indexed: 3 });
+      // 模拟重启：上一趟读成功的结果没了。
+      forgetLastGoodForTest();
+      writeFileSync(dbPath, "this is not a database");
+      writeFileSync(`${dbPath}-wal`, "");
+      expect(candidates(dbPath)).toEqual([]);
+      expect(listUnreadable(dbPath)).toBe(true);
+      expect(refresh(index, [["agy", dbPath]])).toMatchObject({
+        removed: 0,
+        total: 3,
+      });
+      expect(listConversations(index, undefined, 10)).toHaveLength(3);
+      // 库没了才是真的没有：这时对账，清掉。
+      rmSync(dbPath);
+      rmSync(`${dbPath}-wal`, { force: true });
+      expect(refresh(index, [["agy", dbPath]])).toMatchObject({
+        removed: 3,
+        total: 0,
+      });
+      expect(listUnreadable(dbPath)).toBe(false);
+    } finally {
+      opened.close();
+    }
+  });
+
+  it("读成功之后「读不了」的标记撤掉", () => {
+    writeFileSync(dbPath, "this is not a database");
+    candidates(dbPath);
+    expect(listUnreadable(dbPath)).toBe(true);
+    rmSync(dbPath, { force: true });
+    rmSync(`${dbPath}-wal`, { force: true });
+    createDatabase(MIXED).close();
+    expect(candidates(dbPath)).toHaveLength(3);
+    expect(listUnreadable(dbPath)).toBe(false);
+  });
+
   it("从没读成功过、又读不了：是空，不抛", () => {
     writeFileSync(dbPath, "this is not a database");
     expect(candidates(dbPath)).toEqual([]);
@@ -568,6 +674,30 @@ describe("读失败不清空索引", () => {
 });
 
 describe("兜底与清理", () => {
+  it("警告只在最终结果定了之后说：复制失败后重试成功不说，immutable 读不了只说读不了", () => {
+    createDatabase(MIXED).close();
+    // 第一份副本是坏的、第二份好：最终读成功了，不留一句「读不了」。
+    let copies = 0;
+    setCopyHooksForTest({
+      afterCopy: (copy) => {
+        copies += 1;
+        if (copies === 1) writeFileSync(copy, "garbage");
+      },
+    });
+    expect(candidates(dbPath)).toHaveLength(3);
+    expect(warnings).toEqual([]);
+    setCopyHooksForTest();
+    // 库本身坏了：三次尝试都失败，只说最后这个原因一次。
+    writeFileSync(dbPath, "this is not a database");
+    writeFileSync(`${dbPath}-wal`, "");
+    candidates(dbPath);
+    candidates(dbPath);
+    const reasons = (warnings as { fields?: { reason?: string } }[]).map(
+      (w) => w.fields?.reason,
+    );
+    expect(reasons).toEqual(["unreadable"]);
+  });
+
   it("immutable 兜底给一次 warning，说清可能读不到最近几行", () => {
     createDatabase(MIXED).close();
     forceOpenModeForTest("immutable");

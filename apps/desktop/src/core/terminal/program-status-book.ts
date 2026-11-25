@@ -119,8 +119,16 @@ export class ProgramStatusBook {
     this.entries.delete(sessionId);
   }
 
+  /**
+   * 此刻的摘要。读跟踪器的即时值，不读最近一次发出去的帧：帧有 250 ms 的节流，
+   * 而投递的否决门要的是「现在」。`updatedAt` 沿用上一帧的，没发过帧就是现在。
+   */
   status(sessionId: string): ProgramStatusWire | undefined {
-    return this.entries.get(sessionId)?.wire;
+    const entry = this.entries.get(sessionId);
+    if (entry === undefined) return undefined;
+    const summary = entry.tracker.summary();
+    if (summary === undefined) return undefined;
+    return { ...summary, updatedAt: entry.wire?.updatedAt ?? this.now() };
   }
 
   dispose(): void {

@@ -77,16 +77,16 @@ test("差异与「用到的旗标没了」分开报告", () => {
   const drifted = {
     ...snapshot,
     hookEvents: [...snapshot.hookEvents, "UserPromptSubmit"],
-    mainFlags: snapshot.mainFlags.filter((flag) => flag !== "--settings"),
+    mainFlags: snapshot.mainFlags.filter((flag) => flag !== "--model"),
     initialize: { ...snapshot.initialize, hasMcpCapabilities: true },
   };
   const lines = diffSurface(snapshot, drifted);
   assert.ok(
     lines.some((line) => /hook 事件：多了 UserPromptSubmit/.test(line)),
   );
-  assert.ok(lines.some((line) => /主程序旗标：少了 --settings/.test(line)));
+  assert.ok(lines.some((line) => /主程序旗标：少了 --model/.test(line)));
   assert.ok(lines.some((line) => /initialize\.hasMcpCapabilities/.test(line)));
-  assert.deepEqual(missingUsedFlags(drifted), ["--settings"]);
+  assert.deepEqual(missingUsedFlags(drifted), ["--model"]);
   assert.deepEqual(missingUsedFlags(snapshot), []);
 });
 

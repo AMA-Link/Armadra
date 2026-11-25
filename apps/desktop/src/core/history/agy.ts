@@ -311,19 +311,47 @@ export function forgetSweepForTest(): void {
 
 /** `immutable=1`：不看 WAL、不建 `-shm`、不写任何东西。 */
 function openImmutable(path: string): Opened {
-  warnOnce(path, "immutable", "复制不了，改用 immutable=1：可能读不到最近几行");
   const uri = `file:${encodeURI(path).replaceAll("?", "%3F").replaceAll("#", "%23")}?immutable=1`;
   const database = new DatabaseSync(uri, { readOnly: true });
   return { database, mode: "immutable", close: () => database.close() };
 }
 
+/**
+ * 一次打开尝试想说的话。**不在尝试里直接说**：同一趟读可能先复制失败、重试成功，
+ * 或先 immutable 打开了、查询却读不了；只有最终结果定了，才说与这个结果对得上的
+ * 那一条（{@link emitWarnings}）。
+ */
+interface PendingWarning {
+  readonly reason: string;
+  readonly detail?: string;
+}
+
 type OpenOutcome =
-  | { readonly opened: Opened; readonly probe: ProbeResult }
-  | { readonly opened?: undefined; readonly probe: ProbeResult };
+  | {
+      readonly opened: Opened;
+      readonly probe: ProbeResult;
+      readonly warnings: readonly PendingWarning[];
+    }
+  | {
+      readonly opened?: undefined;
+      readonly probe: ProbeResult;
+      readonly warnings: readonly PendingWarning[];
+    };
+
+function emitWarnings(path: string, warnings: readonly PendingWarning[]): void {
+  for (const warning of warnings) {
+    warnOnce(path, warning.reason, warning.detail);
+  }
+}
+
+const IMMUTABLE_WARNING: PendingWarning = {
+  reason: "immutable",
+  detail: "复制不了，改用 immutable=1：可能读不到最近几行",
+};
 
 function openChecked(path: string, only?: OpenMode): OpenOutcome {
   if (!isFile(path)) {
-    return { probe: { state: "not-found", reason: "missing" } };
+    return { probe: { state: "not-found", reason: "missing" }, warnings: [] };
   }
   let opened: Opened | undefined;
   const modes: OpenMode[] =
@@ -343,8 +371,10 @@ function openChecked(path: string, only?: OpenMode): OpenOutcome {
   }
   if (opened === undefined) {
     const detail = describe(failure);
-    warnOnce(path, "unreadable", detail);
-    return { probe: { state: "not-found", reason: "unreadable", detail } };
+    return {
+      probe: { state: "not-found", reason: "unreadable", detail },
+      warnings: [{ reason: "unreadable", detail }],
+    };
   }
   try {
     const columns = opened.database
@@ -355,10 +385,16 @@ function openChecked(path: string, only?: OpenMode): OpenOutcome {
     if (absent.length > 0) {
       opened.close();
       const detail = `conversation_summaries 缺少列：${absent.join(", ")}`;
-      warnOnce(path, "incompatible", detail);
-      return { probe: { state: "not-found", reason: "incompatible", detail } };
+      return {
+        probe: { state: "not-found", reason: "incompatible", detail },
+        warnings: [{ reason: "incompatible", detail }],
+      };
     }
-    return { opened, probe: { state: "ok", mode: opened.mode } };
+    return {
+      opened,
+      probe: { state: "ok", mode: opened.mode },
+      warnings: opened.mode === "immutable" ? [IMMUTABLE_WARNING] : [],
+    };
   } catch (error) {
     try {
       opened.close();
@@ -366,8 +402,10 @@ function openChecked(path: string, only?: OpenMode): OpenOutcome {
       // 同上。
     }
     const detail = describe(error);
-    warnOnce(path, "unreadable", detail);
-    return { probe: { state: "not-found", reason: "unreadable", detail } };
+    return {
+      probe: { state: "not-found", reason: "unreadable", detail },
+      warnings: [{ reason: "unreadable", detail }],
+    };
   }
 }
 
@@ -394,10 +432,11 @@ function withDatabase<T>(
     forcedMode === undefined ? ["copy", "copy", "immutable"] : [forcedMode];
   let last: ReadOutcome<T> = { state: "unreadable" };
   for (const mode of plan) {
-    const { opened, probe: result } = openChecked(path, mode);
+    const { opened, probe: result, warnings } = openChecked(path, mode);
     if (opened === undefined) {
       if (result.state === "not-found") {
         if (result.reason === "missing" || result.reason === "incompatible") {
+          emitWarnings(path, warnings);
           return {
             state: result.reason,
             ...(result.detail === undefined ? {} : { detail: result.detail }),
@@ -411,20 +450,27 @@ function withDatabase<T>(
       continue;
     }
     try {
-      return { state: "ok", value: use(opened.database) };
+      const value = use(opened.database);
+      // 最终读成了：只说这一次打开自己的话（immutable 可能漏行），之前几次失败的
+      // 尝试不说。
+      emitWarnings(path, warnings);
+      return { state: "ok", value };
     } catch (error) {
       last = { state: "unreadable", detail: describe(error) };
     } finally {
       opened.close();
     }
   }
+  // 每一次都没读成：说最后这个原因，一次。
+  emitWarnings(path, [{ reason: "unreadable", detail: last.detail }]);
   return last;
 }
 
 /** 这个库现在能不能读（打开探测完立刻关掉）。给可用性检查与测试用。 */
 export function probe(path: string): ProbeResult {
-  const { opened, probe: result } = openChecked(path);
+  const { opened, probe: result, warnings } = openChecked(path);
   opened?.close();
+  emitWarnings(path, warnings);
   return result;
 }
 
@@ -473,6 +519,7 @@ const lastGood = new Map<
  * 不进索引（见文件头）。
  */
 export function candidates(root: string): Candidate[] {
+  unreadable.delete(root);
   const outcome = withDatabase(root, (database) => {
     const found: Candidate[] = [];
     const parsed = new Map<string, Parsed & { readonly updatedAt: string }>();
@@ -504,7 +551,7 @@ export function candidates(root: string): Candidate[] {
   }
   if (outcome.state === "unreadable") {
     // 这一趟读不了：保留上一趟的。从没读成功过才是空。
-    warnOnce(root, "unreadable", outcome.detail);
+    unreadable.add(root);
     const previous = lastGood.get(root);
     if (previous !== undefined) parsedCache = previous.parsed;
     return previous?.found ?? [];
@@ -515,9 +562,22 @@ export function candidates(root: string): Candidate[] {
   return [];
 }
 
+/**
+ * 最近一次 {@link candidates} 读不了的根。`lastGood` 只在同一个进程里有：重启后的
+ * 第一趟就读不了时，它没有东西可回、只能答空——这时必须让会话索引知道「这是读不了，
+ * 不是没有」，跳过对账，已有的行才不会被清掉。
+ */
+const unreadable = new Set<string>();
+
+/** 最近一次 {@link candidates} 是不是读不了（适配器的 `listUnreadable`）。 */
+export function listUnreadable(root: string): boolean {
+  return unreadable.has(root);
+}
+
 /** 测试用：忘掉上一趟读成功的结果。 */
 export function forgetLastGoodForTest(): void {
   lastGood.clear();
+  unreadable.clear();
   parsedCache = new Map();
 }
 
@@ -576,7 +636,10 @@ export function cwdOf(value: unknown): string {
   } catch {
     return "";
   }
-  const first = Array.isArray(list) ? list[0] : undefined;
+  return Array.isArray(list) ? pathOfUri(list[0]) : "";
+}
+
+function pathOfUri(first: unknown): string {
   if (typeof first !== "string") return "";
   const parsed = /^file:\/\/([^/?#]*)(\/[^?#]*)?(?:[?#].*)?$/i.exec(first);
   if (parsed === null) return "";
@@ -646,6 +709,7 @@ export const agyAdapter: HistoryAdapter = {
   roots,
   locate,
   list: candidates,
+  listUnreadable,
   parse,
   readEntries,
   readsEntries: false,

@@ -511,7 +511,7 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
 - `not-found`：适配器的根目录一个都不存在。
 - `available`：至少一个根目录存在。
 
-`agy` 进了会话索引（`GET /api/conversations` 的 `provider` 取值多一个 `agy`，会话 id 就是 ACP 的 `sessionId`）。共享层的 `conversationProviderSchema` 是严格枚举，**旧页面（含已装在手机上的）收到 `provider: "agy"` 会让整张会话列表解析失败**——与 §120 同一性质（任何新内置 id 都如此），升级页面是前提。core 侧的 `open-agent --resume <会话 id>` 对 agy 答 `400 resume_unsupported`（终端没有会话 id 可接）；只有页面经 ACP 接回（命令面板与侧栏搜索选中一条开 `driver: "acp"`、`agent.sessionId` 为该会话 id 的节点）。索引读失败（复制撕裂、坏页）时 core 保留上一趟读成功的行，不把这一家的行清空；库没了或列不认得才清。
+`agy` 进了会话索引（`GET /api/conversations` 的 `provider` 取值多一个 `agy`，会话 id 就是 ACP 的 `sessionId`）。共享层的 `conversationProviderSchema` 是严格枚举，**旧页面（含已装在手机上的）收到 `provider: "agy"` 会让整张会话列表解析失败**——与 §120 同一性质（任何新内置 id 都如此），升级页面是前提。core 侧的 `open-agent --resume <会话 id>` 对 agy 答 `400 resume_unsupported`（终端没有会话 id 可接）；只有页面经 ACP 接回（命令面板与侧栏搜索选中一条开 `driver: "acp"`、`agent.sessionId` 为该会话 id 的节点）。索引读失败（复制撕裂、坏页）时 core 保留上一趟读成功的行，不把这一家的行清空；库没了或列不认得才清。「上一趟读成功的结果」只在同一个进程里有：重启后的第一趟就读不了时没有东西可回、候选为空，所以适配器另报「这一趟读不了」（`HistoryAdapter.listUnreadable`），`refresh` 据此跳过这一家的对账，已有的行原样留着。
 
 `custom:` 条目按它的 `baseAgent` 找适配器。只 stat 根目录、不扫描文件，所以 `available` 只说明「有地方可读」，不保证有会话或有成本；页面对 `not-found` 与 `unsupported` 写状态词，不写成 0。
 
@@ -3805,7 +3805,7 @@ human initiator。页面不接收任何 controller 凭据；body owner/controlle
 - **摘要**：一个终端所有记录里最急的那一条：`blocked` > `error` > `working` > `done` > `idle`，同级取最近更新的；`app` 缺席时继承最近的祖先记录。
 - **事件** `terminal.program`：`{ "type": "terminal.program", "sessionId", "nodeId"?, "status"? }`，`status` 是 `{ state: "idle" | "working" | "blocked" | "done" | "error", kind?: "permission" | "question" | "auth", progress?: 0–100 的整数, app?: string, source: "osc7501" | "osc9", updatedAt }`；`status` 缺席表示这个终端不再有记录。摘要变了才发，每会话两帧之间至少 250 ms（变化立刻发，之后的合并成一个尾帧）。只扇出、不进 outbox。
 - **会话列表**：`GET /api/workspaces/{id}/sessions` 的每一行在会话活在这个 core 里、且程序报过状态时多一个 `programStatus`（同上形状），重连的页面靠它补节点头。只在内存里，core 重启后程序要自己再报一次。
-- **不外传、不作判据**：`msg` 与 `title` 是终端输出的正文，只按规范校验，不保存、不进事件、不进日志。程序自报谁都能伪造（`cat` 一个文件就够），所以它不写 `agent_status`，不满足任何空闲门、投递门、交接门或调度门；节点状态的来源仍是 Hook / 扩展 / ACP（§39.2）。
+- **不外传、不作判据**：`msg` 与 `title` 是终端输出的正文，只按规范校验，不保存、不进事件、不进日志。程序自报谁都能伪造（`cat` 一个文件就够），所以它不写 `agent_status`，不作放行判据：不满足任何空闲门、投递门、交接门或调度门；节点状态的来源仍是 Hook / 扩展 / ACP（§39.2）。**自 #1020 起 `blocked` 可否决投递**（见 §120「投递的第二道保险」）：伪造的字节只会让投递排队或被拒，不会导致误投：在该记录清除之前（进程退出、RIS 或 OSC 133;A）的每一次投递都受影响。`blocked` 没有按时间过期：它在程序再报别的状态、`clear` 或进程退出时才解除（这时 core 对该节点调一次出队）；程序崩了没清的 stale `blocked` 会让投递一直排队，直到排队项自己的 TTL 到期。omp、ama、agy 等也会发 7501，同样会走到这道门。
 - **页面合并**：Agent 节点有一条本进程内的上报（来源 `hook` / `extension` / `acp`，不是 `restored`）时上报说了算，程序自报只在两边都是「在跑」时补一个进度百分比；没有上报（普通终端、没装适配器的 CLI、重启后读回来的旧行）时程序自报画节点头的胶囊与光晕、小地图描边，并在窗口不在前台时按「需要你」/「已完成」提醒（各自 5 s 节流）。`done` / `error` 的光晕在用户看过节点后收起。节点头的来源点在程序自报时是 `program`。
 - 没有新 procedure，不写数据库迁移。
 
@@ -6247,6 +6247,18 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
   4. 驱动切换（`POST /api/acp/nodes/{id}/driver`）把该节点的 `agent_status` 行记为 `restored = 1`（与 Eco 休眠接回同一条规矩）；投递门、队泵的快探与首投放行门只看**当前驱动写下的**状态行——来源是 `acp`、而会话后端不是 ACP 的行视为没有上报，所以 ACP 切到终端的节点没有状态通道时，`send` 答 `TARGET_STATE_UNVERIFIED`（有状态通道的 CLI 则排队等终端自己的第一条上报）。
 - **计划任务（自动化）的目标**：没有状态通道的 Agent（`nodeStateChannel` 答空：今天的 `agy`，以及按节点判不成立的节点——远程节点、Windows、`grok` 的绑不上，见 §123）**不能做计划任务目标**——回合进行中的节点没有任何上报，探测无从知道它在忙，正文加回车会落进正在工作的 pane。core 的 `TerminalDispatcher.supports` 对它们答 `unsupported`，页面的计划向导把这样的节点置灰。ACP 驱动的这类节点（有 ACP 协议自己的回合与审批上报）要不要放行另行讨论（见对应 Issue）。
 - **为什么不升协议版本（agy 落地时的决定，2026-11-24；grok 同理）**：`mode` 在共享层是严格的 `z.enum`（`INJECTION_MODES`），旧客户端收到 `"none"` 会让这一条集成状态解析失败。但 agy 这个内置 id 对旧页面本来就是未知值：`agentInfoSchema.id` 用 `agentIdSchema`，按 `AGENT_IDS` 校验，所以**旧页面（含已经装在手机上的）会因为 agy 这一行让整张 `agents.list`（`z.array(agentInfoSchema)`）解析失败**，agent 菜单与设置页的 Agent 列表都会空掉——这是任何新内置 id 都有的已有性质，不是 `"none"` 带来的——`grok` 这个 id 对旧页面同样是未知值，`AGENT_IDS` 多一项的影响与 agy 那一次完全一样，发版时手机端要同步更新。升级页面是前提，**发版时手机端必须同步更新**；协议 minor 只按 `min(页面, core)` 协商，升了也拦不住旧页面去读这一条，所以 `PROTOCOL_MINOR` 不升（仍是 52）。`mode` 以后再多取值时同样要在那个 PR 里决定。
+- **终端 agy 为什么只到展示级（#997，2026-11-24 实测，agy 1.5.16）**：零写入的 hook 只有一条路——`--add-dir <我们的目录>` 加载其中的 `.agents/hooks.json`（实测不需要把该目录放进 `trustedWorkspaces`，hook 照样加载）。但 agy 把 `--add-dir` 与 cwd 合成工作区列表后**按路径字典序排序**，排第一的是主工作区：hook 载荷的 `cwd`、模型写文件与跑 shell 的位置都是它。注入目录在数据目录下，路径排在项目前面时它就成了主工作区，模型看得见也改得动 hooks.json 与 shim，文件落进注入目录。传参顺序没有影响；`agy --help` 没有指定主工作区的开关，`--project` 要写 agy 自己的项目配置。所以终端 agy 没有零写入的状态通道，也就没有会话 id、休眠接回与派发，退回 OSC 7501 的展示级；协作投递只能 `--unverified`。三回合实测（TUI，极短提示）：
+
+  | 回合 | 项目目录                             | 注入目录             | `workspacePaths` 第一项（hook `cwd`） | 文件落在                       |
+  | ---- | ------------------------------------ | -------------------- | ------------------------------------- | ------------------------------ |
+  | 1    | `/tmp/agy-p0-proj`                   | `/private/tmp/…/add` | 注入目录                              | 注入目录                       |
+  | 2    | `/private/tmp/aaa-proj`              | `/tmp/zzz-add`       | 项目                                  | 项目                           |
+  | 3    | `/tmp/zz-project-with-a-long-name-…` | `/tmp/aa`            | 注入目录                              | （没跑到落地，列表已足够判定） |
+
+  回合 3 把「字典序」与「路径长的在前」区分开：是字典序。让注入目录总排在项目之后只能靠造一个字典序最大的路径（例如 `/tmp` 下的符号链接），那要在数据目录之外建文件，仍可能被排在它后面的项目目录压过，不采用。
+
+- **ACP 下 agy 自己缓存 `mcp/armadra/`**：交给 agy 的 MCP 服务器（名字 `armadra`）会让 agy 在 `~/.gemini/antigravity-cli/mcp/armadra/` 写下工具清单与服务器说明。这是 agy 写的，Armadra 不写也不清理；卸载 Armadra 后可以手动删。场景 12 的 `~/.gemini` 指纹只排除这一个目录。
+- **投递的第二道保险（所有 CLI 通用，回指 §53）**：不论状态通道说什么（`--unverified`、`silentStart` / `sessionStart` 的首投、`--interrupt` 也一样），只要终端程序自己用 OSC 7501 报了 `blocked`（读的是跟踪器的即时值，不是节流过的帧），`send` 按 `TARGET_AWAITING_APPROVAL` 处理（排队或 `--no-queue` 拒绝），`--interrupt` 也不打断（那里的 ESC 是「拒绝这次工具调用」）。只做否决：程序报别的状态不放行任何东西。这道门不分 CLI：有自己状态通道的也一样（grok 读会话文件，见 §123，它的 `waiting` 与程序若自报的 `blocked` 各自独立，任一说在等审批就不投）。`blocked` 解除（变成别的状态、记录清掉）时 core 对该节点调一次出队，不必等 `agent.status`。**已知缺陷（main 上原有，不是本 PR 引入；跟进见 Issue）**：`--unverified` 不存进队列行，所以没有状态通道的目标（终端 agy）的排队项在下一次出队时会以 `TARGET_STATE_UNVERIFIED` 结束，不会投进去；`noteFree` 实际只对有状态通道的 CLI 起作用。画面门（`agent/screen-gate.ts`）登记了 agy 的信任框与审批卡：信任框（`Yes, I trust this folder`）对过本机 1.5.16 的真画面；审批卡的字符串（`Yes, and always allow` 等）**只来自二进制字符串，没有在真画面上核对**（本机 auto 模式触发不了）。agy 没有提示符特征，所以已答过的卡留在画面上时这道门会持续拦截；跟进见 Issue「agy 画面门：真机核对」。
 
 ## 121. 项目级工作流文件：导入与导出（`#996`）
 

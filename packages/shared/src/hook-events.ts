@@ -163,8 +163,10 @@ export const HOOK_EVENTS: Readonly<Record<BuiltinAgentId, readonly string[]>> =
     omp: OMP_HOOK_EVENTS,
     copilot: COPILOT_HOOK_EVENTS,
     ama: AMA_HOOK_EVENTS,
-    // No status source yet (terminal state is OSC 7501); a command hook comes
-    // with the zero-write `--add-dir` injection, never `PreToolUse`.
+    // No status source: terminal state is OSC 7501 (display only). A zero-write
+    // `--add-dir` hook was measured and is not viable (agy sorts workspaces
+    // lexicographically, so our directory can become the primary one; contract
+    // §120).
     agy: [],
     grok: GROK_SESSION_EVENTS,
   };

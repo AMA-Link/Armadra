@@ -36,7 +36,9 @@
       },
       "agy": {
         "program": "agy",
-        "verified": null
+        "verified": {
+          "min": "1.5.16"
+        }
       },
       "grok": {
         "program": "grok",
