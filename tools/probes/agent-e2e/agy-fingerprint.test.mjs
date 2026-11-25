@@ -46,6 +46,20 @@ test("名字里带 armadra 的条目、新插件目录都算我们写过东西",
   }
 });
 
+test("agy 为 armadra 这个 MCP 服务器缓存的 mcp/armadra/ 不算，mcp/ 里别的 armadra 条目算", () => {
+  const dir = home();
+  try {
+    const before = geminiFingerprint(dir);
+    const mcp = join(dir, ".gemini", "antigravity-cli", "mcp");
+    mkdirSync(join(mcp, "armadra"), { recursive: true });
+    assert.deepEqual(geminiFingerprint(dir), before);
+    mkdirSync(join(mcp, "armadra-extra"));
+    assert.notDeepEqual(geminiFingerprint(dir), before);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("没有 ~/.gemini 时是一份全空的指纹", () => {
   const dir = mkdtempSync(join(tmpdir(), "armadra-agy-fp-"));
   try {
