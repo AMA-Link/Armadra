@@ -14,7 +14,7 @@ import {
  * 在那里，页面也问它）；这里只补 core 才有的两件事：每个来源的常量名，以及
  * 「哪家 CLI 走哪条通道」的 {@link stateSourceFor}。`agent/registry.ts`、
  * `agent/target-state.ts`、`hook/store.ts` 都从这里转出，各处不得再手写来源
- * 字面量（`agent-state-source-guard.test.ts` 守着）。
+ * 字面量（`agent/state-source.test.ts` 守着）。
  */
 
 export {

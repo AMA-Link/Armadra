@@ -70,7 +70,7 @@ export const AGENT_STATE_SOURCES = [
  * 「是否上报」的判定与词汇表的唯一出处。
  *
  * 判一条状态来源算不算「CLI 自己报的」，全仓库只问这里，不再各处手写
- * `=== "hook" || …`：新增来源时只改这一处，`agent-state-source-guard.test.ts`
+ * `=== "hook" || …`：新增来源时只改这一处，`apps/desktop/src/core/agent/state-source.test.ts`
  * 守着没有人绕开它。三档：
  *   * {@link stateSourceIsReported}：上报级——`hook`、`extension`、`acp`。能满足
  *     空闲门、能当休眠与投递的依据；
