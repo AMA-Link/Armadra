@@ -21,7 +21,7 @@ export function createViewSlice(
      * 缩放，§3.4），所以这里没有任何换算。相机本来就在这儿（这次调用正是
      * 视口回调推过来的）就别再推回去，否则两边会互相追着走。
      */
-    setViewport: (viewport) => {
+    setViewport: (viewport, options) => {
       set((state) =>
         state.document
           ? {
@@ -32,6 +32,7 @@ export function createViewSlice(
             }
           : state,
       );
+      if (options?.source === "camera") return;
       const flow = getFlow();
       if (!flow) return;
       const current = flow.getViewport();

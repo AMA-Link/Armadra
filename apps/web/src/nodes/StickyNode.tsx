@@ -88,6 +88,7 @@ export function StickyNode({ id, node }: NodeBodyProps) {
         <Textarea
           // eslint-disable-next-line jsx-a11y/no-autofocus -- 设计要求：表单或对话框打开时焦点落到首个输入
           autoFocus
+          data-reveal-editing=""
           aria-label={t("node.sticky")}
           placeholder={t("sticky.placeholder")}
           className="min-h-0 flex-1 resize-none rounded-none border-0 bg-transparent text-body leading-relaxed focus-visible:ring-0"

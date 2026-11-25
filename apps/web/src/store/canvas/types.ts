@@ -217,7 +217,11 @@ export interface CanvasActions {
   /** 掉头：两端互换，边 id 不变；给了 `role` 就在同一次提交里一起落。 */
   reverseEdge: (id: string, role?: CanvasEdgeRole) => void;
   removeEdges: (ids: string[]) => void;
-  setViewport: (viewport: Viewport) => void;
+  /**
+   * `source: "camera"`：这次写入是相机自己报上来的（节流回写），只记进文档，
+   * 不再推回相机——动画还在走时相机不在「这一帧」，推回去会把动画截在半路。
+   */
+  setViewport: (viewport: Viewport, options?: { source?: "camera" }) => void;
   /** 白板文档（React Flow 计划 §3.1）；跟着画布文档一起保存。 */
   setWhiteboard: (doc: WhiteboardDoc, options?: CommitOptions) => void;
   undo: () => void;

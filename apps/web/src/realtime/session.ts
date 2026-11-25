@@ -5,6 +5,7 @@ import * as Y from "yjs";
 import { boardSyncUrl } from "../api/client";
 import { currentSource, type Source } from "../api/source";
 import { sourceApi } from "../sources/source-api";
+import { holdViewportRestore } from "../canvas/flow/camera-intent";
 import { containerSize, getFlow } from "../canvas/flow/flow-context";
 import { readableOpeningViewport } from "../canvas/opening-viewport";
 import { t } from "../app/preferences-store";
@@ -177,11 +178,15 @@ export function startRealtime(options: StartOptions): () => void {
   useCanvasStore.getState().setRealtime({ boardId, writable: false });
   // 视口不在文档里：换成本机上次停的地方（没记过就留着打开时算的那份）。
   // 手机上存的缩放低于字号下限时换成看得清的那份（#715）。
-  const savedViewport = loadBoardViewport(boardId);
-  if (savedViewport) {
+  // 相机意图在保护期内（刚跳到某个节点）时不恢复，免得一次往返之后把居中顶掉。
+  const restoreViewport = () => {
+    const savedViewport = loadBoardViewport(boardId);
+    if (!savedViewport) return;
     const store = useCanvasStore.getState();
+    if (store.document?.board.id !== boardId) return;
     store.setViewport(readableOpeningViewport(savedViewport, store.document));
-  }
+  };
+  if (!holdViewportRestore(restoreViewport)) restoreViewport();
   useRealtimeStore.setState({
     ...IDLE,
     boardId,

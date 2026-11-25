@@ -4,6 +4,7 @@ import type { DomBoard } from "@armadra/board/dom";
 
 import { useCanvasStore } from "@/store/canvas-store";
 import { stopFollowing } from "@/realtime/session";
+import { cancelCameraIntent } from "../flow/camera-intent";
 import { clampZoom } from "../zoom";
 import { CAMERA_THROTTLE_MS, isOpeningCamera } from "../flow/use-flow-viewport";
 
@@ -23,16 +24,32 @@ export function useBoardViewportSync(board: DomBoard): void {
       timer = null;
       const latest = pending;
       if (!latest || isOpeningCamera(latest)) return;
-      useCanvasStore.getState().setViewport({
-        x: latest.x,
-        y: latest.y,
-        zoom: clampZoom(latest.zoom),
-      });
+      useCanvasStore
+        .getState()
+        .setViewport(
+          { x: latest.x, y: latest.y, zoom: clampZoom(latest.zoom) },
+          { source: "camera" },
+        );
     };
+    // 只认落在画布上、且不在节点内部滚动区（`.nowheel`）里的滚轮：侧栏列表
+    // 滚动与点击后触控板的惯性尾巴不算用户在动相机。
+    const onWheel = (event: WheelEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (!target.closest("[data-board-stage]") || target.closest(".nowheel")) {
+        return;
+      }
+      cancelCameraIntent();
+    };
+    window.addEventListener("wheel", onWheel, { passive: true, capture: true });
     const stops = [
       board.on("camera", (state) => {
         pending = state;
-        if (board.gestureActive()) stopFollowing();
+        // 人在动相机：不再跟随，也不再用相机意图去顶他的操作。
+        if (board.gestureActive()) {
+          stopFollowing();
+          cancelCameraIntent();
+        }
         timer ??= setTimeout(flush, CAMERA_THROTTLE_MS);
       }),
       board.on("gesture", ({ active }) => {
@@ -43,6 +60,7 @@ export function useBoardViewportSync(board: DomBoard): void {
     ];
     return () => {
       for (const stop of stops) stop();
+      window.removeEventListener("wheel", onWheel, { capture: true });
       if (timer) clearTimeout(timer);
     };
   }, [board]);

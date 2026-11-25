@@ -109,6 +109,7 @@ function EditArea({ editing }: { editing: TextEditing }) {
       ref={area}
       aria-label={t("tool.text")}
       data-board-editable=""
+      data-reveal-editing=""
       className="nodrag nowheel"
       value={draft}
       onChange={(event) => setDraft(event.target.value)}

@@ -21,13 +21,15 @@ import { revealNewNode } from "./flow/use-flow-viewport";
  *  2. **只有看得见的页面**。后台标签页跟过去，用户回来时画布已经被挪过
  *     了，而他根本没看见是谁挪的。
  *  3. **用户正在拖拽 / 缩放时不抢**。手势中途换相机会让指针和节点错位。
- *  4. **用户正在输入时不抢**。改选区会把便签、文字对象的编辑态顶掉。
- *     终端不算输入：终端里有键盘焦点是常态（Agent 正是从那里发的动词），
- *     而换选区既不会打断它，也不会把焦点抢走。
+ *  4. **用户正在编辑时不抢**。改选区会把便签、白板文字、节点改名的编辑态
+ *     顶掉。节点体里的输入框不算（ACP 输入框、编辑器、终端里有键盘焦点是
+ *     常态，Agent 正是从那里发的动词，换选区既不会打断它们也不会抢焦点），
+ *     只认带 {@link EDITING_ATTR} 的便签 / 白板文字 / 改名，以及节点体之外的
+ *     输入框（命令面板、对话框、评论）。
  */
 
-/** xterm 的隐藏输入框；终端有焦点不算「用户正在输入」。 */
-export const TERMINAL_INPUT_CLASS = "xterm-helper-textarea";
+/** 便签、白板文字、节点改名的输入框带这个标记；闸门只认它（#1028）。 */
+export const EDITING_ATTR = "data-reveal-editing";
 
 export interface CreatedNodeGate {
   /** 事件说的那块画布。 */
@@ -51,19 +53,28 @@ export function shouldRevealCreatedNode(gate: CreatedNodeGate): boolean {
   return true;
 }
 
-/** 焦点所在的元素算不算「正在输入」。 */
+/**
+ * 焦点所在的元素算不算「正在编辑」：只有带 {@link EDITING_ATTR} 的输入框
+ * （便签、白板文字、节点改名）。节点体里别的输入框——ACP 输入框、编辑器、
+ * 终端——不算：在那里发完消息焦点还留着，Agent 建的节点照样要送到眼前。
+ */
 export function isTextEntry(
   element: {
     tagName?: string;
     isContentEditable?: boolean;
-    classList?: { contains(name: string): boolean };
+    hasAttribute?: (name: string) => boolean;
+    closest?: (selector: string) => unknown;
   } | null,
 ): boolean {
   if (!element) return false;
-  if (element.classList?.contains(TERMINAL_INPUT_CLASS)) return false;
+  if (element.hasAttribute?.(EDITING_ATTR) === true) return true;
+  // 节点体里的输入框（ACP 输入框、编辑器、终端）一律不算。
+  if (element.closest?.("[data-board-id]")) return false;
+  // 节点体之外的输入框（命令面板、对话框、评论、侧栏改名）照旧算在输入。
   const tag = element.tagName?.toLowerCase();
-  if (tag === "input" || tag === "textarea") return true;
-  return element.isContentEditable === true;
+  return (
+    tag === "input" || tag === "textarea" || element.isContentEditable === true
+  );
 }
 
 /** 当下这个页面的闸门取值。 */

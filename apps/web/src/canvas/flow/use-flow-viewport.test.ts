@@ -3,9 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { makeNode, testUuid } from "../test-support";
 import { useCanvasStore } from "@/store/canvas-store";
 import { setFlow, setFlowContainer, type FlowHandle } from "./flow-context";
+import { cancelCameraIntent, CAMERA_INTENT_DELAYS } from "./camera-intent";
 import { useRealtimeStore } from "@/realtime/session";
 import {
-  REVEAL_RETRY_DELAYS,
   applyBoardViewport,
   fitView,
   revealNewNode,
@@ -54,6 +54,7 @@ function mountFlow(zoom: number, node: typeof NODE | null = NODE) {
 }
 
 afterEach(() => {
+  cancelCameraIntent();
   setFlow(null);
   setFlowContainer(null);
   vi.useRealTimers();
@@ -100,7 +101,7 @@ describe("revealNewNode", () => {
     const setCenter = mountFlow(0.27, null);
 
     revealNewNode("n1");
-    vi.advanceTimersByTime(REVEAL_RETRY_DELAYS.at(-1)! + 1);
+    vi.advanceTimersByTime(CAMERA_INTENT_DELAYS.at(-1)! + 1);
 
     expect(setCenter).not.toHaveBeenCalled();
   });
@@ -119,7 +120,7 @@ describe("revealNewNode", () => {
     expect(setCenter).not.toHaveBeenCalled();
 
     node = NODE;
-    vi.advanceTimersByTime(REVEAL_RETRY_DELAYS.at(-1)! + 1);
+    vi.advanceTimersByTime(CAMERA_INTENT_DELAYS.at(-1)! + 1);
     expect(setCenter).toHaveBeenCalledTimes(1);
   });
 
@@ -212,7 +213,7 @@ describe("手机上新建的节点（#684）", () => {
 
     measured.width = 273;
     measured.height = 169;
-    vi.advanceTimersByTime(REVEAL_RETRY_DELAYS.at(-1)! + 1);
+    vi.advanceTimersByTime(CAMERA_INTENT_DELAYS.at(-1)! + 1);
     expect(setCenter).toHaveBeenCalledTimes(1);
     const zoom = setCenter.mock.calls[0]![2].zoom;
     expect(12 * zoom).toBeGreaterThanOrEqual(12);
