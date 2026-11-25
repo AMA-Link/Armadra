@@ -33,8 +33,14 @@ export const GROK_ANSWER_SETTING = "agents.grok.answerCards";
 /** 审批记录 `request.protocol` 的值：这条审批答在 grok 的终端卡上。 */
 export const GROK_CARD_PROTOCOL = "grok-card";
 
-/** 能放开的启动模式：Armadra 自己用 `--permission-mode` 起的。 */
+/** 能放开的启动模式：grok 进程自己的 argv 里带 `--permission-mode acceptEdits | plan`。 */
 const GATED_MODES: readonly string[] = ["auto-edit", "plan"];
+
+/** `--permission-mode` 的取值 → 这里用的名字（与 `launch.ts` 的 `permissionFlag` 同一张表）。 */
+const MODE_OF_FLAG: Readonly<Record<string, string>> = {
+  acceptEdits: "auto-edit",
+  plan: "plan",
+};
 
 export type GrokGate =
   | { readonly open: true }
@@ -42,6 +48,43 @@ export type GrokGate =
       readonly open: false;
       readonly reason: "unverified_version" | "setting_off" | "mode_excluded";
     };
+
+/** 读到的 grok 进程：可执行文件路径与 argv（读不到的项缺席）。 */
+export interface GrokProcessInfo {
+  readonly exe?: string | undefined;
+  readonly args?: readonly string[] | undefined;
+}
+
+/** 这个 grok 进程实际的启动方式：模式（按 argv 认）与它跑的可执行文件。 */
+export interface GrokLaunch {
+  /** `auto-edit` / `plan`；argv 里没有 `--permission-mode`、值不认识、读不到 argv 都是别的（不放开）。 */
+  readonly mode: string | undefined;
+  readonly exe: string | undefined;
+}
+
+/**
+ * 从进程的 argv 认出权限模式。只看 `--` 之前（之后全是用户的提示词，里面写什么都
+ * 不算）；`--permission-mode <值>` 与 `--permission-mode=<值>` 都认，多次出现取最后
+ * 一个（clap 的做法）。读不到 argv 答 `mode: undefined`——按模式不在范围算。
+ */
+export function launchOfProcess(info: GrokProcessInfo | undefined): GrokLaunch {
+  const exe = info?.exe;
+  const args = info?.args;
+  if (args === undefined) return { mode: undefined, exe };
+  let value: string | undefined;
+  for (let at = 0; at < args.length; at += 1) {
+    const arg = args[at] ?? "";
+    if (arg === "--") break;
+    if (arg === "--permission-mode") value = args[at + 1];
+    else if (arg.startsWith("--permission-mode=")) {
+      value = arg.slice("--permission-mode=".length);
+    }
+  }
+  return {
+    mode: value === undefined ? undefined : (MODE_OF_FLAG[value] ?? value),
+    exe,
+  };
+}
 
 let verifiedVersions: readonly string[] = GROK_ANSWER_VERIFIED_VERSIONS;
 
@@ -54,7 +97,7 @@ export function useGrokVerifiedVersions(
 
 /**
  * 两道门与模式的判定。顺序就是头部说的话：用户没开设置就什么也不说；然后是这个
- * 节点为什么不行（模式），最后是这个版本为什么不行。版本由调用方探到。
+ * 进程为什么不行（模式），最后是这个版本为什么不行。版本由调用方探到。
  */
 export function grokAnswerGate(input: {
   readonly setting: unknown;
@@ -77,19 +120,19 @@ export function grokAnswerGate(input: {
 }
 
 /**
- * 读取槽问「这张卡要不要建审批记录」时的判定。**先看清单、设置、模式，三样都过了
- * 才去探版本**：清单是空的（缺省）或设置关着，就不会因为 grok 而起任何子进程。
+ * 「这张卡要不要建审批记录 / 能不能答」的判定。**先看清单、设置、模式，三样都过了
+ * 才去探版本**，探的是这个进程实际在跑的可执行文件，不是 PATH 上的 grok。
  */
 export async function cardAnswerGate(input: {
   readonly setting: unknown;
-  readonly permissionMode: string | undefined;
-  readonly probe?: () => Promise<string | undefined>;
+  readonly launch: GrokLaunch;
+  readonly probe?: (exe: string | undefined) => Promise<string | undefined>;
   readonly verified?: readonly string[];
 }): Promise<GrokGate> {
   const verified = input.verified ?? verifiedVersions;
   const before = grokAnswerGate({
     setting: input.setting,
-    permissionMode: input.permissionMode,
+    permissionMode: input.launch.mode,
     // 版本留给下面探；这里只看设置与模式。
     version: verified[0],
     verified,
@@ -98,50 +141,43 @@ export async function cardAnswerGate(input: {
   // 清单是空的：版本再对也过不了，不探。
   if (verified.length === 0)
     return { open: false, reason: "unverified_version" };
-  const version = await (input.probe ?? probeGrokVersion)();
+  const version = await (input.probe ?? probeGrokVersion)(input.launch.exe);
   return grokAnswerGate({
     setting: input.setting,
-    permissionMode: input.permissionMode,
+    permissionMode: input.launch.mode,
     version,
     verified,
   });
 }
 
-/** 节点启动时记下的权限模式；没有记下就是 `undefined`（按缺省模式算，不放开）。 */
-export function nodePermissionMode(
-  database: CollabContext["database"],
-  nodeId: string,
-): string | undefined {
-  const agent = loadNode(database, nodeId)?.data.agent;
-  if (typeof agent !== "object" || agent === null) return undefined;
-  const mode = (agent as { permissionMode?: unknown }).permissionMode;
-  return typeof mode === "string" ? mode : undefined;
-}
-
 /** 探到的版本留多久：grok 自更新之后不会一直拿着旧答案。 */
 export const GROK_VERSION_TTL_MS = 10 * 60_000;
 
-let versionProbe:
-  { at: number; value: Promise<string | undefined> } | undefined;
+const versionProbes = new Map<
+  string,
+  { at: number; value: Promise<string | undefined> }
+>();
+let forcedVersion: string | undefined;
 
 /**
- * 本机 `grok --version` 的版本号，缓存 {@link GROK_VERSION_TTL_MS}；探不到答
- * `undefined`。读的是 Core 的 PATH 上的那个 grok；改成读节点实际在跑的那个，写在
- * `#1027`，在后续 PR 里做。
+ * 这个可执行文件的版本（`<exe> --version`），按路径缓存 {@link GROK_VERSION_TTL_MS}；
+ * 探不到（没有路径、跑不起来、输出里没有版本号）答 `undefined`。路径来自 grok
+ * 进程自己，不是 core 的 PATH。
  */
 export function probeGrokVersion(
+  exe: string | undefined,
   run: typeof execFile = execFile,
   now: () => number = Date.now,
 ): Promise<string | undefined> {
-  if (
-    versionProbe !== undefined &&
-    now() - versionProbe.at < GROK_VERSION_TTL_MS
-  ) {
-    return versionProbe.value;
+  if (forcedVersion !== undefined) return Promise.resolve(forcedVersion);
+  if (exe === undefined || exe === "") return Promise.resolve(undefined);
+  const cached = versionProbes.get(exe);
+  if (cached !== undefined && now() - cached.at < GROK_VERSION_TTL_MS) {
+    return cached.value;
   }
   const value = new Promise<string | undefined>((resolve) => {
     try {
-      run("grok", ["--version"], { timeout: 3000 }, (error, stdout) => {
+      run(exe, ["--version"], { timeout: 3000 }, (error, stdout) => {
         const match =
           error === null ? /\b(\d+\.\d+\.\d+)\b/.exec(stdout) : null;
         resolve(match?.[1]);
@@ -150,16 +186,14 @@ export function probeGrokVersion(
       resolve(undefined);
     }
   });
-  versionProbe = { at: now(), value };
+  versionProbes.set(exe, { at: now(), value });
   return value;
 }
 
-/** 用例用：忘掉探到的版本；给一个版本就当作刚探到的。 */
+/** 用例用：忘掉探到的版本；给一个版本就让所有探测都答它。 */
 export function resetGrokVersionProbe(version?: string): void {
-  versionProbe =
-    version === undefined
-      ? undefined
-      : { at: Date.now(), value: Promise.resolve(version) };
+  versionProbes.clear();
+  forcedVersion = version;
 }
 
 /* --------------------------------- 读取槽 --------------------------------- */
@@ -179,6 +213,8 @@ export interface GrokCardSource {
   requests(): readonly GrokOpenRequest[];
   /** 偏移处的请求之后文件里发生了什么。 */
   outcomeAfter(sessionId: string, offset: number): GrokOutcome;
+  /** 这个会话的 grok 进程实际的启动方式（读它的 argv 与可执行文件，不看节点声明的）。 */
+  launch(sessionId: string): GrokLaunch;
 }
 
 const sources = new Map<string, GrokCardSource>();
@@ -278,9 +314,13 @@ export async function verifyGrokCard(
   ) {
     return { ok: false, reason: "not_grok" };
   }
+  // 模式与版本都按这个会话的 grok 进程认：现读 argv，不是节点上声明的。
   const gate = await cardAnswerGate({
     setting: context.settings.answerCards?.("grok"),
-    permissionMode: nodePermissionMode(context.database, approval.nodeId),
+    launch: sources.get(approval.nodeId)?.launch(record.sessionId) ?? {
+      mode: undefined,
+      exe: undefined,
+    },
   });
   if (!gate.open) return { ok: false, reason: "gate_closed" };
   const terminals = context.terminals;

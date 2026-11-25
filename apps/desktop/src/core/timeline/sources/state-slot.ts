@@ -24,6 +24,12 @@ import type { StatFn, TailTimers, WatchFn } from "./tailer";
  * 一个 provider 一个槽；槽对一个终端会话开一次，会话行不再是 `running` 时停掉。
  */
 
+/** 槽读到的这个 CLI 进程的实际启动方式（argv 里的权限模式、可执行文件路径）。 */
+export interface CardLaunch {
+  readonly mode: string | undefined;
+  readonly exe: string | undefined;
+}
+
 export type StateSlotLevel = "reported" | "observed";
 
 /** 槽打开时拿到的事实与它能用的唯一出口 {@link StateSlotContext.report}。 */
@@ -49,7 +55,7 @@ export interface StateSlotContext {
    * 这个节点的审批卡现在可不可以在终端里代答（两道门与启动模式都过了，契约 §127）。
    * 缺省 / 没装配 = 不可以。只有问「要不要为这张卡建审批记录」时用。
    */
-  answerCards?(): Promise<{
+  answerCards?(launch: CardLaunch): Promise<{
     readonly open: boolean;
     readonly reason?: string;
   }>;

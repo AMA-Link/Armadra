@@ -50,6 +50,10 @@ let timers: FakeTimers;
 let reports: AgentEvent[];
 let payloads: unknown[];
 let settled: unknown[];
+let processInfos: Map<number, { exe?: string; args?: string[] }>;
+let launches: unknown[];
+let debugLog: { message: string; fields: unknown }[];
+let gateHold: Promise<void> | undefined;
 let cardGate: { open: boolean; reason?: string } | undefined;
 let table: Map<number, number>;
 let names: Map<number, string>;
@@ -109,6 +113,7 @@ const deps = (): GrokDeps => ({
   platform: () => platform,
   locate: locateEvents,
   now: () => timers.now(),
+  processInfo: (pid) => processInfos.get(pid),
 });
 
 function open(options: { remote?: boolean } = {}) {
@@ -127,7 +132,13 @@ function open(options: { remote?: boolean } = {}) {
     screen: async () => screenText,
     ...(cardGate === undefined
       ? {}
-      : { answerCards: async () => cardGate ?? { open: false } }),
+      : {
+          answerCards: async (launch) => {
+            launches.push(launch);
+            await gateHold;
+            return cardGate ?? { open: false };
+          },
+        }),
     settleApprovals: (settles) => {
       settled.push(settles);
     },
@@ -137,7 +148,12 @@ function open(options: { remote?: boolean } = {}) {
       return true;
     },
     timers,
-    log: { warn: () => undefined, debug: () => undefined },
+    log: {
+      warn: () => undefined,
+      debug: (message, fields) => {
+        debugLog.push({ message, fields });
+      },
+    },
   };
   const slot = provider.open(context);
   return { slot, context };
@@ -152,6 +168,10 @@ beforeEach(() => {
   reports = [];
   payloads = [];
   settled = [];
+  processInfos = new Map();
+  launches = [];
+  debugLog = [];
+  gateHold = undefined;
   cardGate = undefined;
   table = new Map([
     [CHILD_PID, ROOT_PID],
@@ -769,6 +789,52 @@ describe("终端审批卡：建记录与结案（契约 §127）", () => {
     cardGate = { open: false, reason: "setting_off" };
     const slot = await waitingOn();
     expect(reports.filter((e) => e.cardNotice !== undefined)).toHaveLength(0);
+    slot.stop();
+  });
+
+  it("槽把 grok 进程自己的启动方式（argv 的权限模式、可执行文件）交给门，不是节点声明的", async () => {
+    processInfos.set(CHILD_PID, {
+      exe: "/opt/grok/bin/grok",
+      args: ["/opt/grok/bin/grok", "--permission-mode", "plan"],
+    });
+    const slot = await waitingOn();
+    expect(launches[0]).toEqual({ mode: "plan", exe: "/opt/grok/bin/grok" });
+    slot.stop();
+  });
+
+  it("读不到进程：mode 是 undefined，交给门去拒", async () => {
+    const slot = await waitingOn();
+    expect(launches[0]).toEqual({ mode: undefined, exe: undefined });
+    slot.stop();
+  });
+
+  it("门是异步的：回来时请求已经答了，就不再发 cardNotice 的 WAITING 把节点盖回去", async () => {
+    cardGate = { open: false, reason: "mode_excluded" };
+    let release: () => void = () => undefined;
+    gateHold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const slot = await waitingOn();
+    // 门还没答，人在终端里答了、节点回到 working。
+    append("s", [line("permission_resolved", { decision: "allow" })]);
+    slot.poke?.();
+    expect(states().at(-1)).toBe("working");
+    release();
+    await flush();
+    expect(reports.filter((e) => e.cardNotice !== undefined)).toHaveLength(0);
+    expect(states().at(-1)).toBe("working");
+    slot.stop();
+  });
+
+  it("调试日志里没有终端画面：只有是否解析成功与行数", async () => {
+    const slot = await waitingOn();
+    const logged = JSON.stringify(debugLog);
+    expect(logged).toContain("grok card parsed");
+    expect(logged).not.toContain("Yes, proceed");
+    expect(logged).not.toContain("out.txt");
+    expect(
+      debugLog.find((e) => e.message === "grok card parsed")?.fields,
+    ).toMatchObject({ parsed: true, lines: expect.any(Number) });
     slot.stop();
   });
 

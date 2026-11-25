@@ -34,6 +34,7 @@ import {
   stateSourceIsReported,
 } from "../../agent/state-source";
 import {
+  type CardLaunch,
   type StateSlot,
   type StateSlotContext,
   type StateSlotProvider,
@@ -144,6 +145,7 @@ export interface TerminalFacts {
   answerCards?(
     sessionId: string,
     nodeId: string,
+    launch: CardLaunch,
   ): Promise<{ readonly open: boolean; readonly reason?: string }>;
 }
 
@@ -507,8 +509,8 @@ export class SourceManager {
           this.reporting.delete(row.id);
         }
       },
-      answerCards: () =>
-        this.facts?.answerCards?.(row.id, nodeId) ??
+      answerCards: (launch) =>
+        this.facts?.answerCards?.(row.id, nodeId, launch) ??
         Promise.resolve({ open: false }),
       report: (event, options) => {
         const report = internalReporter();
