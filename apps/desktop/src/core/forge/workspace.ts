@@ -422,7 +422,8 @@ export class WorkspaceRepositoryService {
    * 本机：`symbolic-ref` 取分支，有 upstream 就按 upstream 的 remote 与分支名识别
    * head（与基仓库不同就是 fork）；没有 upstream 时按基仓库同名分支。cwd 不在
    * 工作空间根的仓库里（嵌套 clone）时，用 cwd 自己的 remote 选基仓库。执行主机：
-   * 只读 `git.status` 的分支，按基仓库同名分支，不识别 fork。
+   * 读 `git.status` 的分支，再用 `git.branches` 的 upstream 识别 fork，读不到时
+   * 退回基仓库同名分支。
    */
   async branchAt(workspaceId: string, cwd: string): Promise<NodeBranch | null> {
     try {
