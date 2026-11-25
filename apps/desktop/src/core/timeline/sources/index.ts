@@ -374,8 +374,7 @@ export class SourceManager {
       pid: () => this.facts?.pid(row.id),
       remote: () => this.facts?.remote(row.id) ?? false,
       env: (name) => this.facts?.env?.(row.id, name),
-      screen: () =>
-        this.facts?.screen?.(row.id) ?? Promise.resolve(undefined),
+      screen: () => this.facts?.screen?.(row.id) ?? Promise.resolve(undefined),
       report: (event, options) => {
         const report = internalReporter();
         if (report === undefined) return false;
