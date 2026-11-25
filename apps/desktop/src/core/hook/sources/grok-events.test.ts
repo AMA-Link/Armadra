@@ -40,6 +40,10 @@ let home: string;
 let timers: FakeTimers;
 let reports: AgentEvent[];
 let table: Map<number, number>;
+let names: Map<number, string>;
+let platform: NodeJS.Platform;
+let screenText: string | undefined;
+let sessionHome: string | undefined;
 let rows: { session_id: string; pid: number; cwd: string }[];
 let activeRaw: string | undefined;
 let removeSources: (() => void) | undefined;
@@ -79,9 +83,10 @@ function writeActive(): void {
 }
 
 const deps = (): GrokDeps => ({
-  home: () => home,
+  home: (override) => override ?? home,
   readActive: readActiveSessions,
-  processTable: () => table,
+  processTable: () => ({ parents: table, names }),
+  platform: () => platform,
   locate: locateEvents,
   now: () => timers.now(),
 });
@@ -98,6 +103,8 @@ function open(options: { remote?: boolean } = {}) {
     startedAtMs: 0,
     pid: () => ROOT_PID,
     remote: () => options.remote === true,
+    env: (name) => (name === "GROK_HOME" ? sessionHome : undefined),
+    screen: async () => screenText,
     report: (event) => {
       reports.push({ ...event });
       return true;
@@ -121,6 +128,10 @@ beforeEach(() => {
     [ROOT_PID, 1],
     [999, 1],
   ]);
+  names = new Map();
+  platform = "darwin";
+  screenText = undefined;
+  sessionHome = undefined;
   rows = [];
   activeRaw = undefined;
   markChannelUnbound(NODE, false);
@@ -198,8 +209,18 @@ describe("按进程绑定", () => {
     expect(reports.length).toBeGreaterThan(0);
   });
 
-  it("远程节点、Windows：不开槽（本机文件读不到）", () => {
+  it("远程节点：不开槽（本机文件读不到）", () => {
     expect(open({ remote: true }).slot).toBeUndefined();
+  });
+
+  it("Windows：不开槽，通道门也答没有（平台取自注入，不读 process）", () => {
+    platform = "win32";
+    expect(open().slot).toBeUndefined();
+    removeSources = installCoreStateSources(deps());
+    expect(nodeStateChannel("grok", { remote: false })).toBeUndefined();
+    platform = "darwin";
+    expect(open().slot).toBeDefined();
+    expect(nodeStateChannel("grok", { remote: false })).toBe("transcript");
   });
 });
 
@@ -428,7 +449,7 @@ describe("SessionTail 与聚合", () => {
 
 describe("这个节点上有没有通道", () => {
   it("本机的有；远程的、绑不上的、provider 没登记的没有", () => {
-    removeSources = installCoreStateSources();
+    removeSources = installCoreStateSources(deps());
     expect(nodeStateChannel("grok", { remote: false })).toBe("transcript");
     expect(nodeStateChannel("grok", { remote: true })).toBeUndefined();
     expect(
@@ -440,5 +461,229 @@ describe("这个节点上有没有通道", () => {
     removeSources = undefined;
     // 撤掉后回到只按 provider 判。
     expect(nodeStateChannel("grok", { remote: true })).toBe("transcript");
+  });
+});
+
+describe("计划审阅（exit_plan_mode）", () => {
+  const ready = () => {
+    rows = [{ session_id: "p", pid: CHILD_PID, cwd: CWD }];
+    writeActive();
+  };
+
+  it("tool_started 起就是 waiting（带 awaitingInput 与 askKind），tool_completed 后清掉", () => {
+    ready();
+    writeEvents("p", [
+      line("turn_started"),
+      line("tool_started", { tool_name: "exit_plan_mode" }),
+    ]);
+    const { slot } = open();
+    slot!.start();
+    const waiting = reports.filter((e) => e.state === "waiting").at(-1);
+    expect(waiting?.awaitingInput).toBe(true);
+    expect(waiting?.askKind).toBe("exit_plan_mode");
+    append("p", [line("tool_completed", { tool_name: "exit_plan_mode" })]);
+    slot!.poke?.();
+    const after = reports.at(-1);
+    expect(after?.state).toBe("working");
+    expect(after?.questionClosed).toBe(true);
+    slot!.stop();
+  });
+
+  it("回合先结束了：审阅标记也清掉，不会一直 waiting", () => {
+    ready();
+    writeEvents("p", [
+      line("turn_started"),
+      line("tool_started", { tool_name: "exit_plan_mode" }),
+    ]);
+    const { slot } = open();
+    slot!.start();
+    append("p", [line("turn_ended", { outcome: "cancelled" })]);
+    slot!.poke?.();
+    const last = reports.at(-1);
+    expect(last?.state).toBe("done");
+    expect(last?.interrupted).toBe(true);
+    slot!.stop();
+  });
+
+  it("别的工具不触发 waiting", () => {
+    ready();
+    writeEvents("p", [
+      line("turn_started"),
+      line("tool_started", { tool_name: "read_file" }),
+    ]);
+    const { slot } = open();
+    slot!.start();
+    expect(states()).toEqual(["working"]);
+    slot!.stop();
+  });
+});
+
+describe("绑不上的节点", () => {
+  const grokRuns = () => names.set(CHILD_PID, "grok");
+
+  it("grok 在进程树里、连续 15 秒没有本节点的行：标记绑不上；行出现后撤销", async () => {
+    grokRuns();
+    writeActive();
+    const { slot } = open();
+    slot!.start();
+    expect(channelUnbound(NODE)).toBe(false);
+    timers.advance(14_000);
+    expect(channelUnbound(NODE)).toBe(false);
+    timers.advance(2_000);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(channelUnbound(NODE)).toBe(true);
+    rows = [{ session_id: "late", pid: CHILD_PID, cwd: CWD }];
+    writeActive();
+    writeEvents("late", [line("turn_started")]);
+    slot!.poke?.();
+    expect(channelUnbound(NODE)).toBe(false);
+    slot!.stop();
+  });
+
+  it("画面在信任框上：行本来就要等回答才有，不标记", async () => {
+    grokRuns();
+    screenText = "  Do you trust the contents of this directory?\n  1. Yes";
+    screenText = "Do you trust the contents of this directory?";
+    writeActive();
+    const { slot } = open();
+    slot!.start();
+    timers.advance(16_000);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(channelUnbound(NODE)).toBe(false);
+    slot!.stop();
+  });
+
+  it("进程树里没有 grok（还没起、已退出）：不算绑不上", () => {
+    writeActive();
+    const { slot } = open();
+    slot!.start();
+    timers.advance(60_000);
+    expect(channelUnbound(NODE)).toBe(false);
+    slot!.stop();
+  });
+
+  it("GROK_HOME 取节点会话的环境，不取 core 的", () => {
+    const other = tempDir("armadra-grok-home2-");
+    sessionHome = other;
+    writeFileSync(
+      join(other, "active_sessions.json"),
+      JSON.stringify([
+        {
+          session_id: "x",
+          pid: CHILD_PID,
+          cwd: CWD,
+          pid_start: 1,
+          opened_at: "2026-11-25T00:00:00Z",
+        },
+      ]),
+    );
+    const path = join(other, "sessions", encodeCwd(CWD), "x", "events.jsonl");
+    mkdirSync(join(path, ".."), { recursive: true });
+    writeFileSync(path, `${line("turn_started")}\n`);
+    const { slot } = open();
+    slot!.start();
+    expect(states()).toEqual(["working"]);
+    slot!.stop();
+    rmSync(other, { recursive: true, force: true });
+  });
+});
+
+describe("行全部消失与截断", () => {
+  it("绑定集合从有变无：发 session end 并清记忆，下一个会话从零开始", () => {
+    rows = [{ session_id: "a", pid: CHILD_PID, cwd: CWD }];
+    writeActive();
+    writeEvents("a", [line("turn_started")]);
+    const { slot } = open();
+    slot!.start();
+    rows = [];
+    writeActive();
+    slot!.poke?.();
+    expect(
+      reports.filter((e) => e.kind === "session").map((e) => e.sessionPhase),
+    ).toEqual(["start", "end"]);
+    rows = [{ session_id: "b", pid: CHILD_PID, cwd: CWD }];
+    writeActive();
+    writeEvents("b", [line("turn_started")]);
+    slot!.poke?.();
+    const last = reports.at(-1);
+    expect(last?.state).toBe("working");
+    expect(last?.newTurn).toBe(true);
+    slot!.stop();
+  });
+
+  it("新回合按每个会话自己的回合数判，不看总数", () => {
+    rows = [
+      { session_id: "a", pid: CHILD_PID, cwd: CWD },
+      { session_id: "b", pid: CHILD_PID, cwd: CWD },
+    ];
+    writeActive();
+    writeEvents("a", [
+      line("turn_started"),
+      line("turn_ended", { outcome: "completed" }),
+    ]);
+    writeEvents("b", [
+      line("turn_started"),
+      line("turn_ended", { outcome: "completed" }),
+    ]);
+    const { slot } = open();
+    slot!.start();
+    // b 关掉，a 开始新回合：总数没涨，但 a 的回合数涨了。
+    rows = [{ session_id: "a", pid: CHILD_PID, cwd: CWD }];
+    writeActive();
+    append("a", [line("turn_started")]);
+    slot!.poke?.();
+    const last = reports.at(-1);
+    expect(last?.state).toBe("working");
+    expect(last?.newTurn).toBe(true);
+    slot!.stop();
+  });
+
+  it("文件被截断或换掉：从头重读，不沿用旧的状态", () => {
+    rows = [{ session_id: "a", pid: CHILD_PID, cwd: CWD }];
+    writeActive();
+    writeEvents("a", [
+      line("turn_started"),
+      line("tool_started", { tool_name: "x".repeat(300) }),
+    ]);
+    const { slot } = open();
+    slot!.start();
+    expect(states()).toEqual(["working"]);
+    writeEvents("a", [
+      line("turn_started"),
+      line("turn_ended", { outcome: "completed" }),
+    ]);
+    slot!.poke?.();
+    expect(states().at(-1)).toBe("done");
+    slot!.stop();
+  });
+
+  it("重放窗口切在回合中间（看不到 turn_started）：回合里的行也算在回合内", () => {
+    const tail = new SessionTail();
+    tail.apply({ type: "tool_started", tool_name: "x" });
+    expect(tail.view(0).state).toBe("working");
+    const other = new SessionTail();
+    other.apply({ type: "first_token" });
+    expect(other.view(0).state).toBe("working");
+    other.apply({ type: "turn_ended", outcome: "completed" });
+    expect(other.view(0).state).toBe("idle");
+  });
+
+  it("聚合的 ended 取最近结束的那个，不取行序里最后一个", () => {
+    const newer = {
+      state: "idle",
+      turns: 1,
+      ended: "cancelled",
+      endedAt: 2_000,
+    } as const;
+    const older = {
+      state: "idle",
+      turns: 1,
+      ended: "completed",
+      endedAt: 1_000,
+    } as const;
+    expect(aggregate([newer, older]).ended).toBe("cancelled");
+    expect(aggregate([older, newer]).ended).toBe("cancelled");
   });
 });

@@ -9,12 +9,13 @@ import {
   readdirSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import {
   STATE_SOURCE_TRANSCRIPT,
   markChannelUnbound,
 } from "../../agent/state-source";
+import { SCREEN_SIGNATURES } from "../../agent/screen-gate";
 import {
   type StateSlot,
   type StateSlotContext,
@@ -79,12 +80,20 @@ export type ActiveRead =
   /** The file is there and unreadable, or not the shape this reader knows. */
   | { readonly kind: "unreadable" };
 
+/** Every process's parent and executable name, from one `ps` snapshot. */
+export interface ProcessTable {
+  readonly parents: ReadonlyMap<number, number>;
+  readonly names: ReadonlyMap<number, string>;
+}
+
 export interface GrokDeps {
-  /** `$GROK_HOME` or `~/.grok`. */
-  home(): string;
+  /** `$GROK_HOME` of the node's own session environment, else core's, else `~/.grok`. */
+  home(sessionHome?: string): string;
   readActive(home: string): ActiveRead;
-  /** pid → parent pid for every process; `undefined` when it cannot be read. */
-  processTable(): ReadonlyMap<number, number> | undefined;
+  /** The process table; `undefined` when it cannot be read. */
+  processTable(): ProcessTable | undefined;
+  /** Where this runs: the gate and the slot both read it from here, never from `process`. */
+  platform(): NodeJS.Platform;
   /** Where `events.jsonl` of this row is, or `undefined`. */
   locate(home: string, row: ActiveRow): string | undefined;
   now(): number;
@@ -92,7 +101,11 @@ export interface GrokDeps {
 
 /* ------------------------------ real readers ------------------------------ */
 
-export function grokHome(env: NodeJS.ProcessEnv = process.env): string {
+export function grokHome(
+  env: NodeJS.ProcessEnv = process.env,
+  sessionHome?: string,
+): string {
+  if (sessionHome !== undefined && sessionHome !== "") return sessionHome;
   const home = env.GROK_HOME;
   return home !== undefined && home !== "" ? home : join(homedir(), ".grok");
 }
@@ -135,19 +148,36 @@ export function readActiveSessions(home: string): ActiveRead {
   return { kind: "rows", rows };
 }
 
-export function psProcessTable(): ReadonlyMap<number, number> | undefined {
+/** One `ps -A` serves every slot for this long (many nodes poll once a second). */
+const PROCESS_TABLE_TTL_MS = 1_000;
+let cachedTable: { at: number; table: ProcessTable | undefined } | undefined;
+
+export function psProcessTable(
+  now: () => number = Date.now,
+): ProcessTable | undefined {
   if (process.platform === "win32") return undefined;
-  const result = spawnSync("ps", ["-A", "-o", "pid=,ppid="], {
+  const at = now();
+  if (cachedTable !== undefined && at - cachedTable.at < PROCESS_TABLE_TTL_MS) {
+    return cachedTable.table;
+  }
+  const result = spawnSync("ps", ["-A", "-o", "pid=,ppid=,comm="], {
     encoding: "utf8",
     timeout: 3_000,
+    maxBuffer: 16 * 1024 * 1024,
   });
-  if (result.status !== 0 || typeof result.stdout !== "string")
-    return undefined;
-  const table = new Map<number, number>();
-  for (const line of result.stdout.split("\n")) {
-    const match = /^\s*(\d+)\s+(\d+)\s*$/.exec(line);
-    if (match !== null) table.set(Number(match[1]), Number(match[2]));
+  let table: ProcessTable | undefined;
+  if (result.status === 0 && typeof result.stdout === "string") {
+    const parents = new Map<number, number>();
+    const names = new Map<number, string>();
+    for (const line of result.stdout.split("\n")) {
+      const match = /^\s*(\d+)\s+(\d+)\s+(.*?)\s*$/.exec(line);
+      if (match === null) continue;
+      parents.set(Number(match[1]), Number(match[2]));
+      names.set(Number(match[1]), basename(match[3] ?? ""));
+    }
+    table = { parents, names };
   }
+  cachedTable = { at, table };
   return table;
 }
 
@@ -180,9 +210,10 @@ export function locateEvents(home: string, row: ActiveRow): string | undefined {
 }
 
 export const realGrokDeps: GrokDeps = {
-  home: () => grokHome(),
+  home: (sessionHome) => grokHome(process.env, sessionHome),
   readActive: readActiveSessions,
-  processTable: psProcessTable,
+  processTable: () => psProcessTable(),
+  platform: () => process.platform,
   locate: locateEvents,
   now: () => Date.now(),
 };
@@ -200,7 +231,17 @@ export interface TailView {
   readonly ended?: "completed" | "cancelled" | "error";
   /** When the open permission request began, in epoch ms. */
   readonly requestedAt?: number;
+  /** When the last turn ended (epoch ms); `0` when the line carries no time. */
+  readonly endedAt?: number;
+  /** The tool the turn is parked on until a person answers (`exit_plan_mode`). */
+  readonly asking?: string;
 }
+
+/**
+ * Tools that hold the turn open on a person: grok does not end the turn while
+ * the plan review (`a approve | s request changes | …`) is up.
+ */
+const ASKING_TOOLS = new Set(["exit_plan_mode"]);
 
 /**
  * The per-session state machine over `events.jsonl` lines. Pure: feed it parsed
@@ -212,6 +253,8 @@ export class SessionTail {
   private turns = 0;
   private ended: TailView["ended"];
   private requestedAt: number | undefined;
+  private endedAt = 0;
+  private asking: string | undefined;
   unknownLines = 0;
 
   apply(record: unknown): void {
@@ -226,6 +269,7 @@ export class SessionTail {
         this.turns += 1;
         this.ended = undefined;
         this.requestedAt = undefined;
+        this.asking = undefined;
         break;
       case "permission_requested": {
         const at = typeof line.ts === "string" ? Date.parse(line.ts) : NaN;
@@ -239,6 +283,11 @@ export class SessionTail {
       case "turn_ended": {
         this.inTurn = false;
         this.requestedAt = undefined;
+        this.asking = undefined;
+        {
+          const at = typeof line.ts === "string" ? Date.parse(line.ts) : NaN;
+          this.endedAt = Number.isFinite(at) ? at : 0;
+        }
         const outcome = line.outcome;
         this.ended =
           outcome === "completed" || outcome === "cancelled"
@@ -246,11 +295,30 @@ export class SessionTail {
             : "error";
         break;
       }
-      case "tool_started":
-      case "tool_completed":
+      case "tool_started": {
+        // Lines that only happen inside a turn also say "in a turn": a replay
+        // window cut in the middle of one never saw its `turn_started`.
+        this.inTurn = true;
+        const tool = line.tool_name;
+        if (typeof tool === "string" && ASKING_TOOLS.has(tool)) {
+          this.asking = tool;
+        }
+        break;
+      }
+      case "tool_completed": {
+        const tool = line.tool_name;
+        if (
+          this.asking !== undefined &&
+          (typeof tool !== "string" || tool === this.asking)
+        ) {
+          this.asking = undefined;
+        }
+        break;
+      }
       case "loop_started":
       case "first_token":
       case "phase_changed":
+        this.inTurn = true;
         break;
       default:
         // `mcp_*` and whatever a newer grok adds: not a state.
@@ -259,6 +327,13 @@ export class SessionTail {
   }
 
   view(nowMs: number): TailView {
+    if (this.asking !== undefined && this.inTurn) {
+      return {
+        state: "waiting",
+        turns: this.turns,
+        asking: this.asking,
+      };
+    }
     if (this.requestedAt !== undefined) {
       return {
         state:
@@ -272,7 +347,9 @@ export class SessionTail {
     return {
       state: this.inTurn ? "working" : "idle",
       turns: this.turns,
-      ...(this.ended === undefined ? {} : { ended: this.ended }),
+      ...(this.ended === undefined
+        ? {}
+        : { ended: this.ended, endedAt: this.endedAt }),
     };
   }
 }
@@ -282,25 +359,41 @@ export function aggregate(views: readonly TailView[]): {
   state: "waiting" | "working" | "done";
   turns: number;
   ended?: TailView["ended"];
+  asking?: string;
 } {
   const turns = views.reduce((sum, view) => sum + view.turns, 0);
-  if (views.some((view) => view.state === "waiting")) {
-    return { state: "waiting", turns };
+  const waiting = views.filter((view) => view.state === "waiting");
+  if (waiting.length > 0) {
+    const asking = waiting.find((view) => view.asking !== undefined)?.asking;
+    return {
+      state: "waiting",
+      turns,
+      ...(asking === undefined ? {} : { asking }),
+    };
   }
   if (views.some((view) => view.state === "working")) {
     return { state: "working", turns };
   }
-  const ended = [...views]
-    .reverse()
-    .find((view) => view.ended !== undefined)?.ended;
+  // The one that ended last, not the last in row order.
+  let latest: TailView | undefined;
+  for (const view of views) {
+    if (view.ended === undefined) continue;
+    if (latest === undefined || (view.endedAt ?? 0) >= (latest.endedAt ?? 0)) {
+      latest = view;
+    }
+  }
+  const ended = latest?.ended;
   return { state: "done", turns, ...(ended === undefined ? {} : { ended }) };
 }
 
 /* ---------------------------------- slot ---------------------------------- */
 
+/** No row of this node for this long, with grok running in it: the channel is unbound. */
+export const UNBOUND_AFTER_MS = 15_000;
+
 interface Followed {
   readonly row: ActiveRow;
-  readonly tail: SessionTail;
+  tail: SessionTail;
   path: string | undefined;
   offset: number;
   partial: string;
@@ -311,9 +404,16 @@ class GrokSlot implements StateSlot {
   private timer: unknown;
   private graceTimer: unknown;
   private stopped = false;
-  /** What was last reported: `${state}`, and the turns total it was reported at. */
-  private last: { state: string; turns: number } | undefined;
+  /** What was last reported: the state, and each session's turn count then. */
+  private last: { state: string; turns: string; asking: boolean } | undefined;
   private announced = new Set<string>();
+  /** Turns seen per session, to tell "a session began a turn" from "the sum moved". */
+  private readonly seenTurns = new Map<string, number>();
+  private hadBound = false;
+  private unreadable = false;
+  private noRowSince: number | undefined;
+  private noRowUnbound = false;
+  private screenCheck = false;
 
   constructor(
     private readonly context: StateSlotContext,
@@ -332,11 +432,13 @@ class GrokSlot implements StateSlot {
   /** Synchronous: bind, read what was appended, report a change. */
   readNow(): void {
     if (this.stopped) return;
-    const home = this.deps.home();
+    // The node's own `GROK_HOME` (a node environment can differ from core's).
+    const home = this.deps.home(this.context.env?.("GROK_HOME"));
     const active = this.deps.readActive(home);
-    markChannelUnbound(this.context.nodeId, active.kind === "unreadable");
+    this.unreadable = active.kind === "unreadable";
+    const bound = active.kind === "rows" ? this.bind(active.rows) : [];
+    this.judgeBinding(bound.length > 0);
     if (active.kind !== "rows") return;
-    const bound = this.bind(active.rows);
     for (const row of bound) {
       let followed = this.followed.get(row.sessionId);
       if (followed === undefined) {
@@ -352,6 +454,81 @@ class GrokSlot implements StateSlot {
       this.read(followed, home);
     }
     this.report(bound.map((row) => row.sessionId));
+  }
+
+  /**
+   * The channel is unbound when the file is unreadable, or when grok has been
+   * running in this node's process tree for {@link UNBOUND_AFTER_MS} without a
+   * row of this node showing up (a leader, a `GROK_HOME` core cannot see, a
+   * wrapper that left the tree) and the screen is not the trust dialog (no row
+   * exists until it is answered). A row appearing undoes it.
+   */
+  private judgeBinding(hasRow: boolean): void {
+    if (hasRow) {
+      this.noRowSince = undefined;
+      this.noRowUnbound = false;
+    } else if (this.runsGrok()) {
+      const now = this.deps.now();
+      this.noRowSince ??= now;
+      if (
+        !this.noRowUnbound &&
+        !this.screenCheck &&
+        now - this.noRowSince >= UNBOUND_AFTER_MS
+      ) {
+        this.confirmUnbound();
+      }
+    } else {
+      this.noRowSince = undefined;
+      this.noRowUnbound = false;
+    }
+    markChannelUnbound(
+      this.context.nodeId,
+      this.unreadable || this.noRowUnbound,
+    );
+  }
+
+  private runsGrok(): boolean {
+    const root = this.context.pid();
+    if (root === undefined) return false;
+    const table = this.deps.processTable();
+    if (table === undefined) return false;
+    for (const [pid, name] of table.names) {
+      if (name !== "grok") continue;
+      let at: number | undefined = pid;
+      for (let depth = 0; at !== undefined && depth < 64; depth += 1) {
+        if (at === root) return true;
+        at = table.parents.get(at);
+        if (at === 0 || at === 1) break;
+      }
+    }
+    return false;
+  }
+
+  private confirmUnbound(): void {
+    const capture = this.context.screen;
+    const decide = (screen: string | undefined) => {
+      this.screenCheck = false;
+      if (this.stopped || this.noRowSince === undefined) return;
+      const trust = SCREEN_SIGNATURES.grok?.dialogs.find(
+        (dialog) => dialog.id === "grok.folder-trust",
+      );
+      const onTrustDialog =
+        screen !== undefined &&
+        trust !== undefined &&
+        screen.split("\n").some((line) => trust.pattern.test(line));
+      if (onTrustDialog) {
+        this.noRowSince = this.deps.now();
+        return;
+      }
+      this.noRowUnbound = true;
+      markChannelUnbound(this.context.nodeId, true);
+    };
+    if (capture === undefined) {
+      decide(undefined);
+      return;
+    }
+    this.screenCheck = true;
+    void capture().then(decide, () => decide(undefined));
   }
 
   stop(): void {
@@ -395,6 +572,7 @@ class GrokSlot implements StateSlot {
     if (others.length === 0) return mine;
     const table = this.deps.processTable();
     if (table === undefined) return mine;
+    const parents = table.parents;
     for (const row of others) {
       let at: number | undefined = row.pid;
       for (let depth = 0; at !== undefined && depth < 64; depth += 1) {
@@ -402,7 +580,7 @@ class GrokSlot implements StateSlot {
           mine.push(row);
           break;
         }
-        at = table.get(at);
+        at = parents.get(at);
         if (at === 0 || at === 1) break;
       }
     }
@@ -429,6 +607,7 @@ class GrokSlot implements StateSlot {
         // Truncated or replaced: start over.
         followed.offset = 0;
         followed.partial = "";
+        followed.tail = new SessionTail();
       }
       if (size === followed.offset) return;
       const buffer = Buffer.alloc(size - followed.offset);
@@ -453,7 +632,22 @@ class GrokSlot implements StateSlot {
   }
 
   private report(ids: readonly string[]): void {
-    if (ids.length === 0) return;
+    if (ids.length === 0) {
+      // The node's grok exited (or every row went): the session is over, and a
+      // later one starts from nothing — no stale state to dedupe against.
+      if (this.hadBound) {
+        this.hadBound = false;
+        this.send(
+          sessionEvent(this.context.nodeId, this.context.agentId, "end"),
+        );
+        this.last = undefined;
+        this.announced.clear();
+        this.followed.clear();
+        this.seenTurns.clear();
+      }
+      return;
+    }
+    this.hadBound = true;
     const nowMs = this.deps.now();
     const views = ids.flatMap((id) => {
       const followed = this.followed.get(id);
@@ -477,15 +671,27 @@ class GrokSlot implements StateSlot {
     if (next.turns === 0 && next.state === "done") return;
     const key = next.state;
     const before = this.last;
+    const turnsOf = (id: string) =>
+      this.followed.get(id)?.tail.view(nowMs).turns ?? 0;
+    const turnsKey = ids.map((id) => `${id}:${turnsOf(id)}`).join(",");
+    const asking = next.asking !== undefined;
     if (
       before !== undefined &&
       before.state === key &&
-      before.turns === next.turns
+      before.turns === turnsKey &&
+      before.asking === asking
     ) {
       return;
     }
-    const freshTurn = before === undefined || next.turns > before.turns;
-    this.last = { state: key, turns: next.turns };
+    // A fresh turn is one session's count rising, not the sum moving (a session
+    // closing lowers the sum, a new one raises it from nothing).
+    let freshTurn = before === undefined;
+    for (const id of ids) {
+      const turns = turnsOf(id);
+      if (turns > (this.seenTurns.get(id) ?? 0)) freshTurn = true;
+      this.seenTurns.set(id, turns);
+    }
+    this.last = { state: key, turns: turnsKey, asking };
     const event: AgentEvent =
       next.state === "waiting"
         ? stateEvent(this.context.nodeId, this.context.agentId, WAITING)
@@ -493,6 +699,14 @@ class GrokSlot implements StateSlot {
           ? stateEvent(this.context.nodeId, this.context.agentId, WORKING)
           : stateEvent(this.context.nodeId, this.context.agentId, DONE);
     if (next.state === "working" && freshTurn) event.newTurn = true;
+    // The plan review holds the turn open on a person: say what is asked, and
+    // close the question when it is answered (or the turn ends).
+    if (next.state === "waiting" && next.asking !== undefined) {
+      event.awaitingInput = true;
+      event.askKind = next.asking;
+    } else if (before?.asking === true) {
+      event.questionClosed = true;
+    }
     if (next.state === "done") {
       if (next.ended === "error") event.errored = true;
       if (next.ended === "cancelled") event.interrupted = true;
@@ -534,7 +748,7 @@ export function grokSlotProvider(
     open(context) {
       // Another machine's files are not readable here; Windows has no
       // `active_sessions.json` to speak of (nor `ps`).
-      if (context.remote() || process.platform === "win32") return undefined;
+      if (context.remote() || deps.platform() === "win32") return undefined;
       return new GrokSlot(context, deps);
     },
   };

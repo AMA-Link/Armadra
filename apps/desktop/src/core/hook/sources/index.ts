@@ -1,6 +1,6 @@
 import { registerNodeChannelGate } from "../../agent/state-source";
 import { registerStateSlot } from "../../timeline/sources/state-slot";
-import { grokSlotProvider } from "./grok-events";
+import { type GrokDeps, grokSlotProvider, realGrokDeps } from "./grok-events";
 
 /**
  * Registers the status sources core reads itself (no hook client, no extension):
@@ -13,13 +13,15 @@ import { grokSlotProvider } from "./grok-events";
  * then takes the observed path instead of waiting for a first report that cannot
  * come. Contract §121.
  */
-export function installCoreStateSources(): () => void {
+export function installCoreStateSources(
+  deps: GrokDeps = realGrokDeps,
+): () => void {
   const offs = [
-    registerStateSlot(grokSlotProvider()),
+    registerStateSlot(grokSlotProvider(deps)),
     registerNodeChannelGate(
       "grok",
       (facts) =>
-        !facts.remote && facts.unbound !== true && process.platform !== "win32",
+        !facts.remote && facts.unbound !== true && deps.platform() !== "win32",
     ),
   ];
   return () => {

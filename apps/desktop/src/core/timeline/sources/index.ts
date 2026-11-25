@@ -128,6 +128,8 @@ interface OpenSlot {
 export interface TerminalFacts {
   pid(sessionId: string): number | undefined;
   remote(sessionId: string): boolean;
+  env?(sessionId: string, name: string): string | undefined;
+  screen?(sessionId: string): Promise<string | undefined>;
 }
 
 export interface SourceManagerOptions {
@@ -371,6 +373,9 @@ export class SourceManager {
       startedAtMs: row.createdAtMs,
       pid: () => this.facts?.pid(row.id),
       remote: () => this.facts?.remote(row.id) ?? false,
+      env: (name) => this.facts?.env?.(row.id, name),
+      screen: () =>
+        this.facts?.screen?.(row.id) ?? Promise.resolve(undefined),
       report: (event, options) => {
         const report = internalReporter();
         if (report === undefined) return false;

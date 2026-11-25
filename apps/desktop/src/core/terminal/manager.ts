@@ -962,6 +962,12 @@ export class TerminalManager {
     return record === undefined || record.exited ? undefined : record.pid;
   }
 
+  /** 这个会话启动环境里的变量；没有记录或没设答 `undefined`。 */
+  envOf(sessionId: string, name: string): string | undefined {
+    const pairs = this.records.get(sessionId)?.spec.env;
+    return pairs?.find(([key]) => key === name)?.[1];
+  }
+
   /** 这个会话跑在 SSH 主机上（读不到本机文件的那一种）；不认识的会话答 `false`。 */
   isRemote(sessionId: string): boolean {
     return this.records.get(sessionId)?.spec.sshHostId !== undefined;

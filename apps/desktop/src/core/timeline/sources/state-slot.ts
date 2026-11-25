@@ -41,6 +41,10 @@ export interface StateSlotContext {
   pid(): number | undefined;
   /** 这个会话是不是跑在远程主机上（本机文件读不到）。 */
   remote(): boolean;
+  /** 这个会话启动环境里的一个变量（节点自己的 `GROK_HOME` 之类）；没有答 `undefined`。 */
+  env?(name: string): string | undefined;
+  /** 取这个会话此刻的画面（最后几十行）；取不到答 `undefined`。 */
+  screen?(): Promise<string | undefined>;
   /**
    * 报一条状态。级别由管理器按槽声明的执行：`reported` 的事件必须自带上报级来源；
    * `observed` 的事件来源一律改写成 `observed`。`bind: true` 另给事件自造终端绑定。
