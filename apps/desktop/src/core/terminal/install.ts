@@ -36,7 +36,7 @@ import { acpSwitching } from "../acp/routes";
 import { timelineDomainOf } from "../timeline";
 import { loadNode } from "../collab/nodes";
 import { canvasEnvironment } from "../agent/canvas-launch";
-import { pendingCardField } from "../agent/pending-cards";
+import { cardFields } from "../agent/pending-cards";
 import { type StallKind, stalledOf } from "../agent/stalled";
 import {
   CredentialError,
@@ -1363,7 +1363,7 @@ export function listSessions(
       ...(stateSource === null ? {} : { stateSource }),
       unread: Number(row.unread ?? 0) !== 0,
       ...(pendingId === null ? {} : { pendingId }),
-      ...pendingCardField(pendingId),
+      ...cardFields(pendingId, String(row.node_id)),
       ...(sessionPhase === null || sessionPhase === undefined
         ? {}
         : { sessionPhase }),

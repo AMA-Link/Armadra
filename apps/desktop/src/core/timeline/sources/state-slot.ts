@@ -49,7 +49,10 @@ export interface StateSlotContext {
    * 这个节点的审批卡现在可不可以在终端里代答（两道门与启动模式都过了，契约 §127）。
    * 缺省 / 没装配 = 不可以。只有问「要不要为这张卡建审批记录」时用。
    */
-  answerCards?(): Promise<boolean>;
+  answerCards?(): Promise<{
+    readonly open: boolean;
+    readonly reason?: string;
+  }>;
   /**
    * 只关审批记录、不报状态：一条记录对应的卡没人能再答了（槽停了、槽起来时前一个
    * 槽留下的）。`pendingId` 关一条，`protocol` 关这个节点上这一种的所有开着的。

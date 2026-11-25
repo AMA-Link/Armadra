@@ -202,6 +202,8 @@ export const sessionSummarySchema = z.object({
    * one-click allow for a plan until the next frame.
    */
   pendingCard: z.string().max(40).optional(),
+  /** Same field as on the `agent.status` frame (contract §127). */
+  cardNotice: z.string().max(40).optional(),
   /**
    * `start` / `end` of the agent session the last hook event belonged to. The
    * hook reducer clears `state` on both, so this is what tells a freshly

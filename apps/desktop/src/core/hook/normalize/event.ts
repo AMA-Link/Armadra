@@ -138,6 +138,15 @@ export interface AgentEvent {
     readonly answer: "allow" | "deny" | "cancelled";
   };
   /**
+   * A line the node header keeps showing about a terminal card: this card has
+   * no approval record because the grok version is not on the verified list or
+   * the node was not launched in a gated mode (contract §127). Cleared when the
+   * turn leaves the wait. Only the state slot says it.
+   *
+   * Never serialized, for the same reason as `silent`.
+   */
+  cardNotice?: "unverified_version" | "mode_excluded";
+  /**
    * A model request failed and the CLI may still retry it. Copilot reports
    * every such failure as recoverable and sends no `agentStop` once it gives
    * up, so only continued silence can say the turn is over.
@@ -155,6 +164,7 @@ const UNSERIALIZED = new Set([
   "keepsVerdict",
   "closesPrompt",
   "settlesApproval",
+  "cardNotice",
   "modelError",
   "toolName",
   "toolSummary",

@@ -45,6 +45,12 @@ export const agentStatusSchema = z.object({
    * it up when it builds the frame.
    */
   pendingCard: z.string().max(40).optional(),
+  /**
+   * A line the node header keeps showing about a terminal card (contract §127):
+   * keys that were not seen to take effect, or why no approval record was made.
+   * Not a column: the core looks it up when it builds the frame.
+   */
+  cardNotice: z.string().max(40).optional(),
   /** The reporting hook presented a node token minted by this runtime instance. */
   verified: z.boolean().default(false),
   /** The row was read back from SQLite after a runtime restart. */

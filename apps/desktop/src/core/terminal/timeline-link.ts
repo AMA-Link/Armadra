@@ -40,7 +40,7 @@ export function linkTimeline(
         setting: settingsDomain()?.settings.get(GROK_ANSWER_SETTING),
         permissionMode: nodePermissionMode(context.db.database, nodeId),
       });
-      return gate.open;
+      return gate.open ? { open: true } : { open: false, reason: gate.reason };
     },
     screen: async (sessionId) => {
       try {

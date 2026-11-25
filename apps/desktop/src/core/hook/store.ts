@@ -2,7 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 
 import { AGENT_STATES, type AgentEndedBy } from "@armadra/shared";
 
-import { pendingCardOf } from "../agent/pending-cards";
+import { cardNoticeOf, pendingCardOf } from "../agent/pending-cards";
 import { AGENT_STATE_SOURCES } from "../agent/state-source";
 
 /**
@@ -36,6 +36,7 @@ export interface AgentStatusRow {
   readonly pendingId?: string;
   /** 挂起的审批的卡片种类（内存里的 `agent/pending-cards.ts`，不是列）：`plan` = 计划审批。 */
   readonly pendingCard?: string;
+  readonly cardNotice?: string;
   readonly verified: boolean;
   readonly restored: boolean;
   readonly updatedAt: string;
@@ -122,6 +123,9 @@ function statusFromRow(row: Row): AgentStatusRow {
     ...(pendingCardOf(optionalText(row.pending_id)) === undefined
       ? {}
       : { pendingCard: pendingCardOf(optionalText(row.pending_id)) as string }),
+    ...(cardNoticeOf(String(row.node_id)) === undefined
+      ? {}
+      : { cardNotice: cardNoticeOf(String(row.node_id)) as string }),
     verified: Number(row.verified) !== 0,
     restored: Number(row.restored) !== 0,
     updatedAt: String(row.updated_at),

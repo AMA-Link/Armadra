@@ -1064,9 +1064,25 @@ class GrokSlot implements StateSlot {
         this.cardTries.set(key, 3);
         return;
       }
-      if (!(await answerCards())) {
-        // 门关着：这张卡不再问（开了设置之后的下一张卡才算）。
+      const gate = await answerCards();
+      if (!gate.open) {
+        // 门关着：这张卡不再问（开了设置之后的下一张卡才算）。设置开着却建不了
+        // 记录（版本没验证、节点不是 `--permission-mode` 启动的）时，头部要说原因。
         this.cardTries.set(key, 3);
+        if (
+          !this.stopped &&
+          (gate.reason === "unverified_version" ||
+            gate.reason === "mode_excluded")
+        ) {
+          const notice = stateEvent(
+            this.context.nodeId,
+            this.context.agentId,
+            WAITING,
+          );
+          notice.cardNotice = gate.reason;
+          notice.sessionId = request.sessionId;
+          this.send(notice);
+        }
         return;
       }
       const text = await screen();

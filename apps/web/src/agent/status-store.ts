@@ -284,6 +284,9 @@ export const useAgentStatusStore = create<AgentStatusState>((set, get) => ({
           ...(session.pendingCard === undefined
             ? {}
             : { pendingCard: session.pendingCard }),
+          ...(session.cardNotice === undefined
+            ? {}
+            : { cardNotice: session.cardNotice }),
           sessionPhase: session.sessionPhase,
           ...(session.errored === undefined
             ? {}

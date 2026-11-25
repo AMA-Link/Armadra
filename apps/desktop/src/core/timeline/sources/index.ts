@@ -141,7 +141,10 @@ export interface TerminalFacts {
   env?(sessionId: string, name: string): string | undefined;
   screen?(sessionId: string): Promise<string | undefined>;
   /** 终端卡可以代答吗（`agent/grok-answer.ts` 的门）。 */
-  answerCards?(sessionId: string, nodeId: string): Promise<boolean>;
+  answerCards?(
+    sessionId: string,
+    nodeId: string,
+  ): Promise<{ readonly open: boolean; readonly reason?: string }>;
 }
 
 export interface SourceManagerOptions {
@@ -505,7 +508,8 @@ export class SourceManager {
         }
       },
       answerCards: () =>
-        this.facts?.answerCards?.(row.id, nodeId) ?? Promise.resolve(false),
+        this.facts?.answerCards?.(row.id, nodeId) ??
+        Promise.resolve({ open: false }),
       report: (event, options) => {
         const report = internalReporter();
         if (report === undefined) return false;

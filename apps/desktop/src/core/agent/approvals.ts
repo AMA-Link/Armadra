@@ -15,6 +15,8 @@ import { conflict, badRequest, notFound, rfc3339 } from "../workspaces/support";
 import { getAgentStatus } from "./status";
 import { checkElicitationAnswer, elicitationOf } from "../acp/elicitation";
 import type { AcpElicitationResult } from "../acp/types";
+import { withStalled } from "./stalled";
+import { setCardNotice } from "./pending-cards";
 import {
   type GrokDelivery,
   deliverGrokAnswer,
@@ -523,6 +525,18 @@ export async function answerApproval(
     route,
     refusal,
   });
+
+  if (delivery !== undefined && delivery !== "confirmed") {
+    // 头部常驻一句（到这一回合结束）：键没有被看到生效，去终端看一眼。
+    setCardNotice(approval.nodeId, delivery);
+    const status = getAgentStatus(context.database, approval.nodeId);
+    if (status !== undefined) {
+      context.publish(approval.workspaceId, {
+        type: "agent.status",
+        status: withStalled(status) as unknown as Record<string, unknown>,
+      });
+    }
+  }
 
   const action =
     elicitation?.ok === true

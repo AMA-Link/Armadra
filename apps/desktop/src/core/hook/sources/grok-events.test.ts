@@ -50,7 +50,7 @@ let timers: FakeTimers;
 let reports: AgentEvent[];
 let payloads: unknown[];
 let settled: unknown[];
-let cardGate: boolean | undefined;
+let cardGate: { open: boolean; reason?: string } | undefined;
 let table: Map<number, number>;
 let names: Map<number, string>;
 let started: Map<number, number>;
@@ -127,7 +127,7 @@ function open(options: { remote?: boolean } = {}) {
     screen: async () => screenText,
     ...(cardGate === undefined
       ? {}
-      : { answerCards: async () => cardGate === true }),
+      : { answerCards: async () => cardGate ?? { open: false } }),
     settleApprovals: (settles) => {
       settled.push(settles);
     },
@@ -680,7 +680,7 @@ describe("终端审批卡：建记录与结案（契约 §127）", () => {
     rows = [{ session_id: "s", pid: CHILD_PID, cwd: CWD }];
     writeActive();
     screenText = CARD;
-    cardGate = true;
+    cardGate = { open: true };
   });
 
   async function waitingOn(lines: string[] = []) {
@@ -746,12 +746,34 @@ describe("终端审批卡：建记录与结案（契约 §127）", () => {
     const slot = await waitingOn();
     expect(blocked()).toHaveLength(0);
     expect(states().at(-1)).toBe("waiting");
-    cardGate = false;
+    slot.stop();
+  });
+
+  it.each(["unverified_version", "mode_excluded"] as const)(
+    "设置开着但门没过（%s）：不建记录，头部要说原因",
+    async (reason) => {
+      cardGate = { open: false, reason };
+      const slot = await waitingOn();
+      expect(blocked()).toHaveLength(0);
+      const noticed = reports.filter((e) => e.cardNotice !== undefined);
+      expect(noticed).toHaveLength(1);
+      expect(noticed[0]).toMatchObject({
+        state: "waiting",
+        cardNotice: reason,
+      });
+      slot.stop();
+    },
+  );
+
+  it("设置关着（setting_off）：什么也不说", async () => {
+    cardGate = { open: false, reason: "setting_off" };
+    const slot = await waitingOn();
+    expect(reports.filter((e) => e.cardNotice !== undefined)).toHaveLength(0);
     slot.stop();
   });
 
   it("槽自己说门关着（answerCards 答 false）：一条记录都不建", async () => {
-    cardGate = false;
+    cardGate = { open: false };
     const slot = await waitingOn();
     for (let i = 0; i < 4; i += 1) {
       timers.advance(1000);

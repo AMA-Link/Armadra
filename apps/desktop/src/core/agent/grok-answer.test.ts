@@ -21,6 +21,7 @@ import {
   useGrokVerifiedVersions,
 } from "./grok-answer";
 import { parseGrokApprovalCard } from "./grok-card";
+import { cardNoticeOf, clearCardNotice } from "./pending-cards";
 
 /** 键盘上答 grok 的审批卡（契约 §127）：核对、发键、事后核对。 */
 
@@ -99,6 +100,7 @@ afterEach(() => {
   useGrokVerifiedVersions(undefined);
   resetGrokVersionProbe();
   off();
+  clearCardNotice(nodeId);
   fixture.close();
 });
 
@@ -122,6 +124,16 @@ describe("核对通过：只发那一个数字键", () => {
     });
     expect(result.delivery).toBe("confirmed");
     expect(writes()).toEqual(["4"]);
+  });
+
+  it("没被看到生效：头部提示挂上，confirmed 不挂", async () => {
+    outcome = () => "deny";
+    const result = await answerApproval(fixture.collab, "g-1", {
+      decision: "allow",
+    });
+    expect(result.delivery).toBe("mismatch");
+    expect(cardNoticeOf(nodeId)).toBe("mismatch");
+    clearCardNotice(nodeId);
   });
 
   it("HTTP 应答带 delivery", async () => {
