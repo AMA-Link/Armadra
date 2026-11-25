@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { FakeTimers } from "../testing";
 import {
   POKE_SETTLE_MS,
+  RELOCATE_GIVE_UP_MS,
   POLL_INTERVAL_MS,
   type ReadResult,
   TAIL_BYTES,
@@ -286,6 +287,76 @@ describe("TailRunner", () => {
     timers.advance(100);
     expect(numbers(reads)).toEqual([1, 2]);
     expect(runner.currentPath).toBe(other);
+    runner.stop();
+  });
+
+  it("keeps the relocation pending when the new file appears after the report", () => {
+    const other = join(dir, "later.jsonl");
+    writeFileSync(file, row(1));
+    const timers = new FakeTimers();
+    const reads: ReadResult[] = [];
+    let located: string | undefined = file;
+    const runner = runnerOn(timers, fakeWatch(), reads, () => located);
+    runner.start();
+    // 路径先报、文件晚一点才建：第一次找不到，标记不能丢。
+    located = undefined;
+    runner.relocate();
+    runner.poke();
+    timers.advance(300);
+    expect(runner.currentPath).toBe(file);
+    writeFileSync(other, row(2));
+    located = other;
+    timers.advance(1_500);
+    expect(runner.currentPath).toBe(other);
+    expect(numbers(reads)).toEqual([1, 2]);
+    runner.stop();
+  });
+
+  it("gives up waiting for a path that never appears", () => {
+    writeFileSync(file, row(1));
+    const timers = new FakeTimers();
+    const reads: ReadResult[] = [];
+    let located: string | undefined = file;
+    let calls = 0;
+    const runner = runnerOn(timers, fakeWatch(), reads, () => {
+      calls++;
+      return located;
+    });
+    runner.start();
+    located = undefined;
+    runner.relocate();
+    timers.advance(RELOCATE_GIVE_UP_MS + 5_000);
+    const settled = calls;
+    timers.advance(60_000);
+    // 放弃之后只剩平常的兜底，不再每半秒找一次。
+    expect(calls - settled).toBeLessThan(5);
+    expect(runner.currentPath).toBe(file);
+    runner.stop();
+  });
+
+  it("reads the old file one last time before leaving it, and keeps a cursor per path", () => {
+    const other = join(dir, "second.jsonl");
+    writeFileSync(file, row(1));
+    writeFileSync(other, row(10));
+    const timers = new FakeTimers();
+    const reads: ReadResult[] = [];
+    let located = file;
+    const runner = runnerOn(timers, fakeWatch(), reads, () => located);
+    runner.start();
+    // 换走之前旧文件又长了一行：换路径时补读，不丢。
+    appendFileSync(file, row(2));
+    located = other;
+    runner.relocate();
+    runner.poke();
+    timers.advance(100);
+    expect(numbers(reads)).toEqual([1, 2, 10]);
+    // 换回来：接着旧游标读，不重读已读过的。
+    appendFileSync(file, row(3));
+    located = file;
+    runner.relocate();
+    runner.poke();
+    timers.advance(100);
+    expect(numbers(reads)).toEqual([1, 2, 10, 3]);
     runner.stop();
   });
 

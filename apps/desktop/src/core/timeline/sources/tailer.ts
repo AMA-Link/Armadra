@@ -43,6 +43,10 @@ export const POKE_DELAY_MS = 20;
 export const POKE_SETTLE_MS = 300;
 /** 路径还没定位到时，多久重试一次。 */
 export const LOCATE_RETRY_MS = 5_000;
+/** 要求重新定位、但新文件还没出现（CLI 先报路径、后建文件）：这么久再找一次。 */
+export const RELOCATE_RETRY_MS = 500;
+/** 等新文件最多这么久：路径永远不会出现的（报错的路径）不一直找下去。 */
+export const RELOCATE_GIVE_UP_MS = 30_000;
 
 /* --------------------------------- 游标 --------------------------------- */
 
@@ -423,9 +427,17 @@ export class TailRunner {
   /** 路径可能换了（hook 报来新的转录）：下一次读之前重新定位。 */
   relocate(): void {
     this.relocateRequested = true;
+    this.relocateFresh = true;
+    this.relocateSince = this.timers.now();
   }
+  private relocateSince = 0;
 
+  /** 要求重新定位、还没找到新文件：标记一直留着，按 {@link RELOCATE_RETRY_MS} 再找。 */
   private relocateRequested = false;
+  /** 刚要求过、还没试：第一次不等节流。 */
+  private relocateFresh = false;
+  /** 每个读过的路径各自的游标：换走再换回来不从头读。 */
+  private readonly cursors = new Map<string, TailCursor>();
 
   private ensurePath(): void {
     const now = this.timers.now();
@@ -437,16 +449,51 @@ export class TailRunner {
     ) {
       return;
     }
-    if (!this.relocateRequested && now - this.lastLocateAt < LOCATE_RETRY_MS) {
+    const retry = this.relocateRequested ? RELOCATE_RETRY_MS : LOCATE_RETRY_MS;
+    if (!this.relocateFresh && now - this.lastLocateAt < retry) return;
+    this.lastLocateAt = now;
+    this.relocateFresh = false;
+    const located = this.options.locate();
+    if (located === undefined) {
+      // 要求了重新定位却还找不到（新文件晚于上报出现）：标记留着，不丢；等太久才放弃。
+      if (
+        this.relocateRequested &&
+        now - this.relocateSince >= RELOCATE_GIVE_UP_MS
+      ) {
+        this.relocateRequested = false;
+      }
       return;
     }
-    this.lastLocateAt = now;
     this.relocateRequested = false;
-    const located = this.options.locate();
-    if (located !== undefined && located !== this.path) {
-      this.unwatch();
-      this.path = located;
-      this.lastSeen = undefined;
+    if (located === this.path) return;
+    this.leave();
+    this.unwatch();
+    this.path = located;
+    this.lastSeen = undefined;
+    const known = this.cursors.get(located);
+    if (known !== undefined) this.cursor = known;
+  }
+
+  /** 离开旧路径之前：补读最后一次（它可能还在写），并记下它的游标。 */
+  private leave(): void {
+    const old = this.path;
+    if (old === undefined) return;
+    try {
+      const result = readTranscript(old, this.cursor, this.options.read);
+      this.reads++;
+      this.cursor = result.cursor ?? this.cursor;
+      if (
+        result.lines.length > 0 ||
+        result.reset !== undefined ||
+        result.skippedBytes > 0
+      ) {
+        this.options.onRead(result, old);
+      }
+    } catch (error) {
+      this.options.onError?.(error);
+    }
+    if (this.cursor !== undefined && this.cursor.path === old) {
+      this.cursors.set(old, this.cursor);
     }
   }
 
@@ -465,9 +512,11 @@ export class TailRunner {
     const interval =
       this.path === undefined
         ? LOCATE_RETRY_MS
-        : this.watching
-          ? SAFETY_POLL_MS
-          : POLL_INTERVAL_MS;
+        : this.relocateRequested
+          ? RELOCATE_RETRY_MS
+          : this.watching
+            ? SAFETY_POLL_MS
+            : POLL_INTERVAL_MS;
     this.poll = this.timers.setTimeout(() => this.onPoll(), interval);
   }
 
@@ -516,6 +565,11 @@ export class TailRunner {
     if (this.stopped) return;
     const path = this.path;
     if (path === undefined) {
+      this.readNow();
+      return;
+    }
+    if (this.relocateRequested) {
+      // 还在等新文件：每一拍都再找一次。
       this.readNow();
       return;
     }
