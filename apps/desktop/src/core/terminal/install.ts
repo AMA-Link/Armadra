@@ -58,6 +58,7 @@ import {
 import { Hibernator } from "./hibernator";
 import { setAgentLauncher } from "../schedule/cold-start";
 import { launchInSession } from "./node-launch";
+import { releaseDriveAtTurnEnd } from "./turn-end";
 import { terminalBridge } from "./bridge";
 import { SshBackend } from "./ssh/backend";
 import { permissionWaitEnvironment } from "../hook/approvals";
@@ -1063,16 +1064,7 @@ export function install(
       });
     },
   );
-  // 轮末（hook / ACP 报 idle 或 waiting）放掉该节点 Agent 自己持有的驱动租约，
-  // 排队的投递不必再等 120 秒空闲窗口（#1011）。人持有的租约不动。
-  const offTurnEnd = context.bus.on("workspace.event", ({ event }) => {
-    if (event.type !== "agent.status") return;
-    const status = (event as { status?: { nodeId?: unknown; state?: unknown } })
-      .status;
-    if (status?.state !== "idle" && status?.state !== "waiting") return;
-    if (typeof status.nodeId !== "string") return;
-    manager.releaseAgentDrive(status.nodeId);
-  });
+  const offTurnEnd = releaseDriveAtTurnEnd(context.bus, manager);
   const offArchived = context.bus.on(
     "workspace.archived",
     ({ workspaceId }) => {
