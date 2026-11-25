@@ -41,6 +41,8 @@ import type { CollabContext } from "./service";
  */
 const REASON_NOTES: Readonly<Record<string, string>> = {
   TARGET_NOT_AT_PROMPT: "对方终端停在 CLI 的对话框上，没有替人回答",
+  TARGET_STATE_UNVERIFIED:
+    "core 重启后不再沿用排队时的 --unverified，请确认对方状态后重发",
 };
 
 /** 回执正文。不带原消息正文，只说去了哪、为什么停下、试过几次、多长。 */

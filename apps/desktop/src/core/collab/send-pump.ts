@@ -5,12 +5,7 @@ import { attempt } from "./control/send";
 import { loadNode, loadSession } from "./nodes";
 import { writeReceipts } from "./receipts";
 import { sendLimits } from "./send-limits";
-import {
-  expireQueue,
-  pendingFor,
-  settle,
-  targetsWithPending,
-} from "./send-queue";
+import { expireQueue, pendingFor, targetsWithPending } from "./send-queue";
 import { type CollabContext, nowSeconds } from "./service";
 import { type ProgramBlockTracker, programBlocks } from "./program-block";
 import { RouterCards } from "./router-cards";
@@ -162,21 +157,13 @@ export class SendPump {
         await this.cards.deliver(context, targetNodeId);
         return;
       }
-      if (
-        next.unverified === true &&
+      // 重启前排下的 `--unverified` 项不再带回：当时否决它们的依据（内存里的程序自报
+      // 状态）已随重启丢了。没有状态通道的目标会在门链里自己以
+      // `TARGET_STATE_UNVERIFIED` 结束（回执由下面的 catch 写），有状态通道的目标
+      // 照常投递——它们本来就不靠 `--unverified`。
+      const beforeRestart =
         this.startedAtSeconds !== undefined &&
-        next.createdAt < this.startedAtSeconds
-      ) {
-        settle(
-          context.database,
-          next.id,
-          "cancelled",
-          "TARGET_STATE_UNVERIFIED",
-          "gate",
-        );
-        writeReceipts(context, nowSeconds(context));
-        return;
-      }
+        next.createdAt < this.startedAtSeconds;
       // 排队项只带 `--unverified`：`--no-queue` 是一次性的，一条已经排进去的投递
       // 按定义就是愿意等的那种。`--interrupt` 同理——打断是投的那一刻的决定，不是
       // 五分钟后替调用者再做一次。`--unverified` 是对「这个目标没有状态通道」的
@@ -184,7 +171,9 @@ export class SendPump {
       await attempt(context, next, {
         queue: true,
         dequeued: true,
-        ...(next.unverified === true ? { unverified: true } : {}),
+        ...(next.unverified === true && !beforeRestart
+          ? { unverified: true }
+          : {}),
       });
     } catch (error) {
       // 出队时被门链拒绝不是这个泵的失败：那一条已经在 `attempt` 里被落了

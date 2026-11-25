@@ -216,7 +216,7 @@ describe("a veto the frames never showed", () => {
 });
 
 describe("a queued --unverified item from before a restart", () => {
-  it("ends as TARGET_STATE_UNVERIFIED instead of being delivered on a stale say-so", async () => {
+  it("ends through the gate chain as TARGET_STATE_UNVERIFIED instead of being delivered on a stale say-so", async () => {
     const bare = node(null, { state: "idle", stateSource: "observed" });
     quiet(bare.sessionId);
     fixture.terminal.programs.set(bare.sessionId, { state: "blocked" });
@@ -247,6 +247,14 @@ describe("a queued --unverified item from before a restart", () => {
       last_reason: "TARGET_STATE_UNVERIFIED",
       settled_by: "gate",
     });
+    // 发送方的收件箱里有那条回执，而且说明了为什么。
+    const receipt = fixture.database
+      .prepare(
+        "SELECT body FROM agent_mailbox WHERE message_key LIKE 'receipt:%' AND target_node_id = ?",
+      )
+      .get(me) as { body: string } | undefined;
+    expect(receipt?.body).toContain("TARGET_STATE_UNVERIFIED");
+    expect(receipt?.body).toContain("重启");
   });
 
   it("an item queued after the start still goes out", async () => {
