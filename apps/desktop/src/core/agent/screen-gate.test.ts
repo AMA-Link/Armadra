@@ -293,12 +293,44 @@ describe("judgeScreen", () => {
     ).toEqual({ kind: "clear" });
   });
 
+  it("Grok：计划审阅（回合不结束，单个字母就是动作）拦，两种动作栏写法都认；回合结束后才打开的也一样", () => {
+    for (const first of [true, false]) {
+      expect(judgeScreen(profile("grok"), GROK_PLAN_REVIEW, first)).toEqual({
+        kind: "dialog",
+        dialog: "grok.plan-review",
+      });
+      expect(
+        judgeScreen(profile("grok"), GROK_PLAN_REVIEW_FOCUSED, first),
+      ).toEqual({ kind: "dialog", dialog: "grok.plan-review" });
+      // 回合已经结束、输入框先在上面，审阅之后才在下面打开：审阅在后，仍拦。
+      expect(
+        judgeScreen(
+          profile("grok"),
+          `${GROK_PROMPT}\n${GROK_PLAN_REVIEW}`,
+          first,
+        ),
+      ).toEqual({ kind: "dialog", dialog: "grok.plan-review" });
+    }
+  });
+
   it("没有对话框、也没有核实过的提示符的 CLI 没有画面特征", () => {
     for (const id of ["opencode", "unknown", "constructor", "toString"]) {
       expect(screenProfile(id)).toBeUndefined();
     }
   });
 });
+
+const GROK_PLAN_REVIEW = [
+  "  Plan",
+  "  1. Add the thing",
+  "  2. Test the thing",
+  "  a approve | s request changes | c comment | y copy plan | q quit plan",
+].join("\n");
+const GROK_PLAN_REVIEW_FOCUSED = [
+  "  Plan",
+  "  1. Add the thing",
+  "  a:approve  │  q:quit plan",
+].join("\n");
 
 /**
  * 每一条对话框特征一块自编画面：标题或选项里有辨识度的那一行取自特征的出处
@@ -307,6 +339,7 @@ describe("judgeScreen", () => {
 const DIALOG_SCREENS: Readonly<Record<string, string>> = {
   "grok.folder-trust": GROK_TRUST,
   "grok.approval": GROK_APPROVAL,
+  "grok.plan-review": GROK_PLAN_REVIEW,
   "claude.workspace-trust": CLAUDE_TRUST_DIALOG,
   "claude.bypass-permissions-warning": CLAUDE_BYPASS_WARNING,
   "claude.auto-mode-default": CLAUDE_AUTO_MODE_DIALOG,
