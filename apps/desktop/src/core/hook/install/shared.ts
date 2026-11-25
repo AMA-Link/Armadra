@@ -422,6 +422,9 @@ export function configHomeWith(
     // Copilot's own override, documented alongside `~/.copilot/hooks/`.
     case "copilot":
       return fromEnv("COPILOT_HOME") ?? join(home, ".copilot");
+    // grok：`GROK_HOME`（缺省 `~/.grok`），会话、技能、配置都在它下面。
+    case "grok":
+      return fromEnv("GROK_HOME") ?? join(home, ".grok");
     case "opencode": {
       const explicit = fromEnv("OPENCODE_CONFIG_DIR");
       if (explicit !== undefined) return explicit;
