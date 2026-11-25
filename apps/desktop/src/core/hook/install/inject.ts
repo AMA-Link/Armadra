@@ -45,6 +45,7 @@ import {
 import { type ModLocale, storedModLocale } from "./claude-mod/i18n";
 import {
   type LauncherSpec,
+  type LaunchPlacement,
   launcherFiles,
   runDirectory,
   shimsDirectory,
@@ -998,6 +999,7 @@ function writeLaunchers(
     shimDir: shimsDirectory(dataDir, nativeJoin),
     args: injection.args,
     env: injection.env,
+    ...(injection.placement && { placement: injection.placement }),
     ...(injection.fallback === undefined
       ? {}
       : { fallback: injection.fallback }),
@@ -1280,6 +1282,8 @@ export interface Injection {
     readonly whenEnvAny: readonly string[];
     readonly args: readonly string[];
   };
+  /** 注入 argv 的位置（`launcher.ts`）；缺席 = 接在最后，grok 用 `before-separator`。 */
+  readonly placement?: LaunchPlacement;
 }
 
 const NOTHING: Injection = { args: [], env: [] };

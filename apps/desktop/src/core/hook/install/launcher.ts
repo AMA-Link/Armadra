@@ -34,8 +34,20 @@ export const BARE_GATE = "ARMADRA_BARE";
  */
 export type PathJoin = (...parts: string[]) => string;
 
+/**
+ * 注入的 argv 接在调用者的词里的哪个位置：
+ *   * `after`（缺省）：全部接在最后；
+ *   * `before-separator`：接在第一个单独的 `--` 词之前，没有 `--` 就接在最后。
+ *     给 prompt 前有 `--` 的 CLI（grok：`grok <旗标> -- <prompt>`，`--` 之后全是
+ *     prompt）用——接在最后的注入词会被当成 prompt 的一部分。
+ */
+export const LAUNCH_PLACEMENTS = ["after", "before-separator"] as const;
+export type LaunchPlacement = (typeof LAUNCH_PLACEMENTS)[number];
+
 export interface LauncherSpec {
   readonly agentId: string;
+  /** 注入 argv 的位置，缺省 `after`。 */
+  readonly placement?: LaunchPlacement;
   /** `<根>/integration/run`。 */
   readonly runDir: string;
   /** `<根>/integration/shims`。 */
@@ -190,6 +202,34 @@ function bareLines(): string[] {
  * 环境分支那一段：变量名是我们的常量，逐个 `[ -n "${名:-}" ]`，任一成立就带
  * 另一组字面 argv `exec`。同样没有 `eval`，值不进 argv。
  */
+/**
+ * `exec "$@"` 加上一组注入词。`after`：接在最后；`before-separator`：把参数轮转
+ * 一遍，在第一个单独的 `--` 前面插入注入词（没有 `--` 就接在最后）。词是字面量，
+ * 只在启动器自己的参数表里搬动，不经 `eval`、不经展开。
+ */
+function execLines(
+  spec: LauncherSpec,
+  words: readonly string[],
+  indent: string,
+): string[] {
+  const tail = words.map((arg) => posixQuote(arg)).join(" ");
+  if (spec.placement !== "before-separator" || tail === "") {
+    return [`${indent}exec "$@"${tail === "" ? "" : ` ${tail}`}`];
+  }
+  return [
+    `${indent}armadra_n=$#; armadra_put=`,
+    `${indent}while [ "$armadra_n" -gt 0 ]; do`,
+    `${indent}  armadra_w=$1; shift`,
+    `${indent}  if [ -z "$armadra_put" ] && [ "$armadra_w" = "--" ]; then set -- "$@" ${tail}; armadra_put=1; fi`,
+    `${indent}  set -- "$@" "$armadra_w"`,
+    `${indent}  armadra_n=$((armadra_n - 1))`,
+    `${indent}done`,
+    `${indent}[ -n "$armadra_put" ] || set -- "$@" ${tail}`,
+    `${indent}unset armadra_n armadra_put armadra_w`,
+    `${indent}exec "$@"`,
+  ];
+}
+
 function fallbackLines(spec: LauncherSpec): string[] {
   const fallback = spec.fallback;
   if (fallback === undefined || fallback.whenEnvAny.length === 0) return [];
@@ -201,12 +241,7 @@ function fallbackLines(spec: LauncherSpec): string[] {
   const test = fallback.whenEnvAny
     .map((name) => `[ -n "\${${name}:-}" ]`)
     .join(" || ");
-  const tail = fallback.args.map((arg) => posixQuote(arg)).join(" ");
-  return [
-    `if ${test}; then`,
-    `  exec "$@"${tail === "" ? "" : ` ${tail}`}`,
-    "fi",
-  ];
+  return [`if ${test}; then`, ...execLines(spec, fallback.args, "  "), "fi"];
 }
 
 /**
@@ -217,7 +252,6 @@ function fallbackLines(spec: LauncherSpec): string[] {
  * 不解析、不改写调用者的任何词。注入的文件不在由 CLI 报错，启动器不检查。
  */
 export function posixLauncher(spec: LauncherSpec): string {
-  const tail = spec.args.map((arg) => posixQuote(arg)).join(" ");
   return [
     "#!/bin/sh",
     `# Armadra 画布启动器（${spec.agentId}）。由 core 生成，改动会被覆盖。`,
@@ -231,7 +265,7 @@ export function posixLauncher(spec: LauncherSpec): string {
     // 变量在两个 `exec` 之后才设：画布外与零注入都不设。
     ...exportLines(spec.env),
     ...fallbackLines(spec),
-    `exec "$@"${tail === "" ? "" : ` ${tail}`}`,
+    ...execLines(spec, spec.args, ""),
     "",
   ].join("\n");
 }
