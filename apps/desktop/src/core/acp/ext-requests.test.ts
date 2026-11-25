@@ -1,6 +1,6 @@
 import { tmpdir } from "node:os";
 
-import { AcpClient, fakeAcpAgentPath } from "@armadra/agent/acp";
+import { fakeAcpAgentPath } from "@armadra/agent/acp";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { acpAdapter } from "./adapters";
@@ -23,8 +23,8 @@ import { AcpSession } from "./session";
 /**
  * `_` 开头的扩展请求（计划审批）：进审批挂起表、人答、映射函数、取消与无人值守；
  * 未核实的规格不挂卡；只有批准才回成功的 result，其余一律回错误。
- * 固定版本的 `AcpClient`（0.23.0）还没有 `onExtRequest`，所以这里直接对 `AcpProcess`
- * 的挂起入口（`holdExt`）喂请求——它就是升级之后客户端回调会进的那一处；agent 用
+ * 这里直接对 `AcpProcess` 的挂起入口（`holdExt`）喂请求，测卡片与各条分支；经真实
+ * `AcpClient` 的线路（-32601 / -32800 / -32603）与会话层在 `ext-wire.test.ts`。agent 用
  * 上游的假 Agent（真子进程），不起任何真 CLI。
  */
 
@@ -380,10 +380,8 @@ describe("特征检测", () => {
     expect(clientAcceptsExtRequest({ features: { extRequest: 1 } })).toBe(
       false,
     );
-    // 固定版本的客户端声明了才接（0.23.0 还没有；升级之后这一行自己跟着变）。
-    expect(clientAcceptsExtRequest()).toBe(
-      (AcpClient as unknown as { features?: { extRequest?: unknown } }).features
-        ?.extRequest === true,
-    );
+    // 固定版本（`@armadra/agent` ≥ 0.24.0）声明了：回调是接上的（线路上的行为见
+    // `ext-wire.test.ts`）。
+    expect(clientAcceptsExtRequest()).toBe(true);
   });
 });

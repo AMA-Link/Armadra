@@ -6383,7 +6383,7 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
 
 不改任何线上形状、不升协议版本：ACP 规范把方法名以 `_` 开头的请求留给各家自己的扩展，grok 在 plan 模式下用 `_x.ai/exit_plan_mode`（参数 `{ sessionId, toolCallId, planContent }`）把计划交给客户端审批，请求在人答之前一直挂着。
 
-- **特征检测**：`AcpClient` 声明 `features.extRequest`（AMA-Link/armadra-agent#333，已合并、尚未发版）才传 `onExtRequest`（`clientAcceptsExtRequest()`，写法同 `clientAcceptsSessionMeta()`）。固定版本的客户端没有，不传，行为与之前逐字节相同。
+- **特征检测**：`AcpClient` 声明 `features.extRequest`（AMA-Link/armadra-agent#333，`@armadra/agent` 0.24.0 起）才传 `onExtRequest`（`clientAcceptsExtRequest()`，写法同 `clientAcceptsSessionMeta()`）。固定版本（0.24.0）声明了，所以回调是接上的；grok 的规格 `verified: false`，请求仍回 -32601，生产行为与之前相同。没有这个声明的旧版客户端不传，行为与之前逐字节相同。
 - **适配器表**：`AcpAdapter.extRequests`（方法名 → 规格，`acp/ext-requests.ts`），grok 登记 `_x.ai/exit_plan_mode`。规格有两样：请求参数 → 卡片，和「人的决定 → 应答 JSON」的映射函数 `reply`。
 - **进审批挂起表**：与 `session/request_permission` 同一张表、同一条答复路由（`POST /api/approvals/{pendingId}/answer`）。挂起的那一条（`AcpPendingPermission`）有四个**只有 core（`holdExt`）才会写**的字段：`origin: "ext"`、`card: "plan"`、`body`（计划原文）、`bodyChars`（被截断时原文的字符数）；`toolCall` 只是标题、`kind: "switch_mode"`、`status`，`toolCallId` 关联到 Agent 那边的工具调用。选项固定两个：`approve`（`allow_once`）与 `reject`（`reject_once`）。
 - **到页面的路**：审批条目（`TimelineApprovalItem`，契约 §82）多三个可选字段 `card`、`body`、`bodyChars`，`AcpFeed.permission` 把挂起条目上的同名字段写进去；页面的卡片视图（`permissionViewOf` 的两个分支都带）读这三个字段，**不读 `toolCall`**——`toolCall`（含 `_meta`）是 Agent 的东西，什么都可能被伪造。`card: "plan"` 时标题换成页面本地化的「计划审批」、正文默认展开；`body` 按纯文本显示（`<pre dir="auto">`，限高可滚动、不走 markdown、不生成链接），`bodyChars` 有值时另显示本地化的「已截断，共 N 字符」。按钮文案按选项 `kind` 走页面 i18n。旧页面不认这三个字段，只显示标题 Plan 与按钮。
@@ -6393,4 +6393,4 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
 - **红线：绝不自动代答，且只有批准才回成功**：只有人点了 `approve` 才回成功的 `result`（经适配器的映射函数）。人选了 `reject`、没选（`cancelled`）、没有审批消费者（无人值守：**不挂卡、立刻回错误**，不会一直挂着也不会批准）、会话被取消一律回错误 `-32800`（`requestCancelled`）；对端撤回请求（`signal` 触发）与连接关闭时卡片收起，回什么由上游客户端决定（`-32800`），进程已经退出就没有人可回。JSON-RPC 的错误不可能被对端读成批准——哪怕映射函数的应答形状是错的。映射函数自己抛了非 `RpcError`，由上游回 `-32603`。
 - **未核实的规格不上线**：适配器规格有 `verified`；`false`（grok 现在就是）时请求不挂卡，照旧回 `-32601`——依赖升级到带 `features.extRequest` 的版本也不会让一个没核实的应答自动上线。核实之后只改这一个标志和映射函数 `reply`。
 - **应答形状没有核对过**：目前只知道请求的形状，不知道 grok 认哪些应答字段。映射函数是适配器里孤立的一处（今天写的是 `{ approved: true }`，**未验证**，只在批准时调用），用假 Agent 测过「批准 → 映射 → 应答」与各条错误路径，没有用真账号测过 grok 认不认。
-- **grok 的 ACP plan 仍然关着**（`NO_ACP_LANDING`，§124 之前的约定不变）：开启要等 (a) armadra-agent 发版、升级固定的依赖，(b) 用真账号抓批准与拒绝两种应答、核对映射。在那之前用户选不到 plan，不会得到一个被取消的回合。
+- **grok 的 ACP plan 仍然关着**（`NO_ACP_LANDING`，§124 之前的约定不变）：客户端侧的依赖已经到位（`@armadra/agent` 0.24.0），开启只差用真账号抓批准与拒绝两种应答、核对映射函数（Armadra#1021 写了步骤），然后把 `verified` 改成 `true`、去掉 `NO_ACP_LANDING` 里的 plan。在那之前用户选不到 plan，不会得到一个被取消的回合。

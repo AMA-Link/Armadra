@@ -97,12 +97,13 @@ export const ACP_MODE_TABLE: Readonly<Record<BuiltinAgentId, AcpModeTable>> = {
   // `agent`（agent 角色，不是权限）；`plan` 之后回 `default` 或 `agent` 都发
   // `current_mode_update`。`acceptEdits`、`auto`、`dontAsk`、`bypassPermissions`
   // 都是 `unknown mode id`，所以 auto-edit 在 ACP 下没有落点。全自动只能用启动旗标
-  // `--always-approve`（`_meta.yoloMode` 要等 armadra-agent 的会话 `_meta`
-  // 通道，到时再换成它，就能在会话里切）。
+  // `--always-approve`（`_meta.yoloMode` 的会话 `_meta` 通道客户端已有，适配器还没接，
+  // 见 Armadra#1035；接上之后就能在会话里切）。
   //
   // plan 也暂时没有落点：grok 在 ACP 的 plan 里提交计划走客户端请求
-  // `_x.ai/exit_plan_mode`，Armadra 还不会应答（armadra-agent#332 加回调，
-  // Armadra#1021 做计划审批），回合会以 cancelled 结束。
+  // `_x.ai/exit_plan_mode`。接收它的管线已经接上（`@armadra/agent` 0.24.0 的
+  // `onExtRequest`，契约 §125），但应答形状没有用真账号核对，规格标着 `verified:
+  // false`，请求仍回 -32601（Armadra#1021）。核对之后再把 plan 放回这张表。
   grok: {
     default: { modeId: "default" },
     "auto-edit": null,

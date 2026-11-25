@@ -256,7 +256,7 @@ export interface AcpSpawnOptions {
   ) => void;
   /**
    * 这家会发来的、要人决定的 `_` 开头的扩展请求（适配器表的 `extRequests`）。客户端
-   * 声明了 `features.extRequest` 才会接上；没声明（固定版本还没有）不传回调，线路不变。
+   * 声明了 `features.extRequest` 才会接上；没声明的旧版客户端不传回调，线路不变（0.24.0 起声明）。
    */
   readonly extRequests?: Readonly<Record<string, AcpExtRequestSpec>>;
   /**
@@ -353,12 +353,12 @@ export class AcpProcess {
       onUpdate: (notification) => options.onUpdate?.(notification),
       onPermission: (params, signal) => this.hold(params, signal),
       onProtocolError: (_line, reason) => options.onProtocolError?.(reason),
-      // 旧版客户端没有 `onExtRequest`、也不声明 `features.extRequest`：不传，行为不变。
+      // 没有 `features.extRequest` 的旧版客户端不传（0.24.0 起有）；适配器没有登记扩展请求时也不传，
+      // 它们照旧回 -32601。
       ...(clientAcceptsExtRequest() &&
       options.extRequests !== undefined &&
       Object.keys(options.extRequests).length > 0
         ? {
-            // 固定版本的类型里还没有这个键（升级之后有）：展开进来的键不受多余属性检查。
             onExtRequest: (
               method: string,
               params: unknown,
