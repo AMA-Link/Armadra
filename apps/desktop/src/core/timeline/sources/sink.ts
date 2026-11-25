@@ -82,6 +82,14 @@ export class TimelineSink {
     return this.writer.state(this.timelineId)?.items[id];
   }
 
+  /** 内存里这个回合的全部条目（无序）。 */
+  itemsOfTurn(turn: number): TimelineItem[] {
+    const state = this.writer.state(this.timelineId);
+    return state === undefined
+      ? []
+      : Object.values(state.items).filter((item) => item.turn === turn);
+  }
+
   tool(toolCallId: string): TimelineToolItem | undefined {
     const found = this.item(`tool:${toolCallId}`);
     return found?.kind === "tool" ? found : undefined;
