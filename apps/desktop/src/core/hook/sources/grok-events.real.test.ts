@@ -12,7 +12,7 @@ import type { AgentEvent } from "../normalize/event";
 import { grokSlotProvider } from "./grok-events";
 
 /**
- * 真 grok、真账号、真 tmux 的状态读取槽验收（场景「grok 状态源」，契约 §122）。
+ * 真 grok、真账号、真 tmux 的状态读取槽验收（场景「grok 状态源」，契约 §123）。
  *
  * 默认跳过：它会起真的 `grok`，用本机已有的登录态发三个极短回合，会话留在
  * `~/.grok/sessions` 里（不删）。要跑：`ARMADRA_REAL_GROK=1 pnpm --filter

@@ -11,7 +11,7 @@ import { type GrokDeps, grokSlotProvider, realGrokDeps } from "./grok-events";
  * on a remote node, on Windows (no `active_sessions.json` reader, no `ps`), or
  * where the slot found the record unreadable (`unbound`) — the delivery gate
  * then takes the observed path instead of waiting for a first report that cannot
- * come. Contract §122.
+ * come. Contract §123.
  */
 export function installCoreStateSources(
   deps: GrokDeps = realGrokDeps,

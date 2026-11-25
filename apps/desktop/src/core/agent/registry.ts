@@ -266,7 +266,7 @@ export const AGENT_REGISTRY: readonly AgentDefinition[] = [
     launchCmd: "grok",
     promptMode: "argv",
     expectedProcess: ["grok", "grok-native"],
-    // `hooks` = 有状态源（会话文件，契约 §122）；说明见 packages/shared 同一处。
+    // `hooks` = 有状态源（会话文件，契约 §123）；说明见 packages/shared 同一处。
     capabilities: [
       "hooks",
       "resume",

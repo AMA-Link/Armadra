@@ -217,7 +217,7 @@ describe("the gate chain", () => {
     },
   );
 
-  // grok 有状态通道（会话文件，契约 §122）：ACP 切到终端之后，门链同样看到「没报
+  // grok 有状态通道（会话文件，契约 §123）：ACP 切到终端之后，门链同样看到「没报
   // 过」，但这是「等第一条」，不是「没有通道」——排队，不当成无适配拒绝。
   it("queues a terminal grok switched over from ACP until its first report", async () => {
     const grok = fixture.agentNode("Peer", "grok");

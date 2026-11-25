@@ -161,7 +161,7 @@ export class TerminalDispatcher implements Dispatcher {
       return { state: "unsupported", generation: 0 };
     }
     // 这个节点上这家 CLI 没有状态通道（只有 OSC 自报的 agy；远程、Windows、绑不上的
-    // 节点上读本机文件的通道，如 grok，契约 §122）：回合进行中的节点没有任何上报，上面「在等人 / 在干活」
+    // 节点上读本机文件的通道，如 grok，契约 §123）：回合进行中的节点没有任何上报，上面「在等人 / 在干活」
     // 的判断全是空的——计划任务照写，正文加回车就落进正在工作的 pane。不是忙、
     // 是不支持：这样的节点要靠 `canvas send --unverified` 之类显式自负其责。
     const given = this.context.settings?.();
@@ -172,7 +172,7 @@ export class TerminalDispatcher implements Dispatcher {
     }
     const settings = given ?? NO_CUSTOM_AGENTS;
     // 读状态之前先让这个节点的状态读取槽同步读一次文件尾（与 `send` 的 `observe`
-    // 同一步，契约 §122）：轮询还没到时，刚写下的 turn_started 不能被当成「空闲」。
+    // 同一步，契约 §123）：轮询还没到时，刚写下的 turn_started 不能被当成「空闲」。
     refreshNodeState(node.id);
     const known = loadSession(this.context.database, target.nodeId);
     const remote =

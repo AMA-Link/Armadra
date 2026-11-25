@@ -15,7 +15,7 @@ import {
 } from "./launcher";
 
 /**
- * grok 在启动行上拿到什么（契约 §122）：`--rules` 一句话指向技能路径，`--allow`
+ * grok 在启动行上拿到什么（契约 §123）：`--rules` 一句话指向技能路径，`--allow`
  * 放行三个画布子命令；不写它的任何文件，注入词接在 `--` 之前。
  */
 
@@ -35,7 +35,7 @@ describe("--allow 规则", () => {
     expect(grokAllowRules("armadra-hook")).toHaveLength(3);
   });
 
-  it("数据目录带空格：规则照原样写，不转义、不加引号（实测见 grok.ts 注释与契约 §122）", () => {
+  it("数据目录带空格：规则照原样写，不转义、不加引号（实测见 grok.ts 注释与契约 §123）", () => {
     const rules = grokAllowRules("/Users/a b/data/bin/armadra-hook");
     expect(rules).toContain("Bash(/Users/a b/data/bin/armadra-hook canvas *)");
     expect(rules.some((rule) => rule.includes("\\"))).toBe(false);

@@ -64,7 +64,7 @@ export const AGENT_STATE_SOURCES = [
   "extension",
   "observed",
   "acp",
-  // core 自己读 CLI 写下的会话记录得出的状态（契约 §122，协议 minor 53）：grok 的
+  // core 自己读 CLI 写下的会话记录得出的状态（契约 §123，协议 minor 53）：grok 的
   // `events.jsonl`，按节点 PTY 进程在它的 `active_sessions.json` 里的行绑定。
   "transcript",
 ] as const;

@@ -31,7 +31,7 @@ import {
 } from "../normalize/event";
 
 /**
- * Grok Build's status source (contract §122): core reads the CLI's own record of
+ * Grok Build's status source (contract §123): core reads the CLI's own record of
  * the process the node's terminal is running. No hook, no extension, nothing
  * written to `~/.grok`.
  *
