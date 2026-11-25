@@ -317,17 +317,56 @@ describe("WorkspaceTree", () => {
     await waitFor(() => expect(screen.getAllByText("实验").length).toBe(2));
   });
 
-  it("只剩一块板时不让删", async () => {
+  it("只剩一块默认板也能删，删完当前画布留空（#1015）", async () => {
+    deleteBoard.mockResolvedValue(undefined);
     setBoards(1);
     renderTree();
 
     await screen.findByText("默认");
     openMenu(screen.getByLabelText("画布操作"));
     const item = await screen.findByRole("menuitem", { name: "删除" });
-    expect(item.getAttribute("aria-disabled")).toBe("true");
+    expect(item.getAttribute("aria-disabled")).toBeNull();
     fireEvent.click(item);
-    expect(deleteBoard).not.toHaveBeenCalled();
-    expect(screen.queryByRole("alertdialog")).toBeNull();
+    fireEvent.click(await screen.findByRole("button", { name: "删除画布" }));
+
+    await waitFor(() =>
+      expect(deleteBoard).toHaveBeenCalledWith(workspace.id, FIRST),
+    );
+    await waitFor(() => expect(useCanvasStore.getState().boardId).toBeNull());
+  });
+
+  it("删掉当前画布就切到同一工作空间的下一块", async () => {
+    deleteBoard.mockResolvedValue(undefined);
+    renderTree();
+
+    await screen.findByText("实验");
+    openMenu(screen.getAllByLabelText("画布操作")[0]!);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "删除" }));
+    fireEvent.click(await screen.findByRole("button", { name: "删除画布" }));
+
+    await waitFor(() =>
+      expect(deleteBoard).toHaveBeenCalledWith(workspace.id, FIRST),
+    );
+    await waitFor(() => expect(useCanvasStore.getState().boardId).toBe(SECOND));
+  });
+
+  it("置顶组里的画布也能删", async () => {
+    deleteBoard.mockResolvedValue(undefined);
+    usePreferencesStore.setState({ pinnedBoardKeys: [scoped(SECOND)] });
+    renderTree();
+
+    await screen.findByLabelText("置顶");
+    await waitFor(() => expect(screen.getAllByText("实验").length).toBe(2));
+    // 置顶组在项目组上面，第一个「画布操作」就是置顶的那一行
+    openMenu(screen.getAllByLabelText("画布操作")[0]!);
+    const item = await screen.findByRole("menuitem", { name: "删除" });
+    expect(item.getAttribute("aria-disabled")).toBeNull();
+    fireEvent.click(item);
+    fireEvent.click(await screen.findByRole("button", { name: "删除画布" }));
+
+    await waitFor(() =>
+      expect(deleteBoard).toHaveBeenCalledWith(workspace.id, SECOND),
+    );
   });
 
   it("删除走确认对话框", async () => {
