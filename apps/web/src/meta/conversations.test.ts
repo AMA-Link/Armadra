@@ -61,7 +61,11 @@ describe("resumeTarget", () => {
 
 describe("resumeNodeInput", () => {
   it("ACP：节点记着 CLI 的会话 id，驱动是 acp，与「接管会话」同一条路", () => {
-    const input = resumeNodeInput(conversation("agy"), { kind: "acp" });
+    const input = resumeNodeInput(
+      conversation("agy"),
+      { kind: "acp" },
+      "/work",
+    );
     expect(input).toEqual({
       title: "修一个 bug",
       data: {
@@ -74,6 +78,20 @@ describe("resumeNodeInput", () => {
         },
       },
     });
+  });
+
+  it("ACP：cwd 为空、或在工作空间之外时不写这个字段（空 cwd 会让会话起不来）", () => {
+    const at = (cwd: string, root?: string) =>
+      (
+        resumeNodeInput({ ...conversation("agy"), cwd }, { kind: "acp" }, root)
+          .data as { cwd?: string }
+      ).cwd;
+    expect(at("", "/work")).toBeUndefined();
+    expect(at("/elsewhere/app", "/work")).toBeUndefined();
+    expect(at("/work/app", "/work")).toBe("/work/app");
+    expect(at("/work", "/work")).toBe("/work");
+    // 没有工作空间根（还没打开）：不带。
+    expect(at("/work/app")).toBeUndefined();
   });
 
   it("终端：启动行在建节点时就定了", () => {

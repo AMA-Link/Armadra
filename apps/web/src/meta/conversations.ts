@@ -8,6 +8,7 @@ import {
   type Conversation,
 } from "@armadra/shared";
 
+import { attachCwd } from "../acp/attach-session";
 import { buildResumeLaunch } from "../agent/launch";
 import { runtimeApi } from "../api/client";
 import { currentSource } from "../api/source";
@@ -117,13 +118,17 @@ export function resumeTarget(
 export function resumeNodeInput(
   conversation: Conversation,
   target: ResumeTarget,
+  workspaceRoot = "",
 ): { title: string; data: Record<string, unknown> } {
-  const base = { kind: "terminal", cwd: conversation.cwd };
   if (target.kind === "acp") {
+    // 与「接管会话」同一条规矩（`attachCwd`）：只带工作空间里的目录；空串或工作
+    // 空间之外的不写，节点的目录缺省是工作空间根（空 cwd 会让 ACP 会话起不来）。
+    const cwd = attachCwd({ cwd: conversation.cwd }, workspaceRoot);
     return {
       title: conversation.title,
       data: {
-        ...base,
+        kind: "terminal",
+        ...(cwd === undefined ? {} : { cwd }),
         agent: {
           id: conversation.provider,
           // 与「接管会话」同一条路：节点记着 CLI 的会话 id，起会话时走接回。
@@ -136,7 +141,8 @@ export function resumeNodeInput(
   return {
     title: conversation.title,
     data: {
-      ...base,
+      kind: "terminal",
+      cwd: conversation.cwd,
       agent: {
         id: conversation.provider,
         initialCommand: target.command,
