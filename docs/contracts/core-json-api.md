@@ -6398,3 +6398,12 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
 - **未核实的规格不上线**：适配器规格有 `verified`；`false`（grok 现在就是）时请求不挂卡，照旧回 `-32601`——依赖升级到带 `features.extRequest` 的版本也不会让一个没核实的应答自动上线。核实之后只改这一个标志和映射函数 `reply`。
 - **应答形状没有核对过**：目前只知道请求的形状，不知道 grok 认哪些应答字段。映射函数是适配器里孤立的一处（今天写的是 `{ approved: true }`，**未验证**，只在批准时调用），用假 Agent 测过「批准 → 映射 → 应答」与各条错误路径，没有用真账号测过 grok 认不认。
 - **grok 的 ACP plan 仍然关着**（`NO_ACP_LANDING`，§124 之前的约定不变）：客户端侧的依赖已经到位（`@armadra/agent` 0.24.0），开启只差用真账号抓批准与拒绝两种应答、核对映射函数（Armadra#1021 写了步骤，以及 #1041），然后把 `verified` 改成 `true`、去掉 `NO_ACP_LANDING` 里的 plan。在那之前用户选不到 plan，不会得到一个被取消的回合。
+
+## 126. ACP 会话的 `_meta`：grok 与 agy 的画布说明（`#1035`）
+
+不改任何线上形状、不升协议版本：`session/new`、`session/load`、`session/resume` 的 `_meta` 是 ACP 规范留给各家的扩展位（`@armadra/agent` 0.23.0 起客户端声明 `features.sessionMeta`，`clientAcceptsSessionMeta()`），适配器表的 `sessionMeta` 算出它。
+
+- **画布说明**：`canvasInstructions()`（`acp/canvas-instructions.ts`）一两句话、中英各一，说「这个会话是 Armadra 画布上的一个节点，协作、建 Agent、用浏览器节点一律用 `armadra` MCP 服务器的 `canvas_*` 工具，不要用本 CLI 自带的子代理、后台任务或浏览器代替」。ACP 下画布动词是 MCP 工具（`mcpServers` 注入），不是终端里的 `armadra-hook` 命令，所以这里说的是工具。整份技能不进系统提示。
+- **grok**：`_meta.rules`（追加到系统提示）。用隔离的 `GROK_HOME` 加脚本化模型实测（grok 1.0.92）：`session/new` 带 `_meta.rules` 之后，发给模型的请求里 system 消息含这段文字。`session/load`、`session/resume` 同样带。**不发 `pluginDirs`**：画布工具已经走 MCP、状态来自 ACP 自己，没有要挂的插件目录。**不发 `yoloMode`**：全自动继续走启动旗标 `--always-approve`；ACP 里没有会话内切换权限的入口（`session/set_mode` 只认 `default` / `plan`，plan 现在也关着），`yoloMode` 只能在开会话时定，换过去没有任何好处，反而要在每次 load / resume 为非全自动写 `yoloMode: false`、多一条没核对过的线路。
+- **agy**：`_meta.antigravity.systemPrompt.append`。键名与效果没有用真账号核对过，适配器行标 `metaVerified: false`：`acpSessionMeta` 对未核实的行一个键都不发，线路与没有这条时逐字节相同。核对之后只改这一个标志（Armadra#1035 写了步骤）。
+- **失效安全**：没有 `sessionMeta` 的适配器、没有指令文本、未核实的适配器，`_meta` 都不出现；客户端没声明 `features.sessionMeta`（旧版）时 `metaInjected: false`，会话照常开。
