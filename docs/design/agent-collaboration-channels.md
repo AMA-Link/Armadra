@@ -61,7 +61,7 @@
 | Pi          | **无**                                                        | 无                      | 仅 `terminal`                                 | 有        | 被空闲门拒绝                    | 预览 / 批准 / 读包可用，**投递停在 queued** | 无       | 无     |
 | Oh My Pi    | **无**                                                        | 无                      | 仅 `terminal`                                 | 有        | 被空闲门拒绝                    | 同上                                        | 无       | 无     |
 | Copilot     | **无**                                                        | 无                      | 仅 `terminal`                                 | 有        | 被空闲门拒绝                    | 同上                                        | 无       | 无     |
-| Antigravity | **无**（OSC 7501 仅展示；零写入 hook 经 `--add-dir`，待批 3） | 无                      | 仅 `terminal`；转录 `transcript.jsonl` 待批 4 | 有        | 无状态来源，只剩 `--unverified` | 同上                                        | 无       | 无     |
+| Antigravity | **无**（OSC 7501 仅展示；零写入 hook 经 `--add-dir` 实测不可行，见契约 §120） | 无                      | 仅 `terminal`；转录 `transcript.jsonl` 待批 4 | 有        | 无状态来源，只剩 `--unverified` | 同上                                        | 无       | 无     |
 
 「按需协作，无 Hook 适配」（`settings.hooks.pullOnly`）对三种 CLI 今天具体意味着：
 

@@ -3805,7 +3805,7 @@ human initiator。页面不接收任何 controller 凭据；body owner/controlle
 - **摘要**：一个终端所有记录里最急的那一条：`blocked` > `error` > `working` > `done` > `idle`，同级取最近更新的；`app` 缺席时继承最近的祖先记录。
 - **事件** `terminal.program`：`{ "type": "terminal.program", "sessionId", "nodeId"?, "status"? }`，`status` 是 `{ state: "idle" | "working" | "blocked" | "done" | "error", kind?: "permission" | "question" | "auth", progress?: 0–100 的整数, app?: string, source: "osc7501" | "osc9", updatedAt }`；`status` 缺席表示这个终端不再有记录。摘要变了才发，每会话两帧之间至少 250 ms（变化立刻发，之后的合并成一个尾帧）。只扇出、不进 outbox。
 - **会话列表**：`GET /api/workspaces/{id}/sessions` 的每一行在会话活在这个 core 里、且程序报过状态时多一个 `programStatus`（同上形状），重连的页面靠它补节点头。只在内存里，core 重启后程序要自己再报一次。
-- **不外传、不作判据**：`msg` 与 `title` 是终端输出的正文，只按规范校验，不保存、不进事件、不进日志。程序自报谁都能伪造（`cat` 一个文件就够），所以它不写 `agent_status`，不满足任何空闲门、投递门、交接门或调度门；节点状态的来源仍是 Hook / 扩展 / ACP（§39.2）。
+- **不外传、不作判据**：`msg` 与 `title` 是终端输出的正文，只按规范校验，不保存、不进事件、不进日志。程序自报谁都能伪造（`cat` 一个文件就够），所以它不写 `agent_status`，不作放行判据：不满足任何空闲门、投递门、交接门或调度门；节点状态的来源仍是 Hook / 扩展 / ACP（§39.2）。**自 #1020 起 `blocked` 可否决投递**（见 §120「投递的第二道保险」）：伪造的字节最坏只会让一次投递排队或被拒，不会导致误投。`blocked` 没有按时间过期：它在程序再报别的状态、`clear` 或进程退出时才解除（这时 core 对该节点调一次出队）；程序崩了没清的 stale `blocked` 会让投递一直排队，直到排队项自己的 TTL 到期。omp、ama、agy 等也会发 7501，同样会走到这道门。
 - **页面合并**：Agent 节点有一条本进程内的上报（来源 `hook` / `extension` / `acp`，不是 `restored`）时上报说了算，程序自报只在两边都是「在跑」时补一个进度百分比；没有上报（普通终端、没装适配器的 CLI、重启后读回来的旧行）时程序自报画节点头的胶囊与光晕、小地图描边，并在窗口不在前台时按「需要你」/「已完成」提醒（各自 5 s 节流）。`done` / `error` 的光晕在用户看过节点后收起。节点头的来源点在程序自报时是 `program`。
 - 没有新 procedure，不写数据库迁移。
 
@@ -6258,7 +6258,7 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
   回合 3 把「字典序」与「路径长的在前」区分开：是字典序。让注入目录总排在项目之后只能靠造一个字典序最大的路径（例如 `/tmp` 下的符号链接），那要在数据目录之外建文件，仍可能被排在它后面的项目目录压过，不采用。
 
 - **ACP 下 agy 自己缓存 `mcp/armadra/`**：交给 agy 的 MCP 服务器（名字 `armadra`）会让 agy 在 `~/.gemini/antigravity-cli/mcp/armadra/` 写下工具清单与服务器说明。这是 agy 写的，Armadra 不写也不清理；卸载 Armadra 后可以手动删。场景 12 的 `~/.gemini` 指纹只排除这一个目录。
-- **投递的第二道保险（所有 CLI 通用）**：状态通道说空闲时，若终端程序自己用 OSC 7501 报了 `blocked`（停在审批上），`send` 按 `TARGET_AWAITING_APPROVAL` 处理（排队或 `--no-queue` 拒绝）。只做否决：程序报别的状态不放行任何东西。画面门（`agent/screen-gate.ts`）登记了 agy 的信任框（`Yes, I trust this folder`）与审批卡（`Yes, and always allow` 等）。
+- **投递的第二道保险（所有 CLI 通用，回指 §53）**：不论状态通道说什么（`--unverified`、`silentStart` / `sessionStart` 的首投、`--interrupt` 也一样），只要终端程序自己用 OSC 7501 报了 `blocked`（读的是跟踪器的即时值，不是节流过的帧），`send` 按 `TARGET_AWAITING_APPROVAL` 处理（排队或 `--no-queue` 拒绝），`--interrupt` 也不打断（那里的 ESC 是「拒绝这次工具调用」）。只做否决：程序报别的状态不放行任何东西。`blocked` 解除（变成别的状态、记录清掉）时 core 对该节点调一次出队，不必等 `agent.status`。画面门（`agent/screen-gate.ts`）登记了 agy 的信任框与审批卡：信任框（`Yes, I trust this folder`）对过本机 1.5.16 的真画面；审批卡的字符串（`Yes, and always allow` 等）**只来自二进制字符串，没有在真画面上核对**（本机 auto 模式触发不了）。agy 没有提示符特征，所以已答过的卡留在画面上时这道门会持续拦截；跟进见 Issue「agy 画面门：真机核对」。
 
 ## 121. 项目级工作流文件：导入与导出（`#996`）
 

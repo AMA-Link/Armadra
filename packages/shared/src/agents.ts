@@ -412,9 +412,9 @@ export const AGENT_REGISTRY: Readonly<Record<BuiltinAgentId, AgentDefinition>> =
       modelFlag: "--model",
       // No `sessionIdFlag` and no `resume`: agy cannot pre-mint a session id
       // (an unknown `--conversation` is ignored and a new one starts), and a
-      // terminal agy has no status source to learn the id from. Resume is an
-      // ACP matter (`session/load`) until the hook lands
-      // (#997, the hook batch).
+      // terminal agy has no status source to learn the id from: the zero-write
+      // `--add-dir` hook was measured and is not viable (contract §120). Resume
+      // is an ACP matter (`session/load`).
       exitCommand: "/exit",
       // No hook, no resume, no usage: its terminal state is OSC 7501 (display
       // only, contract §53). `contextLink` and `browser` are the node's links

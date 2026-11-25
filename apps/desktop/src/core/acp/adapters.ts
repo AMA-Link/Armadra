@@ -238,8 +238,8 @@ export const ACP_ADAPTERS: readonly AcpAdapter[] = [
     resume: "load",
     modes: ACP_MODE_TABLE.agy,
     // 画布工具走 `session/new.mcpServers`（stdio 被接受、模型看得到工具）。终端注入
-    // 在 `agy acp` 下没有对应物（没有 `--settings`、`--add-dir` 只用于 hook），所以
-    // 不复用。画布说明（`_meta.antigravity.systemPrompt.append`）要等客户端能带
+    // 在 `agy acp` 下没有对应物（没有 `--settings`；`--add-dir` 的零写入 hook 实测不可行，
+    // 见契约 §120），所以不复用。画布说明（`_meta.antigravity.systemPrompt.append`）要等客户端能带
     // `_meta`（AMA-Link/armadra-agent#327）；在那之前不带 `sessionMeta`。
     injection: { mcp: true, reuse: [] },
     expectedProcess: ["agy"],
