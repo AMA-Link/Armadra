@@ -24,3 +24,11 @@ export function pendingCardOf(
     ? undefined
     : cards.get(pendingId);
 }
+
+/** 序列化时展开用：有登记就是 `{ pendingCard }`，没有是空对象。 */
+export function pendingCardField(pendingId: string | null | undefined): {
+  pendingCard?: string;
+} {
+  const card = pendingCardOf(pendingId);
+  return card === undefined ? {} : { pendingCard: card };
+}
