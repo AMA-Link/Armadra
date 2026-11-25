@@ -635,6 +635,69 @@ describe("assembleLaunchArgv", () => {
   });
 });
 
+describe("promptSeparator（grok）", () => {
+  it("prompt 前隔一个 `--`，其它旗标都在它前面", () => {
+    const argv = assembleLaunchArgv({
+      agentId: "grok",
+      permissionMode: "plan",
+      model: "grok-4.7",
+      prompt: "version",
+    });
+    expect(argv).toEqual({
+      program: "grok",
+      args: [
+        "--permission-mode",
+        "plan",
+        "--model",
+        "grok-4.7",
+        "--",
+        "version",
+      ],
+    });
+  });
+
+  it("以 `-` 开头的 prompt 也在 `--` 之后；没有 prompt 就没有 `--`", () => {
+    expect(
+      assembleLaunchArgv({ agentId: "grok", prompt: "--rules x" }).args,
+    ).toEqual(["--", "--rules x"]);
+    expect(assembleLaunchArgv({ agentId: "grok" }).args).toEqual([]);
+  });
+
+  it("续接与预铸 id 仍在 `--` 之前；shell 行与 argv 一致", () => {
+    const input = {
+      agentId: "grok",
+      resume: "s-1",
+      prompt: "fix it",
+    };
+    const argv = assembleLaunchArgv(input);
+    expect(argv.args).toEqual(["--resume", "s-1", "--", "fix it"]);
+    expect(assembleLaunchCommand(input).command).toBe(
+      "grok --resume s-1 -- 'fix it'",
+    );
+  });
+
+  it("以 grok 为 base 的自定义条目继承 `--`；别的 CLI 不加", () => {
+    const custom = customAgentSchema.parse({
+      id: "custom:g",
+      label: "G",
+      launchCmd: "grok-wrapper",
+      baseAgent: "grok",
+    });
+    expect(
+      assembleLaunchArgv({ agentId: custom.id, custom, prompt: "hi" }).args,
+    ).toEqual(["--", "hi"]);
+    expect(
+      assembleLaunchArgv({ agentId: "claude", prompt: "hi" }).args,
+    ).toEqual(["hi"]);
+  });
+
+  it("flag 式 prompt（copilot）不受影响", () => {
+    expect(
+      assembleLaunchArgv({ agentId: "copilot", prompt: "hi" }).args,
+    ).toEqual(["--interactive", "hi"]);
+  });
+});
+
 /** docs/design/canvas-launcher.md §2.2 / §8.1: the line starts the launcher. */
 describe("a launch line through the canvas launcher", () => {
   it("puts the launcher first, then the program and its words, then the flags", () => {
@@ -710,6 +773,7 @@ describe("Windows npm wrappers and Eco quitting", () => {
       copilot: "/exit",
       ama: "/exit",
       agy: "/exit",
+      grok: "/quit",
     });
   });
 });

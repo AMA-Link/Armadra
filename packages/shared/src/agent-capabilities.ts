@@ -242,6 +242,8 @@ export const AGENT_MODEL_SUGGESTIONS: Readonly<
   copilot: [],
   ama: [],
   agy: [],
+  // 账号决定能用哪些；这是真账号实测（grok 1.0.92）见过的。
+  grok: ["grok-4.7", "grok-4.6", "grok-4.5"],
 };
 
 export function modelSuggestions(agentId: string): readonly string[] {

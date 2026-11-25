@@ -152,6 +152,9 @@ export const HOOK_EVENTS: Readonly<Record<BuiltinAgentId, readonly string[]>> =
     // No status source yet (terminal state is OSC 7501); a command hook comes
     // with the zero-write `--add-dir` injection, never `PreToolUse`.
     agy: [],
+    // grok 没有 hook 客户端：交互式 TUI 没有只对本进程生效的 hook 通道，状态由 core
+    // 读它自己写的会话文件（G2）。所以这里没有事件名。
+    grok: [],
   };
 
 export type ClaudeHookEvent = (typeof CLAUDE_HOOK_EVENTS)[number];

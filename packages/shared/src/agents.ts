@@ -29,6 +29,7 @@ export const AGENT_IDS = [
   "copilot",
   "ama",
   "agy",
+  "grok",
 ] as const;
 export type BuiltinAgentId = (typeof AGENT_IDS)[number];
 
@@ -41,6 +42,9 @@ export type BuiltinAgentId = (typeof AGENT_IDS)[number];
  */
 export const NON_INJECTED_AGENT_IDS = [
   "agy",
+  // grok：G2 才有注入（`--rules` 与 `--allow`，不写它的任何文件）；之前启动不带
+  // Armadra 的任何东西。
+  "grok",
 ] as const satisfies readonly BuiltinAgentId[];
 export type NonInjectedAgentId = (typeof NON_INJECTED_AGENT_IDS)[number];
 export type InjectedAgentId = Exclude<BuiltinAgentId, NonInjectedAgentId>;
@@ -125,6 +129,13 @@ export interface AgentDefinition {
   readonly promptMode: PromptMode;
   /** Only meaningful when `promptMode === "flag-prompt"`. */
   readonly promptFlag?: string;
+  /**
+   * 只在 `promptMode === "argv"` 时有意义：第一个 prompt 前要不要隔一个 `--`。
+   * 为 grok 加的：它的 prompt 是位置参数，整条 prompt 恰好等于一个子命令名
+   * （`version`、`update`）或以 `-` 开头时会被当成子命令或旗标；`--` 之后全部是
+   * prompt。以它为 base 的自定义条目继承。
+   */
+  readonly promptSeparator?: "--";
   /** Permission mode → extra argv. An empty list means "CLI default". */
   readonly permissionFlag: Readonly<Record<PermissionMode, readonly string[]>>;
   readonly modelFlag?: string;
@@ -416,6 +427,35 @@ export const AGENT_REGISTRY: Readonly<Record<BuiltinAgentId, AgentDefinition>> =
       capabilities: ["contextLink", "browser", "supportsModelSelection"],
       expectedProcess: ["agy"],
     },
+    grok: {
+      id: "grok",
+      label: "Grok Build",
+      mark: "Gk",
+      color: "#a1a1aa",
+      launchCmd: "grok",
+      promptMode: "argv",
+      // 首个 prompt 是位置参数：整条 prompt 恰好是子命令名（`version`）或以 `-`
+      // 开头会被 clap 当子命令 / 旗标，所以前面隔一个 `--`（`--` 之后全是 prompt）。
+      promptSeparator: "--",
+      permissionFlag: {
+        // 留空 = 沿用用户自己的配置；TUI 缺省是 auto-review，不是逐次询问。
+        default: [],
+        "auto-edit": ["--permission-mode", "acceptEdits"],
+        "full-auto": ["--always-approve"],
+        plan: ["--permission-mode", "plan"],
+      },
+      modelFlag: "--model",
+      sessionIdFlag: "--session-id",
+      resume: { style: "flag", flag: "--resume" },
+      exitCommand: "/quit",
+      // 没有 `hooks`：状态源（按进程读它自己写的会话文件）与注入在 G2，那时才声明
+      // `hooks`、`contextLink`、`browser`。`subagent` 不给：它有自己的
+      // `spawn_subagent`，但没有读卡通道。
+      capabilities: ["resume", "supportsModelSelection"],
+      // npm 包的 `grok` 是指向 `grok-native` 的链接，经它或 `~/.grok/bin/grok`
+      // 起，前台进程名都是 `grok`；自更新重启成 `grok-<版本>` 的情形待核实。
+      expectedProcess: ["grok", "grok-native"],
+    },
   };
 
 export const AGENT_LIST: readonly AgentDefinition[] = AGENT_IDS.map(
@@ -681,6 +721,7 @@ export function assembleLaunchArgv(
   if (prompt) {
     switch (custom?.promptMode ?? base.promptMode) {
       case "argv":
+        if (base.promptSeparator !== undefined) args.push(base.promptSeparator);
         args.push(prompt);
         break;
       case "flag-prompt":

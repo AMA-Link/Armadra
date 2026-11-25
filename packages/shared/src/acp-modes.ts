@@ -93,6 +93,18 @@ export const ACP_MODE_TABLE: Readonly<Record<BuiltinAgentId, AcpModeTable>> = {
     "full-auto": { args: ["--dangerously-skip-permissions"] },
     plan: { modeId: "plan" },
   },
+  // grok 1.0.92 真账号实测：`session/set_mode` 只认 `default` / `ask` / `plan` /
+  // `agent`（agent 角色，不是权限）；`plan` 之后回 `default` 或 `agent` 都发
+  // `current_mode_update`。`acceptEdits`、`auto`、`dontAsk`、`bypassPermissions`
+  // 都是 `unknown mode id`，所以 auto-edit 在 ACP 下没有落点。全自动只能用启动旗标
+  // `--always-approve`（`_meta.yoloMode` 要等 armadra-agent 的会话 `_meta`
+  // 通道，到时再换成它，就能在会话里切）。
+  grok: {
+    default: { modeId: "default" },
+    "auto-edit": null,
+    "full-auto": { args: ["--always-approve"] },
+    plan: { modeId: "plan" },
+  },
 };
 
 /**
@@ -111,6 +123,9 @@ export const ACP_REPORTED_MODES: Readonly<
   copilot: "permission",
   ama: "permission",
   agy: "permission",
+  // grok 的 `modes`（若哪个版本开始报）是 agent 角色 `default/ask/plan/agent`，
+  // 不是权限：丢掉，免得页面把 `ask` / `agent` 当权限选项画出来。
+  grok: "ignore",
 };
 
 /** 这家报的 `modes` 要不要当权限模式；不认识的 Agent 按权限模式。 */

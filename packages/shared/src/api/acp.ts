@@ -94,6 +94,7 @@ export const AGENT_CLI_PACKAGES = {
   omp: "@oh-my-pi/pi-coding-agent",
   copilot: "@github/copilot",
   ama: "@armadra/agent",
+  grok: "@xai-official/grok",
 } as const;
 
 export type AcpAdapterAgentId = keyof typeof ACP_ADAPTER_PACKAGES;

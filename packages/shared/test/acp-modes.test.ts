@@ -16,6 +16,17 @@ import {
  * ACP 权限模式兼容表（#685）：一家一行，覆盖的模式集合与终端启动旗标一致，
  * 每家会话里能切的候选（含 bypass 一类的全自动）逐家写死在这里。
  */
+/**
+ * 终端有旗标、ACP 下确实没有落点的模式：逐家写明理由，不在断言里悄悄放行。
+ *   * grok：终端 `--permission-mode acceptEdits` 存在，但 ACP 的 `session/set_mode`
+ *     只认 `default` / `ask` / `plan` / `agent`（agent 角色，不是权限），1.0.92
+ *     真账号逐个 id 实测，`acceptEdits` 报 `unknown mode id`；ACP 也没有别的入口。
+ *     界面按「这家 ACP 没有这个模式」处理，与设置页只给有对应参数的权限模式同一规矩。
+ */
+const NO_ACP_LANDING: Readonly<Record<string, readonly string[]>> = {
+  grok: ["auto-edit"],
+};
+
 describe("ACP_MODE_TABLE", () => {
   it("has one row per built-in agent, covering every permission mode", () => {
     expect(Object.keys(ACP_MODE_TABLE).sort()).toEqual([...AGENT_IDS].sort());
@@ -28,7 +39,11 @@ describe("ACP_MODE_TABLE", () => {
       const definition = agentDefinition(id);
       for (const mode of PERMISSION_MODES) {
         if ((definition?.permissionFlag[mode].length ?? 0) > 0) {
-          expect(ACP_MODE_TABLE[id][mode], `${id} ${mode}`).not.toBe(null);
+          if (NO_ACP_LANDING[id]?.includes(mode)) {
+            expect(ACP_MODE_TABLE[id][mode], `${id} ${mode}`).toBe(null);
+          } else {
+            expect(ACP_MODE_TABLE[id][mode], `${id} ${mode}`).not.toBe(null);
+          }
         }
       }
       expect(ACP_MODE_TABLE[id].default, id).not.toBe(null);
@@ -67,6 +82,8 @@ describe("ACP_MODE_TABLE", () => {
       ],
       omp: ["default=default", "plan=plan"],
       copilot: [],
+      // grok：全自动是启动旗标，不能在会话里切；plan 之后回 default。
+      grok: ["default=default", "plan=plan"],
       ama: [
         "default=default",
         "auto-edit=auto-edit",
@@ -120,12 +137,13 @@ describe("ACP_MODE_TABLE", () => {
 });
 
 describe("ACP_REPORTED_MODES", () => {
-  it("has one row per built-in agent and every one reports permission modes", () => {
+  it("has one row per built-in agent; only grok ignores what it reports", () => {
     expect(Object.keys(ACP_REPORTED_MODES).sort()).toEqual(
       [...AGENT_IDS].sort(),
     );
+    // grok 的 `modes`（若哪个版本开始报）是 agent 角色，不是权限，所以丢掉。
     const ignored = AGENT_IDS.filter((id) => !acpReportsPermissionModes(id));
-    expect(ignored).toEqual([]);
+    expect(ignored).toEqual(["grok"]);
   });
 
   it("treats an unknown or custom agent as reporting permission modes", () => {
