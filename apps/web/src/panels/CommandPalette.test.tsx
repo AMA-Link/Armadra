@@ -84,8 +84,25 @@ const row: Conversation = {
 
 beforeAll(installDomPolyfills);
 
+// 跳转会用 setTimeout 延后重发居中；文件结束、jsdom 拆除后才触发会报 window is not defined（#1007）。
+// 记下每个测试里排的计时器，测试结束时清掉。
+const pendingTimers = new Set<ReturnType<typeof setTimeout>>();
+const realSetTimeout = globalThis.setTimeout;
+
+beforeEach(() => {
+  vi.spyOn(globalThis, "setTimeout").mockImplementation(((
+    ...args: Parameters<typeof setTimeout>
+  ) => {
+    const id = realSetTimeout(...args);
+    pendingTimers.add(id);
+    return id;
+  }) as typeof setTimeout);
+});
+
 afterEach(() => {
   cleanup();
+  for (const id of pendingTimers) clearTimeout(id);
+  pendingTimers.clear();
   vi.clearAllMocks();
   vi.useRealTimers();
   localStorage.clear();

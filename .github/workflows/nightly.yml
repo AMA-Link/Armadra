@@ -424,7 +424,7 @@ jobs:
       # 后面的「上传产物」与 report 照常运行。
       # 模拟器的 qemu 进程在 runner 的嵌套虚拟化里会随机段错误（#485，换镜像、构建、CPU 都避不开），
       # 所以这一步失败先不判红：result.json 判定为「模拟器进程中途消失」时把这一轮的产物挪进
-      # attempt-1/、重启模拟器重跑一次（#921）；用例断言失败、超时不重试，直接判红。
+      # attempt-1/、重启模拟器重跑，最多再跑两次（#921、#1012）；用例断言失败、超时不重试，直接判红。
       - name: 连接 → 配对 → 画布（插桩用例）
         id: e2e
         continue-on-error: true
@@ -449,7 +449,31 @@ jobs:
           echo "::error::插桩步骤失败，result.json 没有判定为模拟器进程中途消失：按用例断言失败或超时处理，看 result.json 与 gradle-connected*.log"
           exit 1
       - name: 重启模拟器重跑一次（上一轮模拟器进程段错误）
+        id: e2e2
+        continue-on-error: true
         if: ${{ steps.crash.outputs.crashed == 'true' }}
+        timeout-minutes: 30
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: node tools/probes/mobile-shell-e2e.mjs --platform android target/mobile-shell-e2e/android
+      - name: 第二轮模拟器又崩了吗
+        id: crash2
+        if: ${{ steps.e2e2.outcome == 'failure' }}
+        timeout-minutes: 2
+        shell: bash
+        run: node tools/probes/android-host-watch.mjs archive target/mobile-shell-e2e/android | tee -a "$GITHUB_OUTPUT"
+      - name: 用例失败（第二轮，不是模拟器崩溃，不重试）
+        if: ${{ steps.e2e2.outcome == 'failure' && steps.crash2.outputs.crashed != 'true' }}
+        shell: bash
+        run: |
+          echo "::error::第二轮插桩步骤失败，result.json 没有判定为模拟器进程中途消失：按用例断言失败或超时处理"
+          exit 1
+      - name: 再重启模拟器重跑一次（连续两轮模拟器进程段错误，#1012）
+        if: ${{ steps.crash2.outputs.crashed == 'true' }}
         timeout-minutes: 30
         uses: reactivecircus/android-emulator-runner@v2
         with:
