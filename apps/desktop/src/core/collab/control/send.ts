@@ -17,6 +17,7 @@ import {
   stateSourceIsReported,
 } from "../../agent/target-state";
 import { currentDriverStatus } from "../../terminal/manager-status";
+import { programBlocks } from "../program-block";
 import { getContextLinks } from "../../canvas/context-links";
 import {
   LEASE_GENERATION,
@@ -612,6 +613,9 @@ export async function attempt(
     context.terminals?.programStatus?.(live.session.sessionId)?.state ===
       "blocked"
   ) {
+    // 登记这次否决：节流窗里 working → blocked → idle 时帧里没有 `blocked`，
+    // 解除要靠这一笔才叫得醒出队泵（`collab/program-block.ts`）。
+    programBlocks.vetoed(live.target.id);
     state = "awaiting-approval";
     targetStateLabel = state;
   }

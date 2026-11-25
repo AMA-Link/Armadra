@@ -5,8 +5,14 @@ import { attempt } from "./control/send";
 import { loadNode, loadSession } from "./nodes";
 import { writeReceipts } from "./receipts";
 import { sendLimits } from "./send-limits";
-import { expireQueue, pendingFor, targetsWithPending } from "./send-queue";
+import {
+  expireQueue,
+  pendingFor,
+  settle,
+  targetsWithPending,
+} from "./send-queue";
 import { type CollabContext, nowSeconds } from "./service";
+import { type ProgramBlockTracker, programBlocks } from "./program-block";
 import { RouterCards } from "./router-cards";
 import { wakeInbox } from "./wake";
 
@@ -57,6 +63,12 @@ export class SendPump {
   constructor(
     private readonly context: () => CollabContext | undefined,
     private readonly onError: (error: unknown) => void = () => {},
+    /**
+     * 这个 core 起来的时刻（秒）。排队项里带 `--unverified` 的、比它早建的，是上一个
+     * core 留下的：当时否决它们的依据（内存里的程序自报状态）已经随重启丢了，
+     * 继续按「自负其责」投进去，可能正投在一张审批卡上。缺省不设这条规则（用例）。
+     */
+    private readonly startedAtSeconds?: number,
   ) {}
 
   /**
@@ -148,6 +160,21 @@ export class SendPump {
       // 同一个空闲窗口里只投一样。
       if (next === undefined) {
         await this.cards.deliver(context, targetNodeId);
+        return;
+      }
+      if (
+        next.unverified === true &&
+        this.startedAtSeconds !== undefined &&
+        next.createdAt < this.startedAtSeconds
+      ) {
+        settle(
+          context.database,
+          next.id,
+          "cancelled",
+          "TARGET_STATE_UNVERIFIED",
+          "gate",
+        );
+        writeReceipts(context, nowSeconds(context));
         return;
       }
       // 排队项只带 `--unverified`：`--no-queue` 是一次性的，一条已经排进去的投递
@@ -289,47 +316,18 @@ export class SendPump {
 }
 
 /**
- * 哪些节点刚刚从程序自报的 `blocked` 里放开了（契约 §53、§120）。
- *
- * `blocked` 是投递的否决项，它解除时目标那一侧可能什么 `agent.status` 都不会再报，
- * 所以要靠 `terminal.program` 事件叫醒出队泵。只在「这个节点此前是 blocked，现在
- * 不是（变成别的状态，或记录没了）」那一下触发：进度条每秒刷几十帧，每帧都叫醒
- * 出队泵没有意义。
- */
-export class ProgramBlockTracker {
-  private readonly blocked = new Set<string>();
-
-  /** 喂一条事件；答「该叫醒出队泵的那个节点」，没有就是 `undefined`。 */
-  observe(event: {
-    readonly type: string;
-    readonly nodeId?: unknown;
-    readonly status?: unknown;
-  }): string | undefined {
-    if (event.type !== "terminal.program") return undefined;
-    if (typeof event.nodeId !== "string" || event.nodeId === "")
-      return undefined;
-    const status = event.status as { state?: unknown } | undefined;
-    if (status?.state === "blocked") {
-      this.blocked.add(event.nodeId);
-      return undefined;
-    }
-    return this.blocked.delete(event.nodeId) ? event.nodeId : undefined;
-  }
-}
-
-/**
  * `agent/index.ts` 挂在事件总线上的那一个处理函数：`terminal.program` 里放开了
  * `blocked` 的节点，叫醒出队泵（`pump.noteFree`）。答「这条事件是不是它的」，
  * 好让调用方在是的时候不再往下走。
  */
-export function programFreeHook(pump: {
-  noteFree(nodeId: string): void;
-}): (event: {
+export function programFreeHook(
+  pump: { noteFree(nodeId: string): void },
+  tracker: ProgramBlockTracker = programBlocks,
+): (event: {
   readonly type: string;
   readonly nodeId?: unknown;
   readonly status?: unknown;
 }) => boolean {
-  const tracker = new ProgramBlockTracker();
   return (event) => {
     if (event.type !== "terminal.program") return false;
     const freed = tracker.observe(event);

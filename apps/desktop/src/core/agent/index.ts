@@ -70,7 +70,12 @@ let assembled: CollabContext | undefined;
  * 出队泵（设计 `agent-delivery.md` §4.6）。上下文现取，因为
  * `setTerminalBridge` 之后它整个是一个新对象。
  */
-const pump = new SendPump(() => assembled);
+const pump = new SendPump(
+  () => assembled,
+  undefined,
+  // 重启前排下的 `--unverified` 项不再沿用当时的自负其责（契约 §120）。
+  Math.floor(Date.now() / 1000),
+);
 
 /** 待投队列的出队泵，供用例与装配点使用。 */
 export function sendPump(): SendPump {
