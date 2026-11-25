@@ -139,3 +139,20 @@ describeUnix("the terminal bridge", () => {
     expect(collab()?.terminals).toBeUndefined();
   }, 60_000);
 });
+
+describe("terminalBridge.programStatus", () => {
+  it("passes the manager's live summary through, and nothing else", async () => {
+    const { terminalBridge } = await import("./bridge");
+    const bridge = terminalBridge(
+      {
+        programStatus: (sessionId: string) =>
+          sessionId === "s1"
+            ? { state: "blocked", source: "osc7501" }
+            : undefined,
+      } as never,
+      {} as never,
+    );
+    expect(bridge.programStatus?.("s1")).toMatchObject({ state: "blocked" });
+    expect(bridge.programStatus?.("other")).toBeUndefined();
+  });
+});

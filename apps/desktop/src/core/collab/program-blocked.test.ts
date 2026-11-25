@@ -3,7 +3,7 @@ import { type AgentFixture, agentFixture, callerFor } from "../agent/fixture";
 import { putContextLinks } from "../canvas/context-links";
 import { freeLease } from "../drive/lease";
 import { controlDispatcher, type ControlOutcome } from "./control";
-import { SendPump, nodeFreedByProgram } from "./send-pump";
+import { ProgramBlockTracker, SendPump, programFreeHook } from "./send-pump";
 import { resetSendLimits } from "./send-limits";
 import { pendingCountFor } from "./send-queue";
 
@@ -191,22 +191,51 @@ describe("a program that reports blocked", () => {
 });
 
 describe("which node a terminal.program event frees", () => {
-  it("frees on any state but blocked, and when the record is gone", () => {
-    const at = (status?: { state: string }) =>
-      nodeFreedByProgram({ type: "terminal.program", nodeId: "n1", status });
-    expect(at({ state: "blocked" })).toBeUndefined();
-    for (const state of ["idle", "working", "done", "error"]) {
-      expect(at({ state })).toBe("n1");
-    }
-    expect(at(undefined)).toBe("n1");
+  const event = (nodeId: string, state?: string) => ({
+    type: "terminal.program",
+    nodeId,
+    status: state === undefined ? undefined : { state },
+  });
+
+  it("frees only on the transition out of blocked, not on every frame", () => {
+    const tracker = new ProgramBlockTracker();
+    // 没 blocked 过：进度帧一律不叫醒。
+    expect(tracker.observe(event("n1", "working"))).toBeUndefined();
+    expect(tracker.observe(event("n1", "working"))).toBeUndefined();
+    expect(tracker.observe(event("n1", "blocked"))).toBeUndefined();
+    expect(tracker.observe(event("n1", "blocked"))).toBeUndefined();
+    expect(tracker.observe(event("n1", "working"))).toBe("n1");
+    // 解除之后再来的帧不再叫醒。
+    expect(tracker.observe(event("n1", "working"))).toBeUndefined();
+    expect(tracker.observe(event("n1", "idle"))).toBeUndefined();
+  });
+
+  it("frees when the record disappears, per node", () => {
+    const tracker = new ProgramBlockTracker();
+    tracker.observe(event("a", "blocked"));
+    tracker.observe(event("b", "blocked"));
+    expect(tracker.observe(event("a"))).toBe("a");
+    expect(tracker.observe(event("a"))).toBeUndefined();
+    expect(tracker.observe(event("b", "idle"))).toBe("b");
   });
 
   it("ignores other events and sessions without a node", () => {
+    const tracker = new ProgramBlockTracker();
     expect(
-      nodeFreedByProgram({ type: "agent.status", nodeId: "n1" }),
+      tracker.observe({ type: "agent.status", nodeId: "n1" }),
     ).toBeUndefined();
     expect(
-      nodeFreedByProgram({ type: "terminal.program", status: undefined }),
+      tracker.observe({ type: "terminal.program", status: undefined }),
     ).toBeUndefined();
+  });
+
+  it("the hook agent/index.ts installs calls noteFree once, and says the event was its own", () => {
+    const freed: string[] = [];
+    const hook = programFreeHook({ noteFree: (id) => freed.push(id) });
+    expect(hook({ type: "agent.status", nodeId: "n1" })).toBe(false);
+    expect(hook(event("n1", "blocked"))).toBe(true);
+    expect(hook(event("n1", "working"))).toBe(true);
+    expect(hook(event("n1", "working"))).toBe(true);
+    expect(freed).toEqual(["n1"]);
   });
 });

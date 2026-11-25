@@ -289,17 +289,51 @@ export class SendPump {
 }
 
 /**
- * 一条 `terminal.program` 事件放开了哪个节点：状态变成 `blocked` 以外的值、或
- * 记录没了（`status` 缺席）。`blocked` 是投递的否决项（契约 §53、§120），它解除时
- * 目标那一侧可能什么 `agent.status` 都不会再报，所以要靠这条事件叫醒出队泵。
+ * 哪些节点刚刚从程序自报的 `blocked` 里放开了（契约 §53、§120）。
+ *
+ * `blocked` 是投递的否决项，它解除时目标那一侧可能什么 `agent.status` 都不会再报，
+ * 所以要靠 `terminal.program` 事件叫醒出队泵。只在「这个节点此前是 blocked，现在
+ * 不是（变成别的状态，或记录没了）」那一下触发：进度条每秒刷几十帧，每帧都叫醒
+ * 出队泵没有意义。
  */
-export function nodeFreedByProgram(event: {
+export class ProgramBlockTracker {
+  private readonly blocked = new Set<string>();
+
+  /** 喂一条事件；答「该叫醒出队泵的那个节点」，没有就是 `undefined`。 */
+  observe(event: {
+    readonly type: string;
+    readonly nodeId?: unknown;
+    readonly status?: unknown;
+  }): string | undefined {
+    if (event.type !== "terminal.program") return undefined;
+    if (typeof event.nodeId !== "string" || event.nodeId === "")
+      return undefined;
+    const status = event.status as { state?: unknown } | undefined;
+    if (status?.state === "blocked") {
+      this.blocked.add(event.nodeId);
+      return undefined;
+    }
+    return this.blocked.delete(event.nodeId) ? event.nodeId : undefined;
+  }
+}
+
+/**
+ * `agent/index.ts` 挂在事件总线上的那一个处理函数：`terminal.program` 里放开了
+ * `blocked` 的节点，叫醒出队泵（`pump.noteFree`）。答「这条事件是不是它的」，
+ * 好让调用方在是的时候不再往下走。
+ */
+export function programFreeHook(pump: {
+  noteFree(nodeId: string): void;
+}): (event: {
   readonly type: string;
   readonly nodeId?: unknown;
   readonly status?: unknown;
-}): string | undefined {
-  if (event.type !== "terminal.program") return undefined;
-  if (typeof event.nodeId !== "string" || event.nodeId === "") return undefined;
-  const status = event.status as { state?: unknown } | undefined;
-  return status?.state === "blocked" ? undefined : event.nodeId;
+}) => boolean {
+  const tracker = new ProgramBlockTracker();
+  return (event) => {
+    if (event.type !== "terminal.program") return false;
+    const freed = tracker.observe(event);
+    if (freed !== undefined) pump.noteFree(freed);
+    return true;
+  };
 }

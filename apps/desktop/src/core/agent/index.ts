@@ -9,7 +9,7 @@ import {
   setControlDispatcher,
 } from "../collab/control";
 import { runContextLink } from "../collab/context-link";
-import { SendPump, nodeFreedByProgram } from "../collab/send-pump";
+import { SendPump, programFreeHook } from "../collab/send-pump";
 import { installCollaborationSkill } from "../collab/skill";
 import {
   followupFromComment,
@@ -219,6 +219,7 @@ export function install(context: CoreContext): CollabContext {
   // 启动闸门（契约 §52）：持有者报出第一条状态就放行下一个。
   installLaunchGate(context.bus);
 
+  const programFree = programFreeHook(pump);
   // 出队挂在 `agent.status` 的发布点上，不轮询（§4.6）。同一条事件回答两个
   // 问题：谁的一轮结束了（扇出计数清零），以及谁空出来了（该出队了）。
   context.bus.on("workspace.event", ({ event }) => {
@@ -263,11 +264,7 @@ export function install(context: CoreContext): CollabContext {
     // 程序自报的 `blocked`（契约 §53、§120）是投递的否决项：它放开时（变成别的
     // 状态，或记录没了）也是一次「现在可以投了」，而目标那一侧可能什么 agent.status
     // 都不会再报。
-    if (event.type === "terminal.program") {
-      const freed = nodeFreedByProgram(event);
-      if (freed !== undefined) pump.noteFree(freed);
-      return;
-    }
+    if (programFree(event)) return;
     // 租约放开也是一次「现在可以投了」。人抢占之后停手十秒，租约自己过期并广播
     // 一帧 `free`——而目标那一侧此时什么状态都不会再报（它本来就空闲着）。没有
     // 这一条，「停手十秒后自动投进去」就会等一个永远不来的状态事件。
