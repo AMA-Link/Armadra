@@ -133,10 +133,15 @@ const GROK_TRUST = [
 ].join("\n");
 
 const AGY_TRUST = [
-  "  Do you trust the contents of this project?",
+  "  Accessing workspace:",
   "  /tmp/demo",
-  "  Yes, I trust this folder",
-  "  No, exit",
+  "",
+  "  Do you trust the contents of this project?",
+  "  Antigravity CLI requires permission to read, edit, and execute files here.",
+  "",
+  "  > Yes, I trust this folder",
+  "    No, exit",
+  "  ↑/↓ Navigate · enter Confirm",
 ].join("\n");
 
 const AGY_APPROVAL = [
@@ -302,6 +307,16 @@ describe("judgeScreen", () => {
       });
     }
     expect(profile("agy").prompt).toBeUndefined();
+  });
+
+  // 没有提示符特征，就没有「输入框在它下面」的位置规则：已答过的卡留在画面上时这道门
+  // 持续拦截。这是已知的取舍（跟进见 Issue），这条用例把它钉住，免得被悄悄改成放行。
+  it("Antigravity：已答过的卡留在历史里仍然拦（没有提示符特征可放行它）", () => {
+    const answered = `${AGY_APPROVAL}\n  Ran command\n> `;
+    expect(judgeScreen(profile("agy"), answered, true)).toEqual({
+      kind: "dialog",
+      dialog: "agy.approval",
+    });
   });
 
   it("Grok：目录信任与审批卡都拦，首投与平常一样；答完卡、输入框回来就放行", () => {
