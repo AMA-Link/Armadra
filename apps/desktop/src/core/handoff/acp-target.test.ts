@@ -188,7 +188,7 @@ describe("a new Agent opened as ACP", () => {
     expect(String(read.message)).toContain("canvas_post(");
   });
 
-  it.each(["agy", "grok"])(
+  it.each(["agy"])(
     "is refused in terminal form for %s (no canvas injection), and allowed as ACP",
     async (id) => {
       // 终端里没有技能与 MCP，目标读不到交接（契约 §120）：这条门按「有没有注入」写，

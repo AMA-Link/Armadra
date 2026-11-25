@@ -140,6 +140,20 @@ export const AMA_HOOK_EVENTS = [
   "runner_done",
 ] as const;
 
+/**
+ * Grok Build — not hook events: the record types of the session file core reads
+ * (`$GROK_HOME/sessions/<cwd>/<id>/events.jsonl`, contract §123). There is no hook
+ * client; the "events" a status source subscribes to are the lines it reads.
+ */
+export const GROK_SESSION_EVENTS = [
+  "turn_started",
+  "turn_ended",
+  "tool_started",
+  "tool_completed",
+  "permission_requested",
+  "permission_resolved",
+] as const;
+
 export const HOOK_EVENTS: Readonly<Record<BuiltinAgentId, readonly string[]>> =
   {
     claude: CLAUDE_HOOK_EVENTS,
@@ -152,9 +166,7 @@ export const HOOK_EVENTS: Readonly<Record<BuiltinAgentId, readonly string[]>> =
     // No status source yet (terminal state is OSC 7501); a command hook comes
     // with the zero-write `--add-dir` injection, never `PreToolUse`.
     agy: [],
-    // grok 没有 hook 客户端：交互式 TUI 没有只对本进程生效的 hook 通道，状态由 core
-    // 读它自己写的会话文件（G2）。所以这里没有事件名。
-    grok: [],
+    grok: GROK_SESSION_EVENTS,
   };
 
 export type ClaudeHookEvent = (typeof CLAUDE_HOOK_EVENTS)[number];

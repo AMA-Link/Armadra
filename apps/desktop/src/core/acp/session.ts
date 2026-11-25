@@ -916,14 +916,18 @@ export class AcpSession implements AcpSessionIdentity {
     this.ownTools.record(update);
     if (update.sessionUpdate === "current_mode_update") {
       const modeId = (update as { currentModeId?: unknown }).currentModeId;
-      if (
-        typeof modeId === "string" &&
+      const outside =
+        this.modesFromTable &&
         this.modeState !== null &&
-        // 目录来自兼容表时只认表里有的 id：grok 的 `agent`、`ask` 是 agent 角色，
-        // 不是权限模式，不能顶掉界面上的现值。
-        (!this.modesFromTable ||
-          this.modeState.availableModes.some((mode) => mode.id === modeId))
-      ) {
+        !this.modeState.availableModes.some((mode) => mode.id === modeId);
+      if (typeof modeId === "string" && this.modeState !== null && outside) {
+        // 目录来自兼容表、而 agent 切到了表外的 id（grok 的 `agent`、`ask` 是 agent
+        // 角色，不是权限模式）：现在是哪个权限模式不知道了。不保留旧值——界面写
+        // `plan` 而实际已经不在 plan 里，比「未知」更糟。置为空串（未知），并推一次
+        // 目录让界面跟上。
+        this.modeState = { ...this.modeState, currentModeId: "" };
+        this.publishCatalog();
+      } else if (typeof modeId === "string" && this.modeState !== null) {
         this.modeState = { ...this.modeState, currentModeId: modeId };
         if (this.modeConfigId !== undefined) {
           this.configView = withConfigValue(

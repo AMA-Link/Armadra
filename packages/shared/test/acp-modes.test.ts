@@ -74,8 +74,8 @@ describe("ACP_MODE_TABLE", () => {
       ],
       omp: ["default=default", "plan=plan"],
       copilot: [],
-      // grok：全自动是启动旗标，不能在会话里切；plan 之后回 default。
-      grok: ["default=default", "plan=plan"],
+      // grok：全自动是启动旗标，不能在会话里切；plan 等 Armadra#1021。
+      grok: ["default=default"],
       ama: [
         "default=default",
         "auto-edit=auto-edit",
@@ -144,10 +144,7 @@ describe("ACP_REPORTED_MODES", () => {
   });
 
   it("builds the table agents' catalogue from the compatibility table", () => {
-    expect(acpTableModes("grok")).toEqual([
-      { id: "default", name: "default" },
-      { id: "plan", name: "plan" },
-    ]);
+    expect(acpTableModes("grok")).toEqual([{ id: "default", name: "default" }]);
     // 没有目录要建的家（不是 `table`）也能问，答的是表里带 modeId 的那些。
     expect(acpTableModes("copilot")).toEqual([]);
     expect(acpTableModes("custom:x")).toEqual([]);

@@ -64,6 +64,9 @@ export const AGENT_STATE_SOURCES = [
   "extension",
   "observed",
   "acp",
+  // core 自己读 CLI 写下的会话记录得出的状态（契约 §123，协议 minor 53）：grok 的
+  // `events.jsonl`，按节点 PTY 进程在它的 `active_sessions.json` 里的行绑定。
+  "transcript",
 ] as const;
 
 /**
@@ -78,7 +81,12 @@ export const AGENT_STATE_SOURCES = [
  *     验过节点令牌的 `hook` 与 `extension`（`acp` 不经这条路）；
  *   * {@link stateSourceIsObserved}：观察级——`observed`，只是猜测，仅用于显示。
  */
-export const REPORTED_STATE_SOURCES = ["hook", "extension", "acp"] as const;
+export const REPORTED_STATE_SOURCES = [
+  "hook",
+  "extension",
+  "acp",
+  "transcript",
+] as const;
 export const RUN_REPORT_STATE_SOURCES = ["hook", "extension"] as const;
 
 export function stateSourceIsReported(

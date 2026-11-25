@@ -14,6 +14,8 @@ import {
   type AgentSettings,
   NO_CUSTOM_AGENTS,
   baseAgent,
+  channelUnbound,
+  refreshNodeState,
   nodeStateChannel,
   startsSilently,
 } from "../agent/registry";
@@ -158,19 +160,30 @@ export class TerminalDispatcher implements Dispatcher {
     if (node.agentId !== launch.agentId) {
       return { state: "unsupported", generation: 0 };
     }
-    // 这个节点上这家 CLI 没有状态通道（grok 的 G1、只有 OSC 自报的 agy、远程节点上
-    // 读本机文件的通道）：回合进行中的节点没有任何上报，上面「在等人 / 在干活」
+    // 这个节点上这家 CLI 没有状态通道（只有 OSC 自报的 agy；远程、Windows、绑不上的
+    // 节点上读本机文件的通道，如 grok，契约 §123）：回合进行中的节点没有任何上报，上面「在等人 / 在干活」
     // 的判断全是空的——计划任务照写，正文加回车就落进正在工作的 pane。不是忙、
     // 是不支持：这样的节点要靠 `canvas send --unverified` 之类显式自负其责。
-    const settings = this.context.settings?.() ?? NO_CUSTOM_AGENTS;
+    const given = this.context.settings?.();
+    // `custom:` 条目的 base 只有设置里查得到：取不到就答「不知道」，不拿空设置去猜
+    // （空设置下它没有 base、也就没有通道，会被误判成不支持）。
+    if (given === undefined && node.agentId.startsWith("custom:")) {
+      return { state: "unknown", generation: 0 };
+    }
+    const settings = given ?? NO_CUSTOM_AGENTS;
+    // 读状态之前先让这个节点的状态读取槽同步读一次文件尾（与 `send` 的 `observe`
+    // 同一步，契约 §123）：轮询还没到时，刚写下的 turn_started 不能被当成「空闲」。
+    refreshNodeState(node.id);
     const known = loadSession(this.context.database, target.nodeId);
     const remote =
       known === undefined
         ? false
         : (this.context.terminals()?.remote?.(known.sessionId) ?? false);
     if (
-      nodeStateChannel(baseAgent(settings, node.agentId), { remote }) ===
-      undefined
+      nodeStateChannel(baseAgent(settings, node.agentId), {
+        remote,
+        unbound: channelUnbound(node.id),
+      }) === undefined
     ) {
       return { state: "unsupported", generation: 0 };
     }

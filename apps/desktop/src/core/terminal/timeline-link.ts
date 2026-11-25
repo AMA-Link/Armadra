@@ -1,4 +1,5 @@
 import type { CoreContext } from "../main";
+import { SCREEN_GATE_LINES } from "../agent/screen-gate";
 import { rowLiveness, timelineDomainOf } from "../timeline";
 import type { TerminalManager } from "./manager";
 
@@ -25,6 +26,15 @@ export function linkTimeline(
   timeline?.sources.setTerminalFacts({
     pid: (sessionId) => manager.pidOf(sessionId),
     remote: (sessionId) => manager.isRemote(sessionId),
+    env: (sessionId, name) => manager.envOf(sessionId, name),
+    screen: async (sessionId) => {
+      try {
+        return (await manager.capture(sessionId, SCREEN_GATE_LINES, false))
+          .data;
+      } catch {
+        return undefined;
+      }
+    },
   });
 }
 

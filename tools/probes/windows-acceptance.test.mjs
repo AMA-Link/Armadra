@@ -30,6 +30,9 @@ import {
   PAGE_HELPERS,
   parseArgs,
   probeLaunchConfig,
+  probeSeparatorConfig,
+  SEPARATOR_CASES,
+  INJECTED_ARGS,
   responsiveAfterLoop,
   snapshot,
   summarize,
@@ -649,4 +652,32 @@ test("崩溃记录：只查这次运行以来的 Application Error / WER，读�
     }, "x"),
     [{ error: "powershell 失败" }],
   );
+});
+
+test("the separator probe asks for place=before-separator ahead of the injected words", () => {
+  const config = probeSeparatorConfig().split("\r\n");
+  assert.equal(config[0], "armadra-launch 1");
+  const place = config.indexOf("place=before-separator");
+  assert.ok(place > 0);
+  assert.ok(config.slice(place).some((line) => line.startsWith("arg=")));
+  assert.ok(!config.some((line) => line.startsWith("credential")));
+  // Every case keeps the caller's words in order and carries the injection once.
+  for (const testCase of SEPARATOR_CASES) {
+    const injected = testCase.expected.filter((word) =>
+      INJECTED_ARGS.includes(word),
+    );
+    assert.deepEqual(injected, INJECTED_ARGS, testCase.name);
+    assert.deepEqual(
+      testCase.expected.filter((word) => !INJECTED_ARGS.includes(word)),
+      testCase.caller.filter((word) => !INJECTED_ARGS.includes(word)),
+      testCase.name,
+    );
+  }
+  // The injection sits before the first `--` when there is one, else at the end.
+  const before = SEPARATOR_CASES.find((c) => c.name === "before");
+  assert.ok(
+    before.expected.indexOf("--") > before.expected.indexOf(INJECTED_ARGS[0]),
+  );
+  const quoted = SEPARATOR_CASES.find((c) => c.name === "quoted");
+  assert.deepEqual(quoted.expected.slice(-INJECTED_ARGS.length), INJECTED_ARGS);
 });

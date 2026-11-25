@@ -76,6 +76,15 @@ const INJECTED = [
   'developer_instructions="r16\\n%PATH% ^ | <x>"',
   "C:\\trailing\\",
 ];
+/** grok 的注入词：`--rules` 一句话与带括号的 `--allow` 规则。 */
+const GROK_INJECTED = [
+  "--rules",
+  "Armadra canvas node: read C:\\data dir\\skill.md & follow it",
+  "--allow",
+  "Bash(armadra-hook canvas *)",
+  "--allow",
+  "Bash(C:\\data dir\\armadra-hook.exe canvas *)",
+];
 /** 只给 CLI 进程的变量。 */
 const PLAIN = "a b & c | d <e> 100% ^f 画布 C:\\dir\\x";
 const NODE_ID = "node-1";
@@ -98,6 +107,7 @@ let echo = "";
 let launcher = "";
 let shim = "";
 let shimDir = "";
+let grokLauncher = "";
 
 /** 编出 `armadra-launch.exe`，写一个 CLI 的 `run\` 与 `shims\`。 */
 function writeLauncher(
@@ -105,6 +115,7 @@ function writeLauncher(
   args: readonly string[],
   env: readonly (readonly [string, string])[],
   shimTarget?: ShimTarget,
+  placement?: "before-separator",
 ): WindowsLauncherSpec {
   const spec: WindowsLauncherSpec = {
     agentId,
@@ -115,6 +126,7 @@ function writeLauncher(
     exe,
     bare: true,
     ...(shimTarget === undefined ? {} : { shimTarget }),
+    ...(placement === undefined ? {} : { placement }),
   };
   writeWindowsLauncherFiles(windowsLauncherFiles(spec));
   return spec;
@@ -137,6 +149,15 @@ beforeAll(async () => {
   launcher = windowsLauncherPath(spec.runDir, "claude");
   shim = windowsShimPath(spec.shimDir, "claude");
   shimDir = spec.shimDir;
+  // grok 的启动器：注入词放在第一个单独的 `--` 之前（契约 §123 的 place=before-separator）。
+  const grok = writeLauncher(
+    "grok",
+    GROK_INJECTED,
+    [["ARMADRA_PLAIN", PLAIN]],
+    undefined,
+    "before-separator",
+  );
+  grokLauncher = windowsLauncherPath(grok.runDir, "grok");
 }, 120_000);
 
 /** 画布节点终端的环境：门开着。 */
@@ -314,6 +335,93 @@ describe.runIf(windows)(
 );
 
 /**
+ * `place=before-separator`（G2 的合并门）：注入词插在命令行里第一个单独的 `--`
+ * 之前，`--` 之后的提示词原样；没有 `--` 接在最后；`a -- b` 这样词里带 `--` 的不算。
+ * 三种 shell 各读一遍，期望与 `tools/probes/windows-acceptance-lib.mjs` 的
+ * `SEPARATOR_CASES` 同一组。
+ */
+const CALLER = ["plain", "a b", "it's", "画布 说明"];
+const SEPARATOR_CASES: readonly {
+  name: string;
+  caller: readonly string[];
+  expected: readonly string[];
+}[] = [
+  {
+    name: "before",
+    caller: [...CALLER, "--", "the prompt here"],
+    expected: [...CALLER, ...GROK_INJECTED, "--", "the prompt here"],
+  },
+  {
+    name: "none",
+    caller: [...CALLER],
+    expected: [...CALLER, ...GROK_INJECTED],
+  },
+  {
+    name: "quoted",
+    caller: [...CALLER, "a -- b"],
+    expected: [...CALLER, "a -- b", ...GROK_INJECTED],
+  },
+  {
+    name: "prompt-looks-like-flag",
+    caller: ["--", "--prompt-flag", "-- x"],
+    expected: [...GROK_INJECTED, "--", "--prompt-flag", "-- x"],
+  },
+];
+
+describe.runIf(windows)(
+  "the grok launcher places words before the separator",
+  () => {
+    const line = (dialect: ShellDialect, caller: readonly string[]) =>
+      shellCommandLine(
+        grokLauncher,
+        [process.execPath, echo, ...caller],
+        dialect,
+      );
+
+    for (const entry of SEPARATOR_CASES) {
+      it(`cmd.exe: ${entry.name}`, () => {
+        const result = runCmd(line("cmd", entry.caller), canvasEnv());
+        expect(result.status, result.stderr).toBe(0);
+        expect(parse(result.stdout).argv).toEqual(entry.expected);
+      });
+
+      it.runIf(modern)(`PowerShell 7: ${entry.name}`, () => {
+        const result = runPowerShell(
+          "pwsh",
+          line("powershell", entry.caller),
+          canvasEnv(),
+        );
+        expect(result.status, result.stderr).toBe(0);
+        expect(parse(result.stdout).argv).toEqual(entry.expected);
+      });
+
+      it.runIf(legacy)(`Windows PowerShell 5.1: ${entry.name}`, () => {
+        const result = runPowerShell(
+          "powershell.exe",
+          line("windows-powershell", entry.caller),
+          canvasEnv(),
+        );
+        expect(result.status, result.stderr).toBe(0);
+        expect(parse(result.stdout).argv).toEqual(entry.expected);
+      });
+    }
+
+    it("injects nothing outside a canvas, separator or not", () => {
+      const result = runCmd(
+        line("cmd", [...CALLER, "--", "the prompt here"]),
+        outsideEnv(),
+      );
+      expect(result.status, result.stderr).toBe(0);
+      expect(parse(result.stdout).argv).toEqual([
+        ...CALLER,
+        "--",
+        "the prompt here",
+      ]);
+    });
+  },
+);
+
+/**
  * 读不出的 `.cmd` 包装（`custom:` 条目指向手写的批处理）：`launchTargetOf`
  * 答不出它背后的程序，启动器只好经 `cmd.exe` 起它，`%*` 让参数被再读一遍。
  */
@@ -340,6 +448,21 @@ describe.runIf(windows)("a batch wrapper behind the launcher", () => {
     expect(result.stderr).toMatch(/batch wrapper; canvas injection skipped/);
     const out = parse(result.stdout);
     expect(out.argv).toEqual(SAFE);
+    expect(out.plain).toBeNull();
+  });
+
+  it("grok 的 --allow 规则必带括号：批处理包装挡不住它，整组跳过并说明（降级，不是静默）", () => {
+    const line = shellCommandLine(
+      grokLauncher,
+      [wrapper(), ...SAFE, "--", "the prompt here"],
+      "cmd",
+    );
+    const result = runCmd(line, canvasEnv());
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).toMatch(/batch wrapper; canvas injection skipped/);
+    const out = parse(result.stdout);
+    // 没有注入词，提示词与分隔符原样。
+    expect(out.argv).toEqual([...SAFE, "--", "the prompt here"]);
     expect(out.plain).toBeNull();
   });
 
@@ -442,6 +565,26 @@ describe.runIf(windows)("npm wrappers behind the launcher", () => {
     const result = runCmd(line, canvasEnv());
     expect(result.status, result.stderr).toBe(0);
     expectInjected(result.stdout);
+  });
+
+  it("npm 形状的 grok.cmd 读得出背后的 node：括号规则照常注入，--rules 在 -- 之前", () => {
+    const { shim: wrapperFile, script } = npmShim();
+    const target = launchTargetOf(wrapperFile);
+    expect(target?.args).toEqual([script]);
+    const line = shellCommandLine(
+      grokLauncher,
+      [target!.program, ...target!.args, "plain", "--", "the prompt here"],
+      "cmd",
+    );
+    const result = runCmd(line, canvasEnv());
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(parse(result.stdout).argv).toEqual([
+      "plain",
+      ...GROK_INJECTED,
+      "--",
+      "the prompt here",
+    ]);
   });
 
   it("gives the shim node and the script behind the wrapper (§5.4)", () => {
