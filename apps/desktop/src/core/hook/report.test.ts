@@ -201,4 +201,51 @@ describe("core 内部上报入口", () => {
       })?.state,
     ).toBe("working");
   });
+
+  it("事件属于别的节点：丢掉，不借这个入口写进来", () => {
+    const it_ = fixture();
+    const other = stateEvent(uuidV7(), "claude", WORKING);
+    other.stateSource = "acp";
+    expect(
+      reportInternal(it_.context, {
+        nodeId: it_.nodeId,
+        agentId: "claude",
+        event: other,
+      }),
+    ).toBeUndefined();
+    expect(it_.status()).toBeUndefined();
+  });
+
+  describe("custom 节点", () => {
+    it("归属与绑定都按节点自己的 custom id（与 ingest 一致）", () => {
+      const it_ = fixture();
+      const sessionId = uuidV7();
+      insertSession(it_, {
+        id: sessionId,
+        status: "running",
+        generation: 1,
+        agentId: "custom:mine",
+      });
+      initializeContextSequence(
+        join(it_.core.directory, "context-sequences"),
+        sessionId,
+        1,
+      );
+      const done = stateEvent(it_.nodeId, "claude", DONE);
+      done.stateSource = "extension";
+      const status = reportInternal(it_.context, {
+        nodeId: it_.nodeId,
+        // 槽给的是 base id
+        agentId: "claude",
+        event: done,
+        terminalSession: { sessionId, generation: 1 },
+      });
+      expect(status?.agentId).toBe("custom:mine");
+      expect(
+        it_.core.database
+          .prepare("SELECT COUNT(*) AS n FROM run_reports WHERE node_id = ?")
+          .get(it_.nodeId),
+      ).toMatchObject({ n: 1 });
+    });
+  });
 });

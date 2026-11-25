@@ -52,13 +52,22 @@ export function reportInternal(
   context: IngestContext,
   report: InternalReport,
 ): AgentStatusRow | undefined {
-  const { nodeId, agentId, event } = report;
+  const { nodeId, event } = report;
+  let agentId = report.agentId;
   const source = event.stateSource;
   if (
     source === undefined ||
     !(AGENT_STATE_SOURCES as readonly string[]).includes(source)
   ) {
     context.log.warn("内部上报没有写来源，丢弃", { nodeId });
+    return undefined;
+  }
+  // 事件是给这个节点的：别的节点的事件不能借这个入口写进来。
+  if (event.nodeId !== nodeId) {
+    context.log.warn("内部上报的事件与节点不符，丢弃", {
+      nodeId,
+      eventNode: event.nodeId,
+    });
     return undefined;
   }
   const owner = findNodeOwner(context.database, nodeId);
@@ -74,6 +83,11 @@ export function reportInternal(
     });
     return undefined;
   }
+
+  // `custom:` 节点按 base 的解析器读，但归属与终端绑定的闸都认节点自己的 id
+  // （与 `ingest` 一致）：`terminal_sessions.agent_id` 写的是 `custom:…`。
+  if (owner.agentId?.startsWith("custom:") === true) agentId = owner.agentId;
+  event.agentId = agentId;
 
   const verified = stateSourceIsReported(source);
   event.verified = verified;
