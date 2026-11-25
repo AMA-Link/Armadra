@@ -128,6 +128,7 @@ export const ACP_PROGRAMS = {
   omp: "omp",
   copilot: "copilot",
   agy: "agy", // `agy acp`
+  grok: "grok",
 };
 
 /**
@@ -201,6 +202,7 @@ export const REAL_CLI_PROGRAMS = [
   "pi",
   "omp",
   "copilot",
+  "grok",
   "claude-agent-acp",
   "codex-acp",
 ];
