@@ -54,6 +54,20 @@ describe("ProgramStatusBook", () => {
     });
   });
 
+  it("status() is the live summary, not the last throttled frame", () => {
+    vi.useFakeTimers();
+    const { instance, frames } = book();
+    instance.feed("s", 1, chunk("\u001b]7501;state=working\u0007"));
+    // 帧还没来得及发（250 ms 节流），投递的否决门要的是「现在」。
+    instance.feed(
+      "s",
+      1,
+      chunk("\u001b]7501;state=blocked:kind=permission\u0007"),
+    );
+    expect(frames.map((frame) => frame?.state)).toEqual(["working"]);
+    expect(instance.status("s")?.state).toBe("blocked");
+  });
+
   it("does not emit when the summary did not change", () => {
     vi.useFakeTimers();
     const { instance, frames, advance } = book();

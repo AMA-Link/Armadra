@@ -282,3 +282,19 @@ export class SendPump {
     this.timer = undefined;
   }
 }
+
+/**
+ * 一条 `terminal.program` 事件放开了哪个节点：状态变成 `blocked` 以外的值、或
+ * 记录没了（`status` 缺席）。`blocked` 是投递的否决项（契约 §53、§120），它解除时
+ * 目标那一侧可能什么 `agent.status` 都不会再报，所以要靠这条事件叫醒出队泵。
+ */
+export function nodeFreedByProgram(event: {
+  readonly type: string;
+  readonly nodeId?: unknown;
+  readonly status?: unknown;
+}): string | undefined {
+  if (event.type !== "terminal.program") return undefined;
+  if (typeof event.nodeId !== "string" || event.nodeId === "") return undefined;
+  const status = event.status as { state?: unknown } | undefined;
+  return status?.state === "blocked" ? undefined : event.nodeId;
+}

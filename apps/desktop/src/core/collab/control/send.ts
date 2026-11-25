@@ -601,6 +601,20 @@ export async function attempt(
     firstDelivery = true;
   }
 
+  // 第二道保险，只做否决：程序自己用 OSC 7501 报了 `blocked`（停在审批上）就不投。
+  // 状态通道说「空闲」、画面门又没认出那个对话框的时候，这是最后一个能拦住
+  // 「替人答题」的地方；`blocked` 以外的任何值都不放行任何东西。
+  // 任何别的状态都改成等审批，包括 `busy`：停在审批上的程序，`--interrupt` 的 ESC
+  // 就是「拒绝这次工具调用」。
+  if (
+    state !== "awaiting-approval" &&
+    context.terminals?.programStatus?.(live.session.sessionId)?.state ===
+      "blocked"
+  ) {
+    state = "awaiting-approval";
+    targetStateLabel = state;
+  }
+
   // `--interrupt`：只对真的在一轮里的目标有意义。空闲提示符上的 `ESC` 是空
   // 操作，而权限提示上的 `ESC` 的意思是「拒绝这次工具调用」——那是替人做决定。
   if (options.interrupt === true && state === "awaiting-approval") {
@@ -618,18 +632,6 @@ export async function attempt(
   }
   if (options.interrupt === true && state === "busy") {
     state = await interruptAndSettle(context, item.targetNodeId, live.session);
-    targetStateLabel = state;
-  }
-
-  // 第二道保险，只做否决：程序自己用 OSC 7501 报了 `blocked`（停在审批上）就不投。
-  // 状态通道说「空闲」、画面门又没认出那个对话框的时候，这是最后一个能拦住
-  // 「替人答题」的地方；`blocked` 以外的任何值都不放行任何东西。
-  if (
-    state === "idle" &&
-    context.terminals?.programStatus?.(live.session.sessionId)?.state ===
-      "blocked"
-  ) {
-    state = "awaiting-approval";
     targetStateLabel = state;
   }
 
