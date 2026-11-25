@@ -506,7 +506,7 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
 
 每项取值四选一，按顺序判：
 
-- `unsupported`：这家没有历史适配器（`HISTORY_ADAPTERS` 里没有它），三项都是；适配器没有成本来源时只有 `cost` 是。
+- `unsupported`：这家没有历史适配器（`HISTORY_ADAPTERS` 里没有它），三项都是；适配器没有成本来源时只有 `cost` 是；适配器只有会话索引、没有记录可读（`readsEntries: false`，今天是 Antigravity：根是一个会话索引库 `~/.gemini/antigravity-cli/conversation_summaries.db`，键 `agy:<会话 id>`，会话 id 就是 ACP 的 `sessionId`）时 `transcript` 也是 `unsupported`，与根在不在无关；它的会话从索引经 ACP 的 `session/load` 接回（命令面板与侧栏搜索选中一条就开一个 ACP 驱动、`agent.sessionId` 为该会话 id 的节点，终端没有会话 id 可接）。
 - `disabled`：`custom:` 条目关掉了 `contextLink`，只影响 `transcript`。
 - `not-found`：适配器的根目录一个都不存在。
 - `available`：至少一个根目录存在。
