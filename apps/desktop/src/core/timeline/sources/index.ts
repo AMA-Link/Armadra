@@ -318,31 +318,51 @@ export class SourceManager {
     adapter: TranscriptAdapter,
   ): void {
     if (this.closed || !this.discovering.has(row.id)) return;
+    if (this.runningSession(nodeId, row.id) === undefined) {
+      this.discovering.delete(row.id);
+      return;
+    }
+    const finish = (found: boolean): void => {
+      if (this.closed || !this.discovering.has(row.id)) return;
+      // 没找到时快（刚起来的两分钟里）、找到之后慢：找到以后只剩 `/new` 换会话要跟，
+      // 每次问都是一次共享的 `ps` 加一次 `stat`，不必勤。
+      const young =
+        this.timers.now() - row.createdAtMs < DISCOVER_FAST_WINDOW_MS;
+      const handle = this.timers.setTimeout(
+        () => this.discoverStep(row, nodeId, adapter),
+        !found && young ? DISCOVER_FAST_MS : DISCOVER_SLOW_MS,
+      );
+      this.discovering.set(row.id, handle);
+    };
+    const failed = (error: unknown): void => {
+      this.options.log?.warn("找终端会话的来源失败", {
+        sessionId: row.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      finish(false);
+    };
     try {
-      if (this.runningSession(nodeId, row.id) === undefined) {
-        this.discovering.delete(row.id);
-        return;
-      }
-      const found = adapter.discover?.({
+      const asked = adapter.discover?.({
         pid: this.facts?.pid(row.id),
         remote: this.facts?.remote(row.id) ?? false,
         cwd: row.cwd,
         startedAtMs: row.createdAtMs,
       });
-      if (found !== undefined)
-        this.adoptDiscovered(row, nodeId, adapter, found);
+      void Promise.resolve(asked).then((found) => {
+        if (this.closed || !this.discovering.has(row.id)) return;
+        try {
+          if (found !== undefined) {
+            this.adoptDiscovered(row, nodeId, adapter, found);
+          }
+        } catch (error) {
+          failed(error);
+          return;
+        }
+        finish(found !== undefined);
+      }, failed);
     } catch (error) {
-      this.options.log?.warn("找终端会话的来源失败", {
-        sessionId: row.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      failed(error);
     }
-    const young = this.timers.now() - row.createdAtMs < DISCOVER_FAST_WINDOW_MS;
-    const handle = this.timers.setTimeout(
-      () => this.discoverStep(row, nodeId, adapter),
-      young ? DISCOVER_FAST_MS : DISCOVER_SLOW_MS,
-    );
-    if (this.discovering.has(row.id)) this.discovering.set(row.id, handle);
   }
 
   private adoptDiscovered(

@@ -31,8 +31,8 @@ import {
 
 import {
   type AgySessionDeps,
+  AgySessionResolver,
   realAgySessionDeps,
-  resolveAgySession,
   transcriptOf,
 } from "../../history/agy-session";
 import type { SessionHint } from "../../history/types";
@@ -208,6 +208,7 @@ function pendingTool(sink: TimelineSink, turn: number) {
 export function agyTranscriptWith(
   deps: AgySessionDeps = realAgySessionDeps,
 ): TranscriptAdapter {
+  const resolver = new AgySessionResolver(deps);
   return {
     agentId: "agy",
     locate: (hint: SessionHint) => {
@@ -219,9 +220,9 @@ export function agyTranscriptWith(
     },
     convert,
     toolKind: agyToolKind,
-    discover: (context) => {
+    discover: async (context) => {
       if (context.remote) return undefined;
-      const found = resolveAgySession(deps, context.pid);
+      const found = await resolver.resolve(context.pid);
       return found === undefined
         ? undefined
         : { sessionId: found.sessionId, transcriptPath: found.transcriptPath };

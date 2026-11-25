@@ -108,9 +108,10 @@ describe("agy helpers", () => {
     const adapter = agyTranscriptWith({
       platform: () => "darwin",
       agyPids: () => undefined,
-      heldLogs: () => undefined,
-      readLog: () => undefined,
-      topLevel: () => undefined,
+      heldLogs: async () => undefined,
+      logSize: () => undefined,
+      readLogFrom: () => undefined,
+      classify: () => undefined,
       stateDir: () => "/home/me/.gemini/antigravity-cli",
       exists: () => false,
     });
@@ -123,22 +124,26 @@ describe("agy helpers", () => {
     expect(adapter.locate({ agentId: "agy" })).toBeUndefined();
   });
 
-  it("discover answers nothing for a remote node", () => {
+  it("discover answers nothing for a remote node", async () => {
+    const id = "11111111-2222-3333-4444-555555555555";
     const adapter = agyTranscriptWith({
       platform: () => "darwin",
       agyPids: () => [1],
-      heldLogs: () => ["/h/.gemini/antigravity-cli/log/cli-1.log"],
-      readLog: () =>
-        "Created conversation 11111111-2222-3333-4444-555555555555 (backend=X)",
-      topLevel: (ids) => new Set(ids),
+      heldLogs: async () => ["/h/.gemini/antigravity-cli/log/cli-1.log"],
+      logSize: () => 100,
+      readLogFrom: () =>
+        Buffer.from(
+          `I1125 02:13:51.634988     262 server.go:1269] Created conversation ${id} (backend=X)\n`,
+        ),
+      classify: (ids) => new Map(ids.map((one) => [one, "top" as const])),
       stateDir: () => "/h/.gemini/antigravity-cli",
       exists: () => true,
     });
     expect(
-      adapter.discover?.({ pid: 7, remote: true, cwd: "/w", startedAtMs: 0 }),
+      await adapter.discover?.({ pid: 7, remote: true, cwd: "/w", startedAtMs: 0 }),
     ).toBeUndefined();
     expect(
-      adapter.discover?.({ pid: 7, remote: false, cwd: "/w", startedAtMs: 0 }),
-    ).toMatchObject({ sessionId: "11111111-2222-3333-4444-555555555555" });
+      await adapter.discover?.({ pid: 7, remote: false, cwd: "/w", startedAtMs: 0 }),
+    ).toMatchObject({ sessionId: id });
   });
 });

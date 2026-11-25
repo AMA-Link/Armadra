@@ -50,6 +50,11 @@ export interface RecordSourceOptions {
   readonly stat?: StatFn | undefined;
 }
 
+export interface DiscoveredSession {
+  readonly sessionId: string;
+  readonly transcriptPath: string;
+}
+
 /** {@link TranscriptAdapter.discover} 能用的事实。 */
 export interface DiscoverContext {
   /** 这个会话的 PTY 进程号；读不到（远程、休眠）答 `undefined`。 */
@@ -78,8 +83,7 @@ export interface TranscriptAdapter {
    */
   discover?(
     context: DiscoverContext,
-  ):
-    { readonly sessionId: string; readonly transcriptPath: string } | undefined;
+  ): Promise<DiscoveredSession | undefined> | DiscoveredSession | undefined;
   /**
    * 来源不是 JSONL 文件时的读取器工厂；有它就不走尾读器。`locate` 仍可答一个路径
    * （OpenCode 答库文件，只用来判断「这台机器上有没有」）。
