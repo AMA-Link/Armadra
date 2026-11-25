@@ -80,6 +80,10 @@ export interface StubTerminal {
   /** Sessions terminated, in order. */
   readonly terminated: string[];
   capture: string;
+  /** `inputRevision` 的答案；用例改它来模拟「抓屏之后有人敲了键」。 */
+  inputRevisionValue: number;
+  /** 每次 `capture` 调用时先跑的钩子（模拟抓屏期间发生的事）。 */
+  onCapture: (() => void) | undefined;
   foreground: { command?: string; children?: string[] } | undefined;
   liveGeneration: number | undefined;
   current: boolean;
@@ -107,6 +111,8 @@ export function stubTerminal(): StubTerminal {
     remote: new Set(),
     submitError: undefined,
     capture: "",
+    inputRevisionValue: 0,
+    onCapture: undefined,
     foreground: { command: "claude" },
     liveGeneration: 1,
     current: true,
@@ -114,10 +120,11 @@ export function stubTerminal(): StubTerminal {
       write: async (sessionId, generation, data) => {
         stub.writes.push({ sessionId, generation, data });
       },
-      capture: async (_sessionId, lines) => ({
-        lines,
-        data: stub.capture,
-      }),
+      capture: async (_sessionId, lines) => {
+        stub.onCapture?.();
+        return { lines, data: stub.capture };
+      },
+      inputRevision: () => stub.inputRevisionValue,
       foreground: async () => stub.foreground,
       generation: () => stub.liveGeneration,
       terminate: async (sessionId) => {

@@ -15,6 +15,12 @@ import { conflict, badRequest, notFound, rfc3339 } from "../workspaces/support";
 import { getAgentStatus } from "./status";
 import { checkElicitationAnswer, elicitationOf } from "../acp/elicitation";
 import type { AcpElicitationResult } from "../acp/types";
+import {
+  type GrokDelivery,
+  deliverGrokAnswer,
+  grokCardRecordOf,
+  verifyGrokCard,
+} from "./grok-answer";
 
 /**
  * Permission answers — the round trip closed by an answer file, and the CAS
@@ -265,6 +271,11 @@ export interface AnswerRequest {
 export interface AnswerResult {
   readonly approval: AgentApproval;
   readonly route: ApprovalRoute;
+  /**
+   * Whether keys typed on a terminal card were seen to take effect (grok,
+   * contract §127). Absent for every other route.
+   */
+  readonly delivery?: GrokDelivery;
   /** The action an elicitation was answered with (never its content). */
   readonly elicitation?: { readonly action: string };
 }
@@ -409,6 +420,29 @@ export async function answerApproval(
     );
   }
 
+  // A grok card is answered by typing a digit, so what is on screen is checked
+  // before anything is recorded: a card that has changed or cannot be read is
+  // refused (409) and stays open for a person.
+  if (
+    existing.answer === null &&
+    grokCardRecordOf(existing.request) !== undefined
+  ) {
+    const checked = await verifyGrokCard(context, existing, decision);
+    if (!checked.ok) {
+      audit(context, existing, {
+        decision,
+        answeredBy,
+        expectedRevision: expected,
+        accepted: false,
+        route: "",
+        refusal: checked.reason,
+      });
+      throw conflict(
+        "The card on screen is not the one this approval was made for",
+      );
+    }
+  }
+
   // A question somebody has already decided is not one to decide again.
   // Reloading would not produce a state in which answering is right, so this
   // is its own refusal rather than a revision conflict.
@@ -451,7 +485,20 @@ export async function answerApproval(
   // failure is reported as itself: the answer stands, and what could not
   // happen is the CLI hearing it.
   let route: ApprovalRoute = "none";
-  if (elicitation?.ok === true) {
+  let delivery: GrokDelivery | undefined;
+  let refusal = "";
+  if (grokCardRecordOf(approval.request) !== undefined) {
+    // 键盘上的答复：核对在落库之后再做一遍（中间隔着一次写，卡可能已经换了）。
+    const sent = await deliverGrokAnswer(context, approval, decision);
+    if (sent.sent) {
+      route = "keys";
+      delivery = sent.delivery;
+      if (delivery !== "confirmed") refusal = `delivery_${delivery}`;
+    } else {
+      delivery = "unconfirmed";
+      refusal = sent.reason;
+    }
+  } else if (elicitation?.ok === true) {
     // ACP elicitation: the checked answer goes to the pending request.
     if (elicitationAnswerer?.(approval, elicitation.result) === true) {
       route = "acp";
@@ -473,7 +520,7 @@ export async function answerApproval(
     applied: next,
     accepted: true,
     route,
-    refusal: "",
+    refusal,
   });
 
   const action =
@@ -486,11 +533,12 @@ export async function answerApproval(
     pendingId: approval.id,
     // Resolution reuses the event: `request.resolved` tells a client this is
     // the answer rather than a new question.
-    request: resolvedPayload(approval, decision, route, action),
+    request: resolvedPayload(approval, decision, route, action, delivery),
   });
   return {
     approval,
     route,
+    ...(delivery === undefined ? {} : { delivery }),
     ...(action === undefined ? {} : { elicitation: action }),
   };
 }
@@ -500,6 +548,7 @@ function resolvedPayload(
   decision: string,
   route: ApprovalRoute,
   elicitation?: { readonly action: string },
+  delivery?: GrokDelivery,
 ): Record<string, unknown> {
   return {
     ...approval,
@@ -507,6 +556,7 @@ function resolvedPayload(
     decision,
     answer: decision,
     route,
+    ...(delivery === undefined ? {} : { delivery }),
     ...(elicitation === undefined ? {} : { elicitation }),
   };
 }
@@ -694,7 +744,7 @@ async function typeIntoPty(
   const generation = context.terminals.generation(session.sessionId);
   if (generation === undefined) return false;
   const keys = answerKeys(baseAgent(context.settings, agentId), decision);
-  // 空串 = 这家 CLI 没有可以盲发的答复键：不写，答「没答成」。
+  // 空串 = 这家 CLI 没有可以盲发的答复键：不写，答「没答成」（grok 有审批记录时不走这里，见 grok-answer.ts）。
   if (keys === "") return false;
   try {
     await context.terminals.write(session.sessionId, generation, keys);
@@ -727,6 +777,9 @@ export function answerKeys(agentId: string, decision: string): string {
       // 审批卡是编号会跳号的菜单（`3 (●) Yes, proceed`、`4 (○) No, reject`），默认
       // 焦点还随用户的 `[ui] default_selected_permission` 变；盲发 `y\r` 会把
       // 字符打进输入框。首期只报 waiting、不代答（G5 先读画面再答）：不发键。
+      return "";
+    case "agy":
+      // 没有可以盲发的答复键（卡的选项靠方向键与回车）：不写，答「没答成」。
       return "";
     case "codex":
     case "pi":
