@@ -874,6 +874,16 @@ export class TerminalManager {
     throw new TerminalError(409, "conflict", this.drives.refusal(code));
   }
 
+  /** Agent 轮末放掉该节点会话上它自己的驱动租约（#1011）。 */
+  releaseAgentDrive(nodeId: string): boolean {
+    let released = false;
+    for (const record of this.liveRecords()) {
+      if (record.ownerNodeId === nodeId && this.drives.releaseAgent(record.id))
+        released = true;
+    }
+    return released;
+  }
+
   /**
    * 放掉空闲窗口已经过去的租约，返回放掉了几把。
    *

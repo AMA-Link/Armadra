@@ -185,6 +185,13 @@ export class TerminalDriveBook {
     });
   }
 
+  /** Agent 一轮结束：放掉它自己持有的租约，人持有的不受影响（#1011）。 */
+  releaseAgent(sessionId: string): boolean {
+    const machine = this.leases.get(sessionId);
+    if (machine === undefined) return false;
+    return this.changing(sessionId, machine, () => machine.releaseAgent());
+  }
+
   /**
    * 扫一遍，放掉空闲窗口已经过去的租约。
    *

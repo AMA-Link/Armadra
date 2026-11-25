@@ -808,6 +808,19 @@ describe("驱动租约", () => {
     expect(manager.driveLease(session.id).state).toBe("free");
   });
 
+  it("Agent 轮末放掉自己的租约，人持有的不受影响（#1011）", async () => {
+    const { manager } = harness();
+    const session = await spawn(manager, "node-a");
+    await manager.input(session.id, 1, "ls", undefined, agent());
+    expect(manager.driveLease(session.id).state).toBe("agent");
+    expect(manager.releaseAgentDrive("node-a")).toBe(true);
+    expect(manager.driveLease(session.id).state).toBe("free");
+    await manager.input(session.id, 1, "x", undefined, human());
+    expect(manager.releaseAgentDrive("node-a")).toBe(false);
+    expect(manager.driveLease(session.id).state).toBe("human");
+    expect(manager.releaseAgentDrive("other-node")).toBe(false);
+  });
+
   it("Agent 的租约比人长得多，一轮里不会被另一个 Agent 插进来", async () => {
     const { manager, advance } = harness();
     const session = await spawn(manager, "node-a");
