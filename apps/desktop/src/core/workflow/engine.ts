@@ -453,10 +453,11 @@ export class WorkflowEngine {
   private endBelongsToStep(step: StepRow, nodeId: string): boolean {
     const startedAt = step.startedAt ?? 0;
     if (this.clock() - startedAt > OWN_PROMPT_GRACE_MS) return true;
-    const since = (this.prompts.get(nodeId) ?? []).filter(
-      (entry) => entry.at >= startedAt,
-    );
-    if (since.length === 0) return true;
+    const known = this.prompts.get(nodeId) ?? [];
+    // 这个节点从没报过提示词：认不出，照旧。报过的节点，这一步自己的提示词还没
+    // 出现之前的结束一律不算（前面几轮的结束迟到，常常就落在这一步刚开始的时候）。
+    if (known.length === 0) return true;
+    const since = known.filter((entry) => entry.at >= startedAt);
     const item =
       step.queueId === null
         ? undefined

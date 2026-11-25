@@ -763,6 +763,23 @@ describe("workflow v2 injection", () => {
     expect(statuses(second.run.id).c).toBe("done");
   });
 
+  it("an end that lands right after the step starts, before any prompt of its own, is not the step's (#1034)", async () => {
+    const { run, dev, ui, lead } = await startVerifying();
+    // 汇总角色之前报过提示词（上一轮的），这一步刚开始就来了一个迟到的结束。
+    startTurn(lead, "上一轮的提示词");
+    delivered(lead);
+    await engine.progress(run.id);
+    report(lead, "done");
+    await engine.progress(run.id);
+    expect(statuses(run.id).c).toBe("running");
+    startTurn(lead, "汇总并验证\n（来源步骤的结论……）");
+    verdict(run.id, 0, true);
+    report(lead, "done");
+    await engine.progress(run.id);
+    expect(statuses(run.id).c).toBe("done");
+    expect(dev).not.toBe(ui);
+  });
+
   it("a wake turn between two rounds of a collect does not settle the new round (#1034)", async () => {
     const { run, dev, ui, lead } = await startVerifying();
     delivered(lead);
