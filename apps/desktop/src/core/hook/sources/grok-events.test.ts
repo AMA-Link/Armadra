@@ -1,5 +1,5 @@
 import { appendFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -44,7 +44,12 @@ let names: Map<number, string>;
 let platform: NodeJS.Platform;
 let screenText: string | undefined;
 let sessionHome: string | undefined;
-let rows: { session_id: string; pid: number; cwd: string }[];
+let rows: {
+  session_id: string;
+  pid: number;
+  cwd: string;
+  opened_at?: string;
+}[];
 let activeRaw: string | undefined;
 let removeSources: (() => void) | undefined;
 
@@ -76,7 +81,7 @@ function writeActive(): void {
         rows.map((row) => ({
           ...row,
           pid_start: 1,
-          opened_at: "2026-11-25T00:00:00Z",
+          opened_at: row.opened_at ?? "2026-11-25T00:00:00Z",
         })),
       ),
   );
@@ -461,6 +466,115 @@ describe("这个节点上有没有通道", () => {
     removeSources = undefined;
     // 撤掉后回到只按 provider 判。
     expect(nodeStateChannel("grok", { remote: true })).toBe("transcript");
+  });
+});
+
+describe("对话记录路径（时间线适配器读它）", () => {
+  const updates = (id: string) =>
+    join(dirname(eventsPath(id)), "updates.jsonl");
+  const starts = () => reports.filter((e) => e.kind === "session");
+
+  it("session start 带 updates.jsonl 的路径；/new 出来的新会话（没有回合，opened_at 更晚）成为当前", () => {
+    rows = [{ session_id: "one", pid: CHILD_PID, cwd: CWD }];
+    writeActive();
+    writeEvents("one", [line("turn_started")]);
+    const { slot } = open();
+    slot!.start();
+    expect(starts()[0]?.transcriptPath).toBe(updates("one"));
+    expect(reports.find((e) => e.state === "working")?.transcriptPath).toBe(
+      updates("one"),
+    );
+    // `/new`：新行 opened_at 比旧会话最近一回合开始得晚。
+    rows = [
+      ...rows,
+      {
+        session_id: "two",
+        pid: CHILD_PID,
+        cwd: CWD,
+        opened_at: new Date(timers.now() + 5_000).toISOString(),
+      },
+    ];
+    timers.advance(10_000);
+    writeActive();
+    writeEvents("two", []);
+    slot!.poke?.();
+    expect(starts().at(-1)?.transcriptPath).toBe(updates("two"));
+    append("one", [line("turn_ended", { outcome: "completed" })]);
+    slot!.poke?.();
+    const last = reports.at(-1);
+    expect(last?.transcriptPath).toBe(updates("two"));
+    expect(last?.sessionId).toBe("two");
+    slot!.stop();
+  });
+
+  it("回切已见过的会话：旧会话发了新提示，当前就回到它，状态上报带它的路径与 id", () => {
+    rows = [
+      { session_id: "one", pid: CHILD_PID, cwd: CWD },
+      {
+        session_id: "two",
+        pid: CHILD_PID,
+        cwd: CWD,
+        opened_at: new Date(timers.now() + 1_000).toISOString(),
+      },
+    ];
+    writeActive();
+    writeEvents("one", [
+      line("turn_started"),
+      line("turn_ended", { outcome: "completed" }),
+    ]);
+    writeEvents("two", []);
+    const { slot } = open();
+    slot!.start();
+    expect(reports.at(-1)?.transcriptPath ?? updates("two")).toBe(
+      updates("two"),
+    );
+    timers.advance(30_000);
+    append("one", [line("turn_started")]);
+    slot!.poke?.();
+    const last = reports.at(-1);
+    expect(last?.state).toBe("working");
+    expect(last?.transcriptPath).toBe(updates("one"));
+    expect(last?.sessionId).toBe("one");
+    // 又回到 two（它发了更晚的提示）。
+    timers.advance(30_000);
+    append("one", [line("turn_ended", { outcome: "completed" })]);
+    append("two", [line("turn_started")]);
+    slot!.poke?.();
+    expect(reports.at(-1)?.transcriptPath).toBe(updates("two"));
+    slot!.stop();
+  });
+
+  it("重启后行序与活动会话不一致：按最近一回合的时间选，不按行序；最后一个announce的是它", () => {
+    // 行序里 b 在后，但 a 才是最近发过提示的。
+    rows = [
+      { session_id: "a", pid: CHILD_PID, cwd: CWD },
+      { session_id: "b", pid: CHILD_PID, cwd: CWD },
+    ];
+    writeActive();
+    writeEvents("b", [
+      line("turn_started", {}, -60_000),
+      line("turn_ended", { outcome: "completed" }, -59_000),
+    ]);
+    writeEvents("a", [line("turn_started", {}, -1_000)]);
+    const { slot } = open();
+    slot!.start();
+    expect(starts().at(-1)?.transcriptPath).toBe(updates("a"));
+    expect(reports.at(-1)?.transcriptPath).toBe(updates("a"));
+    expect(reports.at(-1)?.sessionId).toBe("a");
+    slot!.stop();
+  });
+
+  it("行里 session_id 带路径分隔符或 .. 的不要（会话 id 要拼进路径）", () => {
+    rows = [
+      { session_id: "../evil", pid: CHILD_PID, cwd: CWD },
+      { session_id: "good", pid: CHILD_PID, cwd: CWD },
+    ];
+    writeActive();
+    writeEvents("good", [line("turn_started")]);
+    const read = readActiveSessions(home);
+    expect(read.kind === "rows" && read.rows.map((r) => r.sessionId)).toEqual([
+      "good",
+    ]);
   });
 });
 

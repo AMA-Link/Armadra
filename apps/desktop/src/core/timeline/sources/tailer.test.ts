@@ -12,7 +12,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { FakeTimers } from "../testing";
 import {
+  LOCATE_RETRY_MS,
   POKE_SETTLE_MS,
+  RELOCATE_GIVE_UP_MS,
   POLL_INTERVAL_MS,
   type ReadResult,
   TAIL_BYTES,
@@ -286,6 +288,117 @@ describe("TailRunner", () => {
     timers.advance(100);
     expect(numbers(reads)).toEqual([1, 2]);
     expect(runner.currentPath).toBe(other);
+    runner.stop();
+  });
+
+  it("keeps the relocation pending when the new file appears after the report", () => {
+    const other = join(dir, "later.jsonl");
+    writeFileSync(file, row(1));
+    const timers = new FakeTimers();
+    const reads: ReadResult[] = [];
+    let located: string | undefined = file;
+    const runner = runnerOn(timers, fakeWatch(), reads, () => located);
+    runner.start();
+    // 路径先报、文件晚一点才建：第一次找不到，标记不能丢。
+    located = undefined;
+    runner.relocate();
+    runner.poke();
+    timers.advance(300);
+    expect(runner.currentPath).toBe(file);
+    writeFileSync(other, row(2));
+    located = other;
+    timers.advance(1_500);
+    expect(runner.currentPath).toBe(other);
+    expect(numbers(reads)).toEqual([1, 2]);
+    runner.stop();
+  });
+
+  it("drops to slow retries for a path that does not appear", () => {
+    writeFileSync(file, row(1));
+    const timers = new FakeTimers();
+    const reads: ReadResult[] = [];
+    let located: string | undefined = file;
+    let calls = 0;
+    const runner = runnerOn(timers, fakeWatch(), reads, () => {
+      calls++;
+      return located;
+    });
+    runner.start();
+    located = undefined;
+    runner.relocate();
+    timers.advance(RELOCATE_GIVE_UP_MS + 5_000);
+    const settled = calls;
+    timers.advance(60_000);
+    // 快速重试放弃之后改成每 5 秒一次（不是每半秒），而且一直找下去。
+    expect(calls - settled).toBeGreaterThan(5);
+    expect(calls - settled).toBeLessThanOrEqual(14);
+    expect(runner.currentPath).toBe(file);
+    runner.stop();
+  });
+
+  it("still follows a file that only appears long after the wait gave up", () => {
+    const other = join(dir, "much-later.jsonl");
+    writeFileSync(file, row(1));
+    const timers = new FakeTimers();
+    const reads: ReadResult[] = [];
+    let located: string | undefined = file;
+    const runner = runnerOn(timers, fakeWatch(), reads, () => located);
+    runner.start();
+    located = undefined;
+    runner.relocate();
+    // `/new` 之后四十秒才发第一条提示：快速重试早已放弃，仍在慢速找。
+    timers.advance(40_000);
+    expect(runner.currentPath).toBe(file);
+    writeFileSync(other, row(2));
+    located = other;
+    timers.advance(LOCATE_RETRY_MS + 1_000);
+    expect(runner.currentPath).toBe(other);
+    expect(numbers(reads)).toEqual([1, 2]);
+    runner.stop();
+  });
+
+  it("looks again at once when poked while still waiting", () => {
+    const other = join(dir, "poked.jsonl");
+    writeFileSync(file, row(1));
+    const timers = new FakeTimers();
+    const reads: ReadResult[] = [];
+    let located: string | undefined = file;
+    const runner = runnerOn(timers, fakeWatch(), reads, () => located);
+    runner.start();
+    located = undefined;
+    runner.relocate();
+    timers.advance(40_000);
+    writeFileSync(other, row(2));
+    located = other;
+    runner.poke();
+    timers.advance(POKE_SETTLE_MS);
+    expect(runner.currentPath).toBe(other);
+    runner.stop();
+  });
+
+  it("reads the old file one last time before leaving it, and keeps a cursor per path", () => {
+    const other = join(dir, "second.jsonl");
+    writeFileSync(file, row(1));
+    writeFileSync(other, row(10));
+    const timers = new FakeTimers();
+    const reads: ReadResult[] = [];
+    let located = file;
+    const runner = runnerOn(timers, fakeWatch(), reads, () => located);
+    runner.start();
+    // 换走之前旧文件又长了一行：换路径时补读，不丢。
+    appendFileSync(file, row(2));
+    located = other;
+    runner.relocate();
+    runner.poke();
+    timers.advance(100);
+    expect(numbers(reads)).toEqual([1, 2, 10]);
+    // 换回来：接着旧游标读，不重读已读过的。
+    appendFileSync(file, row(3));
+    located = file;
+    runner.relocate();
+    runner.poke();
+    timers.advance(100);
+    expect(numbers(reads)).toEqual([1, 2, 10, 3]);
     runner.stop();
   });
 

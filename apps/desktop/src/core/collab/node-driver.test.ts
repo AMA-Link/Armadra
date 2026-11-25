@@ -261,8 +261,13 @@ describe("the body of a new agent node follows the view preference", () => {
 
   it("session preference, agent without a transcript adapter: terminal body", () => {
     setViewPreferenceForTest("acp");
+    expect(newNodeView(fixture.collab.settings, "no-such-agent")).toEqual({
+      driver: "terminal",
+    });
+    // 有转录适配器的（grok 自 G4 起）走会话体。
     expect(newNodeView(fixture.collab.settings, "grok")).toEqual({
       driver: "terminal",
+      view: "session",
     });
   });
 

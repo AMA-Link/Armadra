@@ -53,6 +53,7 @@ describe("采集适配器", () => {
       "pi",
       "omp",
       "copilot",
+      "grok",
     ]);
     expect(costSource("claude")?.agentId).toBe("claude");
     expect(costSource("codex")?.agentId).toBe("codex");
@@ -61,6 +62,7 @@ describe("采集适配器", () => {
     // 没有本地来源的 agent 不在映射里——汇总于是报零，而不是编一个数字。
     expect(costSource("opencode")).toBeUndefined();
     expect(costSource("copilot")?.agentId).toBe("copilot");
+    expect(costSource("grok")?.agentId).toBe("grok");
     expect(costSource("nobody")).toBeUndefined();
   });
 

@@ -9,12 +9,13 @@ import {
   readdirSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import {
   STATE_SOURCE_TRANSCRIPT,
   markChannelUnbound,
 } from "../../agent/state-source";
+import { safeId } from "../../history/grok";
 import { expectedProcesses } from "../../agent/launch";
 import { SCREEN_SIGNATURES } from "../../agent/screen-gate";
 import {
@@ -72,6 +73,8 @@ export interface ActiveRow {
   readonly sessionId: string;
   readonly pid: number;
   readonly cwd: string;
+  /** `opened_at`（毫秒）；没有或读不出是 0。选「当前会话」时与最近一回合的开始时间比。 */
+  readonly openedAtMs: number;
 }
 
 export type ActiveRead =
@@ -135,7 +138,7 @@ export function readActiveSessions(home: string): ActiveRead {
   if (list === undefined) return { kind: "unreadable" };
   const rows: ActiveRow[] = [];
   for (const row of list) {
-    const { session_id: sessionId, pid, cwd } = row;
+    const { session_id: sessionId, pid, cwd, opened_at: openedAt } = row;
     if (
       typeof sessionId !== "string" ||
       typeof pid !== "number" ||
@@ -144,7 +147,15 @@ export function readActiveSessions(home: string): ActiveRead {
     ) {
       return { kind: "unreadable" };
     }
-    rows.push({ sessionId, pid, cwd });
+    // 会话 id 要拼进路径：带 `..` 或路径分隔符的行不要（不是读失败，只是这一行不可信）。
+    if (!safeId(sessionId)) continue;
+    const opened = typeof openedAt === "string" ? Date.parse(openedAt) : NaN;
+    rows.push({
+      sessionId,
+      pid,
+      cwd,
+      openedAtMs: Number.isFinite(opened) ? opened : 0,
+    });
   }
   return { kind: "rows", rows };
 }
@@ -232,6 +243,8 @@ export interface TailView {
   readonly ended?: "completed" | "cancelled" | "error";
   /** When the open permission request began, in epoch ms. */
   readonly requestedAt?: number;
+  /** When the latest turn began (epoch ms); `0` before any or without a time. */
+  readonly startedAt?: number;
   /** When the last turn ended (epoch ms); `0` when the line carries no time. */
   readonly endedAt?: number;
   /** The tool the turn is parked on until a person answers (`exit_plan_mode`). */
@@ -259,6 +272,7 @@ export class SessionTail {
   private ended: TailView["ended"];
   private requestedAt: number | undefined;
   private endedAt = 0;
+  private startedAt = 0;
   private asking: string | undefined;
   unknownLines = 0;
 
@@ -272,6 +286,10 @@ export class SessionTail {
       case "turn_started":
         this.inTurn = true;
         this.turns += 1;
+        {
+          const at = typeof line.ts === "string" ? Date.parse(line.ts) : NaN;
+          this.startedAt = Number.isFinite(at) ? at : 0;
+        }
         this.ended = undefined;
         this.requestedAt = undefined;
         this.asking = undefined;
@@ -341,6 +359,7 @@ export class SessionTail {
       return {
         state: "waiting",
         turns: this.turns,
+        startedAt: this.startedAt,
         asking: this.asking,
       };
     }
@@ -351,12 +370,14 @@ export class SessionTail {
             ? "waiting"
             : "working",
         turns: this.turns,
+        startedAt: this.startedAt,
         requestedAt: this.requestedAt,
       };
     }
     return {
       state: this.inTurn ? "working" : "idle",
       turns: this.turns,
+      startedAt: this.startedAt,
       ...(this.ended === undefined
         ? {}
         : { ended: this.ended, endedAt: this.endedAt }),
@@ -417,6 +438,8 @@ class GrokSlot implements StateSlot {
   /** What was last reported: the state, and each session's turn count then. */
   private last: { state: string; turns: string; asking: boolean } | undefined;
   private announced = new Set<string>();
+  /** 最近一次开始的会话：状态上报带它的对话记录路径。 */
+  private current: string | undefined;
   /** Turns seen per session, to tell "a session began a turn" from "the sum moved". */
   private readonly seenTurns = new Map<string, number>();
   private hadBound = false;
@@ -654,6 +677,7 @@ class GrokSlot implements StateSlot {
         );
         this.last = undefined;
         this.announced.clear();
+        this.current = undefined;
         this.followed.clear();
         this.seenTurns.clear();
       }
@@ -668,14 +692,26 @@ class GrokSlot implements StateSlot {
     if (views.length === 0) return;
     // A new row is a new session in this process: say so once (`/new`, or the
     // first one the node's grok opened), so the first idle is the session's own.
-    for (const id of ids) {
-      if (this.announced.has(id)) continue;
+    // 当前会话最后一个announce：状态里留下的路径是它的。
+    const current = this.pickCurrent(ids, nowMs);
+    const fresh = ids
+      .filter((id) => !this.announced.has(id))
+      .sort((a, b) => Number(a === current) - Number(b === current));
+    for (const id of fresh) {
       this.announced.add(id);
-      this.send(
-        sessionEvent(this.context.nodeId, this.context.agentId, "start"),
-        id,
+      const start = sessionEvent(
+        this.context.nodeId,
+        this.context.agentId,
+        "start",
       );
+      // 会话的对话记录（时间线适配器读它，契约 §124）：与状态文件同目录。`/new`、
+      // `/resume` 换会话时报新的，时间线据此跟到新的那个。
+      const path = this.transcriptOf(id);
+      if (path !== undefined) start.transcriptPath = path;
+      this.send(start, id);
     }
+    const switched = this.current !== current;
+    this.current = current;
     const next = aggregate(views);
     this.scheduleGrace(views);
     // 一个还没有任何回合的会话没有「完成」可说：只有上面的 session start，状态留空
@@ -691,7 +727,8 @@ class GrokSlot implements StateSlot {
       before !== undefined &&
       before.state === key &&
       before.turns === turnsKey &&
-      before.asking === asking
+      before.asking === asking &&
+      !switched
     ) {
       return;
     }
@@ -710,6 +747,11 @@ class GrokSlot implements StateSlot {
         : next.state === "working"
           ? stateEvent(this.context.nodeId, this.context.agentId, WORKING)
           : stateEvent(this.context.nodeId, this.context.agentId, DONE);
+    // 开场时文件还没找到的，补在状态上报里（`reduce` 沿用前一条的路径）。
+    const transcript =
+      this.current === undefined ? undefined : this.transcriptOf(this.current);
+    if (transcript !== undefined) event.transcriptPath = transcript;
+    if (this.current !== undefined) event.sessionId = this.current;
     if (next.state === "working" && freshTurn) event.newTurn = true;
     // The plan review holds the turn open on a person: say what is asked, and
     // close the question when it is answered (or the turn ends).
@@ -724,6 +766,39 @@ class GrokSlot implements StateSlot {
       if (next.ended === "cancelled") event.interrupted = true;
     }
     this.send(event);
+  }
+
+  /**
+   * 现在活动的那个会话：最近一回合开始得最晚的（没有回合的看 `opened_at`），并列取
+   * 行序里靠后的。`/new` 之后新会话是它；回切旧会话发了新提示，旧会话是它；重启后
+   * 行序与活动会话不一致也按时间选，不按行序。
+   */
+  private pickCurrent(
+    ids: readonly string[],
+    nowMs: number,
+  ): string | undefined {
+    let best: string | undefined;
+    let bestScore = -1;
+    for (const id of ids) {
+      const followed = this.followed.get(id);
+      if (followed === undefined) continue;
+      const score = Math.max(
+        followed.tail.view(nowMs).startedAt ?? 0,
+        followed.row.openedAtMs,
+      );
+      if (score >= bestScore) {
+        best = id;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
+
+  private transcriptOf(id: string): string | undefined {
+    const path = this.followed.get(id)?.path;
+    return path === undefined
+      ? undefined
+      : join(dirname(path), "updates.jsonl");
   }
 
   /** A request inside its grace window is re-judged when the window closes. */

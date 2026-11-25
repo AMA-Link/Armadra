@@ -176,7 +176,8 @@ describe("hook → tailer → timeline", () => {
     expect(r.domain.sources.size).toBe(0);
 
     expect(transcriptAdapterFor("antigravity")).toBeUndefined();
-    expect(transcriptAdapterFor("grok")).toBeUndefined();
+    expect(transcriptAdapterFor("no-such-agent")).toBeUndefined();
+    expect(transcriptAdapterFor("grok")?.agentId).toBe("grok");
     expect(transcriptAdapterFor("claude")?.agentId).toBe("claude");
     expect(transcriptAdapterFor("codex")?.agentId).toBe("codex");
   });

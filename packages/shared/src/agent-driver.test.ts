@@ -65,7 +65,7 @@ describe("defaultAgentView", () => {
       defaultAgentView({
         setting: "acp",
         acpInstalled: false,
-        baseAgentId: "grok",
+        baseAgentId: "no-such-agent",
       }),
     ).toEqual({ driver: "terminal" });
   });

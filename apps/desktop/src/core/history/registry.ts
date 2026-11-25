@@ -12,6 +12,7 @@ import { claudeAdapter } from "./claude";
 import { codexAdapter } from "./codex";
 import { copilotAdapter, eventEntries } from "./copilot";
 import { entriesFromJson } from "./entries";
+import { grokAdapter, updateEntries } from "./grok";
 import { readLocatedEntries, reportedFile } from "./files";
 import { opencodeAdapter } from "./opencode";
 import { ompAdapter, piAdapter, piEntries } from "./pi";
@@ -38,6 +39,7 @@ export const HISTORY_ADAPTERS: readonly HistoryAdapter[] = [
   ompAdapter,
   copilotAdapter,
   agyAdapter,
+  grokAdapter,
 ];
 
 /**
@@ -177,5 +179,6 @@ export function parseHistoryText(
   const adapter = historyAdapter(agentId);
   if (adapter === piAdapter || adapter === ompAdapter) return piEntries(text);
   if (adapter === copilotAdapter) return eventEntries(text);
+  if (adapter === grokAdapter) return updateEntries(text);
   return entriesFromJson(text);
 }

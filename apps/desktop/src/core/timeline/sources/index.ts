@@ -12,7 +12,7 @@
  *   * 第一次接管只读转录尾部 2 MiB，这一段导入不推进活动层（回填）。
  *
  * 会话行不再是 `running`，或节点换了新会话，对应的 Source 在下一次巡检（60 s）或下一个
- * hook 时停掉。没有 hook 的 CLI（Antigravity / Grok / 自定义）没有适配器，什么也不做。
+ * hook 时停掉。没有适配器的 CLI（Antigravity、自定义），什么也不做。
  */
 
 import type { DatabaseSync } from "node:sqlite";
@@ -26,6 +26,7 @@ import type { TimelineDomain } from "../index";
 import { claudeAdapter } from "./claude";
 import { codexAdapter } from "./codex";
 import { copilotTranscript } from "./copilot";
+import { grokTranscript } from "./grok";
 import { internalReporter } from "../../hook/report";
 import {
   OBSERVED,
@@ -82,6 +83,7 @@ export const ADAPTERS: Readonly<Record<string, TranscriptAdapter>> = {
   omp: ompTranscript,
   ama: amaTranscript,
   copilot: copilotTranscript,
+  grok: grokTranscript,
 };
 
 /** 这个代理有没有转录适配器（页面据此决定「会话 / 终端」切换是否可用）。 */

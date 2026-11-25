@@ -701,7 +701,7 @@ describe("汇总", () => {
     expect(byAgent.map((one) => one.agent)).toEqual([...AGENT_IDS]);
     expect(
       byAgent.filter((one) => one.source === "local").map((one) => one.agent),
-    ).toEqual(["claude", "codex", "opencode", "pi", "omp", "copilot"]);
+    ).toEqual(["claude", "codex", "opencode", "pi", "omp", "copilot", "grok"]);
     expect(byAgent.find((one) => one.agent === "opencode")?.unit).toBe(
       "tokens",
     );
