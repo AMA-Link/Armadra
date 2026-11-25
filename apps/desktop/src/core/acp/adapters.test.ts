@@ -336,3 +336,68 @@ describe("session _meta", () => {
     ).toEqual({ other: { a: 1 } });
   });
 });
+
+describe("grok 的启动 argv", () => {
+  const grok = acpAdapter("grok") as AcpAdapter;
+
+  it("`stdio` 子命令永远排在最后，模式旗标在它之前", () => {
+    expect(acpLaunchPlan(grok)).toEqual({
+      args: ["agent", "--no-leader", "stdio"],
+      modeId: "default",
+    });
+    expect(acpLaunchPlan(grok, { mode: "full-auto" })).toEqual({
+      args: ["agent", "--no-leader", "--always-approve", "stdio"],
+    });
+    expect(acpLaunchPlan(grok, { mode: "plan" })).toEqual({
+      args: ["agent", "--no-leader", "stdio"],
+      modeId: "plan",
+    });
+  });
+
+  it("injection 的 argv 也排在 stdio 之前", () => {
+    const plan = acpLaunchPlan(
+      {
+        ...grok,
+        injection: { mcp: true, reuse: ["args"] },
+      },
+      {
+        mode: "full-auto",
+        injectionArgs: ["--plugin-dir", "/x"],
+      },
+    ) as { args: string[] };
+    expect(plan.args).toEqual([
+      "agent",
+      "--no-leader",
+      "--always-approve",
+      "--plugin-dir",
+      "/x",
+      "stdio",
+    ]);
+  });
+
+  it("auto-edit 在 ACP 下没有落点：报错，不悄悄用缺省", () => {
+    expect(acpLaunchPlan(grok, { mode: "auto-edit" })).toMatchObject({
+      code: "acp_mode_unsupported",
+    });
+    expect(acpPermissionModes(grok)).toEqual(["default", "full-auto", "plan"]);
+  });
+
+  it("别家没有 trailingArgs，argv 不变", () => {
+    for (const adapter of ACP_ADAPTERS) {
+      if (adapter.agentId === "grok") continue;
+      expect(adapter.trailingArgs, adapter.agentId).toBeUndefined();
+    }
+    expect(acpLaunchPlan(acpAdapter("copilot") as AcpAdapter)).toMatchObject({
+      args: ["--acp", "--stdio"],
+    });
+  });
+
+  it("画布工具走 mcp，会话 id 同一个，用 session/load 接回", () => {
+    expect(grok).toMatchObject({
+      canvasTools: "mcp",
+      sessionId: "same",
+      resume: "load",
+      injection: { mcp: true },
+    });
+  });
+});
