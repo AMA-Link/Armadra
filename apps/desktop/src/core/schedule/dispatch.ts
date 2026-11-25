@@ -15,6 +15,7 @@ import {
   NO_CUSTOM_AGENTS,
   baseAgent,
   channelUnbound,
+  refreshNodeState,
   nodeStateChannel,
   startsSilently,
 } from "../agent/registry";
@@ -170,6 +171,9 @@ export class TerminalDispatcher implements Dispatcher {
       return { state: "unknown", generation: 0 };
     }
     const settings = given ?? NO_CUSTOM_AGENTS;
+    // 读状态之前先让这个节点的状态读取槽同步读一次文件尾（与 `send` 的 `observe`
+    // 同一步，契约 §121）：轮询还没到时，刚写下的 turn_started 不能被当成「空闲」。
+    refreshNodeState(node.id);
     const known = loadSession(this.context.database, target.nodeId);
     const remote =
       known === undefined

@@ -350,10 +350,9 @@ describe("grok 的启动 argv", () => {
       args: ["agent", "--no-leader", "--always-approve", "stdio"],
       trailingArgs: ["stdio"],
     });
-    expect(acpLaunchPlan(grok, { mode: "plan" })).toEqual({
-      args: ["agent", "--no-leader", "stdio"],
-      trailingArgs: ["stdio"],
-      modeId: "plan",
+    // plan 暂时没有落点（等 Armadra#1021 的 `_x.ai/exit_plan_mode` 计划审批）。
+    expect(acpLaunchPlan(grok, { mode: "plan" })).toMatchObject({
+      code: "acp_mode_unsupported",
     });
   });
 
@@ -414,7 +413,7 @@ describe("grok 的启动 argv", () => {
     expect(acpLaunchPlan(grok, { mode: "auto-edit" })).toMatchObject({
       code: "acp_mode_unsupported",
     });
-    expect(acpPermissionModes(grok)).toEqual(["default", "full-auto", "plan"]);
+    expect(acpPermissionModes(grok)).toEqual(["default", "full-auto"]);
   });
 
   it("别家没有 trailingArgs，argv 不变", () => {

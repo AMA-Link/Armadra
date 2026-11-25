@@ -135,33 +135,23 @@ function rig(agentId = "grok", reject = false): Rig {
 }
 
 describe("目录来自兼容表的家", () => {
-  it("新会话：目录是表（default / plan），现值 default，不另发 set_mode", async () => {
+  it("新会话：目录是表（只有 default，plan 等 #1021），现值 default，不另发 set_mode", async () => {
     const r = rig();
     const session = await r.start({});
     expect(session.modes).toEqual({
-      availableModes: [
-        { id: "default", name: "default" },
-        { id: "plan", name: "plan" },
-      ],
+      availableModes: [{ id: "default", name: "default" }],
       currentModeId: "default",
     });
     expect(session.modesFromTable).toBe(true);
     expect(r.log()).toEqual([]);
   });
 
-  it("以 plan 启动：发 set_mode plan，落上了", async () => {
+  it("以 plan 启动：plan 暂时不在表里（等 #1021），requireMode 时拒绝，不发 set_mode", async () => {
     const r = rig();
-    const updates: string[] = [];
-    const session = await r.start({
-      modeId: "plan",
-      requireMode: true,
-      onUpdate: (n: AcpSessionNotification) =>
-        updates.push(String(n.update.sessionUpdate)),
-    });
-    expect(r.log()).toEqual(["set_mode plan"]);
-    expect(session.modeApplied).toBe(true);
-    expect(session.modes?.currentModeId).toBe("plan");
-    expect(updates).toContain("current_mode_update");
+    await expect(
+      r.start({ modeId: "plan", requireMode: true }),
+    ).rejects.toMatchObject({ code: "acp_mode_unavailable" });
+    expect(r.log()).toEqual([]);
   });
 
   it("要一个表里没有的模式（auto-edit 的 acceptEdits）：requireMode 时拒绝", async () => {
@@ -210,17 +200,6 @@ describe("目录来自兼容表的家", () => {
     expect(session.modes?.currentModeId).toBe("");
   });
 
-  it("接回时要求了 plan：落 plan，不落 default", async () => {
-    const r = rig();
-    const session = await r.start({
-      resume: { sessionId: "s-1", method: "load" },
-      modeId: "plan",
-      requireMode: true,
-    });
-    expect(r.log()).toEqual(["load", "set_mode plan"]);
-    expect(session.modes?.currentModeId).toBe("plan");
-  });
-
   it("别的家不受影响：不返回 modes 就没有模式，接回也不多发 set_mode", async () => {
     const r = rig("claude");
     const session = await r.start({
@@ -264,18 +243,17 @@ describe("会话里的模式（目录来自兼容表）", () => {
     }
   }
 
-  it("会话内切 plan 与切回 default 都走 set_mode（目录里有）", async () => {
+  it("会话内切 default 走 set_mode；plan 与 agent 角色都不在表里，答 acp_mode_unavailable", async () => {
     const r = rig();
     const { session } = await openSession(r);
-    await session.setMode("plan");
-    expect(session.modes?.currentModeId).toBe("plan");
     await session.setMode("default");
     expect(session.modes?.currentModeId).toBe("default");
-    expect(r.log()).toEqual(["set_mode plan", "set_mode default"]);
-    // agent 角色 `agent` / `ask` 不在表里：会话层照旧答 acp_mode_unavailable。
-    await expect(session.setMode("agent")).rejects.toMatchObject({
-      code: "acp_mode_unavailable",
-    });
+    expect(r.log()).toEqual(["set_mode default"]);
+    for (const id of ["plan", "agent"]) {
+      await expect(session.setMode(id)).rejects.toMatchObject({
+        code: "acp_mode_unavailable",
+      });
+    }
   });
 
   it("agent 自己切到表外的 id（agent / ask）：现值置为未知，不保留旧值，并推一次目录", async () => {
@@ -301,28 +279,21 @@ describe("会话里的模式（目录来自兼容表）", () => {
       },
     });
     {
-      await host.process.setMode(host.sessionId, "plan");
-      await until(() => session.modes?.currentModeId === "plan");
       const before = pushed.mock.calls.length;
       await host.process.setMode(host.sessionId, "agent");
       await until(() => session.modes?.currentModeId === "");
       // 表外的 id 推了目录，界面不会继续写 plan。
       expect(pushed.mock.calls.length).toBeGreaterThan(before);
       await host.process.setMode(host.sessionId, "ask");
-      // 同步点：一次表内 id 的往返。它排在 ask 的更新之后，等它到了，ask 的更新
+      // 同步点：一次表内 id（default）的往返。它排在 ask 的更新之后，等它到了，ask 的更新
       // 一定处理过；此前现值只经过「未知」，没有停在任何旧值上。
-      await host.process.setMode(host.sessionId, "plan");
-      await until(() => session.modes?.currentModeId === "plan");
       await host.process.setMode(host.sessionId, "default");
       await until(() => session.modes?.currentModeId === "default");
     }
-    console.log("SEEN", JSON.stringify(seen), session.modes?.currentModeId);
-    expect(seen).toEqual(["default", "plan", "", "plan", "default"]);
+    expect(seen).toEqual(["default", "", "default"]);
     expect(r.log()).toEqual([
-      "set_mode plan",
       "set_mode agent",
       "set_mode ask",
-      "set_mode plan",
       "set_mode default",
     ]);
   });

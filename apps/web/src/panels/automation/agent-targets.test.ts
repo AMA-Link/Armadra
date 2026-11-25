@@ -1,7 +1,11 @@
 import type { CanvasNode } from "@armadra/shared";
 import { describe, expect, it } from "vitest";
 
-import { agentTargets, lacksStateChannel } from "./agent-targets";
+import {
+  agentTargets,
+  definitionLacksChannel,
+  lacksStateChannel,
+} from "./agent-targets";
 
 function terminal(id: string, agentId: string, ssh = false): CanvasNode {
   return {
@@ -20,8 +24,11 @@ function terminal(id: string, agentId: string, ssh = false): CanvasNode {
 }
 
 describe("计划任务的目标", () => {
-  it("没有状态通道的内置 CLI（agy）标记出来，有通道的不标（grok 自 G2 起有会话文件通道）", () => {
-    expect(lacksStateChannel("agy")).toBe(true);
+  it("没有状态通道的内置 CLI标记出来，有通道的不标", () => {
+    // 判据只看能力清单：用虚构条目，不依赖哪一家真实 CLI。
+    expect(definitionLacksChannel({ capabilities: ["resume"] })).toBe(true);
+    expect(definitionLacksChannel({ capabilities: ["hooks"] })).toBe(false);
+    expect(definitionLacksChannel(undefined)).toBe(false);
     for (const id of [
       "claude",
       "codex",
@@ -41,11 +48,17 @@ describe("计划任务的目标", () => {
   it("目标列表带着这个标记，远程与没有 Agent 的终端照旧不列", () => {
     const options = agentTargets([
       terminal("a", "claude"),
-      terminal("b", "agy"),
-      terminal("c", "agy", true),
+      terminal("b", "codex"),
+      terminal("c", "codex", true),
     ]);
-    expect(options.map((o) => [o.nodeId, o.noStateChannel])).toEqual([
-      ["a", false],
+    // 标记就是 lacksStateChannel 的答案（不押哪一家 CLI 有没有通道）。
+    expect(
+      options.map((o) => [
+        o.nodeId,
+        o.noStateChannel === lacksStateChannel(o.agentId),
+      ]),
+    ).toEqual([
+      ["a", true],
       ["b", true],
     ]);
   });

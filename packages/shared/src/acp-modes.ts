@@ -99,11 +99,15 @@ export const ACP_MODE_TABLE: Readonly<Record<BuiltinAgentId, AcpModeTable>> = {
   // 都是 `unknown mode id`，所以 auto-edit 在 ACP 下没有落点。全自动只能用启动旗标
   // `--always-approve`（`_meta.yoloMode` 要等 armadra-agent 的会话 `_meta`
   // 通道，到时再换成它，就能在会话里切）。
+  //
+  // plan 也暂时没有落点：grok 在 ACP 的 plan 里提交计划走客户端请求
+  // `_x.ai/exit_plan_mode`，Armadra 还不会应答（armadra-agent#332 加回调，
+  // Armadra#1021 做计划审批），回合会以 cancelled 结束。
   grok: {
     default: { modeId: "default" },
     "auto-edit": null,
     "full-auto": { args: ["--always-approve"] },
-    plan: { modeId: "plan" },
+    plan: null,
   },
 };
 
@@ -126,7 +130,7 @@ export const ACP_REPORTED_MODES: Readonly<
   ama: "permission",
   agy: "permission",
   // grok 的 `session/new|load|resume` 根本不返回 `modes`（1.0.92 真账号实测），
-  // 但 `session/set_mode` 认 `default` / `plan`。所以模式目录以表为准（`table`）：
+  // 但 `session/set_mode` 认 `default`（plan 暂不放，见兼容表）。所以模式目录以表为准（`table`）：
   // core 用 {@link acpTableModes} 当目录，agent 报来的（若哪个版本开始报，那是
   // agent 角色 `default/ask/plan/agent`，不是权限）一律不用。
   grok: "table",
@@ -204,7 +208,8 @@ export function acpTableModes(
 export const NO_ACP_LANDING: Readonly<
   Partial<Record<BuiltinAgentId, readonly PermissionMode[]>>
 > = {
-  grok: ["auto-edit"],
+  // plan：见上面兼容表，等 Armadra#1021（`_x.ai/exit_plan_mode` 计划审批）。
+  grok: ["auto-edit", "plan"],
 };
 
 /** 权限模式 → 这家的 `session/set_mode` id；没有落点答 `undefined`。 */
