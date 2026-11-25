@@ -42,6 +42,12 @@ interface Entry {
   lastEmitAt: number;
   lastAnswerAt: number;
   timer: NodeJS.Timeout | undefined;
+  /**
+   * 摘要是 `blocked` 时，最近一次收到程序报告的时刻（毫秒）。**每次报告都刷新**，
+   * 内容相同的再次 `blocked` 也算：帧会因为摘要没变而不发，但「它刚又说了一次它
+   * 还堵着」是撤回否决时要比的那个时间。
+   */
+  blockedAt?: number | undefined;
 }
 
 export interface ProgramStatusBookOptions {
@@ -99,6 +105,8 @@ export class ProgramStatusBook {
       entry.lastAnswerAt = now;
       this.options.answer(sessionId);
     }
+    entry.blockedAt =
+      entry.tracker.summary()?.state === "blocked" ? this.clock() : undefined;
     this.changed(sessionId, entry);
   }
 
@@ -121,13 +129,20 @@ export class ProgramStatusBook {
 
   /**
    * 此刻的摘要。读跟踪器的即时值，不读最近一次发出去的帧：帧有 250 ms 的节流，
-   * 而投递的否决门要的是「现在」。`updatedAt` 沿用上一帧的，没发过帧就是现在。
+   * 而投递的否决门要的是「现在」。摘要是 `blocked` 时 `updatedAt` 是最近一次收到
+   * 报告的时刻（含内容相同的重复报告）；别的状态沿用上一帧的，没发过帧就是现在。
    */
   status(sessionId: string): ProgramStatusWire | undefined {
     const entry = this.entries.get(sessionId);
     if (entry === undefined) return undefined;
     const summary = entry.tracker.summary();
     if (summary === undefined) return undefined;
+    if (summary.state === "blocked" && entry.blockedAt !== undefined) {
+      return {
+        ...summary,
+        updatedAt: new Date(entry.blockedAt).toISOString(),
+      };
+    }
     return { ...summary, updatedAt: entry.wire?.updatedAt ?? this.now() };
   }
 
