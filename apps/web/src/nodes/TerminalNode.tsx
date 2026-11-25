@@ -108,6 +108,7 @@ const CARD_NOTICES: readonly string[] = [
   "unconfirmed",
   "mismatch",
   "ambiguous",
+  "not_sent",
   "unverified_version",
   "mode_excluded",
 ];

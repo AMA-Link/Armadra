@@ -48,6 +48,7 @@ export type CardNotice =
   | "unconfirmed"
   | "mismatch"
   | "ambiguous"
+  | "not_sent"
   | "unverified_version"
   | "mode_excluded";
 

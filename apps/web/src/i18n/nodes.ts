@@ -48,6 +48,7 @@ const zh = {
   "node.cardNotice.unconfirmed": "按键未确认，请看终端",
   "node.cardNotice.mismatch": "终端结果与所选不一致",
   "node.cardNotice.ambiguous": "终端里的卡不确定",
+  "node.cardNotice.not_sent": "没有发键，请在终端里答",
   "node.cardNotice.unverified_version": "此 grok 版本未验证，不代答",
   "node.cardNotice.mode_excluded": "此节点的权限模式不代答",
   "node.awaitingDriver": "等待接管",
@@ -178,6 +179,7 @@ const en: Record<keyof typeof zh, string> = {
   "node.cardNotice.unconfirmed": "Key not confirmed; check the terminal",
   "node.cardNotice.mismatch": "Terminal result differs from the choice",
   "node.cardNotice.ambiguous": "The card on the terminal is uncertain",
+  "node.cardNotice.not_sent": "No key sent; answer in the terminal",
   "node.cardNotice.unverified_version":
     "This grok version is not verified; not answering",
   "node.cardNotice.mode_excluded":

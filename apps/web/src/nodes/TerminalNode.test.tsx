@@ -445,6 +445,7 @@ describe("TerminalNode body", () => {
       ["unconfirmed", "按键未确认，请看终端"],
       ["mismatch", "终端结果与所选不一致"],
       ["ambiguous", "终端里的卡不确定"],
+      ["not_sent", "没有发键，请在终端里答"],
       ["unverified_version", "此 grok 版本未验证，不代答"],
       ["mode_excluded", "此节点的权限模式不代答"],
     ] as const)(
