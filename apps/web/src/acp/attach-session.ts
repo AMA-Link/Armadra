@@ -31,11 +31,15 @@ export function attachCwd(
   const cwd = session.cwd.replace(/[\\/]+$/, "");
   const root = rootPath.replace(/[\\/]+$/, "");
   if (cwd === "" || root === "") return undefined;
-  return cwd === root ||
-    cwd.startsWith(`${root}/`) ||
-    cwd.startsWith(`${root}\\`)
-    ? cwd
-    : undefined;
+  // 两个路径可能一个用 `/`、一个用 `\`（会话在别的机器上记下的，或 URI 转出来的），
+  // Windows 盘符路径还不分大小写；比的时候一起抹平，返回的仍是原样的 `cwd`。
+  const fold = (path: string): string => {
+    const slashed = path.replaceAll("\\", "/");
+    return /^[A-Za-z]:/.test(slashed) ? slashed.toLowerCase() : slashed;
+  };
+  const inside = fold(cwd);
+  const base = fold(root);
+  return inside === base || inside.startsWith(`${base}/`) ? cwd : undefined;
 }
 
 export interface AttachRequest {

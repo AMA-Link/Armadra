@@ -10,7 +10,6 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import {
   type Candidate,
@@ -562,6 +561,13 @@ function titleOf(row: Pick<SummaryRow, "title" | "preview">): string {
 /**
  * `workspace_uris` 是 JSON 数组（`["file:///Users/me/proj"]`）；取第一个，转成路径。
  * 读不出来（不是数组、不是 `file:`、解码失败）是空串——索引用目录名兜底。
+ *
+ * 转换只看 URI 自己，不看跑在哪个平台上：`fileURLToPath` 按当前平台解释，在 Windows
+ * 上拒绝没有盘符的 `file:///work/app`，在 POSIX 上又把 agy 在 Windows 写的
+ * `file:///C:/work/app` 当成相对路径。这里两种形状各给一个固定结果：
+ *   - `file:///Users/me/proj` → `/Users/me/proj`
+ *   - `file:///C:/Users/me/proj` → `C:\Users\me\proj`
+ *   - `file://host/share/dir` → `\\host\share\dir`
  */
 export function cwdOf(value: unknown): string {
   let list: unknown;
@@ -571,12 +577,24 @@ export function cwdOf(value: unknown): string {
     return "";
   }
   const first = Array.isArray(list) ? list[0] : undefined;
-  if (typeof first !== "string" || !first.startsWith("file:")) return "";
+  if (typeof first !== "string") return "";
+  const parsed = /^file:\/\/([^/?#]*)(\/[^?#]*)?(?:[?#].*)?$/i.exec(first);
+  if (parsed === null) return "";
+  const host = (parsed[1] ?? "").toLowerCase();
+  let path: string;
   try {
-    return fileURLToPath(first);
+    path = decodeURIComponent(parsed[2] ?? "");
   } catch {
     return "";
   }
+  if (path === "" || path.includes("\0")) return "";
+  const drive = /^\/([A-Za-z]:)(\/.*)?$/.exec(path);
+  if (host === "" || host === "localhost") {
+    return drive === null
+      ? path
+      : `${drive[1]}${(drive[2] ?? "\\").replaceAll("/", "\\")}`;
+  }
+  return `\\\\${host}${path.replaceAll("/", "\\")}`;
 }
 
 /**

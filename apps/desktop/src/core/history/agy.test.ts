@@ -201,6 +201,15 @@ describe("路径与键", () => {
     expect(cwdOf("[]")).toBe("");
     expect(cwdOf("not json")).toBe("");
     expect(cwdOf('["https://example.com"]')).toBe("");
+    // 两种形状在任何平台上结果一样：不借 `fileURLToPath` 的平台判断。
+    expect(cwdOf('["file:///C:/Users/me/my%20app"]')).toBe(
+      "C:\\Users\\me\\my app",
+    );
+    expect(cwdOf('["file:///c:/"]')).toBe("c:\\");
+    expect(cwdOf('["file://localhost/work/app"]')).toBe("/work/app");
+    expect(cwdOf('["file://server/share/dir"]')).toBe("\\\\server\\share\\dir");
+    expect(cwdOf('["file:///work/app%"]')).toBe("");
+    expect(cwdOf('["file://"]')).toBe("");
     expect(isoOf("2026-11-21 09:30:00.500000+00:00")).toBe(
       "2026-11-21T09:30:00.500Z",
     );
