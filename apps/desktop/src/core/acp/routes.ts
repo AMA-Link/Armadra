@@ -991,6 +991,14 @@ export function installRoutes(context: CoreContext, deps: AcpRouteDeps): void {
         current = wiring.manager.session(current.id);
       }
 
+      // 旧驱动留下的那条状态属于上一个会话：记成 restored，投递门把它当 `starting`
+      // ——等新驱动自己报一条再投（与 Eco 休眠接回同一条规矩，
+      // `terminal/hibernator.ts`）。没有状态通道的 CLI（无注入的内置）终端里永远
+      // 等不到那一条，门因此一直拒绝，只剩显式的 `--unverified`。
+      database
+        .prepare("UPDATE agent_status SET restored = 1 WHERE node_id = ?")
+        .run(nodeId);
+
       // 2. CLI 自己的会话 id。
       const provider = getAgentStatus(database, nodeId)?.sessionId;
       const cwd =

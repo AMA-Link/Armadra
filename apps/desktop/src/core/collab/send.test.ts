@@ -191,6 +191,29 @@ describe("the gate chain", () => {
     });
   });
 
+  // 无注入的内置 CLI（agy）：它在 ACP 下跑完一轮、被切到终端之后，门链看到的是
+  // 「没报过」（`driveTarget` 不把 ACP 留下的行算数），而这个 CLI 的注册表里没有
+  // 状态通道——只剩显式的 `--unverified`，不会因为旧行写着「空闲」就放行。
+  it("refuses a terminal Antigravity that was just switched over from ACP", async () => {
+    const agy = fixture.agentNode("Agy", "agy");
+    const agySession = fixture.session(agy, "agy");
+    fixture.link(me, agy);
+    fixture.terminal.foreground = { command: "agy" };
+    fixture.terminal.drive.set(agy, {
+      nodeId: agy,
+      sessionId: agySession,
+      state: "starting",
+      stateSource: undefined,
+      lease: freeLease(0),
+      driveGeneration: 0,
+    } as never);
+    const refused = refusal(await run(me, "send", { to: agy, body: "做" }));
+    expect(refused.code).toBe("TARGET_STATE_UNVERIFIED");
+    expect(fixture.terminal.submits).toHaveLength(0);
+    // 同一个节点只在 ACP 驱动下才有状态来源，终端里等不到第一条上报——所以也不
+    // 是「排队等」。
+  });
+
   // 「还没报过第一条」与「这个 CLI 没有状态通道」在 `stateSource` 上长得一样。
   // 分不开的代价是一条真实的失败：`open-agent --task` 建的节点刚起 PTY 时一行
   // `agent_status` 都还没有，按「没有适配」处理就是把它的第一条任务当场取消，

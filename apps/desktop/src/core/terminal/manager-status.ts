@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
-import { getAgentStatus } from "../agent/status";
+import { getAgentStatus, type AgentStatus } from "../agent/status";
+import { STATE_SOURCE_ACP } from "../agent/state-source";
 import { targetState, type ObservedActivity } from "../agent/target-state";
 import { loadSession } from "../collab/nodes";
 import { freeLease, type Lease } from "../drive/lease";
@@ -94,6 +95,24 @@ export function assertSubmitInput(
     );
 }
 
+/**
+ * 这一行状态是不是上一个驱动留下的：状态来源是 `acp`、而节点当前的会话后端不是
+ * ACP（切到终端之后，旧的 ACP 报告还在库里）。那条 `idle` 说的是别的会话，终端里
+ * 的 CLI 没有报过任何东西，所以对投递门来说等于「没报过」（`agent/target-state.ts`
+ * 第 3 条规矩）。对没有状态来源的 CLI（无注入的内置，契约 §120）这是唯一的拦法：
+ * 它们的终端永远不会写出新的上报把旧行盖掉。
+ */
+export function statusOfCurrentDriver(
+  status: AgentStatus | undefined,
+  backendKind: string | undefined,
+): AgentStatus | undefined {
+  if (status === undefined) return undefined;
+  if (status.stateSource === STATE_SOURCE_ACP && backendKind !== "acp") {
+    return undefined;
+  }
+  return status;
+}
+
 /** The existing state/lease snapshot, kept separate from PTY lifecycle mutation. */
 export function driveTargetFor(
   database: DatabaseSync,
@@ -103,7 +122,18 @@ export function driveTargetFor(
 ): DriveTarget {
   const sessionId = loadSession(database, nodeId)?.sessionId;
   const live = sessionId === undefined ? undefined : generation(sessionId);
-  const status = getAgentStatus(database, nodeId);
+  const backendKind =
+    sessionId === undefined
+      ? undefined
+      : (
+          database
+            .prepare("SELECT backend_kind FROM terminal_sessions WHERE id = ?")
+            .get(sessionId) as { backend_kind?: string } | undefined
+        )?.backend_kind;
+  const status = statusOfCurrentDriver(
+    getAgentStatus(database, nodeId),
+    backendKind,
+  );
   const currentLease =
     sessionId === undefined ? freeLease(0) : lease(sessionId);
   return {

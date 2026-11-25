@@ -923,6 +923,49 @@ describe("驱动租约", () => {
       state: "exited",
     });
   });
+
+  // 驱动从 ACP 切到终端之后，库里还躺着 ACP 会话写的那一行（`acp`、`done`）。那条
+  // `idle` 说的是上一个会话：投递门看到的得是「没报过」，否则没有状态通道的 CLI
+  // （无注入的内置，契约 §120）的终端会被当成空闲放行。
+  it("driveTarget 不把上一个驱动留下的 acp 状态当成终端的空闲", async () => {
+    const { manager, database } = harness();
+    const session = await spawn(manager, "node-a");
+    database
+      .prepare(
+        `INSERT INTO agent_status
+           (node_id, workspace_id, agent_id, state, state_source, unread, verified,
+            restored, updated_at)
+         VALUES ('node-a', 'ws', 'agy', 'done', 'acp', 0, 1, 0,
+                 '2026-09-20T12:00:00Z')`,
+      )
+      .run();
+    // 会话是终端后端（`direct`）：ACP 留下的行不算数。
+    expect(manager.driveTarget("node-a")).toMatchObject({ state: "starting" });
+    expect(manager.driveTarget("node-a")).not.toHaveProperty("stateSource");
+    // 同一行，会话是 ACP 后端：照常。
+    database
+      .prepare("UPDATE terminal_sessions SET backend_kind = 'acp' WHERE id = ?")
+      .run(session.id);
+    expect(manager.driveTarget("node-a")).toMatchObject({
+      state: "idle",
+      stateSource: "acp",
+    });
+    // 终端里 hook 报的行不受影响。
+    database
+      .prepare(
+        "UPDATE agent_status SET state_source = 'hook' WHERE node_id = 'node-a'",
+      )
+      .run();
+    database
+      .prepare(
+        "UPDATE terminal_sessions SET backend_kind = 'direct' WHERE id = ?",
+      )
+      .run(session.id);
+    expect(manager.driveTarget("node-a")).toMatchObject({
+      state: "idle",
+      stateSource: "hook",
+    });
+  });
 });
 
 /**

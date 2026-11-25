@@ -78,6 +78,12 @@ describeUnix("switching a node's driver", () => {
       driver: "terminal",
       sessionId: row.id,
     });
+    // 旧驱动留下的那条 `acp` 状态属于上一个会话：记成 restored，投递门不把它当
+    // 新鲜的「空闲」（没有状态通道的 CLI 的终端里永远等不到下一条上报）。
+    expect(getAgentStatus(open.core.database, nodeId)).toMatchObject({
+      stateSource: "acp",
+      restored: true,
+    });
 
     // 终端 → ACP：接回同一个 CLI 会话，镜像还在。
     const toAcp = await open.core.call(
