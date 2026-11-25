@@ -3,7 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeNode, testUuid } from "../test-support";
 import { useCanvasStore } from "@/store/canvas-store";
 import type { SocketFactory, SocketLike } from "@/realtime/client";
-import { startRealtime, stopRealtime, useRealtimeStore } from "@/realtime/session";
+import {
+  startRealtime,
+  stopRealtime,
+  useRealtimeStore,
+} from "@/realtime/session";
 import { saveBoardViewport } from "@/realtime/viewport";
 import {
   CAMERA_INTENT_DELAYS,
@@ -13,7 +17,11 @@ import {
   startCameraIntent,
 } from "./camera-intent";
 import { setFlow, setFlowContainer, type FlowHandle } from "./flow-context";
-import { applyBoardViewport, centerOnNode, revealNewNode } from "./use-flow-viewport";
+import {
+  applyBoardViewport,
+  centerOnNode,
+  revealNewNode,
+} from "./use-flow-viewport";
 
 /**
  * 相机意图（#1028）：新请求取消旧请求、量到尺寸才落地、保护期、卸载清计时器、

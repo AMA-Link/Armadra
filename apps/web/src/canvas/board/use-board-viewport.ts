@@ -24,10 +24,12 @@ export function useBoardViewportSync(board: DomBoard): void {
       timer = null;
       const latest = pending;
       if (!latest || isOpeningCamera(latest)) return;
-      useCanvasStore.getState().setViewport(
-        { x: latest.x, y: latest.y, zoom: clampZoom(latest.zoom) },
-        { source: "camera" },
-      );
+      useCanvasStore
+        .getState()
+        .setViewport(
+          { x: latest.x, y: latest.y, zoom: clampZoom(latest.zoom) },
+          { source: "camera" },
+        );
     };
     const onWheel = () => cancelCameraIntent();
     window.addEventListener("wheel", onWheel, { passive: true, capture: true });

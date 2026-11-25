@@ -258,6 +258,7 @@ function centreOnMeasured(nodeId: string, expected: Size | null): boolean {
 }
 
 export function revealNewNode(nodeId: string): void {
+  if (!getFlow()) return;
   stopFollowing();
   let expected: Size | null = null;
   startCameraIntent(() => {
