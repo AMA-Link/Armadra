@@ -36,6 +36,16 @@ export class ProgramBlockTracker {
     return this.blocked.delete(event.nodeId) ? event.nodeId : undefined;
   }
 
+  /** 此刻登记着的节点（清扫要逐个核对它们是不是真的还被拦着）。 */
+  nodes(): string[] {
+    return [...this.blocked];
+  }
+
+  /** 清扫发现它已经不被拦了：放掉这条登记。 */
+  release(nodeId: string): void {
+    this.blocked.delete(nodeId);
+  }
+
   clear(): void {
     this.blocked.clear();
   }

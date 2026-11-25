@@ -91,7 +91,9 @@ export interface TerminalBridge {
    * 程序自己用 OSC 7501 报的状态（契约 §53）。只当否决用：停在 `blocked` 就不投，
    * 没报或报别的都不放行任何东西。
    */
-  programStatus?(sessionId: string): { readonly state: string } | undefined;
+  programStatus?(
+    sessionId: string,
+  ): { readonly state: string; readonly updatedAt?: string } | undefined;
   /**
    * 这个会话跑在远程执行主机上。状态通道按节点判（`agent/state-source.ts` 的
    * `nodeStateChannel`）：只读本机文件的通道对远程节点不成立。缺席按本机算。

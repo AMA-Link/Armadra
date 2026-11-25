@@ -64,6 +64,7 @@ export class SendPump {
      * 继续按「自负其责」投进去，可能正投在一张审批卡上。缺省不设这条规则（用例）。
      */
     private readonly startedAtSeconds?: number,
+    private readonly blocks: ProgramBlockTracker = programBlocks,
   ) {}
 
   /**
@@ -186,6 +187,26 @@ export class SendPump {
     }
   }
 
+  /**
+   * 核对 tracker 里登记的节点是不是真的还被程序自报的 `blocked` 拦着。
+   *
+   * 两种情况靠事件接不住，只能在清扫里补：节流窗里 idle → blocked → idle、摘要
+   * 相同所以一个帧都不发，登记过的否决没有任何帧来解除；节点之后再也不发
+   * `terminal.program`（终端退出、节点删除）时，登记会一直留着。不再被拦的就放掉，
+   * 并叫醒一次出队泵。
+   */
+  private releaseProgramBlocks(context: CollabContext): void {
+    for (const nodeId of this.blocks.nodes()) {
+      const sessionId = loadSession(context.database, nodeId)?.sessionId;
+      const blocked =
+        sessionId !== undefined &&
+        context.terminals?.programStatus?.(sessionId)?.state === "blocked";
+      if (blocked) continue;
+      this.blocks.release(nodeId);
+      void this.drain(nodeId);
+    }
+  }
+
   /** 过期清扫。返回这一遍标掉了几条。 */
   sweep(): number {
     const context = this.context();
@@ -200,6 +221,7 @@ export class SendPump {
         writeReceipts(context, now),
       );
       for (const id of this.cards.due(context)) void this.drain(id);
+      this.releaseProgramBlocks(context);
       return expired;
     } catch (error) {
       this.onError(error);

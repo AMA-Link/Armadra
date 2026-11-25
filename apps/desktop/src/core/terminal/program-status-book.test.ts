@@ -68,6 +68,25 @@ describe("ProgramStatusBook", () => {
     expect(instance.status("s")?.state).toBe("blocked");
   });
 
+  it("an identical repeated blocked report refreshes the time without a new frame", () => {
+    vi.useFakeTimers();
+    const { instance, frames, advance } = book();
+    const blocked = "\u001b]7501;state=blocked:kind=permission\u0007";
+    instance.feed("s", 1, chunk(blocked));
+    const first = instance.status("s")?.updatedAt;
+    advance(5_000);
+    instance.feed("s", 1, chunk(blocked));
+    // 摘要没变：不发新帧；但「它刚又说了一次」要看得到。
+    expect(frames).toHaveLength(1);
+    expect(instance.status("s")?.updatedAt).not.toBe(first);
+    expect(
+      Date.parse(instance.status("s")?.updatedAt as string),
+    ).toBeGreaterThan(Date.parse(first as string));
+    // 不再 blocked 之后时间跟着帧走。
+    instance.feed("s", 1, chunk("\u001b]7501;state=working\u0007"));
+    expect(instance.status("s")?.state).toBe("working");
+  });
+
   it("does not emit when the summary did not change", () => {
     vi.useFakeTimers();
     const { instance, frames, advance } = book();

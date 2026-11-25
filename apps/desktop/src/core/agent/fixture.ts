@@ -88,7 +88,7 @@ export interface StubTerminal {
   /** `observed` 的答案，按会话 id。 */
   readonly activity: Map<string, ObservedActivity>;
   /** `terminal.program` 里程序自报的状态（OSC 7501），按会话 id。 */
-  readonly programs: Map<string, { state: string }>;
+  readonly programs: Map<string, { state: string; updatedAt?: string }>;
   /** 跑在远程主机上的会话 id（`remote` 的答案）。 */
   readonly remote: Set<string>;
   /** 下一次 `writeSubmit` 抛这个。 */

@@ -12,6 +12,7 @@ import {
   OBSERVED_QUIET,
   type TargetState,
   observedQuiet,
+  programBlockStands,
   sessionStartIdle,
   silentStartIdle,
   stateSourceIsReported,
@@ -610,8 +611,14 @@ export async function attempt(
   // 就是「拒绝这次工具调用」。
   if (
     state !== "awaiting-approval" &&
-    context.terminals?.programStatus?.(live.session.sessionId)?.state ===
-      "blocked"
+    programBlockStands(
+      context.terminals?.programStatus?.(live.session.sessionId),
+      currentDriverStatus(
+        context.database,
+        live.target.id,
+        live.session.sessionId,
+      ),
+    )
   ) {
     // 登记这次否决：节流窗里 working → blocked → idle 时帧里没有 `blocked`，
     // 解除要靠这一笔才叫得醒出队泵（`collab/program-block.ts`）。

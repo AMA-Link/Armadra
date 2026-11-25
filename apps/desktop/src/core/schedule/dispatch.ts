@@ -23,6 +23,7 @@ import type { AgentStatus } from "../agent/status";
 import { currentDriverStatus } from "../terminal/manager-status";
 import {
   type ObservedActivity,
+  programBlockStands,
   silentStartIdle,
   stateSourceIsReported,
 } from "../agent/target-state";
@@ -268,7 +269,9 @@ export class TerminalDispatcher implements Dispatcher {
     if (status?.state === "working") return { state: "busy", generation: live };
     // 程序自己用 OSC 7501 报了 `blocked`（停在审批上）：与 `send` 同一道否决
     // （契约 §53、§120）。只否决，不放行。
-    if (terminals.programStatus?.(session.sessionId)?.state === "blocked") {
+    if (
+      programBlockStands(terminals.programStatus?.(session.sessionId), status)
+    ) {
       return { state: "busy", generation: live };
     }
     // 人打了一半的输入：租约过期之后那半行还在，写进去就接在它后面一起提交。

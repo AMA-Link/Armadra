@@ -147,7 +147,7 @@ function setUp(
     live?: number;
     bridged?: boolean;
     /** 程序自报的状态（OSC 7501），整个测试里不变。 */
-    program?: { state: string };
+    program?: { state: string; updatedAt?: string };
   } = {},
 ) {
   const { database, store } = openStore();
@@ -238,6 +238,32 @@ describe("Agent 目标的探测", () => {
           "VALUES ('node-1', 'ws', 'claude', 'blocked', 'acp', '2026-09-20T00:00:00Z')",
       )
       .run();
+    expect((await dispatcher.supports(agentTargetOf())).state).toBe("ready");
+  });
+
+  it("CLI 自己晚于 blocked 报了 done：计划任务探测撤回否决；更早的、清扫合成的照拦", async () => {
+    const BLOCKED_AT = "2026-11-25T10:00:00.000Z";
+    const done = (
+      database: DatabaseSync,
+      doneAt: string,
+      endedBy: string | null = null,
+    ) => {
+      database.prepare("DELETE FROM agent_status").run();
+      database
+        .prepare(
+          "INSERT INTO agent_status (node_id, workspace_id, agent_id, state, state_source, updated_at, last_event_at, ended_by, done_at) " +
+            "VALUES ('node-1', 'ws', 'claude', 'done', 'hook', ?, ?, ?, ?)",
+        )
+        .run(doneAt, doneAt, endedBy, doneAt);
+    };
+    const { database, dispatcher } = setUp({
+      program: { state: "blocked", updatedAt: BLOCKED_AT },
+    });
+    done(database, "2026-11-25T09:59:00.000Z");
+    expect((await dispatcher.supports(agentTargetOf())).state).toBe("busy");
+    done(database, "2026-11-25T10:05:00.000Z", "stale");
+    expect((await dispatcher.supports(agentTargetOf())).state).toBe("busy");
+    done(database, "2026-11-25T10:05:00.000Z");
     expect((await dispatcher.supports(agentTargetOf())).state).toBe("ready");
   });
 

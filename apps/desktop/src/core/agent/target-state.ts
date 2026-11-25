@@ -1,4 +1,9 @@
-import { stateSourceIsReported } from "./state-source";
+import {
+  STATE_SOURCE_ACP,
+  STATE_SOURCE_EXTENSION,
+  STATE_SOURCE_HOOK,
+  stateSourceIsReported,
+} from "./state-source";
 import type { AgentStatus } from "./status";
 
 /**
@@ -247,4 +252,55 @@ export function sessionStartIdle(gate: SessionStartGate): boolean {
   if (gate.sessionAgeMs < SILENT_START_MIN_AGE_MS) return false;
   if (gate.observed === undefined) return false;
   return !gate.observed.pending;
+}
+
+/** 能撤回 `blocked` 的上报来源：CLI 自己的上报（hook、扩展、ACP）；core 自己读文件得到的（transcript）不算。 */
+const WITHDRAWING_SOURCES: readonly string[] = [
+  STATE_SOURCE_HOOK,
+  STATE_SOURCE_EXTENSION,
+  STATE_SOURCE_ACP,
+];
+
+/**
+ * 程序自报的 `blocked` 要不要否决这次投递（契约 §53、§120）。
+ *
+ * 默认要。例外只有一条，而且只撤回、从不新增放行：CLI **自己**报了 `done`，而且
+ * 那次进入 `done` **严格晚于**这条 `blocked` 记录——审批已经答过、回合已经结束，
+ * 程序没来得及清掉它的 `blocked`（崩了、没发 `clear`）。
+ *
+ * 比较的是 `doneAt`（状态从非 done 变成 done 的那一刻，只写一次），不是
+ * `updatedAt`（读回执会把它往后推），也不是 `lastEventAt`（同会话的 SessionStart、
+ * done 之后 3 秒内的 SessionEnd 也会推动它）。副作用：已经是 done 的情况下再报一次
+ * done 不触发撤回——落在继续拦的一侧。
+ *
+ * 不算 CLI 自己上报的一律照拦：来源不是 hook / 扩展 / ACP（core 自己读文件的
+ * transcript 通道会在首次读取、`/new`、回切时重放或重报，时间是读取的时刻）、读回来的
+ * 旧行、清扫合成的结束（`endedBy` 存在）、没有 `doneAt`、时间相等或更早、任何一边的
+ * 时间读不出来。两个时间来自不同的钟（`blocked` 取 core 的钟、`doneAt` 取写库的钟，同
+ * 一台机器上是同一个钟）；钟回拨时宁可继续拦。
+ */
+export function programBlockStands(
+  program: { readonly state: string; readonly updatedAt?: string } | undefined,
+  status: AgentStatus | undefined,
+): boolean {
+  if (program?.state !== "blocked") return false;
+  if (
+    status === undefined ||
+    status.stateSource === undefined ||
+    !WITHDRAWING_SOURCES.includes(status.stateSource) ||
+    status.restored ||
+    status.endedBy !== undefined ||
+    status.state !== "done" ||
+    status.doneAt === undefined ||
+    program.updatedAt === undefined
+  ) {
+    return true;
+  }
+  const doneAt = Date.parse(status.doneAt);
+  const blockedAt = Date.parse(program.updatedAt);
+  return !(
+    Number.isFinite(doneAt) &&
+    Number.isFinite(blockedAt) &&
+    doneAt > blockedAt
+  );
 }

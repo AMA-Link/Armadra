@@ -7,6 +7,7 @@ import {
   SILENT_START_MIN_AGE_MS,
   SILENT_START_QUIET_MS,
   observedQuiet,
+  programBlockStands,
   queueable,
   silentStartIdle,
   stateSourceIsReported,
@@ -188,5 +189,93 @@ describe("silentStartIdle", () => {
       silentStartIdle({ ...gate, sessionAgeMs: SILENT_START_MIN_AGE_MS - 1 }),
     ).toBe(false);
     expect(silentStartIdle({ ...gate, sessionAgeMs: undefined })).toBe(false);
+  });
+});
+
+describe("programBlockStands", () => {
+  const blocked = { state: "blocked", updatedAt: "2026-11-25T10:00:00.000Z" };
+  const report = (patch: Partial<AgentStatus>): AgentStatus => ({
+    nodeId: "n",
+    workspaceId: "w",
+    agentId: "claude",
+    state: "done",
+    stateSource: "hook",
+    unread: false,
+    verified: true,
+    restored: false,
+    updatedAt: "2026-11-25T10:00:05.000Z",
+    lastEventAt: "2026-11-25T10:00:05.000Z",
+    doneAt: "2026-11-25T10:00:05.000Z",
+    ...patch,
+  });
+
+  it("stands by default, and only blocked stands", () => {
+    expect(programBlockStands(blocked, undefined)).toBe(true);
+    expect(programBlockStands({ state: "working" }, undefined)).toBe(false);
+    expect(programBlockStands(undefined, report({}))).toBe(false);
+  });
+
+  it("a done that began strictly later, reported by the CLI itself, withdraws it", () => {
+    for (const stateSource of ["hook", "extension", "acp"]) {
+      expect(programBlockStands(blocked, report({ stateSource }))).toBe(false);
+    }
+  });
+
+  it("equal times keep the veto", () => {
+    expect(
+      programBlockStands(
+        blocked,
+        report({ doneAt: "2026-11-25T10:00:00.000Z" }),
+      ),
+    ).toBe(true);
+  });
+
+  it("moving updatedAt or lastEventAt does not withdraw: only doneAt counts", () => {
+    // 读回执推 updatedAt；同会话的 SessionStart / 之后的 SessionEnd 推 lastEventAt。
+    expect(
+      programBlockStands(
+        blocked,
+        report({
+          doneAt: "2026-11-25T09:59:00.000Z",
+          updatedAt: "2026-11-25T10:30:00.000Z",
+          lastEventAt: "2026-11-25T10:30:00.000Z",
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("the transcript channel (grok) never withdraws: it replays and re-reports", () => {
+    expect(
+      programBlockStands(blocked, report({ stateSource: "transcript" })),
+    ).toBe(true);
+    expect(
+      programBlockStands(blocked, report({ stateSource: "observed" })),
+    ).toBe(true);
+  });
+
+  it("a done the sweep synthesised does not withdraw", () => {
+    for (const endedBy of ["stale", "terminated", "modelError"] as const) {
+      expect(programBlockStands(blocked, report({ endedBy }))).toBe(true);
+    }
+  });
+
+  it("only done withdraws: idle and working keep the veto", () => {
+    expect(programBlockStands(blocked, report({ state: "idle" }))).toBe(true);
+    expect(programBlockStands(blocked, report({ state: "working" }))).toBe(
+      true,
+    );
+  });
+
+  it("anything else weaker keeps the veto", () => {
+    expect(programBlockStands(blocked, report({ restored: true }))).toBe(true);
+    const { doneAt: _omit, ...withoutTime } = report({});
+    expect(programBlockStands(blocked, withoutTime as AgentStatus)).toBe(true);
+    expect(programBlockStands({ state: "blocked" }, report({}))).toBe(true);
+    expect(programBlockStands(blocked, report({ doneAt: "garbage" }))).toBe(
+      true,
+    );
+    expect(
+      programBlockStands(blocked, report({ stateSource: undefined as never })),
+    ).toBe(true);
   });
 });
