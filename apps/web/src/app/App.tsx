@@ -14,6 +14,7 @@ import { useMinimapPreferences } from "./minimap-preferences";
 import { Banners } from "../shell/Banners";
 import { ControlsCluster } from "../shell/ControlsCluster";
 import { EmptyCanvas } from "../canvas/EmptyCanvas";
+import { BoardOnly, NoBoards } from "../canvas/NoBoards";
 import { NoWorkspaceAccess } from "./NoWorkspaceAccess";
 import { Dock } from "../shell/Dock";
 import { LeftSidebar } from "../shell/LeftSidebar";
@@ -144,8 +145,11 @@ function AppShell() {
         {workspace && (
           <>
             <EmptyCanvas />
+            <NoBoards />
             <ControlsCluster />
-            <Dock />
+            <BoardOnly>
+              <Dock />
+            </BoardOnly>
           </>
         )}
         {/* 加载链与首批数据没到时的画布骨架（叶子，见 `CanvasLoadGate`）。 */}
