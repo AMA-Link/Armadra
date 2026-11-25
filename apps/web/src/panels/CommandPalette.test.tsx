@@ -100,9 +100,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
   for (const id of pendingTimers) clearTimeout(id);
   pendingTimers.clear();
-  cleanup();
   vi.clearAllMocks();
   vi.useRealTimers();
   localStorage.clear();
