@@ -135,6 +135,26 @@ describe("terminal/*", () => {
     expect(assistantText(rowId)).toContain("escape:-32601");
   });
 
+  it("会话 cancel 之后挂着 wait_for_exit 的终端被收掉，不留孤儿子进程（#1045）", async () => {
+    await boot();
+    const { rowId } = await start("[term-wait]");
+    const pidFile = join(open!.core.directory, "wait.pid");
+    const pid = await until(
+      () => (existsSync(pidFile) ? Number(readFileSync(pidFile, "utf8")) : 0),
+      (value) => Number.isInteger(value) && value > 0,
+    );
+    expect(alive(pid)).toBe(true);
+    const cancelled = await open!.core.call(
+      "POST",
+      `/api/acp/sessions/${rowId}/cancel`,
+    );
+    expect(cancelled.status, JSON.stringify(cancelled.body)).toBeLessThan(300);
+    await until(
+      () => alive(pid),
+      (running) => !running,
+    );
+  });
+
   const unix = process.platform !== "win32";
   (unix ? it : it.skip)(
     "会话结束时没 release 的子进程也被收掉（按 pid）",
