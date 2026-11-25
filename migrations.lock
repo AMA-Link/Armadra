@@ -71,6 +71,7 @@
     "0069_node_pull_links.sql": "2733e24a235d095c0d9c61180f41bb64dc8aa92746d621912d249d3a09c5dd6f",
     "0070_agent_status_ended_by.sql": "0cdb10fa9479ececbaf979ca315514640313ec883b147227f2bc85893bbfe593",
     "0071_delivery_children.sql": "098c67d864771deabc79babdd8ca23a1fe9447be17b1f464ae6f18cf89ab3edc",
-    "0072_workflow_v2.sql": "1f31efc3f95337a3fcccb53b26f525fb87b4ae2fb9b7d1edeebc7c0b9174fd5c"
+    "0072_workflow_v2.sql": "1f31efc3f95337a3fcccb53b26f525fb87b4ae2fb9b7d1edeebc7c0b9174fd5c",
+    "0073_send_queue_unverified.sql": "5125dc2c6f359fbe5f9daeadbedee469f76dec76342e75d3609e08216ba342c3"
   }
 }

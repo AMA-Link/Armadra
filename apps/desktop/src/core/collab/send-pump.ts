@@ -150,10 +150,15 @@ export class SendPump {
         await this.cards.deliver(context, targetNodeId);
         return;
       }
-      // 排队项不带参数：`--no-queue` 是一次性的，一条已经排进去的投递按定义
-      // 就是愿意等的那种。`--interrupt` 同理——打断是投的那一刻的决定，不是
-      // 五分钟后替调用者再做一次。
-      await attempt(context, next, { queue: true, dequeued: true });
+      // 排队项只带 `--unverified`：`--no-queue` 是一次性的，一条已经排进去的投递
+      // 按定义就是愿意等的那种。`--interrupt` 同理——打断是投的那一刻的决定，不是
+      // 五分钟后替调用者再做一次。`--unverified` 是对「这个目标没有状态通道」的
+      // 自负其责，排队前后是同一个目标，所以要带回来（#1026）。
+      await attempt(context, next, {
+        queue: true,
+        dequeued: true,
+        ...(next.unverified === true ? { unverified: true } : {}),
+      });
     } catch (error) {
       // 出队时被门链拒绝不是这个泵的失败：那一条已经在 `attempt` 里被落了
       // 状态与理由（`settled_by = 'gate'`）。发起者此刻没有在等回执，所以当场

@@ -394,6 +394,7 @@ async function sendTo(
     trail,
     now,
     state: "queued",
+    ...(options.unverified === true ? { unverified: true } : {}),
   });
   if (inserted.kind === "full") {
     throw refuse(

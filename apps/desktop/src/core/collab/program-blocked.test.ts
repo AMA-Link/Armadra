@@ -99,6 +99,25 @@ describe("a program that reports blocked", () => {
     expect(delivered).toMatchObject({ outcome: "delivered" });
   });
 
+  it("an --unverified delivery queued behind blocked is delivered once blocked clears", async () => {
+    const bare = node(null, { state: "idle", stateSource: "observed" });
+    quiet(bare.sessionId);
+    fixture.terminal.programs.set(bare.sessionId, { state: "blocked" });
+    expect(
+      ok(await run("send", { to: bare.id, body: "做", unverified: true })),
+    ).toMatchObject({ outcome: "queued", reason: "TARGET_AWAITING_APPROVAL" });
+    expect(pendingCountFor(fixture.database, bare.id, 0)).toBe(1);
+    const pump = new SendPump(() => fixture.collab);
+    await pump.drain(bare.id);
+    expect(fixture.terminal.submits).toHaveLength(0);
+    fixture.terminal.programs.delete(bare.sessionId);
+    pump.noteFree(bare.id);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // 排队项带着 --unverified：没有状态通道的目标不会以 TARGET_STATE_UNVERIFIED 结束。
+    expect(fixture.terminal.submits).toHaveLength(1);
+    expect(pendingCountFor(fixture.database, bare.id, 0)).toBe(0);
+  });
+
   it("the first delivery to a CLI that starts silently is vetoed too", async () => {
     const codex = node("codex", { state: "starting", stateSource: undefined });
     fixture.terminal.foreground = { command: "codex" };
