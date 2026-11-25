@@ -31,7 +31,16 @@ export function useBoardViewportSync(board: DomBoard): void {
           { source: "camera" },
         );
     };
-    const onWheel = () => cancelCameraIntent();
+    // 只认落在画布上、且不在节点内部滚动区（`.nowheel`）里的滚轮：侧栏列表
+    // 滚动与点击后触控板的惯性尾巴不算用户在动相机。
+    const onWheel = (event: WheelEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (!target.closest("[data-board-stage]") || target.closest(".nowheel")) {
+        return;
+      }
+      cancelCameraIntent();
+    };
     window.addEventListener("wheel", onWheel, { passive: true, capture: true });
     const stops = [
       board.on("camera", (state) => {

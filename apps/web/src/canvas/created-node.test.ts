@@ -74,14 +74,27 @@ describe("isTextEntry", () => {
   });
 
   it("节点体里的输入框不算：ACP 输入框、编辑器、终端发完消息焦点还在那里（#1028）", () => {
-    expect(isTextEntry(field("textarea", false))).toBe(false);
-    expect(isTextEntry(field("input", false))).toBe(false);
-    const editable = field("div", false);
+    const host = document.createElement("div");
+    host.dataset.boardId = "n1";
+    const inside = (tag: string, cls?: string) => {
+      const el = document.createElement(tag);
+      if (cls) el.className = cls;
+      host.append(el);
+      return el;
+    };
+    expect(isTextEntry(inside("textarea"))).toBe(false);
+    expect(isTextEntry(inside("input"))).toBe(false);
+    expect(isTextEntry(inside("textarea", "xterm-helper-textarea"))).toBe(
+      false,
+    );
+    const editable = inside("div");
     editable.setAttribute("contenteditable", "true");
     expect(isTextEntry(editable)).toBe(false);
-    const xterm = field("textarea", false);
-    xterm.className = "xterm-helper-textarea";
-    expect(isTextEntry(xterm)).toBe(false);
+  });
+
+  it("节点体之外的输入框（命令面板、对话框、评论）仍算在输入", () => {
+    expect(isTextEntry(field("textarea", false))).toBe(true);
+    expect(isTextEntry(field("input", false))).toBe(true);
   });
 
   it("没有焦点元素、或焦点在画布本身时不算输入", () => {
@@ -184,8 +197,11 @@ describe("node.created", () => {
 
   it("焦点停在节点体的输入框（ACP 输入框）里时照样跟过去，在便签 / 改名里则不抢（#1028）", () => {
     useCanvasStore.getState().setDocument(documentWith([CREATED]));
+    const host = document.createElement("div");
+    host.dataset.boardId = "n1";
     const composer = document.createElement("textarea");
-    document.body.append(composer);
+    host.append(composer);
+    document.body.append(host);
     composer.focus();
     expect(noteCreatedNode({ boardId: BOARD, nodeId: CREATED })).toBe(true);
 
@@ -193,7 +209,7 @@ describe("node.created", () => {
     composer.setAttribute(EDITING_ATTR, "");
     expect(noteCreatedNode({ boardId: BOARD, nodeId: CREATED })).toBe(false);
     expect(setCenter).not.toHaveBeenCalled();
-    composer.remove();
+    host.remove();
   });
 
   it("等太久就不等了", () => {

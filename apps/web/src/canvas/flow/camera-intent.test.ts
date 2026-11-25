@@ -11,6 +11,7 @@ import {
 import { saveBoardViewport } from "@/realtime/viewport";
 import {
   CAMERA_INTENT_DELAYS,
+  CAMERA_INTENT_GIVE_UP_MS,
   CAMERA_INTENT_SETTLE_MS,
   cameraIntentHolds,
   cancelCameraIntent,
@@ -221,6 +222,24 @@ describe("保护期内的视口恢复不覆盖意图（#1028 原因 1、2）", (
     vi.advanceTimersByTime(CAMERA_INTENT_SETTLE_MS + 1);
     applyBoardViewport(docWith());
     expect(setViewport).toHaveBeenCalledWith(stored);
+  });
+
+  it("意图一直没落地：放弃时补做被拦下的恢复；落地了就不补（#1028）", () => {
+    const rect: Record<string, Rect> = { a: { x: 0, y: 0, w: 0, h: 0 } };
+    mountFlow(rect);
+    centerOnNode("a");
+    applyBoardViewport(docWith());
+    expect(useCanvasStore.getState().document!.board.viewport.x).toBe(0);
+    vi.advanceTimersByTime(CAMERA_INTENT_GIVE_UP_MS + 1);
+    expect(useCanvasStore.getState().document!.board.viewport).toEqual(stored);
+    expect(cameraIntentHolds()).toBe(false);
+
+    openBoard("b1");
+    rect.a = { x: 0, y: 0, w: 100, h: 100 };
+    centerOnNode("a");
+    applyBoardViewport(docWith());
+    vi.advanceTimersByTime(CAMERA_INTENT_GIVE_UP_MS + 1);
+    expect(useCanvasStore.getState().document!.board.viewport.x).toBe(0);
   });
 
   it("实时板：往返之后才恢复本机视口，保护期内不把居中顶掉", () => {

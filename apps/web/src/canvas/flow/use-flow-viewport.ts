@@ -29,7 +29,7 @@ import {
   type FlowNode,
   type FlowViewport,
 } from "./flow-context";
-import { cameraIntentHolds, startCameraIntent } from "./camera-intent";
+import { holdViewportRestore, startCameraIntent } from "./camera-intent";
 import { cameraForNewNode } from "./reveal";
 
 /**
@@ -285,7 +285,7 @@ export function revealNewNode(nodeId: string): void {
  */
 export function applyBoardViewport(document: BoardDocument): void {
   openingCamera = null;
-  if (cameraIntentHolds()) return;
+  if (holdViewportRestore(() => applyBoardViewport(document))) return;
   const persisted = document.board.viewport;
   if (!isDefaultViewport(persisted)) {
     const adapted = readableOpeningViewport(persisted, document);

@@ -26,6 +26,8 @@ interface Intent {
   startedAt: number;
   landedAt: number | null;
   timers: Set<ReturnType<typeof setTimeout>>;
+  /** 保护期内被拦下的视口恢复；意图一直没落地就放弃时补做（#1028）。 */
+  restore: (() => void) | null;
 }
 
 let current: Intent | null = null;
@@ -46,12 +48,17 @@ export function cancelCameraIntent(): void {
  * （相机已按意图动过）；返回 false 表示还量不到，按时间表再试。
  */
 export function startCameraIntent(attempt: () => boolean): void {
+  const previous = current;
+  const boardId = openBoardId();
+  // 同一块板上的新请求接着旧请求被拦下的那份恢复。
+  const carried = previous?.boardId === boardId ? previous.restore : null;
   cancelCameraIntent();
   const intent: Intent = {
-    boardId: openBoardId(),
+    boardId,
     startedAt: Date.now(),
     landedAt: null,
     timers: new Set(),
+    restore: carried,
   };
   current = intent;
 
@@ -66,6 +73,15 @@ export function startCameraIntent(attempt: () => boolean): void {
     for (const timer of intent.timers) clearTimeout(timer);
     intent.timers.clear();
   };
+
+  // 一直量不到就放弃：释放保护，补做被拦下的恢复，别让相机停在上一块板的位置。
+  const giveUp = setTimeout(() => {
+    if (current !== intent || intent.landedAt !== null) return;
+    const restore = intent.restore;
+    cancelCameraIntent();
+    restore?.();
+  }, CAMERA_INTENT_GIVE_UP_MS);
+  intent.timers.add(giveUp);
 
   for (const delay of CAMERA_INTENT_DELAYS) {
     if (delay === 0) {
@@ -82,10 +98,18 @@ export function startCameraIntent(attempt: () => boolean): void {
 }
 
 /**
- * 当前板上有没有一个还在保护期内的相机意图。视口恢复（开板、实时板的本机
- * 视口）在它为真时不动相机：那份恢复只是「回到上次停的地方」，不该顶掉用户
- * 刚发出的「去那个节点」。
+ * 视口恢复（开板、实时板的本机视口）的入口：当前板上有相机意图在保护期内
+ * 就拦下（返回 true，并记下 `restore`，意图一直没落地就放弃时补做），调用方
+ * 不动相机；否则返回 false，调用方照常恢复。那份恢复只是「回到上次停的
+ * 地方」，不该顶掉用户刚发出的「去那个节点」。
  */
+export function holdViewportRestore(restore: () => void): boolean {
+  if (!cameraIntentHolds()) return false;
+  if (current) current.restore = restore;
+  return true;
+}
+
+/** 当前板上有没有一个还在保护期内的相机意图。 */
 export function cameraIntentHolds(): boolean {
   const intent = current;
   if (!intent) return false;
