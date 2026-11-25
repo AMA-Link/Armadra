@@ -4,6 +4,7 @@ import type { DomBoard } from "@armadra/board/dom";
 
 import { useCanvasStore } from "@/store/canvas-store";
 import { stopFollowing } from "@/realtime/session";
+import { cancelCameraIntent } from "../flow/camera-intent";
 import { clampZoom } from "../zoom";
 import { CAMERA_THROTTLE_MS, isOpeningCamera } from "../flow/use-flow-viewport";
 
@@ -28,10 +29,16 @@ export function useBoardViewportSync(board: DomBoard): void {
         { source: "camera" },
       );
     };
+    const onWheel = () => cancelCameraIntent();
+    window.addEventListener("wheel", onWheel, { passive: true, capture: true });
     const stops = [
       board.on("camera", (state) => {
         pending = state;
-        if (board.gestureActive()) stopFollowing();
+        // 人在动相机：不再跟随，也不再用相机意图去顶他的操作。
+        if (board.gestureActive()) {
+          stopFollowing();
+          cancelCameraIntent();
+        }
         timer ??= setTimeout(flush, CAMERA_THROTTLE_MS);
       }),
       board.on("gesture", ({ active }) => {
@@ -42,6 +49,7 @@ export function useBoardViewportSync(board: DomBoard): void {
     ];
     return () => {
       for (const stop of stops) stop();
+      window.removeEventListener("wheel", onWheel, { capture: true });
       if (timer) clearTimeout(timer);
     };
   }, [board]);

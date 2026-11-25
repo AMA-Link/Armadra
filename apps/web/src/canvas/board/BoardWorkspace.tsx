@@ -25,6 +25,7 @@ import {
 } from "../flow/flow-context";
 import { publishStageView } from "../flow/stage-view";
 import { clearAllDrafts } from "../flow/drafts";
+import { cancelCameraIntent } from "../flow/camera-intent";
 import { applyBoardViewport, centerOnNode } from "../flow/use-flow-viewport";
 import { CanvasOverlays } from "../flow/overlays/CanvasOverlays";
 import { CursorLayer } from "../../realtime/CursorLayer";
@@ -170,6 +171,7 @@ function BoardWorkspaceInner() {
       clearTimeout(settle);
       resize?.disconnect();
       publishStageView(null);
+      cancelCameraIntent();
       adapter.destroy();
       whiteboard.destroy();
       edgeAdapter.destroy();

@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { makeNode, testUuid } from "../test-support";
 import { useCanvasStore } from "@/store/canvas-store";
-import { useRealtimeStore } from "@/realtime/session";
+import type { SocketFactory, SocketLike } from "@/realtime/client";
+import { startRealtime, stopRealtime, useRealtimeStore } from "@/realtime/session";
+import { saveBoardViewport } from "@/realtime/viewport";
 import {
   CAMERA_INTENT_DELAYS,
   CAMERA_INTENT_SETTLE_MS,
@@ -11,7 +13,7 @@ import {
   startCameraIntent,
 } from "./camera-intent";
 import { setFlow, setFlowContainer, type FlowHandle } from "./flow-context";
-import { centerOnNode, revealNewNode } from "./use-flow-viewport";
+import { applyBoardViewport, centerOnNode, revealNewNode } from "./use-flow-viewport";
 
 /**
  * 相机意图（#1028）：新请求取消旧请求、量到尺寸才落地、保护期、卸载清计时器、
@@ -39,6 +41,7 @@ function mountFlow(nodes: Record<string, Rect>) {
         : undefined;
     },
     setCenter,
+    setViewport: vi.fn(() => Promise.resolve(true)),
   } as unknown as FlowHandle);
   setFlowContainer({
     getBoundingClientRect: () => ({ width: 1600, height: 1000 }),
@@ -69,6 +72,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cancelCameraIntent();
+  stopRealtime("b1");
   setFlow(null);
   setFlowContainer(null);
   useRealtimeStore.setState({ following: null });
@@ -165,5 +169,80 @@ describe("相机意图", () => {
     startCameraIntent(() => ++calls >= 3);
     vi.advanceTimersByTime(5000);
     expect(calls).toBe(3);
+  });
+});
+
+describe("保护期内的视口恢复不覆盖意图（#1028 原因 1、2）", () => {
+  const stored = { x: 900, y: 900, zoom: 0.3 };
+
+  function docWith(viewport = stored) {
+    const doc = useCanvasStore.getState().document!;
+    return {
+      ...doc,
+      board: { ...doc.board, viewport },
+    };
+  }
+
+  it("开板的视口恢复：保护期内不写相机也不写文档，放开后照常恢复", () => {
+    const setViewport = vi.fn(() => Promise.resolve(true));
+    setFlow({
+      getViewport: () => ({ x: 0, y: 0, zoom: 1 }),
+      getNode: () => ({
+        id: "a",
+        position: { x: 0, y: 0 },
+        width: 100,
+        height: 100,
+        measured: { width: 100, height: 100 },
+      }),
+      setCenter: vi.fn(() => Promise.resolve(true)),
+      setViewport,
+    } as unknown as FlowHandle);
+    setFlowContainer({
+      getBoundingClientRect: () => ({ width: 1600, height: 1000 }),
+    } as unknown as HTMLElement);
+
+    centerOnNode("a");
+    applyBoardViewport(docWith());
+    expect(setViewport).not.toHaveBeenCalled();
+    expect(useCanvasStore.getState().document!.board.viewport).toEqual({
+      x: 0,
+      y: 0,
+      zoom: 1,
+    });
+
+    vi.advanceTimersByTime(CAMERA_INTENT_SETTLE_MS + 1);
+    applyBoardViewport(docWith());
+    expect(setViewport).toHaveBeenCalledWith(stored);
+  });
+
+  it("实时板：往返之后才恢复本机视口，保护期内不把居中顶掉", () => {
+    mountFlow({ a: { x: 0, y: 0, w: 100, h: 100 } });
+    saveBoardViewport("b1", stored);
+    const sync = (createSocket: SocketFactory) =>
+      startRealtime({ workspaceId: "w", boardId: "b1", createSocket });
+    const socket = (): SocketLike => ({
+      binaryType: "arraybuffer",
+      readyState: 0,
+      onopen: null,
+      onmessage: null,
+      onclose: null,
+      onerror: null,
+      send: () => undefined,
+      close: () => undefined,
+    });
+
+    centerOnNode("a");
+    const stop = sync(socket);
+    expect(useCanvasStore.getState().document!.board.viewport).toEqual({
+      x: 0,
+      y: 0,
+      zoom: 1,
+    });
+    stop();
+
+    vi.advanceTimersByTime(CAMERA_INTENT_SETTLE_MS + 1);
+    const again = sync(socket);
+    expect(useCanvasStore.getState().document!.board.viewport).toEqual(stored);
+    again();
   });
 });

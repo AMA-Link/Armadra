@@ -29,7 +29,7 @@ import {
   type FlowNode,
   type FlowViewport,
 } from "./flow-context";
-import { startCameraIntent } from "./camera-intent";
+import { cameraIntentHolds, startCameraIntent } from "./camera-intent";
 import { cameraForNewNode } from "./reveal";
 
 /**
@@ -281,9 +281,13 @@ export function revealNewNode(nodeId: string): void {
  * 手机上（横竖屏）例外一条（#715）：存的缩放低于字号下限时（多半是桌面上存的
  * 全局视图），把原视口中心最近的节点按首次显示的规则居中，见
  * `opening-viewport.readableOpeningViewport`。
+ *
+ * 相机意图在保护期内（刚跳到某个节点 / 刚新建）时不动相机：这份恢复只是回到
+ * 上次停的地方，不能顶掉用户刚发出的「去那个节点」（#1028）。
  */
 export function applyBoardViewport(document: BoardDocument): void {
   openingCamera = null;
+  if (cameraIntentHolds()) return;
   const persisted = document.board.viewport;
   if (!isDefaultViewport(persisted)) {
     const adapted = readableOpeningViewport(persisted, document);
