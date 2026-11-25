@@ -23,7 +23,7 @@ import {
   safeId,
   readEntries,
   roots,
-  unreadable,
+  listUnreadable,
   updateEntries,
 } from "./grok";
 import { historyAdapter, locateHistory, readHistoryEntries } from "./registry";
@@ -219,7 +219,7 @@ describe("Grok 会话索引", () => {
     ).toBe(path);
   });
 
-  it("根下读不了：回上一趟读成功的，不清空；从没成功过时标记 unreadable", () => {
+  it("根下读不了：回上一趟读成功的，不清空；从没成功过时标记 listUnreadable", () => {
     const path = writeSession(SID);
     const root = roots()[0] as string;
     expect(candidates(root).map((one) => one.path)).toEqual([path]);
@@ -227,10 +227,10 @@ describe("Grok 会话索引", () => {
     try {
       if (process.platform !== "win32" && process.getuid?.() !== 0) {
         expect(candidates(root).map((one) => one.path)).toEqual([path]);
-        expect(unreadable(root)).toBe(false);
+        expect(listUnreadable(root)).toBe(false);
         forgetListingsForTest();
         expect(candidates(root)).toEqual([]);
-        expect(unreadable(root)).toBe(true);
+        expect(listUnreadable(root)).toBe(true);
       }
     } finally {
       chmodSync(root, 0o755);
@@ -238,10 +238,10 @@ describe("Grok 会话索引", () => {
     // 根没了是「这台机器上没有」，不是读失败。
     rmSync(root, { recursive: true });
     expect(candidates(root)).toEqual([]);
-    expect(unreadable(root)).toBe(false);
+    expect(listUnreadable(root)).toBe(false);
   });
 
-  it("某个分组读失败：沿用上一趟那一组；从没读成功过的组标记 unreadable，不影响读得了的组", () => {
+  it("某个分组读失败：沿用上一趟那一组；从没读成功过的组标记 listUnreadable，不影响读得了的组", () => {
     const keep = writeSession("keep", { group: "g-keep" });
     const flaky = writeSession("flaky", { group: "g-flaky" });
     const root = roots()[0] as string;
@@ -259,16 +259,16 @@ describe("Grok 会话索引", () => {
           .map((one) => one.path)
           .sort(),
       ).toEqual([flaky, keep].sort());
-      expect(unreadable(root)).toBe(false);
+      expect(listUnreadable(root)).toBe(false);
       // 重启后第一趟：没有上一趟可沿用，读得了的组照常列出，索引这一趟不对账。
       forgetListingsForTest();
       expect(candidates(root).map((one) => one.path)).toEqual([keep]);
-      expect(unreadable(root)).toBe(true);
+      expect(listUnreadable(root)).toBe(true);
     } finally {
       chmodSync(group, 0o755);
     }
     expect(candidates(root)).toHaveLength(2);
-    expect(unreadable(root)).toBe(false);
+    expect(listUnreadable(root)).toBe(false);
   });
 
   it("会话索引：读不了的根不对账（已有的行留着），根没了才清", () => {

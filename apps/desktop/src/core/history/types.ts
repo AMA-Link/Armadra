@@ -165,11 +165,6 @@ export interface HistoryAdapter {
     fromOffset: number,
     maxBytes: number,
   ): EntryRange;
-  /**
-   * 这个根这一趟读不了、又没有可回的上一趟（`list` 答空是因为读失败，不是因为没有）：
-   * 会话索引这一趟不对账，已有的行原样留着。缺省 = 读得了。
-   */
-  unreadable?(root: string): boolean;
   readonly cost?: CostCollector;
   /**
    * `false` = 这家只有会话索引、没有记录可读（`readEntries` 恒答空）。连线读取的

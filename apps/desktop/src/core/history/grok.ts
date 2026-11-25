@@ -46,7 +46,7 @@ import type {
  * 这里不做任何路径分隔符的假设，cwd 取 `summary.json` 里 grok 自己记的那个字符串。
  *
  * 读失败不清空索引：会话索引见到空列表就清掉这一家的行。根目录读不了（不是「没有」）
- * 时回上一趟读成功的；从没成功过则 {@link unreadable} 为真，索引这一趟不对账。
+ * 时回上一趟读成功的；从没成功过则 {@link listUnreadable} 为真，索引照常写入、只跳过清掉没见到的行。
  */
 
 export const UPDATES_FILE = "updates.jsonl";
@@ -105,7 +105,7 @@ function groupCandidates(group: string): Candidate[] | "unreadable" {
 
 /**
  * `<root>/<分组>/<会话 id>/updates.jsonl`。分组目录读不了就用上一趟那一组的；根
- * 目录读不了且从没读成功过，{@link unreadable} 为真。根不存在是「这台机器上没有」，
+ * 目录读不了且从没读成功过，{@link listUnreadable} 为真。根不存在是「这台机器上没有」，
  * 照常答空。
  */
 export function candidates(root: string): Candidate[] {
@@ -145,7 +145,7 @@ export function candidates(root: string): Candidate[] {
 }
 
 /** 这个根上一趟读不了、又没有可回的上一趟：会话索引这一趟不对账。 */
-export function unreadable(root: string): boolean {
+export function listUnreadable(root: string): boolean {
   return unreadableRoots.has(root);
 }
 
@@ -474,6 +474,6 @@ export const grokAdapter: HistoryAdapter = {
   list: candidates,
   parse: (candidate) => parse(candidate.path),
   readEntries,
-  unreadable,
+  listUnreadable,
   cost: { kind: "jsonl", source: costSource },
 };
