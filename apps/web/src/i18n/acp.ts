@@ -69,6 +69,8 @@ export const acp: MessageModule = {
     "acp.permission.awaitingDriver": "等待接管",
     "acp.permission.announce": "等待审批：{title}",
     "acp.permission.failed": "没有答上",
+    "acp.permission.delivery.not_sent":
+      "没有发键（卡已变化或不能代答），请在终端里答",
     "acp.permission.delivery.unconfirmed": "按键已发，没有确认生效，请看终端",
     "acp.permission.delivery.mismatch": "终端里的结果与所选不一致，请看终端",
     "acp.permission.delivery.ambiguous":
@@ -263,6 +265,8 @@ export const acp: MessageModule = {
     "acp.permission.awaitingDriver": "Waiting for a driver",
     "acp.permission.announce": "Approval needed: {title}",
     "acp.permission.failed": "Answer not sent",
+    "acp.permission.delivery.not_sent":
+      "No key was sent (the card changed or cannot be answered); answer in the terminal",
     "acp.permission.delivery.unconfirmed":
       "Key sent but not confirmed; check the terminal",
     "acp.permission.delivery.mismatch":

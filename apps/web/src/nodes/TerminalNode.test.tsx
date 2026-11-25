@@ -495,6 +495,7 @@ describe("TerminalNode body", () => {
         ["unconfirmed", "按键已发，没有确认生效，请看终端"],
         ["mismatch", "终端里的结果与所选不一致，请看终端"],
         ["ambiguous", "终端里同时有多张卡，结果不确定，请看终端"],
+        ["not_sent", "没有发键（卡已变化或不能代答），请在终端里答"],
       ] as const)(
         "%s is said out loud, confirmed is not",
         async (delivery, text) => {

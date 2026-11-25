@@ -20,7 +20,8 @@ export interface ApprovalRecord {
   /** 保留字段：core 不做 revision CAS，恒为 0。 */
   revision: bigint;
   /** 终端卡上的按键有没有被看到生效（契约 §127）；别的路由没有。 */
-  delivery?: "confirmed" | "unconfirmed" | "mismatch" | "ambiguous";
+  delivery?:
+    "confirmed" | "unconfirmed" | "mismatch" | "ambiguous" | "not_sent";
 }
 
 /**
