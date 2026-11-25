@@ -4,7 +4,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { initializeContextSequence } from "../terminal/sequences";
 import { uuidV7 } from "../workspaces/support";
 import { type HookFixture, hookFixture, insertSession } from "./fixture";
-import { BLOCKED, DONE, WORKING, stateEvent } from "./normalize/event";
+import { BLOCKED, DONE, WAITING, WORKING, stateEvent } from "./normalize/event";
+import { cardNoticeOf, setCardNotice } from "../agent/pending-cards";
+import { sessionEvent } from "./normalize/event";
 import {
   installInternalReporter,
   internalReporter,
@@ -319,5 +321,61 @@ describe("审批记录结案（settlesApproval，契约 §127）", () => {
       answered_by: "core",
     });
     expect(answerOf(it_, "other")).toEqual({ answer: null, answered_by: null });
+  });
+});
+
+describe("终端卡的头部提示（cardNotice，契约 §127）", () => {
+  const send = (it_: HookFixture, state: string, patch = {}) => {
+    const event = stateEvent(it_.nodeId, "claude", state as never);
+    event.stateSource = "acp";
+    Object.assign(event, patch);
+    return reportInternal(it_.context, {
+      nodeId: it_.nodeId,
+      agentId: "claude",
+      event,
+    });
+  };
+  const frames = (it_: HookFixture) =>
+    it_.published.filter((event) => event.type === "agent.status") as {
+      status: Record<string, unknown>;
+    }[];
+
+  it("cardNotice 进状态帧；离开等待就撤掉，下一帧不再带", () => {
+    const it_ = fixture();
+    send(it_, WAITING, { cardNotice: "unverified_version" });
+    expect(frames(it_).at(-1)?.status.cardNotice).toBe("unverified_version");
+    send(it_, WORKING);
+    expect(cardNoticeOf(it_.nodeId)).toBeUndefined();
+    expect(frames(it_).at(-1)?.status).not.toHaveProperty("cardNotice");
+  });
+
+  it("会话开始 / 结束（grok 退出）也撤掉头部提示，不管是哪一种", () => {
+    for (const notice of ["unverified_version", "unconfirmed"] as const) {
+      for (const phase of ["start", "end"] as const) {
+        const it_ = fixture();
+        send(it_, WORKING);
+        setCardNotice(it_.nodeId, notice);
+        const event = sessionEvent(it_.nodeId, "claude", phase);
+        event.stateSource = "acp";
+        reportInternal(it_.context, {
+          nodeId: it_.nodeId,
+          agentId: "claude",
+          event,
+        });
+        expect(cardNoticeOf(it_.nodeId)).toBeUndefined();
+      }
+    }
+  });
+
+  it("键没被看到生效的提示留过 working，到 done 才撤", () => {
+    const it_ = fixture();
+    send(it_, WORKING);
+    setCardNotice(it_.nodeId, "mismatch");
+    send(it_, WORKING);
+    expect(cardNoticeOf(it_.nodeId)).toBe("mismatch");
+    expect(frames(it_).at(-1)?.status.cardNotice).toBe("mismatch");
+    send(it_, DONE);
+    expect(cardNoticeOf(it_.nodeId)).toBeUndefined();
+    expect(frames(it_).at(-1)?.status).not.toHaveProperty("cardNotice");
   });
 });

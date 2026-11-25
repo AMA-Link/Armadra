@@ -441,6 +441,30 @@ describe("TerminalNode body", () => {
       ).not.toBeNull();
     });
 
+    it.each([
+      ["unconfirmed", "按键未确认，请看终端"],
+      ["mismatch", "终端结果与所选不一致"],
+      ["ambiguous", "终端里的卡不确定"],
+      ["not_sent", "没有发键，请在终端里答"],
+      ["unverified_version", "此 grok 版本未验证，不代答"],
+      ["mode_excluded", "此节点的权限模式不代答"],
+    ] as const)(
+      "cardNotice %s stays in the header (contract §127)",
+      async (notice, text) => {
+        pending({ cardNotice: notice });
+        renderNode(acpNode());
+        const chip = await screen.findByText(text);
+        expect(chip.closest("[data-slot=card-notice]")).not.toBeNull();
+      },
+    );
+
+    it("no notice, no chip; an unknown notice is not drawn", async () => {
+      pending({ cardNotice: "future" });
+      renderNode(acpNode());
+      await screen.findByRole("button", { name: "允许" });
+      expect(document.querySelector("[data-slot=card-notice]")).toBeNull();
+    });
+
     it("a card kind this page does not know is treated the same way", async () => {
       pending({ pendingCard: "future" });
       renderNode(acpNode());

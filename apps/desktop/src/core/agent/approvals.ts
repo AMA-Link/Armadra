@@ -15,6 +15,8 @@ import { conflict, badRequest, notFound, rfc3339 } from "../workspaces/support";
 import { getAgentStatus } from "./status";
 import { checkElicitationAnswer, elicitationOf } from "../acp/elicitation";
 import type { AcpElicitationResult } from "../acp/types";
+import { withStalled } from "./stalled";
+import { setCardNotice } from "./pending-cards";
 import {
   type GrokDelivery,
   deliverGrokAnswer,
@@ -524,6 +526,18 @@ export async function answerApproval(
     refusal,
   });
 
+  if (delivery !== undefined && delivery !== "confirmed") {
+    // 头部常驻一句（到这一回合结束）：键没有被看到生效，去终端看一眼。
+    setCardNotice(approval.nodeId, delivery);
+    const status = getAgentStatus(context.database, approval.nodeId);
+    if (status !== undefined) {
+      context.publish(approval.workspaceId, {
+        type: "agent.status",
+        status: withStalled(status) as unknown as Record<string, unknown>,
+      });
+    }
+  }
+
   const action =
     elicitation?.ok === true
       ? { action: elicitation.result.action }
@@ -607,6 +621,27 @@ export function cancelOpenApproval(
     request: resolvedPayload(approval, "cancelled", "acp"),
   });
   return approval;
+}
+
+/**
+ * 启动时一次：上一个进程留下的、答在终端卡上的审批（`request.protocol` 为
+ * `protocol`，今天只有 `grok-card`）。读取它们的槽和登记表随进程没了，没有谁还能
+ * 核对、发键；一律记 `cancelled` / `core`，别让头部挂着答不出去的按钮。答过的不动。
+ */
+export function cancelStaleCardApprovals(
+  context: Pick<CollabContext, "database" | "publish">,
+  protocol: string,
+): number {
+  const open = context.database
+    .prepare(
+      "SELECT id FROM agent_approvals WHERE answer IS NULL AND json_extract(request_json, '$.protocol') = ?",
+    )
+    .all(protocol) as { id: string }[];
+  let closed = 0;
+  for (const row of open) {
+    if (cancelOpenApproval(context, row.id) !== undefined) closed += 1;
+  }
+  return closed;
 }
 
 /* ---------------------------------- audit --------------------------------- */

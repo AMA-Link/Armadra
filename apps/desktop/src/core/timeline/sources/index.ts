@@ -34,6 +34,7 @@ import {
   stateSourceIsReported,
 } from "../../agent/state-source";
 import {
+  type CardLaunch,
   type StateSlot,
   type StateSlotContext,
   type StateSlotProvider,
@@ -141,7 +142,11 @@ export interface TerminalFacts {
   env?(sessionId: string, name: string): string | undefined;
   screen?(sessionId: string): Promise<string | undefined>;
   /** 终端卡可以代答吗（`agent/grok-answer.ts` 的门）。 */
-  answerCards?(sessionId: string, nodeId: string): Promise<boolean>;
+  answerCards?(
+    sessionId: string,
+    nodeId: string,
+    launch: () => CardLaunch,
+  ): Promise<{ readonly open: boolean; readonly reason?: string }>;
 }
 
 export interface SourceManagerOptions {
@@ -504,8 +509,9 @@ export class SourceManager {
           this.reporting.delete(row.id);
         }
       },
-      answerCards: () =>
-        this.facts?.answerCards?.(row.id, nodeId) ?? Promise.resolve(false),
+      answerCards: (launch) =>
+        this.facts?.answerCards?.(row.id, nodeId, launch) ??
+        Promise.resolve({ open: false }),
       report: (event, options) => {
         const report = internalReporter();
         if (report === undefined) return false;

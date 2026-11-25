@@ -7,6 +7,7 @@ import {
   readFileSync,
   readSync,
   readdirSync,
+  readlinkSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -19,6 +20,7 @@ import { safeId } from "../../history/grok";
 import { expectedProcesses } from "../../agent/launch";
 import { SCREEN_SIGNATURES } from "../../agent/screen-gate";
 import {
+  type CardLaunch,
   type StateSlot,
   type StateSlotContext,
   type StateSlotProvider,
@@ -26,6 +28,8 @@ import {
 import {
   GROK_CARD_PROTOCOL,
   type GrokCardRecord,
+  type GrokProcessInfo,
+  launchOfProcess,
   registerGrokCardSource,
 } from "../../agent/grok-answer";
 import { parseGrokApprovalCard } from "../../agent/grok-card";
@@ -146,6 +150,12 @@ export interface GrokDeps {
   /** Where `events.jsonl` of this row is, or `undefined`. */
   locate(home: string, row: ActiveRow): string | undefined;
   now(): number;
+  /**
+   * The executable and argv of a running process, or `undefined` when they cannot
+   * be read. The approval gate reads grok's own launch arguments, not what the
+   * node says it was launched with (contract §127).
+   */
+  processInfo?(pid: number): GrokProcessInfo | undefined;
 }
 
 /* ------------------------------ real readers ------------------------------ */
@@ -277,6 +287,56 @@ export function locateEvents(home: string, row: ActiveRow): string | undefined {
   return undefined;
 }
 
+/**
+ * The executable path and argv of a live process. Linux reads `/proc` (exact
+ * argv); elsewhere `ps` (argv comes back as one line, split on spaces, which is
+ * enough to find the flag). `undefined` when neither works.
+ */
+export function readProcessInfo(pid: number): GrokProcessInfo | undefined {
+  if (process.platform === "win32" || !Number.isInteger(pid) || pid <= 0) {
+    return undefined;
+  }
+  try {
+    const raw = readFileSync(`/proc/${pid}/cmdline`);
+    if (raw.length > 0) {
+      let exe: string | undefined;
+      try {
+        exe = readlinkSync(`/proc/${pid}/exe`);
+      } catch {
+        exe = undefined;
+      }
+      return {
+        exe,
+        exact: true,
+        args: raw
+          .toString("utf8")
+          .split("\u0000")
+          .filter((arg) => arg !== ""),
+      };
+    }
+  } catch {
+    // not Linux, or the process is gone: fall through to ps
+  }
+  const run = (field: string) =>
+    spawnSync("ps", ["-p", String(pid), "-o", `${field}=`], {
+      encoding: "utf8",
+      timeout: 3_000,
+    });
+  const args = run("args");
+  if (args.status !== 0 || typeof args.stdout !== "string") return undefined;
+  const line = args.stdout.trim();
+  if (line === "") return undefined;
+  const comm = run("comm");
+  const exe =
+    comm.status === 0 && typeof comm.stdout === "string"
+      ? comm.stdout.trim()
+      : "";
+  return {
+    ...(exe === "" ? {} : { exe }),
+    args: line.split(/\s+/),
+  };
+}
+
 export const realGrokDeps: GrokDeps = {
   home: (sessionHome) => grokHome(process.env, sessionHome),
   readActive: readActiveSessions,
@@ -284,6 +344,7 @@ export const realGrokDeps: GrokDeps = {
   platform: () => process.platform,
   locate: locateEvents,
   now: () => Date.now(),
+  processInfo: readProcessInfo,
 };
 
 /* ------------------------------- one session ------------------------------- */
@@ -606,6 +667,7 @@ class GrokSlot implements StateSlot {
       requests: () => this.openRequests(),
       outcomeAfter: (sessionId, offset) =>
         this.followed.get(sessionId)?.tail.outcomeAfter(offset) ?? "unknown",
+      launch: (sessionId) => this.launchOf(sessionId),
     });
     // A record an earlier slot (or an earlier core run) left open cannot be
     // answered any more: the registry that checks it died with that slot. If the
@@ -616,6 +678,14 @@ class GrokSlot implements StateSlot {
     });
     this.readNow();
     this.arm();
+  }
+
+  /** 这个会话的 grok 进程实际的启动方式：现读它的 argv 与可执行文件。 */
+  private launchOf(sessionId: string): CardLaunch {
+    const pid = this.followed.get(sessionId)?.row.pid;
+    return launchOfProcess(
+      pid === undefined ? undefined : this.deps.processInfo?.(pid),
+    );
   }
 
   /** 所有会话里没答的权限请求（偏移是请求的身份）。 */
@@ -1064,14 +1134,45 @@ class GrokSlot implements StateSlot {
         this.cardTries.set(key, 3);
         return;
       }
-      if (!(await answerCards())) {
-        // 门关着：这张卡不再问（开了设置之后的下一张卡才算）。
+      // argv 在门里最后才读：设置关着或清单是空的，不会为 grok 读进程。
+      const gate = await answerCards(() => this.launchOf(request.sessionId));
+      this.context.log.debug("grok card gate", { key, ...gate });
+      if (!gate.open) {
+        // 门关着：这张卡不再问（开了设置之后的下一张卡才算）。设置开着却建不了
+        // 记录（版本没验证、节点不是 `--permission-mode` 启动的）时，头部要说原因。
         this.cardTries.set(key, 3);
+        // 判定是异步的：回来之后这条请求还得是唯一一条没答的，否则这条 WAITING 会把
+        // 已经回到 working / done 的节点盖回去。
+        const open = this.openRequests();
+        if (
+          !this.stopped &&
+          open.length === 1 &&
+          open[0]?.sessionId === request.sessionId &&
+          open[0]?.offset === request.offset &&
+          (gate.reason === "unverified_version" ||
+            gate.reason === "mode_excluded")
+        ) {
+          const notice = stateEvent(
+            this.context.nodeId,
+            this.context.agentId,
+            WAITING,
+          );
+          notice.cardNotice = gate.reason;
+          notice.sessionId = request.sessionId;
+          this.send(notice);
+        }
         return;
       }
       const text = await screen();
       if (this.stopped || text === undefined) return;
       const card = parseGrokApprovalCard(text);
+      // Only whether it parsed and how many lines: the screen itself is terminal
+      // output and does not go into the log.
+      this.context.log.debug("grok card parsed", {
+        key,
+        parsed: card !== undefined,
+        lines: text.split("\n").length,
+      });
       if (card === undefined) return;
       // 抓屏是异步的：回来之后还得是同一条、而且是唯一一条。
       const open = this.openRequests();

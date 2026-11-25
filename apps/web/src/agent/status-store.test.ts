@@ -286,6 +286,31 @@ describe("agent status mirror", () => {
     expect(store().statuses[scoped("other")]).not.toHaveProperty("pendingCard");
   });
 
+  it("restores the terminal-card notice a reload would otherwise drop (contract §127)", () => {
+    store().hydrate(
+      [
+        {
+          nodeId: NODE,
+          boardId: "board",
+          sessionId: "s1",
+          kind: "terminal",
+          title: "grok",
+          cwd: "/repo",
+          agentId: "grok",
+          state: "waiting",
+          cardNotice: "unverified_version",
+          unread: false,
+          updatedAt: at(0),
+          alive: true,
+        } as SessionSummary,
+      ],
+      WORKSPACE,
+    );
+    expect(store().statuses[scoped(NODE)]).toMatchObject({
+      cardNotice: "unverified_version",
+    });
+  });
+
   // 刷新后来源徽标要还在：`agent.status` 帧只描述下一个回合，重建镜像的
   // 是这份会话列表（协作通道 §3.2）。
   it("restores the state source a reload would otherwise drop", () => {

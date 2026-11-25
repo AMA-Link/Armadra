@@ -171,7 +171,7 @@ describe("parseGrokApprovalCard", () => {
           case 2:
             rows[index] = (rows[index] ?? "").replace(
               /(Yes|No|Always|Never)/,
-              "Zed",
+              "Zzz",
             );
             break;
           default:

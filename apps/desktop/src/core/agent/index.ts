@@ -27,7 +27,13 @@ import {
   noteAcknowledged,
   readForCaller,
 } from "../handoff/store";
-import { ORPHAN_MINUTES, pendingDir, sweepOrphans } from "./approvals";
+import {
+  ORPHAN_MINUTES,
+  cancelStaleCardApprovals,
+  pendingDir,
+  sweepOrphans,
+} from "./approvals";
+import { GROK_CARD_PROTOCOL } from "./grok-answer";
 import { armProbeSweep } from "./probe";
 import { installRoutes } from "./routes";
 import { AmaCredentials, setAmaCredentials } from "./ama-credentials";
@@ -117,6 +123,23 @@ export function setTerminalBridge(bridge: TerminalBridge | undefined): void {
 }
 
 export function install(context: CoreContext): CollabContext {
+  // 上一个进程留下的 grok 终端卡审批（契约 §127）：槽与登记表随进程没了，记
+  // `cancelled`，与 ACP 域启动时对它自己的审批做的一样。
+  try {
+    cancelStaleCardApprovals(
+      {
+        database: context.db.database,
+        publish: (workspaceId, event) => {
+          context.bus.emit("workspace.event", { workspaceId, event });
+        },
+      },
+      GROK_CARD_PROTOCOL,
+    );
+  } catch (error) {
+    context.log.warn("could not settle stale grok card approvals", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
   const collabState = collabContext({
     database: context.db.database,
     // Read through the settings store on every call rather than snapshotted:

@@ -1,4 +1,9 @@
 import type { DatabaseSync } from "node:sqlite";
+import {
+  cardNoticeOf,
+  clearCardNotice,
+  setCardNotice,
+} from "../agent/pending-cards";
 import { allocateSourceRevision, recordTrustedReport } from "../runs/reports";
 import type { EventBus } from "../bus";
 import { baseAgent, hasCapability } from "./capabilities";
@@ -465,6 +470,21 @@ export function apply(
     reduce(now.getTime(), current, memory, event),
   );
   if (next === undefined) return undefined;
+
+  // Terminal-card notices (contract §127): the slot's "no record, and why" lasts
+  // while the turn waits; a keys-not-confirmed notice lasts to the turn's end.
+  if (event.cardNotice !== undefined) {
+    setCardNotice(event.nodeId, event.cardNotice);
+  } else if (event.kind === "session" || next.state === "done") {
+    // A session start or end (grok exiting included) ends whatever was said about
+    // the card on it.
+    clearCardNotice(event.nodeId);
+  } else if (next.state !== "waiting" && next.state !== "blocked") {
+    const shown = cardNoticeOf(event.nodeId);
+    if (shown === "unverified_version" || shown === "mode_excluded") {
+      clearCardNotice(event.nodeId);
+    }
+  }
 
   const approval = next.state === "blocked" ? next.pendingId : undefined;
   const status = upsertAgentStatus(

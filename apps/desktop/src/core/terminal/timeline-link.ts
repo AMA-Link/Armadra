@@ -6,7 +6,11 @@ import {
   nodePermissionMode,
 } from "../agent/grok-answer";
 import { settingsDomain } from "../settings";
-import { rowLiveness, timelineDomainOf } from "../timeline";
+import {
+  type TimelineDomain,
+  rowLiveness,
+  timelineDomainOf,
+} from "../timeline";
 import type { TerminalManager } from "./manager";
 
 /**
@@ -20,8 +24,12 @@ import type { TerminalManager } from "./manager";
 export function linkTimeline(
   context: CoreContext,
   manager: TerminalManager,
+  timeline:
+    | (Pick<TimelineDomain, "setLiveness"> & {
+        readonly sources: Pick<TimelineDomain["sources"], "setTerminalFacts">;
+      })
+    | undefined = timelineDomainOf(context.server),
 ): void {
-  const timeline = timelineDomainOf(context.server);
   timeline?.setLiveness((sessionId) =>
     manager.isAlive(sessionId)
       ? "alive"
@@ -33,14 +41,15 @@ export function linkTimeline(
     pid: (sessionId) => manager.pidOf(sessionId),
     remote: (sessionId) => manager.isRemote(sessionId),
     env: (sessionId, name) => manager.envOf(sessionId, name),
-    // 终端卡代答的门（契约 §127）：已验证版本、用户设置、启动模式都过了才建审批记录。
-    answerCards: async (_sessionId, nodeId) => {
-      // 清单、设置、模式三样都过了才探版本（`cardAnswerGate`）。
+    // 终端卡代答的门（契约 §127）：设置、grok 进程自己的 argv（权限模式）、它跑的那个
+    // 可执行文件的版本都过了才建审批记录。清单、设置、模式三样过了才探版本。
+    answerCards: async (_sessionId, nodeId, launch) => {
       const gate = await cardAnswerGate({
         setting: settingsDomain()?.settings.get(GROK_ANSWER_SETTING),
-        permissionMode: nodePermissionMode(context.db.database, nodeId),
+        launch,
+        declared: () => nodePermissionMode(context.db.database, nodeId),
       });
-      return gate.open;
+      return gate.open ? { open: true } : { open: false, reason: gate.reason };
     },
     screen: async (sessionId) => {
       try {

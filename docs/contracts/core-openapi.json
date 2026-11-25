@@ -1577,6 +1577,10 @@
                                           "type": "string",
                                           "maxLength": 40
                                         },
+                                        "cardNotice": {
+                                          "type": "string",
+                                          "maxLength": 40
+                                        },
                                         "verified": {
                                           "type": "boolean",
                                           "default": false
@@ -17853,6 +17857,10 @@
                         "type": "string"
                       },
                       "pendingCard": {
+                        "type": "string",
+                        "maxLength": 40
+                      },
+                      "cardNotice": {
                         "type": "string",
                         "maxLength": 40
                       },
