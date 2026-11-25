@@ -12,6 +12,10 @@ import {
  *
  * 画面全是自编的文本：只保留每家对话框与提示符里那几行有辨识度的字，布局、
  * 路径与状态栏都是编的，不含任何真实会话内容。
+ *
+ * 例外是来自真机的：`AGY_TRUST`、`AGY_APPROVAL` 与 `AGY_IDLE_*` 是 Antigravity CLI
+ * 1.5.16 的真画面（tmux / PTY，2026-11-24，已去掉邮箱与本机路径）；Grok 的两张
+ * 是 Grok Build 1.0.92 的真画面。别的家的是按安装包字符串或官方文档编的。
  */
 
 function profile(id: string): ScreenProfile {
@@ -132,23 +136,58 @@ const GROK_TRUST = [
   "  No, quit  n",
 ].join("\n");
 
+// 1.5.16 真画面：未信任的目录里启动，没发提示。信任框下面残留的只有页脚的右半
+// （`auto · 模型 · 强度`），左侧没有 `? for shortcuts`。
 const AGY_TRUST = [
-  "  Accessing workspace:",
-  "  /tmp/demo",
-  "",
-  "  Do you trust the contents of this project?",
-  "  Antigravity CLI requires permission to read, edit, and execute files here.",
-  "",
-  "  > Yes, I trust this folder",
-  "    No, exit",
+  "Accessing workspace:",
+  "/tmp/demo",
+  "Do you trust the contents of this project?",
+  "Antigravity CLI requires permission to read, edit, and execute files here.",
+  "> Yes, I trust this folder",
+  "  No, exit",
   "  ↑/↓ Navigate · enter Confirm",
+  "                                                              auto · Gemini 4 Neon · high",
 ].join("\n");
 
+// 1.5.16 真画面：auto 模式下往工作区之外写文件弹出的审批卡。卡开着时页脚左侧是
+// `esc to cancel`，不是 `? for shortcuts`。
 const AGY_APPROVAL = [
-  "  Run command: rm -r build",
-  "  Yes, and always allow for commands that start with 'rm'",
-  "  Yes",
-  "  No, and always deny for rm",
+  "      ▄▀▀▄        Antigravity CLI 1.5.16",
+  "     ▀▀▀▀▀▀       Gemini 4 Neon (High)",
+  "   ▄▀▀    ▀▀▄     /tmp/demo",
+  "────────────────────────────────────────────────────────────",
+  "> Create a file p2.txt containing hi, then run pwd",
+  '○ Thought for 19.0s (Creating `/tmp/aa/p2.txt` with the content "hi".)',
+  "● Edited 1 file (p2.txt)",
+  "○ Running (pwd) (ctrl+o to expand)",
+  "Create file",
+  "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+  "/private/tmp/aa/p2.txt  +1",
+  "  1  +  hi",
+  "Reason: outside workspace",
+  "Allow creation of this file?",
+  "> 1. Yes, allow creation",
+  "  2. Yes, and always allow non-workspace access",
+  "  3. No, deny creation",
+  "  ↑/↓ Navigate · f full diff",
+  "esc to cancel                                                                                auto · Gemini 4 Neon · high",
+].join("\n");
+
+// 1.5.16 真画面：空闲，Auto 模式与 Default 模式的页脚（Default 只有一个 `·`）。
+const AGY_IDLE_AUTO = [
+  "> Run the shell command: echo hi",
+  "● Ran (echo hi) (ctrl+o to expand)",
+  "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+  "> Auto mode: edits & safe commands auto-approved (shift+tab to cycle)",
+  "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+  "? for shortcuts                                                                              auto · Gemini 4 Neon · high",
+].join("\n");
+
+const AGY_IDLE_DEFAULT = [
+  "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+  ">",
+  "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+  "? for shortcuts                                                                                     Gemini 4 Neon · high",
 ].join("\n");
 
 const COPILOT_TRUST = [
@@ -295,7 +334,7 @@ describe("judgeScreen", () => {
     ).toEqual({ kind: "no-prompt" });
   });
 
-  it("Antigravity：目录信任与审批卡都拦；没有提示符特征，首投不要求看得见提示符", () => {
+  it("Antigravity：真实的信任框与开着的审批卡都拦，卡的 id 是 agy.approval", () => {
     for (const first of [true, false]) {
       expect(judgeScreen(profile("agy"), AGY_TRUST, first)).toEqual({
         kind: "dialog",
@@ -306,16 +345,37 @@ describe("judgeScreen", () => {
         dialog: "agy.approval",
       });
     }
-    expect(profile("agy").prompt).toBeUndefined();
   });
 
-  // 没有提示符特征，就没有「输入框在它下面」的位置规则：已答过的卡留在画面上时这道门
-  // 持续拦截。这是已知的取舍（跟进见 Issue），这条用例把它钉住，免得被悄悄改成放行。
-  it("Antigravity：已答过的卡留在历史里仍然拦（没有提示符特征可放行它）", () => {
-    const answered = `${AGY_APPROVAL}\n  Ran command\n> `;
-    expect(judgeScreen(profile("agy"), answered, true)).toEqual({
-      kind: "dialog",
-      dialog: "agy.approval",
+  it("Antigravity：页脚的右半（左侧没有提示）不算提示符，Default 模式与窄终端的页脚算", () => {
+    const rightHalf = "                    auto · Gemini 4 Neon · high";
+    expect(judgeScreen(profile("agy"), rightHalf, false)).toEqual({
+      kind: "clear",
+    });
+    // 信任框下残留的右半页脚不能把框当成「提示符在它下面」而放行。
+    expect(judgeScreen(profile("agy"), AGY_TRUST, false).kind).toBe("dialog");
+    const prompt = profile("agy").prompt as RegExp;
+    expect(prompt.test(AGY_IDLE_AUTO.split("\n").at(-1) as string)).toBe(true);
+    expect(prompt.test(AGY_IDLE_DEFAULT.split("\n").at(-1) as string)).toBe(
+      true,
+    );
+    // 窄终端：间距压到一个空格。
+    expect(prompt.test("? for shortcuts auto · Gemini 4 Neon · high")).toBe(
+      true,
+    );
+    // 开卡与生成时左侧是 `esc to cancel`。
+    expect(prompt.test(AGY_APPROVAL.split("\n").at(-1) as string)).toBe(false);
+  });
+
+  it("Antigravity：答过的卡留在历史里（页脚在它下面）放行，卡在页脚下面拦", () => {
+    expect(
+      judgeScreen(profile("agy"), `${AGY_APPROVAL}\n${AGY_IDLE_AUTO}`, false),
+    ).toEqual({ kind: "clear" });
+    expect(
+      judgeScreen(profile("agy"), `${AGY_IDLE_AUTO}\n${AGY_APPROVAL}`, false),
+    ).toEqual({ kind: "dialog", dialog: "agy.approval" });
+    expect(judgeScreen(profile("agy"), AGY_IDLE_DEFAULT, false)).toEqual({
+      kind: "clear",
     });
   });
 

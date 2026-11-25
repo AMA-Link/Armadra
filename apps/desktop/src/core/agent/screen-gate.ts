@@ -227,10 +227,20 @@ export const SCREEN_SIGNATURES: Readonly<Record<string, ScreenSignatures>> = {
       },
     ],
   },
-  // Antigravity：只有 `--unverified`（没有状态通道）时才用得到这道门。**没有提示符
-  // 特征**：首投不要求看得见提示符，所以已答过的卡留在画面上时这道门会持续拦截
-  // （没有「输入框在它下面」的位置规则可以放行它）；跟进见 Issue「agy 画面门」。
+  // Antigravity：只有 `--unverified`（没有状态通道）时才用得到这道门。提示符取输入框
+  // 下面那一行页脚：空闲时左侧是 `? for shortcuts`，右侧是 `auto · <模型> · <强度>`
+  // （Default 模式只有一个 `·`）。生成时与审批卡开着时左侧都换成 `esc to cancel`
+  // （1.5.16 真画面；1.5.17 二进制里 derivePhase / deriveHints / RenderBuiltIn 一致：
+  // 待确认列表非空时阶段是 ToolConfirmation，强制显示 EscToCancel，不画
+  // `? for shortcuts`）。agy 不发 OSC 133，所以只能靠页脚。答过的审批卡留在历史里
+  // （页脚在它下面）按位置规则放行。
   agy: {
+    prompt: {
+      pattern: /^\s*\? for shortcuts\s+\S.*·/,
+      verified: true,
+      source:
+        "Antigravity CLI 1.5.16 本机真画面的空闲页脚与开卡画面（tmux / PTY，2026-11-24；开卡时左侧是 `esc to cancel`）；1.5.17 二进制一致",
+    },
     dialogs: [
       {
         // 「Yes」会把目录记进用户的信任列表。
@@ -241,13 +251,13 @@ export const SCREEN_SIGNATURES: Readonly<Record<string, ScreenSignatures>> = {
         source: "Antigravity CLI 1.5.16 本机真画面（tmux / PTY，2026-11-24）",
       },
       {
-        // 审批卡的选项行；卡出现时输入框被它顶掉。
+        // 审批卡的选项行；卡出现时输入框被它顶掉，页脚左侧是 `esc to cancel`。
         id: "agy.approval",
         pattern:
-          /Yes, and always allow|No, and always deny|Yes, grant permission for/,
-        verified: false,
+          /Yes, allow creation|No, deny creation|Yes, and always allow|No, and always deny|Yes, grant permission for/,
+        verified: true,
         source:
-          "Antigravity CLI 1.5.16 二进制字符串（2026-11-24），没有在真画面上核对过（本机 auto 模式触发不了审批卡）",
+          "Antigravity CLI 1.5.16 本机真画面的开卡（2026-11-24，选项 `Yes, allow creation` / `Yes, and always allow non-workspace access` / `No, deny creation`）；1.5.17 二进制一致",
       },
     ],
   },
