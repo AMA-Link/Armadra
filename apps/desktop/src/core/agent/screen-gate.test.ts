@@ -190,6 +190,44 @@ const AGY_IDLE_DEFAULT = [
   "? for shortcuts                                                                                     Gemini 4 Neon · high",
 ].join("\n");
 
+// 下面几张工件审阅的画面都是按 1.5.17 二进制的渲染函数编的，没有真画面：
+// 回合已经结束、有工件等审（计划模式的实施计划）：阶段 ReviewAvailable，页脚是空闲的，
+// 待审提示画在页脚上方。
+const AGY_ARTIFACT_PENDING = [
+  "● Wrote implementation_plan.md",
+  "  1 artifact · /artifact to review",
+  "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+  ">",
+  "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+  "? for shortcuts                                                                              auto · Gemini 4 Neon · high",
+].join("\n");
+
+// 生成中轮播的小提示（28 条 tips 里的一条）：画法是 `└ Tip: …`，不是待审提示。
+const AGY_TIP_WHILE_WORKING = [
+  "⣽  Generating...",
+  "└ Tip: Press ctrl+r to review pending artifacts.",
+  "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+  "> Auto mode: edits & safe commands auto-approved (shift+tab to cycle)",
+  "────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+  "esc to cancel                                                                                auto · Gemini 4 Neon · high",
+].join("\n");
+
+// 审阅面板（全屏覆盖层，没有页脚）。
+const AGY_ARTIFACT_PANEL = [
+  "Artifacts",
+  "Action required (2 left)",
+  "□ new       implementation_plan.md",
+  "✓ approved  task.md",
+  "y approve · n reject · shift+a approve all · shift+r reject all",
+  "Submit   Dismiss",
+].join("\n");
+
+const AGY_ARTIFACT_COMMENTS = [
+  "You have 2 unsent comment(s). Send to agent?",
+  "> send + close",
+  "  discard + close",
+].join("\n");
+
 const COPILOT_TRUST = [
   " Confirm folder trust",
   " Do you trust the files in this folder?",
@@ -379,6 +417,101 @@ describe("judgeScreen", () => {
     });
   });
 
+  it("Antigravity：待审提示画在空闲页脚上方，位置规则放不了它，所以 sticky 地拦", () => {
+    for (const first of [true, false]) {
+      expect(judgeScreen(profile("agy"), AGY_ARTIFACT_PENDING, first)).toEqual({
+        kind: "dialog",
+        dialog: "agy.artifact-pending",
+      });
+    }
+    const entry = SCREEN_SIGNATURES.agy?.dialogs.find(
+      (dialog) => dialog.id === "agy.artifact-pending",
+    );
+    expect(entry?.sticky).toBe(true);
+    // 提示没有了（审完、画面刷新）：页脚照旧空闲，放行。
+    const reviewed = AGY_ARTIFACT_PENDING.replace(
+      "  1 artifact · /artifact to review\n",
+      "",
+    );
+    expect(judgeScreen(profile("agy"), reviewed, false)).toEqual({
+      kind: "clear",
+    });
+    // 复数。
+    expect(
+      judgeScreen(
+        profile("agy"),
+        AGY_ARTIFACT_PENDING.replace("1 artifact", "3 artifacts"),
+        false,
+      ),
+    ).toEqual({ kind: "dialog", dialog: "agy.artifact-pending" });
+  });
+
+  it("Antigravity：生成中轮播的 `└ Tip: Press ctrl+r…` 不是待审提示，不按它拦", () => {
+    const verdict = judgeScreen(profile("agy"), AGY_TIP_WHILE_WORKING, false);
+    // 页脚 `esc to cancel` 会被通用的菜单特征当成没见过的菜单（目标本来在忙），
+    // 但不是 agy 的任何一条工件审阅。
+    expect(verdict.kind).toBe("dialog");
+    expect(verdict.kind === "dialog" ? verdict.dialog : "").not.toMatch(
+      /^agy\.artifact/,
+    );
+    expect(
+      judgeScreen(
+        profile("agy"),
+        "└ Tip: Press ctrl+r to review pending artifacts.\n" + AGY_IDLE_AUTO,
+        false,
+      ),
+    ).toEqual({ kind: "clear" });
+  });
+
+  it("Antigravity：审阅面板与它的确认框打开时拦", () => {
+    expect(judgeScreen(profile("agy"), AGY_ARTIFACT_PANEL, false)).toEqual({
+      kind: "dialog",
+      dialog: "agy.artifact-panel",
+    });
+    expect(judgeScreen(profile("agy"), AGY_ARTIFACT_COMMENTS, false)).toEqual({
+      kind: "dialog",
+      dialog: "agy.artifact-comments",
+    });
+    // 只有行标记、没有 `Action required` 标题行（滚动出去了）。
+    expect(
+      judgeScreen(
+        profile("agy"),
+        "✓ approved  task.md\n□ new       notes.md\n",
+        false,
+      ),
+    ).toEqual({ kind: "dialog", dialog: "agy.artifact-panel" });
+    expect(
+      judgeScreen(
+        profile("agy"),
+        "Comments will be discarded if you modify the artifact. Open editor?",
+        false,
+      ),
+    ).toEqual({ kind: "dialog", dialog: "agy.artifact-comments" });
+    expect(judgeScreen(profile("agy"), "Action required\n", false)).toEqual({
+      kind: "dialog",
+      dialog: "agy.artifact-panel",
+    });
+  });
+
+  it("Antigravity：工件审阅的三条都只来自二进制推断，所以标 verified: false", () => {
+    for (const id of [
+      "agy.artifact-pending",
+      "agy.artifact-panel",
+      "agy.artifact-comments",
+    ]) {
+      const entry = SCREEN_SIGNATURES.agy?.dialogs.find(
+        (dialog) => dialog.id === id,
+      );
+      expect(entry?.verified, id).toBe(false);
+      expect(entry?.source, id).toContain("1.5.17");
+    }
+    expect(
+      SCREEN_SIGNATURES.agy?.dialogs.some(
+        (dialog) => dialog.id === "agy.artifact-review",
+      ),
+    ).toBe(false);
+  });
+
   it("Grok：目录信任与审批卡都拦，首投与平常一样；答完卡、输入框回来就放行", () => {
     for (const first of [true, false]) {
       expect(judgeScreen(profile("grok"), GROK_TRUST, first)).toEqual({
@@ -502,6 +635,9 @@ const GROK_PLAN_REVIEW_FOCUSED = [
  * （安装包字符串、本机画面或官方文档），其余是编的。不跑任何真 CLI。
  */
 const DIALOG_SCREENS: Readonly<Record<string, string>> = {
+  "agy.artifact-pending": AGY_ARTIFACT_PENDING,
+  "agy.artifact-panel": AGY_ARTIFACT_PANEL,
+  "agy.artifact-comments": AGY_ARTIFACT_COMMENTS,
   "agy.folder-trust": AGY_TRUST,
   "agy.approval": AGY_APPROVAL,
   "grok.folder-trust": GROK_TRUST,
