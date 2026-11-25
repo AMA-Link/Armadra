@@ -495,7 +495,8 @@ export async function answerApproval(
       delivery = sent.delivery;
       if (delivery !== "confirmed") refusal = `delivery_${delivery}`;
     } else {
-      delivery = "unconfirmed";
+      // 核对没过，一个键都没发：不能说「没确认」，要说「没发」。
+      delivery = "not_sent";
       refusal = sent.reason;
     }
   } else if (elicitation?.ok === true) {

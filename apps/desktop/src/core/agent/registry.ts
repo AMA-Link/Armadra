@@ -332,6 +332,11 @@ export interface AgentSettings {
    * 关。只对有注入的内置 Agent 有意义。
    */
   bareLaunch?(agentId: string): boolean;
+  /**
+   * 在终端里替人答 grok 的审批卡（`settings.agents.grok.answerCards`，契约 §127）。
+   * 缺席 = 关。
+   */
+  answerCards?(agentId: string): boolean;
 }
 
 export const NO_CUSTOM_AGENTS: AgentSettings = { customAgents: () => [] };

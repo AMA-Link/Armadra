@@ -14,8 +14,11 @@ import {
   type GrokCardSource,
   type GrokOutcome,
   deliverGrokAnswer,
+  cardAnswerGate,
   grokAnswerGate,
   registerGrokCardSource,
+  resetGrokVersionProbe,
+  useGrokVerifiedVersions,
 } from "./grok-answer";
 import { parseGrokApprovalCard } from "./grok-card";
 
@@ -77,10 +80,24 @@ beforeEach(() => {
         : "pending";
   fixture.terminal.capture = CARD;
   off = registerGrokCardSource(nodeId, source);
+  // 两道门与模式：清单有这个版本、设置开、节点是 `--permission-mode` 启动的。
+  useGrokVerifiedVersions(["1.0.92"]);
+  resetGrokVersionProbe("1.0.92");
+  setMode("auto-edit");
   record();
 });
 
+function setMode(mode: string): void {
+  fixture.database
+    .prepare(
+      "UPDATE nodes SET data_json = json_set(data_json, '$.agent.permissionMode', ?) WHERE id = ?",
+    )
+    .run(mode, nodeId);
+}
+
 afterEach(() => {
+  useGrokVerifiedVersions(undefined);
+  resetGrokVersionProbe();
   off();
   fixture.close();
 });
@@ -205,7 +222,8 @@ describe("落库之后卡换了：记录已答，但不发键，如实说没送�
       decision: "allow",
     });
     expect(result.route).toBe("none");
-    expect(result.delivery).toBe("unconfirmed");
+    // 一个键都没发：说「没发」，不能说「没确认」。
+    expect(result.delivery).toBe("not_sent");
     expect(writes()).toEqual([]);
     expect(approvalAudit(fixture.collab, "g-1").at(-1)).toMatchObject({
       accepted: true,
@@ -280,6 +298,7 @@ describe("两道门与模式", () => {
     }
   });
   it("代码里的清单现在是空的：一个版本都不开", () => {
+    useGrokVerifiedVersions(undefined);
     expect(
       grokAnswerGate({
         setting: true,
@@ -287,6 +306,87 @@ describe("两道门与模式", () => {
         version: "1.0.92",
       }),
     ).toMatchObject({ open: false });
+  });
+});
+
+describe("答复时门与节点还得成立（预检里再核一遍）", () => {
+  async function refused(reason: string) {
+    await expect(
+      answerApproval(fixture.collab, "g-1", { decision: "allow" }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(getApproval(fixture.collab, "g-1").answer).toBeNull();
+    expect(writes()).toEqual([]);
+    expect(approvalAudit(fixture.collab, "g-1").at(-1)).toMatchObject({
+      accepted: false,
+      refusal: reason,
+    });
+  }
+
+  it("清单换成不含这个版本", async () => {
+    useGrokVerifiedVersions(["1.0.93"]);
+    await refused("gate_closed");
+  });
+
+  it("节点现在不是 --permission-mode 启动的", async () => {
+    setMode("default");
+    await refused("gate_closed");
+  });
+
+  it("形状像 grok-card 的请求落在别家的节点上：不发键", async () => {
+    fixture.database
+      .prepare(
+        "UPDATE nodes SET data_json = json_set(data_json, '$.agent.id', 'claude') WHERE id = ?",
+      )
+      .run(nodeId);
+    await refused("not_grok");
+  });
+});
+
+describe("cardAnswerGate：三样先过，才探版本", () => {
+  const probeOnce = () => {
+    let calls = 0;
+    return {
+      calls: () => calls,
+      probe: async () => {
+        calls += 1;
+        return "1.0.92";
+      },
+    };
+  };
+
+  it("清单是空的（缺省）、设置关、模式不在范围：一次都不探", async () => {
+    for (const input of [
+      { verified: [], setting: true, permissionMode: "auto-edit" },
+      { verified: ["1.0.92"], setting: false, permissionMode: "auto-edit" },
+      { verified: ["1.0.92"], setting: true, permissionMode: "default" },
+      { verified: ["1.0.92"], setting: true, permissionMode: undefined },
+    ]) {
+      const probe = probeOnce();
+      const gate = await cardAnswerGate({ ...input, probe: probe.probe });
+      expect(gate.open).toBe(false);
+      expect(probe.calls()).toBe(0);
+    }
+  });
+
+  it("三样都过了才探一次；版本在清单里才开", async () => {
+    const probe = probeOnce();
+    expect(
+      await cardAnswerGate({
+        verified: ["1.0.92"],
+        setting: true,
+        permissionMode: "plan",
+        probe: probe.probe,
+      }),
+    ).toEqual({ open: true });
+    expect(probe.calls()).toBe(1);
+    expect(
+      await cardAnswerGate({
+        verified: ["1.0.93"],
+        setting: true,
+        permissionMode: "plan",
+        probe: probe.probe,
+      }),
+    ).toMatchObject({ open: false, reason: "unverified_version" });
   });
 });
 

@@ -2,9 +2,8 @@ import type { CoreContext } from "../main";
 import { SCREEN_GATE_LINES } from "../agent/screen-gate";
 import {
   GROK_ANSWER_SETTING,
-  grokAnswerGate,
+  cardAnswerGate,
   nodePermissionMode,
-  probeGrokVersion,
 } from "../agent/grok-answer";
 import { settingsDomain } from "../settings";
 import { rowLiveness, timelineDomainOf } from "../timeline";
@@ -36,10 +35,10 @@ export function linkTimeline(
     env: (sessionId, name) => manager.envOf(sessionId, name),
     // 终端卡代答的门（契约 §127）：已验证版本、用户设置、启动模式都过了才建审批记录。
     answerCards: async (_sessionId, nodeId) => {
-      const gate = grokAnswerGate({
+      // 清单、设置、模式三样都过了才探版本（`cardAnswerGate`）。
+      const gate = await cardAnswerGate({
         setting: settingsDomain()?.settings.get(GROK_ANSWER_SETTING),
         permissionMode: nodePermissionMode(context.db.database, nodeId),
-        version: await probeGrokVersion(),
       });
       return gate.open;
     },

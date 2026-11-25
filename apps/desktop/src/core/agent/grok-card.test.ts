@@ -109,6 +109,21 @@ describe("parseGrokApprovalCard", () => {
     ).toBeUndefined();
   });
 
+  it("拒绝项整行相等才认：别的 No, reject… 写法不认", () => {
+    const base = fixture("default-120");
+    for (const label of [
+      "No, reject",
+      "No, reject (type to add feedback) and more",
+      "No, reject everything",
+    ]) {
+      expect(
+        parseGrokApprovalCard(
+          base.replace("No, reject (type to add feedback)", label),
+        ),
+      ).toBeUndefined();
+    }
+  });
+
   it("没有编号的允许 / 拒绝、两个焦点都拒绝", () => {
     const base = fixture("default-120");
     expect(

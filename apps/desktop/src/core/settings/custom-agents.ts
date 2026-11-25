@@ -301,6 +301,18 @@ export function parseBareLaunch(document: JsonValue, agentId: string): boolean {
   return bareLaunchOf(document, agentId);
 }
 
+/** `settings.agents.grok.answerCards`（契约 §127）：只有 grok，缺省关。 */
+export function parseAnswerCards(
+  document: JsonValue,
+  agentId: string,
+): boolean {
+  if (agentId !== "grok" || !isJsonObject(document)) return false;
+  const agents = document.agents;
+  if (!isJsonObject(agents)) return false;
+  const entry = agents.grok;
+  return isJsonObject(entry) && entry.answerCards === true;
+}
+
 /**
  * 每次现读的 Agent 设置：自定义条目与关掉的 Agent 都按设置文档此刻的样子给，
  * 不留快照——刚改的下一次调用就认。
@@ -309,11 +321,13 @@ export function liveAgentSettings(snapshot: () => JsonValue): {
   customAgents(): CustomAgent[];
   disabledAgents(): string[];
   bareLaunch(agentId: string): boolean;
+  answerCards(agentId: string): boolean;
 } {
   return {
     customAgents: () => parseCustomAgents(snapshot()),
     disabledAgents: () => parseDisabledAgents(snapshot()),
     bareLaunch: (agentId) => parseBareLaunch(snapshot(), agentId),
+    answerCards: (agentId) => parseAnswerCards(snapshot(), agentId),
   };
 }
 

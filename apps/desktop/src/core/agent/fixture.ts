@@ -225,6 +225,7 @@ export function agentFixture(): AgentFixture {
   const settings: AgentSettings = {
     customAgents: () => customAgents,
     disabledAgents: () => disabledAgents,
+    answerCards: (agentId) => agentId === "grok",
   };
   const state = { watchers: 0 };
   const nudged: string[] = [];

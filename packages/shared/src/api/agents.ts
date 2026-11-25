@@ -340,7 +340,7 @@ export const answerApprovalResponseSchema = z.looseObject({
    * was seen to take effect. Anything but `confirmed` is shown to the person.
    */
   delivery: z
-    .enum(["confirmed", "unconfirmed", "mismatch", "ambiguous"])
+    .enum(["confirmed", "unconfirmed", "mismatch", "ambiguous", "not_sent"])
     .optional(),
 });
 

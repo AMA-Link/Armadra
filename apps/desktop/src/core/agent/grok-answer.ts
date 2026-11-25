@@ -4,6 +4,7 @@ import { loadNode, loadSession } from "../collab/nodes";
 import { grokCardKey, parseGrokApprovalCard } from "./grok-card";
 import { refreshNodeState } from "./state-source";
 import type { AgentApproval } from "./approvals";
+import { baseAgent } from "./registry";
 
 /**
  * 在终端里替人答 grok 的权限卡（契约 §127）。
@@ -42,17 +43,26 @@ export type GrokGate =
       readonly reason: "unverified_version" | "setting_off" | "mode_excluded";
     };
 
-/** 两道门与模式的判定；版本由调用方探到（探不到就是 `undefined`）。 */
+let verifiedVersions: readonly string[] = GROK_ANSWER_VERIFIED_VERSIONS;
+
+/** 用例用：换掉已验证版本清单；`undefined` 还原成代码里的那份。 */
+export function useGrokVerifiedVersions(
+  list: readonly string[] | undefined,
+): void {
+  verifiedVersions = list ?? GROK_ANSWER_VERIFIED_VERSIONS;
+}
+
+/**
+ * 两道门与模式的判定。顺序就是头部说的话：用户没开设置就什么也不说；然后是这个
+ * 节点为什么不行（模式），最后是这个版本为什么不行。版本由调用方探到。
+ */
 export function grokAnswerGate(input: {
   readonly setting: unknown;
   readonly permissionMode: string | undefined;
   readonly version: string | undefined;
   readonly verified?: readonly string[];
 }): GrokGate {
-  const verified = input.verified ?? GROK_ANSWER_VERIFIED_VERSIONS;
-  if (input.version === undefined || !verified.includes(input.version)) {
-    return { open: false, reason: "unverified_version" };
-  }
+  const verified = input.verified ?? verifiedVersions;
   if (input.setting !== true) return { open: false, reason: "setting_off" };
   if (
     input.permissionMode === undefined ||
@@ -60,7 +70,41 @@ export function grokAnswerGate(input: {
   ) {
     return { open: false, reason: "mode_excluded" };
   }
+  if (input.version === undefined || !verified.includes(input.version)) {
+    return { open: false, reason: "unverified_version" };
+  }
   return { open: true };
+}
+
+/**
+ * 读取槽问「这张卡要不要建审批记录」时的判定。**先看清单、设置、模式，三样都过了
+ * 才去探版本**：清单是空的（缺省）或设置关着，就不会因为 grok 而起任何子进程。
+ */
+export async function cardAnswerGate(input: {
+  readonly setting: unknown;
+  readonly permissionMode: string | undefined;
+  readonly probe?: () => Promise<string | undefined>;
+  readonly verified?: readonly string[];
+}): Promise<GrokGate> {
+  const verified = input.verified ?? verifiedVersions;
+  const before = grokAnswerGate({
+    setting: input.setting,
+    permissionMode: input.permissionMode,
+    // 版本留给下面探；这里只看设置与模式。
+    version: verified[0],
+    verified,
+  });
+  if (!before.open) return before;
+  // 清单是空的：版本再对也过不了，不探。
+  if (verified.length === 0)
+    return { open: false, reason: "unverified_version" };
+  const version = await (input.probe ?? probeGrokVersion)();
+  return grokAnswerGate({
+    setting: input.setting,
+    permissionMode: input.permissionMode,
+    version,
+    verified,
+  });
 }
 
 /** 节点启动时记下的权限模式；没有记下就是 `undefined`（按缺省模式算，不放开）。 */
@@ -74,13 +118,28 @@ export function nodePermissionMode(
   return typeof mode === "string" ? mode : undefined;
 }
 
-let versionProbe: Promise<string | undefined> | undefined;
+/** 探到的版本留多久：grok 自更新之后不会一直拿着旧答案。 */
+export const GROK_VERSION_TTL_MS = 10 * 60_000;
 
-/** 本机 `grok --version` 的版本号（进程内只探一次）；探不到答 `undefined`。 */
+let versionProbe:
+  { at: number; value: Promise<string | undefined> } | undefined;
+
+/**
+ * 本机 `grok --version` 的版本号，缓存 {@link GROK_VERSION_TTL_MS}；探不到答
+ * `undefined`。读的是 Core 的 PATH 上的那个 grok；改成读节点实际在跑的那个，写在
+ * `#1027`，在后续 PR 里做。
+ */
 export function probeGrokVersion(
   run: typeof execFile = execFile,
+  now: () => number = Date.now,
 ): Promise<string | undefined> {
-  versionProbe ??= new Promise((resolve) => {
+  if (
+    versionProbe !== undefined &&
+    now() - versionProbe.at < GROK_VERSION_TTL_MS
+  ) {
+    return versionProbe.value;
+  }
+  const value = new Promise<string | undefined>((resolve) => {
     try {
       run("grok", ["--version"], { timeout: 3000 }, (error, stdout) => {
         const match =
@@ -91,12 +150,16 @@ export function probeGrokVersion(
       resolve(undefined);
     }
   });
-  return versionProbe;
+  versionProbe = { at: now(), value };
+  return value;
 }
 
-/** 用例用：忘掉探到的版本。 */
-export function resetGrokVersionProbe(): void {
-  versionProbe = undefined;
+/** 用例用：忘掉探到的版本；给一个版本就当作刚探到的。 */
+export function resetGrokVersionProbe(version?: string): void {
+  versionProbe =
+    version === undefined
+      ? undefined
+      : { at: Date.now(), value: Promise.resolve(version) };
 }
 
 /* --------------------------------- 读取槽 --------------------------------- */
@@ -162,10 +225,16 @@ export function grokCardRecordOf(request: unknown): GrokCardRecord | undefined {
 /* ---------------------------------- 核对 ---------------------------------- */
 
 export type GrokRefusal =
-  "card_changed" | "card_unrecognized" | "input_changed" | "no_terminal";
+  | "card_changed"
+  | "card_unrecognized"
+  | "input_changed"
+  | "no_terminal"
+  | "not_grok"
+  | "gate_closed";
 
+/** `not_sent`：核对没过，一个键都没发，请人在终端里答。 */
 export type GrokDelivery =
-  "confirmed" | "unconfirmed" | "mismatch" | "ambiguous";
+  "confirmed" | "unconfirmed" | "mismatch" | "ambiguous" | "not_sent";
 
 interface Checked {
   readonly ok: true;
@@ -199,10 +268,24 @@ export async function verifyGrokCard(
   decision: string,
 ): Promise<Checked | { readonly ok: false; readonly reason: GrokRefusal }> {
   const record = grokCardRecordOf(approval.request);
+  // 形状像 grok-card 的请求不够：这个节点得真是 grok，两道门与模式此刻也得开着。
+  const node = loadNode(context.database, approval.nodeId);
+  if (
+    record === undefined ||
+    node?.agentId === undefined ||
+    node.agentId === null ||
+    baseAgent(context.settings, node.agentId) !== "grok"
+  ) {
+    return { ok: false, reason: "not_grok" };
+  }
+  const gate = await cardAnswerGate({
+    setting: context.settings.answerCards?.("grok"),
+    permissionMode: nodePermissionMode(context.database, approval.nodeId),
+  });
+  if (!gate.open) return { ok: false, reason: "gate_closed" };
   const terminals = context.terminals;
   const session = loadSession(context.database, approval.nodeId);
   if (
-    record === undefined ||
     terminals === undefined ||
     session === undefined ||
     terminals.inputRevision === undefined

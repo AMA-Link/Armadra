@@ -53,7 +53,7 @@ const FOOTER = /^\s*\d+\/\d+:select\b/;
 const EDITING = /Enter save|Esc cancel/;
 
 const ALLOW_ONCE = /^Yes(?:, proceed)?$/;
-const REJECT = /^No, reject\b/;
+const REJECT = /^No, reject \(type to add feedback\)$/;
 /** 带持久副作用的选项：认得，但永远不选。 */
 const PERSISTENT =
   /^(?:Always allow|Never allow)\b|^Yes, allow\b|^Yes, and don't ask again\b/;
