@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { acpAdapter } from "./adapters";
-import { checkCliFloor, forgetCliVersions } from "./cli-floor";
+import { checkCliFloor, forgetCliVersions, outdatedError } from "./cli-floor";
 import { startAdapter } from "./host";
 
 /** 起会话前的 CLI 版本核对（#710）。 */
@@ -187,5 +187,57 @@ describe.skipIf(process.platform === "win32")("checkCliFloor", () => {
     ).rejects.toMatchObject({ code: "acp_cli_outdated" });
     expect(terminate).toHaveBeenCalledTimes(1);
     expect(attach).not.toHaveBeenCalled();
+  });
+});
+
+describe("outdatedError", () => {
+  it("points at the package when there is one", () => {
+    const error = outdatedError("pi", {
+      agentId: "pi",
+      installed: "1.0.4",
+      minimum: "1.1.0",
+      package: "pkg",
+    });
+    expect(error.code).toBe("acp_cli_outdated");
+    expect(error.message).toContain("install pkg");
+    expect(error.details).toEqual({
+      agentId: "pi",
+      installed: "1.0.4",
+      minimum: "1.1.0",
+      package: "pkg",
+    });
+  });
+
+  it("points at the CLI's own update command when it has no package", () => {
+    const error = outdatedError("tool", {
+      agentId: "tool",
+      installed: "1.0.0",
+      minimum: "1.2.0",
+      updateCommand: "tool upgrade",
+    });
+    expect(error.message).toContain("run tool upgrade");
+    expect(error.details).toEqual({
+      agentId: "tool",
+      installed: "1.0.0",
+      minimum: "1.2.0",
+      updateCommand: "tool upgrade",
+    });
+    expect(error.details).not.toHaveProperty("package");
+  });
+
+  it("falls back to `<program> update` with neither", () => {
+    const error = outdatedError("tool", {
+      agentId: "tool",
+      installed: "1.0.0",
+      minimum: "1.2.0",
+    });
+    expect(error.message).toContain("run tool update");
+    // The page reads only `details`: the fallback has to be in it too.
+    expect(error.details).toEqual({
+      agentId: "tool",
+      installed: "1.0.0",
+      minimum: "1.2.0",
+      updateCommand: "tool update",
+    });
   });
 });

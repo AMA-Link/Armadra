@@ -17,8 +17,13 @@ import { AGENT_CLI_PACKAGES, type AgentCliAgentId } from "./api/acp.js";
 export interface AcpCliFloor {
   /** 低于它起不来。 */
   readonly minVersion: string;
-  /** 现行的 npm 包（装机、提示都指它）。 */
-  readonly package: string;
+  /** 现行的 npm 包（装机、提示都指它）；没有 npm 包的 CLI 不写。 */
+  readonly package?: string;
+  /**
+   * 没有 npm 包的 CLI 自己的升级命令（如 `agy update`）。提示用它代替
+   * 「请安装 <包>」；有 `package` 时以包为准。
+   */
+  readonly updateCommand?: string;
 }
 
 export const ACP_CLI_FLOOR: Readonly<
@@ -34,12 +39,25 @@ export function acpCliFloor(agentId: string): AcpCliFloor | undefined {
     : undefined;
 }
 
+/** 下限登记里给用户的那句指引（包或升级命令），没有就不带。 */
+export function floorHint(
+  floor: AcpCliFloor,
+): Pick<AcpCliOutdatedDetails, "package" | "updateCommand"> {
+  return {
+    ...(floor.package === undefined ? {} : { package: floor.package }),
+    ...(floor.updateCommand === undefined
+      ? {}
+      : { updateCommand: floor.updateCommand }),
+  };
+}
+
 /** `acp_cli_outdated` 的 `details`。 */
 export interface AcpCliOutdatedDetails {
   readonly agentId: AgentCliAgentId | string;
   readonly installed: string;
   readonly minimum: string;
-  readonly package: string;
+  readonly package?: string;
+  readonly updateCommand?: string;
 }
 
 /**
@@ -59,7 +77,7 @@ export function acpCliOutdated(
         agentId,
         installed,
         minimum: floor.minVersion,
-        package: floor.package,
+        ...floorHint(floor),
       }
     : undefined;
 }

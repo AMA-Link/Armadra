@@ -56,6 +56,7 @@ export function agentState(
   if (!agent.installed) return "installNeeded";
   if (
     integration &&
+    integration.mode !== "none" &&
     agent.capabilities.includes("hooks") &&
     (integration.stale ||
       !integration.hook.installed ||

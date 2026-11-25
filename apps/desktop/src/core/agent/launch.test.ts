@@ -18,6 +18,7 @@ import {
   promptModeFor,
   supportedPermissionModes,
 } from "./launch";
+import { AGENT_LIST as SHARED_REGISTRY_LIST } from "@armadra/shared";
 import { AGENT_REGISTRY } from "./registry";
 
 const NO_CUSTOM = { customAgents: () => [] };
@@ -275,15 +276,14 @@ describe("launch parameters", () => {
           exitCommand(NO_CUSTOM, agent.id),
         ]),
       ),
-    ).toEqual({
-      claude: "/exit",
-      codex: "/quit",
-      opencode: "/exit",
-      pi: "/quit",
-      omp: "/exit",
-      copilot: "/exit",
-      ama: "/exit",
-    });
+    ).toEqual(
+      Object.fromEntries(
+        SHARED_REGISTRY_LIST.map((agent) => [agent.id, agent.exitCommand]),
+      ),
+    );
+    // Spot checks: the two that quit with `/quit`.
+    expect(exitCommand(NO_CUSTOM, "codex")).toBe("/quit");
+    expect(exitCommand(NO_CUSTOM, "pi")).toBe("/quit");
     expect(
       exitCommand(
         withCustom({ id: "custom:c", launchCmd: "x", baseAgent: "codex" }),

@@ -77,25 +77,23 @@ describe("agent registry", () => {
       }),
     ).not.toContain("nativeRecurrence");
   });
-  it("covers the seven built-in CLIs with a full permission table", () => {
-    expect(AGENT_IDS).toEqual([
-      "claude",
-      "codex",
-      "opencode",
-      "pi",
-      "omp",
-      "copilot",
-      "ama",
-    ]);
-    expect(AGENT_LIST).toHaveLength(7);
+  it("covers every built-in CLI with a full permission table", () => {
+    // The list itself is the registry's own; what is asserted is that the
+    // table and the list say the same thing and each row is whole.
+    expect(AGENT_LIST.map((agent) => agent.id)).toEqual([...AGENT_IDS]);
+    expect(Object.keys(AGENT_REGISTRY).sort()).toEqual([...AGENT_IDS].sort());
+    expect(AGENT_LIST).toHaveLength(AGENT_IDS.length);
     for (const agent of AGENT_LIST) {
       expect(agent.launchCmd.length).toBeGreaterThan(0);
       expect(agent.color).toMatch(/^#[0-9a-f]{6}$/);
       expect(agent.expectedProcess.length).toBeGreaterThan(0);
-      expect(agent.capabilities).toContain("contextLink");
-      // B01: the browser verb rides the same channel as the context link, so
-      // every adapter that has one declares both.
-      expect(agent.capabilities).toContain("browser");
+      // The context link and the browser verb ride the status source's
+      // channel: every agent that has one (`hooks`) declares both. A built-in
+      // without a status source has neither.
+      if (agent.capabilities.includes("hooks")) {
+        expect(agent.capabilities).toContain("contextLink");
+        expect(agent.capabilities).toContain("browser");
+      }
       for (const mode of PERMISSION_MODES) {
         expect(Array.isArray(agent.permissionFlag[mode])).toBe(true);
       }

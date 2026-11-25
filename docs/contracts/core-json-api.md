@@ -710,7 +710,7 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
 
 - 七家的表：`claude` 官方 `load`、`codex` 官方 `load`、`opencode` 原生 `load`、`pi` 随包 `load`、`omp` 原生 `load`、`copilot` 原生 `none`、`ama` 原生 `resume`。`resume` 是偏好：起会话时按 Agent 在 `initialize` 声明的能力协商，偏好的方法不支持就用另一个，两个都不支持就新开并如实告诉页面没有接上。
 - 权限模式在 ACP 下的落点（`session/set_mode` 的模式 id 或启动 argv）不在行上；没有落点的模式（OpenCode 的 `auto-edit` / `full-auto`，Pi 除 `default` 外的三个）不出现在会话视图里，以它起会话答 `acp_mode_unsupported`。`plan` 在 Agent 不提供对应模式 id 时拒绝启动（`acp_mode_unavailable`），不以可写模式起。
-- 起会话失败的错误码（G2-1 的路由原样答出，形状 `{ code, message }`）：`acp_not_installed`、`acp_spawn_failed`、`acp_exited`、`acp_initialize_failed`、`acp_initialize_timeout`、`acp_protocol_version`、`acp_auth_required`（Agent 要先在 CLI 里登录）、`acp_session_failed`、`acp_mode_unsupported`、`acp_mode_unavailable`；自 1.24 起还有 `acp_session_timeout`（504，§51）；CLI 本体低于适配器要求的最低版本时答 `acp_cli_outdated`（409），`details` 为 `{ agentId, installed, minimum, package }`，起适配器进程之前就答，不再等 `session/new` 超时（各家下限在 `@armadra/shared` 的 `ACP_CLI_FLOOR`，目前只登记 pi，下限 1.1.0；问不出版本不拦）。适配器在 `session/new` 答复里报的 `modes` 不是权限模式时（`ACP_REPORTED_MODES` 为 `ignore`；目前没有哪家是）core 丢掉，`modes` 为 `null`。ama 的 pi 桥在 `session/new` 里答 `error.data.code` 时，core 原样作为错误码答出（409，`details` 只留字符串字段：`installed`、`minimum`、`package`，外加 `agentId: "pi"`）：`pi_outdated`（Pi 低于下限）、`pi_missing`（找不到 `pi`）、`pi_no_model`（Pi 里没有可用模型）。消息里不带适配器的 stderr。会话的工作目录（节点的 `cwd`，没有就是工作空间根）在本机不存在或不是目录时，起适配器之前答 `acp_cwd_missing`（409，`details` 为 `{ cwd }`，#984），不再落到 `acp_spawn_failed`；`acp_spawn_failed` 的消息带上原因（`not found`、`not found on PATH`、`not executable`）。
+- 起会话失败的错误码（G2-1 的路由原样答出，形状 `{ code, message }`）：`acp_not_installed`、`acp_spawn_failed`、`acp_exited`、`acp_initialize_failed`、`acp_initialize_timeout`、`acp_protocol_version`、`acp_auth_required`（Agent 要先在 CLI 里登录）、`acp_session_failed`、`acp_mode_unsupported`、`acp_mode_unavailable`；自 1.24 起还有 `acp_session_timeout`（504，§51）；CLI 本体低于适配器要求的最低版本时答 `acp_cli_outdated`（409），`details` 为 `{ agentId, installed, minimum, package?, updateCommand? }`（有 npm 包的家带 `package`；没有 npm 包的 CLI 带它自己的升级命令 `updateCommand`，页面据此写「请运行 …」而不是「请安装 …」），起适配器进程之前就答，不再等 `session/new` 超时（各家下限在 `@armadra/shared` 的 `ACP_CLI_FLOOR`，目前只登记 pi，下限 1.1.0；问不出版本不拦）。适配器在 `session/new` 答复里报的 `modes` 不是权限模式时（`ACP_REPORTED_MODES` 为 `ignore`；目前没有哪家是）core 丢掉，`modes` 为 `null`。ama 的 pi 桥在 `session/new` 里答 `error.data.code` 时，core 原样作为错误码答出（409，`details` 只留字符串字段：`installed`、`minimum`、`package`，外加 `agentId: "pi"`）：`pi_outdated`（Pi 低于下限）、`pi_missing`（找不到 `pi`）、`pi_no_model`（Pi 里没有可用模型）。消息里不带适配器的 stderr。会话的工作目录（节点的 `cwd`，没有就是工作空间根）在本机不存在或不是目录时，起适配器之前答 `acp_cwd_missing`（409，`details` 为 `{ cwd }`，#984），不再落到 `acp_spawn_failed`；`acp_spawn_failed` 的消息带上原因（`not found`、`not found on PATH`、`not executable`）。
 - 实跑验证过的版本区间记在 `tools/release/compatibility.json` 的 `acp` 键（`{ protocolVersion: 1, adapters: { <id>: { program, verified: null | { min, max? } } } }`），不进发布说明的兼容围栏；`program` 与适配器表由测试对齐。
 - 状态来源词汇多一个 `acp`（`agent_status.state_source`）：由 core 在 ACP 驱动的会话上写入，与 `hook` / `extension` 一样算上报（`stateSourceIsReported`），客户端无法自称。
 
@@ -3726,7 +3726,7 @@ human initiator。页面不接收任何 controller 凭据；body owner/controlle
 "canvasAgents": {
   "terminal": "available" | "limited" | "unavailable",
   "acp": "available" | "limited" | "unavailable" | "none",
-  "reasons": ["hook_missing" | "skill_missing" | "launcher_limited" | "cli_missing" | "acp_missing" | "mcp_not_wired" | "client_without_mcp"]
+  "reasons": ["hook_missing" | "skill_missing" | "launcher_limited" | "cli_missing" | "acp_missing" | "mcp_not_wired" | "client_without_mcp" | "no_injection"]
 }
 ```
 
@@ -6204,3 +6204,34 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
 ### 119.6 迁移
 
 迁移 `0072_workflow_v2.sql`，只加列与索引：`workflow_run_steps.round`（默认 0）与 `verdict_json`，`workflow_templates.file_ref`（唯一索引，项目级文件引用，本批只建列）与 `workflow_runs.started_by_node_id`。
+
+## 120. 没有画布注入的内置 CLI：`agents.integration` 的 `mode: "none"`（`#997` `#998`）
+
+只增取值，不升版本号；对现有七家行为不变，本节先于首个没有注入的内置 CLI 落地。内置 CLI 不一定都有画布注入：有的 CLI 没有单次生效的 hook / 技能通道（不写用户配置就注入不进去），Armadra 不为它写任何文件。这样的 CLI 在 `GET /api/agents/{agentId}/integration`（与 `agents.integration`）上答一个固定形状，而不是 `400`：
+
+```json
+{
+  "agentId": "<内置 id>",
+  "mode": "none",
+  "hook": { "installed": false, "revision": 0 },
+  "skill": { "installed": false, "revision": 0 },
+  "legacy": { "found": [] },
+  "revision": 412,
+  "stale": false,
+  "launchArgs": [],
+  "launchEnv": [],
+  "globalWrites": [],
+  "canvasAgents": {
+    "terminal": "unavailable",
+    "acp": "…",
+    "reasons": ["no_injection"]
+  }
+}
+```
+
+- `mode` 多一个取值 `none`（`INJECTION_MODES`）：这家内置 CLI 不在注入名单里（`core/hook/install/inject.ts::INJECTED_AGENTS`）。没有 `launcher`、`shim`、`migration`、`clientBin`、`mods`；`revision` 照旧是当前集成修订（示例里的 412 只是占位），`stale` 恒为 `false`。不是内置 CLI 的 id（`custom:` 条目、不存在的 id）仍答 `400 bad_request`，与以前相同。
+- `canvasAgents.terminal` 恒为 `unavailable`，`reasons` 里终端这一半只有 `no_injection`（CLI 没装时另有 `cli_missing`），不再列 `skill_missing` / `hook_missing`；`acp` 一半照 §48 判定。`CANVAS_AGENT_REASONS` 因此多一个 `no_injection`（§48 的取值表加上它，未知原因词仍按透传处理）。
+- `POST …/integration/install` 与 `…/uninstall` 对这样的 CLI 仍答 `400 bad_request`（没有东西可生成）；`…/repair` 沿用「没有 hook 安装器」的 `400`。页面据 `mode` 不发这三个动作：设置页的「Hook 与技能」一行显示「无注入」，没有「重新生成」，主表不把它算成「待更新」。
+- `BARE_LAUNCH_AGENT_IDS`（节点的「零注入启动」开关，§113）只含有注入的 CLI：没有注入就没有可关的东西，页面不给它这个开关，`settings` 里它的 `bareLaunch` 键同样不接受。
+- 启动时的注入预生成（`prepareAtStartup`）只走注入名单，不再自带一份写死的 id 表。
+- **为什么不升协议版本**：`mode` 在共享层是严格的 `z.enum`（`INJECTION_MODES`），**旧客户端收到 `"none"` 会让整条集成状态解析失败**。本节现在不升 `PROTOCOL_MINOR`，是因为还没有任何一家内置 CLI 会答 `none`——所有现有七家都在注入名单里，旧客户端见不到这个取值。首个答 `none` 的内置 CLI 落地（agy 批 1）时，必须在那个 PR 里决定是否升 minor、旧页面对未知 `mode` 怎么退化，并改写这一条。

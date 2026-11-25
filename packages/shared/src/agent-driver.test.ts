@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import { AGENT_IDS } from "./agents";
 import {
   TRANSCRIPT_AGENT_IDS,
+  hasTranscript,
   defaultAgentDriver,
   defaultAgentView,
 } from "./agent-driver";
@@ -68,9 +70,17 @@ describe("defaultAgentView", () => {
     ).toEqual({ driver: "terminal" });
   });
 
-  it("lists the base agents that have transcript adapters", () => {
-    expect([...TRANSCRIPT_AGENT_IDS].sort()).toEqual(
-      ["ama", "claude", "codex", "copilot", "omp", "opencode", "pi"].sort(),
-    );
+  // The list itself is matched to the registered adapters in
+  // `core/collab/node-driver.test.ts`; here it is only held to the registry.
+  it("lists only built-in base agents, and hasTranscript agrees with it", () => {
+    for (const id of TRANSCRIPT_AGENT_IDS) {
+      expect(AGENT_IDS as readonly string[], id).toContain(id);
+    }
+    for (const id of AGENT_IDS) {
+      expect(hasTranscript(id), id).toBe(
+        (TRANSCRIPT_AGENT_IDS as readonly string[]).includes(id),
+      );
+    }
+    expect(hasTranscript("custom:x")).toBe(false);
   });
 });

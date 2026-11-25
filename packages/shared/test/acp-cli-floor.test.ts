@@ -6,6 +6,7 @@ import {
   AGENT_IDS,
   acpCliFloor,
   acpCliOutdated,
+  floorHint,
 } from "../src/index";
 
 /** 适配器对 CLI 本体的最低版本表（#710）。 */
@@ -13,9 +14,14 @@ describe("ACP_CLI_FLOOR", () => {
   it("only lists built-in agents and points at the package the installer installs", () => {
     for (const [id, floor] of Object.entries(ACP_CLI_FLOOR)) {
       expect(AGENT_IDS as readonly string[], id).toContain(id);
-      expect(floor.package).toBe(
-        AGENT_CLI_PACKAGES[id as keyof typeof AGENT_CLI_PACKAGES],
-      );
+      // 下限指向安装器装的那个包；两边都没有包也算相等，此时必须给升级命令，
+      // 否则过旧的提示没有一句可说。
+      const installed =
+        AGENT_CLI_PACKAGES[id as keyof typeof AGENT_CLI_PACKAGES];
+      expect(floor.package, id).toBe(installed);
+      if (floor.package === undefined) {
+        expect(floor.updateCommand, id).toEqual(expect.any(String));
+      }
       expect(floor.minVersion).toMatch(/^\d+\.\d+\.\d+$/);
     }
   });
@@ -56,5 +62,17 @@ describe("acpCliOutdated", () => {
     expect(acpCliOutdated("pi", "")).toBeUndefined();
     expect(acpCliOutdated("pi", "unknown")).toBeUndefined();
     expect(acpCliOutdated("claude", "0.0.1")).toBeUndefined();
+  });
+});
+
+describe("floorHint", () => {
+  it("carries the package, the update command, or neither", () => {
+    expect(floorHint({ minVersion: "1.0.0", package: "pkg" })).toEqual({
+      package: "pkg",
+    });
+    expect(
+      floorHint({ minVersion: "1.0.0", updateCommand: "tool update" }),
+    ).toEqual({ updateCommand: "tool update" });
+    expect(floorHint({ minVersion: "1.0.0" })).toEqual({});
   });
 });

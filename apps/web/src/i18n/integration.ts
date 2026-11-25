@@ -50,6 +50,7 @@ export const integration: MessageModule = {
     "integration.state.skillMissing": "技能未生成",
     "integration.state.notGenerated": "未生成",
     "integration.state.limited": "注入受限",
+    "integration.state.noInjection": "无注入",
     "integration.action.install": "安装",
     "integration.action.reinstall": "重新安装",
     "integration.action.installing": "安装中",
@@ -80,6 +81,7 @@ export const integration: MessageModule = {
     "integration.reason.acp_missing": "ACP 未安装", // i18n-exempt
     "integration.reason.mcp_not_wired": "适配器不接画布工具",
     "integration.reason.client_without_mcp": "客户端不带画布工具",
+    "integration.reason.no_injection": "终端不注入",
     "integration.row.mods": "Mods", // i18n-exempt
     "integration.mods.on": "已启用",
     "integration.mods.onSession": "已启用 · {n} 个会话",
@@ -145,6 +147,7 @@ export const integration: MessageModule = {
     "integration.state.skillMissing": "Skill not generated",
     "integration.state.notGenerated": "Not generated",
     "integration.state.limited": "Injection limited",
+    "integration.state.noInjection": "None",
     "integration.action.install": "Install",
     "integration.action.reinstall": "Reinstall",
     "integration.action.installing": "Installing",
@@ -175,6 +178,7 @@ export const integration: MessageModule = {
     "integration.reason.acp_missing": "ACP not installed",
     "integration.reason.mcp_not_wired": "The adapter has no canvas tools",
     "integration.reason.client_without_mcp": "The client has no canvas tools",
+    "integration.reason.no_injection": "The terminal is not injected",
     "integration.row.mods": "Mods",
     "integration.mods.on": "On",
     "integration.mods.onSession": "On · {n} session",

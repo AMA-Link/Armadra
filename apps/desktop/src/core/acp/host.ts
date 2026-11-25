@@ -36,7 +36,14 @@ import {
   hookClient,
   hookDirectoryOf,
 } from "../terminal/environment";
-import { type AcpAdapter, type AcpResume, acpLaunchPlan } from "./adapters";
+import {
+  type AcpAdapter,
+  type AcpResume,
+  type AcpSessionMeta,
+  type AcpSessionMetaInput,
+  acpLaunchPlan,
+  acpSessionMeta,
+} from "./adapters";
 import { checkCliFloor } from "./cli-floor";
 import {
   type CanvasMcpInput,
@@ -321,6 +328,12 @@ export interface AcpStartOptions {
   readonly resume?: { readonly sessionId: string; readonly method: AcpResume };
   /** 开会话时交给 Agent 的 MCP 服务器（§5.8）；缺席或空 = 不带。 */
   readonly mcpServers?: readonly AcpMcpServer[];
+  /**
+   * 开会话时放进 `session/new|load|resume` 的 `_meta`（适配器表的
+   * `sessionMeta` 算出来的）；缺席 = 不带。客户端不声明 `features.sessionMeta`
+   * 时不发，结果里 `metaInjected: false`。
+   */
+  readonly sessionMeta?: AcpSessionMeta;
   readonly initializeTimeoutMs?: number;
   /**
    * 调用方还需要回放吗：时间线已经有内容时为 `false`，此时 Agent 支持
@@ -389,6 +402,11 @@ export interface AcpHostSession {
    * false，会话照样可用、只是没有画布工具）。没要求时缺席。
    */
   readonly mcpInjected?: boolean;
+  /**
+   * 要求带 `_meta`：真的随开会话发出去了没有（客户端不声明
+   * `features.sessionMeta` 时为 false，会话照样可用）。没要求时缺席。
+   */
+  readonly metaInjected?: boolean;
   /** Pi 经 ama 的桥开会话时桥报的版本；`verified` 为假表示在已验证区间之外（§100.2）。 */
   readonly pi?: AcpPiMeta;
 }
@@ -565,7 +583,12 @@ export async function startAcp(
     remember(options.agentId, capabilities);
 
     clock.phase("session");
-    const opener = sessionOpener(process_.client, options.mcpServers ?? []);
+    const opener = sessionOpener(
+      process_.client,
+      options.mcpServers ?? [],
+      undefined,
+      options.sessionMeta,
+    );
     let opened: AcpOpenMethod = "new";
     let sessionId: string | undefined;
     let modes: AcpSessionModeState | null = null;
@@ -729,6 +752,9 @@ export async function startAcp(
       ...((options.mcpServers?.length ?? 0) === 0
         ? {}
         : { mcpInjected: opener.mcpInjected }),
+      ...(options.sessionMeta === undefined
+        ? {}
+        : { metaInjected: opener.metaInjected }),
       ...(pi === undefined ? {} : { pi }),
     };
   } catch (error) {
@@ -1041,7 +1067,13 @@ function rpcCode(error: unknown): number | undefined {
 
 export interface AcpAdapterStart extends Omit<
   AcpStartOptions,
-  "program" | "args" | "modeId" | "requireMode" | "resume" | "agentId"
+  | "program"
+  | "args"
+  | "modeId"
+  | "requireMode"
+  | "resume"
+  | "agentId"
+  | "sessionMeta"
 > {
   readonly mode?: PermissionMode;
   readonly profilePath?: string;
@@ -1055,6 +1087,11 @@ export interface AcpAdapterStart extends Omit<
    * `armadra-hook mcp`；缺席不带。
    */
   readonly canvasMcp?: CanvasMcpInput;
+  /**
+   * 开会话 `_meta` 的输入（适配器表的 `sessionMeta` 据此算）：画布说明、插件
+   * 目录。权限模式取 {@link mode}，不在这里重复。缺席 = 不带 `_meta`。
+   */
+  readonly metaInput?: Omit<AcpSessionMetaInput, "mode">;
 }
 
 /**
@@ -1134,7 +1171,8 @@ export function adapterStartOptions(
         }
       : ambient;
   const mode = options.mode ?? "default";
-  const { canvasMcp, mcpServers: given, ...rest } = options;
+  const { canvasMcp, metaInput, mcpServers: given, ...rest } = options;
+  const sessionMeta = acpSessionMeta(adapter, { ...metaInput, mode });
   // 给了现成的服务器（SSH 节点：执行主机上的 Hook 客户端）就用它们。
   const wanted = given ?? acpMcpServers(adapter, canvasMcp);
   // 只收 http / sse 的适配器（Copilot）：stdio 服务器改走启动参数（#858）。
@@ -1147,6 +1185,7 @@ export function adapterStartOptions(
     ...rest,
     env,
     ...(mcpServers.length === 0 ? {} : { mcpServers }),
+    ...(sessionMeta === undefined ? {} : { sessionMeta }),
     agentId: adapter.agentId,
     program: target?.program ?? resolved,
     args: [...(target?.args ?? []), ...plan.args, ...mcpArgs],

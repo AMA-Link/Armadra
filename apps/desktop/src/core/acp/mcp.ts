@@ -19,7 +19,7 @@
 import { AcpClient } from "@armadra/agent/acp";
 
 import { agentEnvironment, hookClient } from "../terminal/environment";
-import type { AcpAdapter } from "./adapters";
+import type { AcpAdapter, AcpSessionMeta } from "./adapters";
 import type {
   AcpLoadSessionResult,
   AcpMcpServer,
@@ -133,24 +133,58 @@ export function clientAcceptsMcpServers(
   return features?.mcpServers === true;
 }
 
+/**
+ * `AcpClient` 能不能在开会话时带 `_meta`：声明 `features.sessionMeta`。固定的
+ * 0.21 没有这个声明，一律答不支持——`_meta` 不发，会话照常开。
+ *
+ * 接口形状（`features.sessionMeta`、`AcpSessionOptions.meta`）由
+ * AMA-Link/armadra-agent#327 定死；它落地并升级固定版本之前，这里的约定只是宿主
+ * 一侧的预留，agy 批 1 的 ACP 部分与 grok G3 以它为前置。
+ */
+export function clientAcceptsSessionMeta(
+  client: { readonly features?: unknown } = AcpClient as {
+    readonly features?: unknown;
+  },
+): boolean {
+  const features = client.features as { sessionMeta?: unknown } | undefined;
+  return features?.sessionMeta === true;
+}
+
+/**
+ * 适配器行带了 `_meta`、却没有随开会话发出去（`metaInjected === false`）：会话
+ * 照常可用，但这家要的规则、插件目录或免审批开关没有生效，要留下一条记录。
+ * 没带 `_meta` 的会话（`metaInjected` 缺席）答 `false`。
+ */
+export function sessionMetaDropped(session: {
+  readonly metaInjected?: boolean;
+}): boolean {
+  return session.metaInjected === false;
+}
+
+/** 新版 `AcpClient` 开会话的第三个参数；`meta` 就是发给 Agent 的 `_meta`。 */
+interface SessionCallOptions {
+  readonly mcpServers: readonly AcpMcpServer[];
+  readonly meta?: AcpSessionMeta;
+}
+
 /** 新版 `AcpClient` 开会话的签名（第三个参数）。 */
 interface McpCapableClient {
   newSession(
     cwd: string,
     signal: AbortSignal | undefined,
-    options: { mcpServers: readonly AcpMcpServer[] },
+    options: SessionCallOptions,
   ): Promise<AcpNewSessionResult>;
   loadSession(
     sessionId: string,
     cwd: string,
     signal: AbortSignal | undefined,
-    options: { mcpServers: readonly AcpMcpServer[] },
+    options: SessionCallOptions,
   ): Promise<AcpLoadSessionResult>;
   resumeSession(
     sessionId: string,
     cwd: string,
     signal: AbortSignal | undefined,
-    options: { mcpServers: readonly AcpMcpServer[] },
+    options: SessionCallOptions,
   ): Promise<AcpLoadSessionResult>;
 }
 
@@ -161,6 +195,8 @@ export interface AcpSessionOpener {
   resumeSession(sessionId: string, cwd: string): Promise<AcpLoadSessionResult>;
   /** 要带的服务器真的随开会话发出去了。 */
   readonly mcpInjected: boolean;
+  /** 要带的 `_meta` 真的随开会话发出去了（没有 `_meta` 要带时为 false）。 */
+  readonly metaInjected: boolean;
 }
 
 /** {@link sessionOpener} 用到的那部分客户端（测试可以给一个记录调用的替身）。 */
@@ -170,29 +206,40 @@ export type AcpSessionClient = Pick<
 >;
 
 /**
- * 没有服务器要带、或客户端不支持时，调用与旧版完全相同（不传第三个参数，
- * 线路逐字节不变）。
+ * 没有服务器与 `_meta` 要带、或客户端都不支持时，调用与旧版完全相同（不传第三个
+ * 参数，线路逐字节不变）。`mcpServers` 与 `_meta` 各按自己的能力声明决定带不带：
+ * 客户端只支持其中一样时，另一样不发，如实在 {@link AcpSessionOpener} 里答
+ * `mcpInjected` / `metaInjected`。
  */
 export function sessionOpener(
   client: AcpSessionClient,
   servers: readonly AcpMcpServer[] = [],
   supported: boolean = clientAcceptsMcpServers(),
+  meta?: AcpSessionMeta,
+  metaSupported: boolean = clientAcceptsSessionMeta(),
 ): AcpSessionOpener {
-  if (servers.length === 0 || !supported) {
+  const withServers = servers.length > 0 && supported;
+  const withMeta = meta !== undefined && metaSupported;
+  if (!withServers && !withMeta) {
     return {
       newSession: (cwd) => client.newSession(cwd),
       loadSession: (id, cwd) => client.loadSession(id, cwd),
       resumeSession: (id, cwd) => client.resumeSession(id, cwd),
       mcpInjected: false,
+      metaInjected: false,
     };
   }
   const capable = client as unknown as McpCapableClient;
-  const options = { mcpServers: servers };
+  const options: SessionCallOptions = {
+    mcpServers: withServers ? servers : [],
+    ...(withMeta ? { meta } : {}),
+  };
   return {
     newSession: (cwd) => capable.newSession(cwd, undefined, options),
     loadSession: (id, cwd) => capable.loadSession(id, cwd, undefined, options),
     resumeSession: (id, cwd) =>
       capable.resumeSession(id, cwd, undefined, options),
-    mcpInjected: true,
+    mcpInjected: withServers,
+    metaInjected: withMeta,
   };
 }

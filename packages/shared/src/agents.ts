@@ -32,6 +32,26 @@ export const AGENT_IDS = [
 export type BuiltinAgentId = (typeof AGENT_IDS)[number];
 
 /**
+ * 内置 Agent 里**没有**画布注入的那几家（契约 §120）：没有单次生效的 hook /
+ * 技能通道，Armadra 不为它们写任何文件。其余都在 core 的注入名单
+ * （`core/hook/install/inject.ts::INJECTED_AGENTS`）里，两边由 core 的测试守着一致。
+ * 新增一家内置 Agent 时，没有注入就加在这里——零注入开关等只对有注入的家有意义的
+ * 派生表据此排除它。
+ */
+export const NON_INJECTED_AGENT_IDS =
+  [] as const satisfies readonly BuiltinAgentId[];
+export type NonInjectedAgentId = (typeof NON_INJECTED_AGENT_IDS)[number];
+export type InjectedAgentId = Exclude<BuiltinAgentId, NonInjectedAgentId>;
+
+/** 有画布注入的内置 Agent，注册表顺序。 */
+export function injectedAgentIds(
+  all: readonly string[] = AGENT_IDS,
+  without: readonly string[] = NON_INJECTED_AGENT_IDS,
+): readonly string[] {
+  return all.filter((id) => !without.includes(id));
+}
+
+/**
  * How the first prompt reaches the CLI:
  * - `argv`               positional argument on the launch line
  * - `flag-prompt`        passed through a dedicated flag (`promptFlag`)

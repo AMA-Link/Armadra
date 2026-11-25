@@ -43,6 +43,24 @@ export type AcpSessionIdRule = (typeof ACP_SESSION_ID)[number];
 /** 落点的形状与各家的表在 `@armadra/shared` 的 `ACP_MODE_TABLE`（页面与 core 共用）。 */
 export type { AcpModeMapping };
 
+/**
+ * `session/new|load|resume` 的 `_meta`（ACP 规范留给各家自己的扩展位）的输入：
+ * 会话层手里有、适配器可能要放进 `_meta` 的东西。只有适配器自己的
+ * {@link AcpAdapter.sessionMeta} 知道哪个键放哪里——agy 把画布说明放进
+ * `_meta.antigravity.systemPrompt.append`，别的 CLI 有别的形状；调用方不按
+ * Agent 写分支。
+ */
+export interface AcpSessionMetaInput {
+  readonly mode: PermissionMode;
+  /** 画布说明（系统提示的追加文本）；没有就缺席。 */
+  readonly instructions?: string;
+  /** 要挂给这次会话的插件目录；没有就缺席。 */
+  readonly pluginDirs?: readonly string[];
+}
+
+/** 一次 `_meta`：顶层键是各家自己的命名空间。 */
+export type AcpSessionMeta = Readonly<Record<string, unknown>>;
+
 export interface AcpAdapter {
   /** 内置 id；`ama` 在 core 的注册表补上之前单列（G1-7）。 */
   readonly agentId: AgentId | "ama";
@@ -84,6 +102,14 @@ export interface AcpAdapter {
      */
     readonly mods?: boolean;
   };
+  /**
+   * 开会话时放进 `_meta` 的东西（见 {@link AcpSessionMetaInput}）。纯函数；
+   * 答 `undefined` 或空对象就不带 `_meta`，线路与没有这个字段时逐字节相同。
+   * 缺席 = 这家不用。
+   */
+  readonly sessionMeta?: (
+    input: AcpSessionMetaInput,
+  ) => AcpSessionMeta | undefined;
   /** 前台进程门认的 argv[0] basename（会话 pid 就是适配器 pid）。 */
   readonly expectedProcess: readonly string[];
   /**
@@ -198,6 +224,38 @@ export const ACP_ADAPTERS: readonly AcpAdapter[] = [
 
 export function acpAdapter(agentId: string): AcpAdapter | undefined {
   return ACP_ADAPTERS.find((adapter) => adapter.agentId === agentId);
+}
+
+/**
+ * 这一次开会话要带的 `_meta`；适配器不用、给的是空对象时答 `undefined`。
+ * 空的命名空间也不带：`{ ns: {} }` 对 Agent 没有意义，却会改变线路。
+ */
+export function acpSessionMeta(
+  adapter: AcpAdapter,
+  input: AcpSessionMetaInput,
+): AcpSessionMeta | undefined {
+  const meta = adapter.sessionMeta?.(input);
+  if (meta === undefined) return undefined;
+  const entries = Object.entries(meta).filter(([, value]) => {
+    if (value === undefined || value === null) return false;
+    if (typeof value === "object" && !Array.isArray(value)) {
+      return Object.keys(value).length > 0;
+    }
+    return true;
+  });
+  return entries.length === 0 ? undefined : Object.fromEntries(entries);
+}
+
+/**
+ * 把一段系统提示追加文本放进 `_meta.<命名空间>.systemPrompt.append`，
+ * 文本为空就什么都不放。agy 用它（`antigravity`）；别的 CLI 用别的键，自己写函数。
+ */
+export function systemPromptAppendMeta(
+  namespace: string,
+  text: string | undefined,
+): AcpSessionMeta | undefined {
+  if (text === undefined || text.trim() === "") return undefined;
+  return { [namespace]: { systemPrompt: { append: text } } };
 }
 
 /** 这家在 ACP 下真有落点的权限模式；`default` 总在。 */

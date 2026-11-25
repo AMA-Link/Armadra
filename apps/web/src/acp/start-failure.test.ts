@@ -68,6 +68,24 @@ describe("startFailureNote", () => {
     );
   });
 
+  it("acp_cli_outdated 没有包时写出 CLI 自己的升级命令；两样都没有就不附", () => {
+    const update = new RuntimeRequestError(409, "old", "acp_cli_outdated", {
+      details: {
+        agentId: "tool",
+        installed: "1.0.0",
+        minimum: "1.2.0",
+        updateCommand: "tool update",
+      },
+    });
+    expect(startFailureNote(update, t)).toBe(
+      'acp.error.cliOutdatedUpdate:{"installed":"1.0.0","minimum":"1.2.0","command":"tool update"}',
+    );
+    const bare = new RuntimeRequestError(409, "old", "acp_cli_outdated", {
+      details: { agentId: "tool", installed: "1.0.0", minimum: "1.2.0" },
+    });
+    expect(startFailureNote(bare, t)).toBeNull();
+  });
+
   it("pi_outdated 同样写出版本与包；pi_missing 只写应装的包", () => {
     const outdated = new RuntimeRequestError(409, "old", "pi_outdated", {
       details: {

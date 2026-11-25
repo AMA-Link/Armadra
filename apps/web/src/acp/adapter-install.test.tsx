@@ -7,7 +7,11 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { useQuery } from "@tanstack/react-query";
-import type { AdapterInstallJob, AgentInfo } from "@armadra/shared";
+import {
+  acpInstallCommand,
+  type AdapterInstallJob,
+  type AgentInfo,
+} from "@armadra/shared";
 
 /**
  * ACP 适配器的安装入口（契约 §39.7）：集成页每行的状态与按钮、运行中的进度、
@@ -153,6 +157,12 @@ describe("installAgentId", () => {
     expect(
       installAgentId(agent("custom:x", { baseAgent: "pi" }), "cli"),
     ).toBeNull();
+  });
+
+  it("两张表都没有的 CLI（没有 npm 包）既不代装 CLI 也不代装适配器", () => {
+    expect(installAgentId(agent("tool"), "cli")).toBeNull();
+    expect(installAgentId(agent("tool"), "adapter")).toBeNull();
+    expect(acpInstallCommand("tool")).toBeNull();
   });
 });
 

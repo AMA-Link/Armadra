@@ -148,17 +148,22 @@ export const agentModelListSchema = z.array(agentModelSchema);
 /**
  * How a provider's integration reaches its CLI.
  *
- * `canvas` is the only mode a current core answers
+ * `canvas` is the only mode a current core answers for an injected CLI
  * (docs/design/canvas-only-integration.md): hook, skill and canvas
  * instructions are handed over on the launch line of a canvas node and nowhere
  * else. The older three stay parseable so a page talking to an older core
  * still draws its rows.
+ *
+ * `none` (contract §120) is a built-in CLI with no canvas injection at all: no
+ * hook, skill or launcher artifacts exist for it, so there is nothing to
+ * regenerate and nothing that can be stale.
  */
 export const INJECTION_MODES = [
   "canvas",
   "launch",
   "file",
   "extension",
+  "none",
 ] as const;
 
 /** One half of an install unit — the adapter, or the skill. */

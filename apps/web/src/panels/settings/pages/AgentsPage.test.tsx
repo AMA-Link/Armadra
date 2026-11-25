@@ -175,6 +175,41 @@ describe("Agent CLI 子页", () => {
     expect(screen.queryByText(zh("integration.state.stale"))).toBeNull();
   });
 
+  /** 没有画布注入的 CLI（契约 §120）：不报「未生成」，没有「重新生成」，只说「无注入」。 */
+  it("says there is no injection instead of reporting missing artifacts", async () => {
+    const tool: AgentInfo = {
+      ...claude,
+      id: "tool",
+      label: "Tool",
+      launchCmd: "tool",
+      capabilities: ["resume"],
+      resolvedPath: "/usr/local/bin/tool",
+    };
+    mock.agents.mockReset().mockResolvedValue([tool]);
+    mock.integration.mockResolvedValue({
+      agentId: "tool",
+      mode: "none",
+      hook: { installed: false, revision: 0 },
+      skill: { installed: false, revision: 0 },
+      legacy: { found: [] },
+      revision: 412,
+      stale: false,
+      canvasAgents: {
+        terminal: "unavailable",
+        acp: "none",
+        reasons: ["no_injection"],
+      },
+    });
+    view("cli:tool");
+    expect(
+      await screen.findByText(zh("integration.state.noInjection")),
+    ).toBeTruthy();
+    expect(screen.queryByText(zh("integration.state.notGenerated"))).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: zh("integration.regenerate") }),
+    ).toBeNull();
+  });
+
   /** 「清理旧版 N」点开是清单，看过再按清单底下的「清理」。 */
   it("lists every leftover entry before offering the repair", async () => {
     mock.integration.mockResolvedValue({

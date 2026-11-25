@@ -167,6 +167,7 @@ export const CANVAS_AGENT_REASONS = [
   "acp_missing",
   "mcp_not_wired",
   "client_without_mcp",
+  "no_injection",
 ] as const;
 export const canvasAgentsSchema = z.looseObject({
   terminal: z.enum(CANVAS_AGENT_STATES),
@@ -669,7 +670,8 @@ export const acpCliOutdatedDetailsSchema = z.looseObject({
   agentId: z.string(),
   installed: z.string(),
   minimum: z.string(),
-  package: z.string(),
+  package: z.string().optional(),
+  updateCommand: z.string().optional(),
 });
 
 /**

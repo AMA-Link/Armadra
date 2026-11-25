@@ -6,6 +6,7 @@ import {
 } from "./events";
 import {
   CLAUDE_MODS_MIN,
+  INJECTED_AGENTS,
   type ClaudeModsReason,
   type InjectionOptions,
   artifactLayout,
@@ -187,7 +188,8 @@ export type CanvasAgentReason =
   | "cli_missing"
   | "acp_missing"
   | "mcp_not_wired"
-  | "client_without_mcp";
+  | "client_without_mcp"
+  | "no_injection";
 
 export interface CanvasAgents {
   readonly terminal: CanvasAgentState;
@@ -200,6 +202,11 @@ export interface CanvasAgentsInput {
   readonly hookInstalled: boolean;
   readonly skillInstalled: boolean;
   readonly launcherLimited: boolean;
+  /**
+   * 这家没有画布注入（`injected: false`，契约 §120）：终端驱动没有技能与
+   * Hook 可言，原因只有 `no_injection`，不再列「技能 / Hook 未生成」。
+   */
+  readonly injected?: boolean;
   /** 这家没有 ACP 入口时缺席。 */
   readonly acp?: {
     readonly installed: boolean;
@@ -217,13 +224,20 @@ export interface CanvasAgentsInput {
 export function canvasAgentsOf(input: CanvasAgentsInput): CanvasAgents {
   const reasons: CanvasAgentReason[] = [];
   let terminal: CanvasAgentState;
-  if (!input.cliInstalled) reasons.push("cli_missing");
-  if (!input.skillInstalled) reasons.push("skill_missing");
-  if (!input.hookInstalled) reasons.push("hook_missing");
-  if (input.launcherLimited) reasons.push("launcher_limited");
-  if (!input.cliInstalled || !input.skillInstalled) terminal = "unavailable";
-  else if (!input.hookInstalled || input.launcherLimited) terminal = "limited";
-  else terminal = "available";
+  if (input.injected === false) {
+    if (!input.cliInstalled) reasons.push("cli_missing");
+    reasons.push("no_injection");
+    terminal = "unavailable";
+  } else {
+    if (!input.cliInstalled) reasons.push("cli_missing");
+    if (!input.skillInstalled) reasons.push("skill_missing");
+    if (!input.hookInstalled) reasons.push("hook_missing");
+    if (input.launcherLimited) reasons.push("launcher_limited");
+    if (!input.cliInstalled || !input.skillInstalled) terminal = "unavailable";
+    else if (!input.hookInstalled || input.launcherLimited) {
+      terminal = "limited";
+    } else terminal = "available";
+  }
 
   let acp: CanvasAgents["acp"];
   if (input.acp === undefined) acp = "none";
@@ -325,11 +339,66 @@ function isPresent(path: string | undefined): boolean {
 
 /* --------------------------------- reading -------------------------------- */
 
+/**
+ * The state of a built-in CLI that has no canvas injection (contract §120):
+ * `mode: "none"`, both halves absent, nothing stale, no launcher, no legacy
+ * scan (it never had a global install). What the settings page can still say
+ * about it is whether the ACP entry can create agents.
+ */
+export function noInjectionState(
+  agentId: string,
+  options: IntegrationOptions,
+  warning?: string,
+): IntegrationState {
+  const env = options.env ?? process.env;
+  const launchCmd = definition(agentId)?.launchCmd;
+  const adapter = acpAdapter(agentId);
+  const canvasAgents = canvasAgentsOf({
+    injected: false,
+    cliInstalled:
+      launchCmd !== undefined && resolveCommand(launchCmd, env) !== undefined,
+    hookInstalled: false,
+    skillInstalled: false,
+    launcherLimited: false,
+    ...(adapter === undefined
+      ? {}
+      : {
+          acp: {
+            installed: resolveCommand(adapter.program, env) !== undefined,
+            canvasTools: adapter.canvasTools,
+          },
+        }),
+    clientMcp: (options.clientMcp ?? (() => acpClientFeatures().mcpServers))(),
+  });
+  return {
+    agentId,
+    mode: "none",
+    hook: { installed: false, revision: 0 },
+    skill: { installed: false, revision: 0 },
+    legacy: { found: [] },
+    revision: INTEGRATION_REVISION,
+    stale: false,
+    launchArgs: [],
+    launchEnv: [],
+    globalWrites: [],
+    ...(options.outdatedHosts === undefined
+      ? {}
+      : { outdatedHosts: options.outdatedHosts() }),
+    ...(warning === undefined ? {} : { warning }),
+    canvasAgents,
+  };
+}
+
 export function state(
   agentId: string,
   options: IntegrationOptions,
   warning?: string,
 ): IntegrationState {
+  // A built-in CLI without injection answers the `none` shape; anything that
+  // is not a built-in at all (a `custom:` entry, a typo) is still a 400.
+  if (!isInjected(agentId) && definition(agentId) !== undefined) {
+    return noInjectionState(agentId, options, warning);
+  }
   requireInjected(agentId);
   const env = options.env ?? process.env;
   // ama never had a global install, so there is no config home to scan.
@@ -466,15 +535,7 @@ export function prepareAtStartup(options: IntegrationOptions): StartupReport {
     : undefined;
   const prepared: string[] = [];
   const failures: { agentId: string; error: string }[] = [];
-  for (const agentId of [
-    "claude",
-    "codex",
-    "opencode",
-    "pi",
-    "omp",
-    "copilot",
-    "ama",
-  ]) {
+  for (const agentId of INJECTED_AGENTS) {
     try {
       // The mod is rebuilt at every start (contract §57.1): whatever Claude
       // wrote into its folder since (generated types) goes with it.

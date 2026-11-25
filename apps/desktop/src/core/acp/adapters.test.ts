@@ -13,6 +13,8 @@ import {
   acpAdapter,
   acpLaunchPlan,
   acpPermissionModes,
+  acpSessionMeta,
+  systemPromptAppendMeta,
 } from "./adapters";
 
 /**
@@ -239,5 +241,67 @@ describe("pi's bridge (AMA-Link/Armadra#716)", () => {
       args: ["--mode", "acp", "--bridge", "pi", "--", "--skill", "/x/armadra"],
       modeId: "default",
     });
+  });
+});
+
+describe("session _meta", () => {
+  const base = acpAdapter("claude") as AcpAdapter;
+
+  it("is absent on every built-in row today", () => {
+    for (const adapter of ACP_ADAPTERS) {
+      expect(adapter.sessionMeta, adapter.agentId).toBeUndefined();
+      expect(
+        acpSessionMeta(adapter, { mode: "default", instructions: "x" }),
+        adapter.agentId,
+      ).toBeUndefined();
+    }
+  });
+
+  it("puts a system prompt under the vendor's own namespace, or nothing", () => {
+    expect(systemPromptAppendMeta("vendor", "rules")).toEqual({
+      vendor: { systemPrompt: { append: "rules" } },
+    });
+    expect(systemPromptAppendMeta("vendor", undefined)).toBeUndefined();
+    expect(systemPromptAppendMeta("vendor", "  \n")).toBeUndefined();
+  });
+
+  it("hands the adapter the mode, the instructions and the plugin dirs", () => {
+    const seen: unknown[] = [];
+    const adapter: AcpAdapter = {
+      ...base,
+      sessionMeta: (input) => {
+        seen.push(input);
+        return { vendor: { yolo: input.mode === "full-auto" } };
+      },
+    };
+    expect(
+      acpSessionMeta(adapter, {
+        mode: "full-auto",
+        instructions: "r",
+        pluginDirs: ["/p"],
+      }),
+    ).toEqual({ vendor: { yolo: true } });
+    expect(seen).toEqual([
+      { mode: "full-auto", instructions: "r", pluginDirs: ["/p"] },
+    ]);
+  });
+
+  it("drops empty namespaces and empty answers, so the wire does not change", () => {
+    const answer = (
+      value: Record<string, unknown> | undefined,
+    ): AcpAdapter => ({
+      ...base,
+      sessionMeta: () => value,
+    });
+    const input = { mode: "default" as const };
+    expect(acpSessionMeta(answer(undefined), input)).toBeUndefined();
+    expect(acpSessionMeta(answer({}), input)).toBeUndefined();
+    expect(acpSessionMeta(answer({ vendor: {} }), input)).toBeUndefined();
+    expect(
+      acpSessionMeta(
+        answer({ vendor: {}, other: { a: 1 }, gone: null }),
+        input,
+      ),
+    ).toEqual({ other: { a: 1 } });
   });
 });
