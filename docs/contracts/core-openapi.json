@@ -6700,6 +6700,11 @@
                                         "cancelled"
                                       ],
                                       "type": "string"
+                                    },
+                                    "round": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 9007199254740991
                                     }
                                   },
                                   "required": [
@@ -6737,6 +6742,9 @@
                                       "type": "string"
                                     },
                                     "nodeId": {
+                                      "type": "string"
+                                    },
+                                    "reason": {
                                       "type": "string"
                                     }
                                   },
@@ -6873,6 +6881,38 @@
                                     },
                                     "pullsChanged": {
                                       "type": "boolean"
+                                    },
+                                    "children": {
+                                      "anyOf": [
+                                        {
+                                          "type": "object",
+                                          "properties": {
+                                            "total": {
+                                              "type": "integer",
+                                              "minimum": 0,
+                                              "maximum": 9007199254740991
+                                            },
+                                            "finished": {
+                                              "type": "integer",
+                                              "minimum": 0,
+                                              "maximum": 9007199254740991
+                                            },
+                                            "needsYou": {
+                                              "type": "integer",
+                                              "minimum": 0,
+                                              "maximum": 9007199254740991
+                                            }
+                                          },
+                                          "required": [
+                                            "total",
+                                            "finished",
+                                            "needsYou"
+                                          ]
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
                                     },
                                     "type": {
                                       "const": "delivery.changed"
@@ -72826,6 +72866,18 @@
                               ]
                             }
                           },
+                          "hints": {
+                            "type": "object",
+                            "properties": {
+                              "tierIgnored": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              }
+                            },
+                            "required": ["tierIgnored"]
+                          },
                           "createdAt": {
                             "type": "string"
                           },
@@ -73036,6 +73088,18 @@
                               }
                             ]
                           }
+                        },
+                        "hints": {
+                          "type": "object",
+                          "properties": {
+                            "tierIgnored": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "required": ["tierIgnored"]
                         },
                         "createdAt": {
                           "type": "string"
@@ -73344,6 +73408,18 @@
                               }
                             ]
                           }
+                        },
+                        "hints": {
+                          "type": "object",
+                          "properties": {
+                            "tierIgnored": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "required": ["tierIgnored"]
                         },
                         "createdAt": {
                           "type": "string"
@@ -73724,6 +73800,18 @@
                               }
                             ]
                           }
+                        },
+                        "hints": {
+                          "type": "object",
+                          "properties": {
+                            "tierIgnored": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          "required": ["tierIgnored"]
                         },
                         "createdAt": {
                           "type": "string"
@@ -74581,9 +74669,14 @@
                         }
                       ]
                     }
+                  },
+                  "baseVersion": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
                   }
                 },
-                "required": ["templateId"]
+                "required": ["templateId", "baseVersion"]
               }
             }
           }
@@ -75305,6 +75398,50 @@
                                       "type": "null"
                                     }
                                   ]
+                                },
+                                "round": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "verdict": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "pass": {
+                                          "type": "boolean"
+                                        },
+                                        "issues": {
+                                          "type": "array",
+                                          "items": {
+                                            "type": "object",
+                                            "properties": {
+                                              "role": {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "string"
+                                                  },
+                                                  {
+                                                    "type": "null"
+                                                  }
+                                                ]
+                                              },
+                                              "text": {
+                                                "type": "string",
+                                                "maxLength": 500
+                                              }
+                                            },
+                                            "required": ["role", "text"]
+                                          }
+                                        }
+                                      },
+                                      "required": ["pass", "issues"]
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
                                 }
                               },
                               "required": [
@@ -75682,6 +75819,50 @@
                                     "type": "null"
                                   }
                                 ]
+                              },
+                              "round": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "verdict": {
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "pass": {
+                                        "type": "boolean"
+                                      },
+                                      "issues": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "object",
+                                          "properties": {
+                                            "role": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "text": {
+                                              "type": "string",
+                                              "maxLength": 500
+                                            }
+                                          },
+                                          "required": ["role", "text"]
+                                        }
+                                      }
+                                    },
+                                    "required": ["pass", "issues"]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
                               }
                             },
                             "required": [
@@ -76003,6 +76184,50 @@
                                     "type": "null"
                                   }
                                 ]
+                              },
+                              "round": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "verdict": {
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "pass": {
+                                        "type": "boolean"
+                                      },
+                                      "issues": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "object",
+                                          "properties": {
+                                            "role": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "text": {
+                                              "type": "string",
+                                              "maxLength": 500
+                                            }
+                                          },
+                                          "required": ["role", "text"]
+                                        }
+                                      }
+                                    },
+                                    "required": ["pass", "issues"]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
                               }
                             },
                             "required": [
@@ -76298,6 +76523,50 @@
                                 "anyOf": [
                                   {
                                     "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "round": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "verdict": {
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "pass": {
+                                        "type": "boolean"
+                                      },
+                                      "issues": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "object",
+                                          "properties": {
+                                            "role": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "text": {
+                                              "type": "string",
+                                              "maxLength": 500
+                                            }
+                                          },
+                                          "required": ["role", "text"]
+                                        }
+                                      }
+                                    },
+                                    "required": ["pass", "issues"]
                                   },
                                   {
                                     "type": "null"
@@ -76618,6 +76887,50 @@
                                 "anyOf": [
                                   {
                                     "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "round": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "verdict": {
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "properties": {
+                                      "pass": {
+                                        "type": "boolean"
+                                      },
+                                      "issues": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "object",
+                                          "properties": {
+                                            "role": {
+                                              "anyOf": [
+                                                {
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "type": "null"
+                                                }
+                                              ]
+                                            },
+                                            "text": {
+                                              "type": "string",
+                                              "maxLength": 500
+                                            }
+                                          },
+                                          "required": ["role", "text"]
+                                        }
+                                      }
+                                    },
+                                    "required": ["pass", "issues"]
                                   },
                                   {
                                     "type": "null"
