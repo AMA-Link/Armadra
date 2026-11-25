@@ -13,6 +13,9 @@
 //   program=C:\…\node.exe        只在垫片模式：要起的程序（core 解析 PATH 与 npm 包装后写入）
 //   lead=C:\…\cli.js             只在垫片模式：排在程序后面的词，可多条
 //   env=NAME=value               注入：只给 CLI 进程设的环境变量，可多条
+//   place=before-separator       注入词的位置：插在命令行里第一个单独的 `--` 之前
+//                                （没有 `--` 就接在最后）。缺省不写这一行，接在最后。
+//                                给 prompt 前有 `--` 的 CLI（grok）用：`--` 之后全是 prompt
 //   arg=value                    注入：接在调用者参数之后的词，可多条
 //   credential=C:\…\armadra-hook.exe   节点凭据（契约 §20.4）：客户端路径，空值表示没有客户端
 //   credential-var=NAME          节点凭据：答复里允许的变量名，可多条
@@ -179,6 +182,8 @@ internal static class ArmadraLaunch
     {
         public string Gate;
         public string Bare;
+        /// <summary>`place=` 的值；null 表示缺省（接在最后）。</summary>
+        public string Place;
         public string Program;
         public readonly List<string> Lead = new List<string>();
         public readonly List<KeyValuePair<string, string>> Env = new List<KeyValuePair<string, string>>();
@@ -288,7 +293,11 @@ internal static class ArmadraLaunch
         {
             foreach (KeyValuePair<string, string> pair in config.Env)
                 Environment.SetEnvironmentVariable(pair.Key, pair.Value);
-            foreach (string word in config.Args) body.Append(' ').Append(ArgQuote(word));
+            StringBuilder words = new StringBuilder();
+            foreach (string word in config.Args) words.Append(' ').Append(ArgQuote(word));
+            int separator = config.Place == "before-separator" ? FindSeparator(body.ToString()) : -1;
+            if (separator < 0) body.Append(words.ToString());
+            else body.Insert(separator - 1 < 0 ? 0 : separator - 1, words.ToString());
         }
 
         string application = resolved;
@@ -300,6 +309,40 @@ internal static class ArmadraLaunch
             commandLine.Append(ArgQuote(application)).Append(" /d /s /c \"").Append(body.ToString()).Append('"');
         }
         return Start(application, commandLine);
+    }
+
+    /// <summary>
+    /// 命令行里第一个单独的 `--` 词（不在引号里、前后是空白或行首行尾）的下标；没有答 -1。
+    /// 引号按 C 运行库的规则：`\"` 前反斜杠为奇数个时是字面引号，偶数个时反斜杠折半
+    /// 后引号切换状态。
+    /// </summary>
+    private static int FindSeparator(string line)
+    {
+        bool inQuote = false;
+        int i = 0;
+        int n = line.Length;
+        while (i < n)
+        {
+            char c = line[i];
+            if (c == '\\')
+            {
+                int run = 0;
+                while (i < n && line[i] == '\\') { run++; i++; }
+                if (i < n && line[i] == '"')
+                {
+                    if (run % 2 == 0) inQuote = !inQuote;
+                    i++;
+                }
+                continue;
+            }
+            if (c == '"') { inQuote = !inQuote; i++; continue; }
+            if (!inQuote && c == '-' && i + 1 < n && line[i + 1] == '-'
+                && (i == 0 || char.IsWhiteSpace(line[i - 1]))
+                && (i + 2 == n || char.IsWhiteSpace(line[i + 2])))
+                return i;
+            i++;
+        }
+        return -1;
     }
 
     /// <summary>
@@ -431,6 +474,14 @@ internal static class ArmadraLaunch
                     break;
                 case "lead":
                     config.Lead.Add(value);
+                    break;
+                case "place":
+                    if (value != "before-separator")
+                    {
+                        problem = "line " + (index + 1) + " has an unknown place: " + value;
+                        return null;
+                    }
+                    config.Place = value;
                     break;
                 case "arg":
                     config.Args.Add(value);
