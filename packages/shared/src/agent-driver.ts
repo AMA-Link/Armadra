@@ -40,6 +40,13 @@ export const TRANSCRIPT_AGENT_IDS = [
   "agy",
 ] as const;
 
+/**
+ * 转录要靠 core 自己去找会话的 CLI（没有 hook，终端里的 agy：按进程日志找，可能还没
+ * 找到、也可能读不到）。它们**可以**手动切到会话体，但**不默认**给会话体：找不到时
+ * 会话体是空的，终端体才是缺省。
+ */
+export const DISCOVERED_TRANSCRIPT_AGENT_IDS = ["agy"] as const;
+
 export function hasTranscript(baseAgentId: string): boolean {
   return (TRANSCRIPT_AGENT_IDS as readonly string[]).includes(baseAgentId);
 }
@@ -67,7 +74,12 @@ export function defaultAgentView(input: {
 }): { readonly driver: AgentDriver; readonly view?: AgentView } {
   const driver = defaultAgentDriver(input);
   if (driver === "terminal" && input.setting === "acp") {
-    if (hasTranscript(input.baseAgentId)) {
+    if (
+      hasTranscript(input.baseAgentId) &&
+      !(DISCOVERED_TRANSCRIPT_AGENT_IDS as readonly string[]).includes(
+        input.baseAgentId,
+      )
+    ) {
       return { driver, view: "session" };
     }
   }
