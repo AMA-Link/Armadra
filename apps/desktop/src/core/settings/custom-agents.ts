@@ -284,6 +284,18 @@ function normalizeBareLaunch(section: JsonObject): void {
   }
 }
 
+/**
+ * `agents.grok.answerCards`（契约 §127）：在终端里替人答 grok 的审批卡。不是布尔
+ * 就丢掉键，回到缺省关。
+ */
+function normalizeGrokAnswerCards(section: JsonObject): void {
+  const entry = section.grok;
+  if (!isJsonObject(entry)) return;
+  if ("answerCards" in entry && typeof entry.answerCards !== "boolean") {
+    delete entry.answerCards;
+  }
+}
+
 /** `settings.agents.<id>.bareLaunch`（契约 §113）：这家是否零注入启动。 */
 export function parseBareLaunch(document: JsonValue, agentId: string): boolean {
   return bareLaunchOf(document, agentId);
@@ -319,6 +331,7 @@ export function normalizeCustomAgents(document: JsonObject): void {
   const section: JsonObject = isJsonObject(existing) ? clone(existing) : {};
   section.custom = agents.map(customAgentToJson);
   normalizeBareLaunch(section);
+  normalizeGrokAnswerCards(section);
   // `disabled` 只在写过时才有；清洗后空了就删掉键，回到「没关过」。
   if ("disabled" in section) {
     const disabled = parseDisabledAgents({ agents: section });
