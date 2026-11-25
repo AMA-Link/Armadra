@@ -58,6 +58,7 @@ import {
 import { Hibernator } from "./hibernator";
 import { setAgentLauncher } from "../schedule/cold-start";
 import { launchInSession } from "./node-launch";
+import { releaseDriveAtTurnEnd } from "./turn-end";
 import { terminalBridge } from "./bridge";
 import { SshBackend } from "./ssh/backend";
 import { permissionWaitEnvironment } from "../hook/approvals";
@@ -1063,6 +1064,7 @@ export function install(
       });
     },
   );
+  const offTurnEnd = releaseDriveAtTurnEnd(context.bus, manager);
   const offArchived = context.bus.on(
     "workspace.archived",
     ({ workspaceId }) => {
@@ -1090,6 +1092,7 @@ export function install(
     stop: async (reason?: StopReason) => {
       offRemoving();
       offArchived();
+      offTurnEnd();
       // Withdrawn before the panes go: a verb that reached a bridge over a
       // manager that is shutting down would be told a session is missing
       // rather than that there is nothing to talk to.

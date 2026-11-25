@@ -47,6 +47,20 @@ describe("驱动租约（中立模块）", () => {
     expect(browser.expire(at(AGENT_IDLE_SECONDS))).toBe(true);
   });
 
+  it("轮末只放 Agent 自己的租约，人与接管的不动（#1011）", () => {
+    const lease = new DriveLease(0, TERMINAL);
+    expect(lease.releaseAgent()).toBe(false);
+    lease.request(agent(), T0);
+    expect(lease.releaseAgent()).toBe(true);
+    expect(lease.snapshot().state).toBe("free");
+    lease.request(human(), T0);
+    expect(lease.releaseAgent()).toBe(false);
+    expect(lease.snapshot().state).toBe("human");
+    lease.takeover(human(), T0);
+    expect(lease.releaseAgent()).toBe(false);
+    expect(lease.snapshot().state).toBe("humanTakeover");
+  });
+
   it("人的窗口两边一样长", () => {
     const terminal = new DriveLease(0, TERMINAL);
     terminal.request(human(), T0);

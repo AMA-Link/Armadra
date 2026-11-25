@@ -390,6 +390,16 @@ export class DriveLease {
     }
     this.clear();
   }
+
+  /**
+   * Agent 轮末放掉 Agent 持有的租约：只有 `agent` 持有者才放，人（含接管）与
+   * 控制器的租约不动。返回有没有真的放掉。
+   */
+  releaseAgent(): boolean {
+    if (this.state !== "agent" || this.holder?.kind !== "agent") return false;
+    this.clear();
+    return true;
+  }
 }
 
 /* -------------------------------- the client ------------------------------ */
