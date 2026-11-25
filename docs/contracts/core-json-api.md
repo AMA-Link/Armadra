@@ -991,6 +991,7 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
 - `task-id`：幂等键，1–100 个字母、数字或 `.` `_` `:` `-`（runner 用 `<ama 会话 id>:<ama 任务 id>`）。同一个协调者再用同一个 `task-id` 起：节点还在就答回那个节点（`result.reused: true`，不建、不投、不起）；节点已删就新建，任务行换绑过去。被别的协调者用过回 `409 task_conflict`。带它时 core 记一行 `workflow_task_runs`（`runner_id` = `agent`），并把节点交给依赖编排的启动路径起终端、敲启动行（与工作流角色节点同一条，页面开不开都一样）；`result` 多 `taskRunId` 与 `reused`。
 - `name`：节点标题，与 `title` 同义（两者都给时取 `title`）。
 - 权限模式这个 CLI 没有：`400 permission_mode_unsupported`，附 `supported: [...]`（与 §15.3 同码；`team` 同此）。
+- 没有画布注入的内置 CLI（§120，今天是 `agy`）：`--task`（`team` 的角色任务同）带着它而这家的 ACP 适配器在这台机器上不可用时，**建节点之前**答 `400 target_surface_unsupported`（终端里投不进第一条任务）；不带任务时仍可建一个空的终端节点。这样的 CLI 开节点时**忽略用户的终端偏好**（`agents.defaultDriver`），ACP 可用就写 `agent.driver: "acp"`；`--resume` 例外（接回只有终端做得到，行为不变）。
 - `cwd`：成员终端开在哪个目录。工作区根下的相对路径或落在工作区里的绝对路径，按 core 所在机器的路径规则解析并解开符号链接后判断；在工作区外（含经 `..` 或符号链接出去）回 `400 cwd_outside_workspace`，目录不存在或不是目录回 `400 bad_request`，与 `worktree` 同给回 `400 bad_request`。成立时写进节点数据的 `cwd`（解开链接后的绝对路径），`result` 与演练结果多 `cwd`。工作区在远端执行主机上时（G5-07），判定交给那台主机的 Worker（`files.list`，同一条根约束与同样的拒绝码），`cwd` 是那台主机上的绝对路径；Worker 不可达回 `400 cwd_unsupported`。
 - `resume`：接回这个 CLI 自己的一段会话（1–200 个字母、数字或 `.` `_` `:` `-`），core 起节点时敲的是 `agent/launch.ts` 的 resume 行（Claude `--resume <id>`、Codex `resume <id>` …）。值是这块画布上一个成员节点的 id 时（runner 的 `sessionRef.sessionId` 就是节点 id），取那个节点上报过的会话 id。这个 CLI 不能续接（或自定义条目关掉了 `resume`）、节点跑的不是同一家、或节点从没报过会话 id，回 `400 resume_unsupported`。成立时写进节点数据的 `agent.resume`，节点交给依赖编排的启动路径由 core 起（不带 `task-id` 也一样），`result` 多 `resume`（实际接回的会话 id）。ama 的 runner 把 `request.cwd` / `request.resume` 映射成这两个参数，遇到 `cwd_outside_workspace` / `cwd_unsupported` / `resume_unsupported` 时去掉那一个再起一次（成员开在工作区根、或新开会话）。
 - 远端工作区的成员（G5-07）：`open-agent` 与 `team` 在执行主机上的工作区里建的成员带 `ssh: { hostId: <工作区的执行主机> }`，起在那台主机上。SSH 终端所属工作区的执行主机就是这台 SSH 主机时，会话的 `cwd` 是那台主机上的路径：远端命令先经 `ARMADRA_REMOTE_CWD` 进这个目录（进不去就退出），本机的 `ssh` 进程从家目录起。页面开的 SSH 终端同样如此。
@@ -6234,4 +6235,9 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
 - `POST …/integration/install` 与 `…/uninstall` 对这样的 CLI 仍答 `400 bad_request`（没有东西可生成）；`…/repair` 沿用「没有 hook 安装器」的 `400`。页面据 `mode` 不发这三个动作：设置页的「Hook 与技能」一行显示「无注入」，没有「重新生成」，主表不把它算成「待更新」。
 - `BARE_LAUNCH_AGENT_IDS`（节点的「零注入启动」开关，§113）只含有注入的 CLI：没有注入就没有可关的东西，页面不给它这个开关，`settings` 里它的 `bareLaunch` 键同样不接受。
 - 启动时的注入预生成（`prepareAtStartup`）只走注入名单，不再自带一份写死的 id 表。
+- **按「有没有注入」写的几处行为**（判据是 `isInjected(baseAgent)` / `NON_INJECTED_AGENT_IDS`，不是某一家的名字，下一个无注入的内置 CLI 直接适用）：
+  1. `open-agent --task`、`team` 的角色任务：无注入且 ACP 不可用时 `400 target_surface_unsupported`（见 §15.5 `open-agent` 的错误）；
+  2. 开节点时忽略用户的终端偏好，ACP 可用就走 ACP；
+  3. 交接新开目标的终端形态 `400 target_surface_unsupported`（§39.8，同一个码），ACP 形态不受影响；
+  4. 驱动切换（`POST /api/acp/nodes/{id}/driver`）把该节点的 `agent_status` 行记为 `restored = 1`（与 Eco 休眠接回同一条规矩）；投递门、队泵的快探与首投放行门只看**当前驱动写下的**状态行——来源是 `acp`、而会话后端不是 ACP 的行视为没有上报，所以 ACP 切到终端的节点没有状态通道时，`send` 答 `TARGET_STATE_UNVERIFIED`（有状态通道的 CLI 则排队等终端自己的第一条上报）。
 - **为什么不升协议版本（agy 落地时的决定，2026-11-24）**：`mode` 在共享层是严格的 `z.enum`（`INJECTION_MODES`），旧客户端收到 `"none"` 会让这一条集成状态解析失败。但 agy 这个内置 id 对旧页面本来就是未知值：`agentInfoSchema.id` 用 `agentIdSchema`，按 `AGENT_IDS` 校验，所以**旧页面（含已经装在手机上的）会因为 agy 这一行让整张 `agents.list`（`z.array(agentInfoSchema)`）解析失败**，agent 菜单与设置页的 Agent 列表都会空掉——这是任何新内置 id 都有的已有性质，不是 `"none"` 带来的。升级页面是前提，**发版时手机端必须同步更新**；协议 minor 只按 `min(页面, core)` 协商，升了也拦不住旧页面去读这一条，所以 `PROTOCOL_MINOR` 不升（仍是 52）。`mode` 以后再多取值时同样要在那个 PR 里决定。
