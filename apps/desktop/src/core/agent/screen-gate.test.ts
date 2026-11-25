@@ -293,6 +293,20 @@ describe("judgeScreen", () => {
     ).toEqual({ kind: "clear" });
   });
 
+  it("Grok：真实的审阅画面——预览有焦点、按 Tab 切到输入框之后——都拦", () => {
+    for (const first of [true, false]) {
+      for (const screen of [
+        GROK_PLAN_REVIEW_REAL,
+        GROK_PLAN_REVIEW_REAL_INPUT,
+      ]) {
+        expect(judgeScreen(profile("grok"), screen, first)).toEqual({
+          kind: "dialog",
+          dialog: "grok.plan-review",
+        });
+      }
+    }
+  });
+
   it("Grok：计划审阅（回合不结束，单个字母就是动作）拦，两种动作栏写法都认；回合结束后才打开的也一样", () => {
     for (const first of [true, false]) {
       expect(judgeScreen(profile("grok"), GROK_PLAN_REVIEW, first)).toEqual({
@@ -320,6 +334,54 @@ describe("judgeScreen", () => {
   });
 });
 
+/** 真实画面（1.0.92，脚本化模型 + tmux 截取，2026-11-25）：审阅，预览有焦点。 */
+const GROK_PLAN_REVIEW_REAL = `
+  │                                                                                                                  │
+  │                                                                                                                  │
+  │                                                                                                                  │
+  │                                                                                                                  │
+  │                                                                                                                  │
+  │                                                                                                                  │
+  │                                                                                                                  │
+  │                                                                                                                  │
+  │                                                                                                                  │
+  │                                                                                                                  │
+  │                                                                                                                  │
+  │──────────────────────────────────────────────────────────────────────────────────────────────────────────────────│
+  │                  a approve  |  s request changes  |  c comment  |  y copy plan  |  q quit plan                   │
+  ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+    ◆ No plan written: approve or request changes
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯ Build anything                                                                                                 │
+  ╰─────────────────────────────────────────────────────────────────────────────────────────── Mock · plan approval ─╯
+
+  c:comment  │  y:copy plan  │  a:approve  │  q:quit plan  │  v:select  │  Tab:prompt
+`;
+/** 同一审阅按 Tab 切到输入框：动作栏在提示符上方，页脚是 Tab:plan。 */
+const GROK_PLAN_REVIEW_REAL_INPUT = `
+  │                                                                                                                  │
+  │                                                                                                                  │
+  │                                                                                                                  │
+  │                                                                                                                  │
+  │                                                                                                                  │
+  │                                                                                                                  │
+  │                                                                                                                  │
+  │                                                                                                                  │
+  │                                                                                                                  │
+  │                                                                                                                  │
+  │                                                                                                                  │
+  │──────────────────────────────────────────────────────────────────────────────────────────────────────────────────│
+  │                  a approve  |  s request changes  |  c comment  |  y copy plan  |  q quit plan                   │
+  ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+    ◆ No plan written: approve or request changes
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                                                                │
+  ╰─────────────────────────────────────────────────────────────────────────────────────────── Mock · plan approval ─╯
+
+  Tab:plan  │  Esc:back
+`;
 const GROK_PLAN_REVIEW = [
   "  Plan",
   "  1. Add the thing",

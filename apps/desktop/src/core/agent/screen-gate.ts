@@ -252,11 +252,11 @@ export const SCREEN_SIGNATURES: Readonly<Record<string, ScreenSignatures>> = {
       {
         // plan 模式下 exit_plan_mode 之后的计划审阅：回合不结束，画面出现动作栏
         // `a approve | s request changes | c comment | y copy plan | q quit plan`
-        // （预览有焦点时是 `a:approve │ q:quit plan` 的写法），焦点在预览时按单个
+        // （预览有焦点时是 `a:approve │ q:quit plan` 的写法；按 Tab 把焦点切到输入框后，动作栏在提示符上方、页脚变成 `Tab:plan │ Esc:back`，只剩输入框下边框的 `· plan approval` 还在提示符之后），焦点在预览时按单个
         // 字母就会执行对应动作——往里投正文等于替人点「批准」或「退出」。
         id: "grok.plan-review",
         pattern:
-          /a approve\s+\|\s+s request changes|a:approve\s+│\s+q:quit plan/,
+          /a approve\s+\|\s+s request changes|a:approve\s+│\s+q:quit plan|·\s+plan approval\s+─*╯/,
         verified: true,
         source: "Grok Build 1.0.92 本机画面（审查实测，2026-11-25）",
       },

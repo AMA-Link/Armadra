@@ -608,11 +608,27 @@ describe("绑不上的节点", () => {
     slot!.stop();
   });
 
-  it("进程树里没有 grok（还没起、已退出）：不算绑不上", () => {
+  it("进程名是 grok-native（真实路径）也认；进程树里没有 grok 则不算", async () => {
+    names.set(CHILD_PID, "grok-native");
+    writeActive();
+    const first = open();
+    first.slot!.start();
+    timers.advance(16_000);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(channelUnbound(NODE)).toBe(true);
+    first.slot!.stop();
+    markChannelUnbound(NODE, false);
+  });
+
+  it("进程树里没有 grok（还没起、已退出）：不算绑不上", async () => {
+    names.set(CHILD_PID, "node");
     writeActive();
     const { slot } = open();
     slot!.start();
     timers.advance(60_000);
+    await Promise.resolve();
+    await Promise.resolve();
     expect(channelUnbound(NODE)).toBe(false);
     slot!.stop();
   });

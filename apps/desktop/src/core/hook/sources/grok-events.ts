@@ -15,6 +15,7 @@ import {
   STATE_SOURCE_TRANSCRIPT,
   markChannelUnbound,
 } from "../../agent/state-source";
+import { expectedProcesses } from "../../agent/launch";
 import { SCREEN_SIGNATURES } from "../../agent/screen-gate";
 import {
   type StateSlot,
@@ -501,8 +502,10 @@ class GrokSlot implements StateSlot {
     if (root === undefined) return false;
     const table = this.deps.processTable();
     if (table === undefined) return false;
+    // 真实路径启动时进程名是 `grok-native`，不是 `grok`：按注册表的名单认。
+    const processNames = expectedProcesses("grok");
     for (const [pid, name] of table.names) {
-      if (name !== "grok") continue;
+      if (!processNames.includes(name)) continue;
       let at: number | undefined = pid;
       for (let depth = 0; at !== undefined && depth < 64; depth += 1) {
         if (at === root) return true;
