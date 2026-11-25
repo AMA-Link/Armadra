@@ -702,6 +702,9 @@ export class AcpSession implements AcpSessionIdentity {
   async cancel(): Promise<void> {
     const host = this.host;
     if (host === undefined || !host.process.alive) return;
+    // 上游 cancel 只让挂着的 wait_for_exit 返回，不会杀终端：这里收掉本会话还活着
+    // 的终端，免得孤儿子进程一直占名额（#1045）。
+    this.terminals?.terminateAll();
     await host.process.cancel(host.sessionId);
   }
 

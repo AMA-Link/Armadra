@@ -334,6 +334,34 @@ describe("回收", () => {
     await expect(run("0")).rejects.toMatchObject({ code: -32600 });
   });
 
+  it("abort 之后 waiter 摘出等待表；cancel 收掉活着的终端并释放名额（#1045）", async () => {
+    const { terminals, run, call } = make({ maxTerminals: 1 });
+    const id = await run("setInterval(() => {}, 1000)");
+    const [pid] = terminals.pids;
+    const controller = new AbortController();
+    const waiting = terminals.handle(
+      "terminal/wait_for_exit",
+      { sessionId: SESSION, terminalId: id },
+      controller.signal,
+    );
+    expect(terminals.waiterCount).toBe(1);
+    // 满额：再开一个被拒。
+    await expect(
+      call("terminal/create", { command: process.execPath, args: ["-e", ""] }),
+    ).rejects.toMatchObject({ message: expect.stringContaining("too many") });
+    // 上游 cancel：先 abort 挂着的请求，再收终端。
+    controller.abort();
+    await expect(waiting).rejects.toMatchObject({ code: -32800 });
+    expect(terminals.waiterCount).toBe(0);
+    terminals.terminateAll();
+    await eventually(() => !alive(pid as number));
+    await eventually(() => terminals.pids.length === 0);
+    // 名额释放：又能开了；退出后 waiter 表也是空的。
+    const next = await run("process.exit(0)");
+    await call("terminal/wait_for_exit", { terminalId: next });
+    expect(terminals.waiterCount).toBe(0);
+  });
+
   it("wait_for_exit 在连接关闭（signal abort）时以取消失败", async () => {
     const { terminals, run } = make();
     const id = await run("setTimeout(() => {}, 60000)");

@@ -5,6 +5,7 @@
  *   [term]        跑一条会输出两行、退出码 5 的命令：create → 挂到工具 → wait_for_exit → output → release
  *   [term-live]   同 [term]，但第二行要等测试写出 live.release 才打：「命令还在跑」的窗口由测试关，不靠定时
  *   [term-hang]   起一个写 pid 文件然后一直挂着的命令，回合结束也不 release、不 kill
+ *   [term-wait]   起一个写 pid 文件然后一直挂着的命令，并 wait_for_exit 挂住（会话 cancel 之前不返回）
  *   [term-escape] 想在工作空间之外开终端，把错误回报出来
  *   [caps]        回报 initialize 时客户端声明的 terminal 能力
  */
@@ -121,6 +122,33 @@ async function prompt(params) {
       content: [{ type: "terminal", terminalId }],
     });
     await say("started");
+  }
+  if (text.includes("[term-wait]")) {
+    const { terminalId } = await peer.request("terminal/create", {
+      sessionId: SESSION,
+      command: process.execPath,
+      args: [
+        "-e",
+        "require('fs').writeFileSync('wait.pid', String(process.pid)); setTimeout(() => {}, 120000)",
+      ],
+    });
+    await update({
+      sessionUpdate: "tool_call",
+      toolCallId: "tc-3",
+      title: "Run and wait",
+      kind: "execute",
+      status: "in_progress",
+      content: [{ type: "terminal", terminalId }],
+    });
+    try {
+      const exit = await peer.request("terminal/wait_for_exit", {
+        sessionId: SESSION,
+        terminalId,
+      });
+      await say(`waited:${JSON.stringify(exit)}`);
+    } catch (error) {
+      await say(`waited:error:${error.code}`);
+    }
   }
   if (text.includes("[term-escape]")) {
     try {

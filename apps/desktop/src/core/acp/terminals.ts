@@ -277,6 +277,24 @@ export class AcpTerminals {
     }
   }
 
+  /** 还在等退出的 waiter 总数（测试与诊断用）。 */
+  get waiterCount(): number {
+    let count = 0;
+    for (const terminal of this.terminals.values()) {
+      count += terminal.waiters.length;
+    }
+    return count;
+  }
+
+  /**
+   * 会话 cancel：本会话名下还活着的终端先 SIGTERM，过 {@link KILL_GRACE_MS} 仍在
+   * 再 SIGKILL（沿用 `kill` 的流程）。终端留在表里，Agent 之后还能读到输出与
+   * 退出信息；进程一退，名额随之释放（#1045）。
+   */
+  terminateAll(): void {
+    for (const terminal of this.terminals.values()) this.kill(terminal);
+  }
+
   /** 某个终端此刻的快照；没有（或已释放）为 `undefined`。 */
   snapshot(terminalId: string): TerminalSnapshot | undefined {
     const terminal = this.terminals.get(terminalId);
@@ -493,16 +511,22 @@ export class AcpTerminals {
   ): Promise<TerminalExit> {
     if (terminal.exit !== undefined) return Promise.resolve(terminal.exit);
     return new Promise<TerminalExit>((resolvePromise, reject) => {
-      const onAbort = () =>
+      const waiter = (exit: TerminalExit): void => {
+        signal.removeEventListener("abort", onAbort);
+        resolvePromise(exit);
+      };
+      // 请求被撤回（会话 cancel / 连接关闭）：waiter 摘出等待表，退出时不再去
+      // resolve 一个已经撤回的请求，名单也不留着（#1045）。
+      const onAbort = (): void => {
+        const at = terminal.waiters.indexOf(waiter);
+        if (at >= 0) terminal.waiters.splice(at, 1);
         reject(
           new RpcError(RPC_ERRORS.requestCancelled, "wait_for_exit cancelled"),
         );
+      };
       if (signal.aborted) return onAbort();
       signal.addEventListener("abort", onAbort, { once: true });
-      terminal.waiters.push((exit) => {
-        signal.removeEventListener("abort", onAbort);
-        resolvePromise(exit);
-      });
+      terminal.waiters.push(waiter);
     });
   }
 
