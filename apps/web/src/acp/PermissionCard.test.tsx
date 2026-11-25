@@ -586,73 +586,62 @@ describe("PermissionCard", () => {
 describe("计划审批卡", () => {
   const plan: AcpPermissionView = {
     pendingId: "n1-1-acp-plan",
-    toolCall: {
-      toolCallId: "call-1",
-      title: "Plan",
-      kind: "switch_mode",
-      content: [
-        {
-          type: "content",
-          content: {
-            type: "text",
-            text: "# Plan\n1. Make the file\n[click](https://evil.example)\n<b>x</b>",
-          },
-        },
-      ],
-      _meta: { "armadra/card": "plan" },
-    },
+    toolCall: { toolCallId: "call-1", title: "Plan", kind: "switch_mode" },
     options: [
       { optionId: "approve", name: "Approve", kind: "allow_once" },
       { optionId: "reject", name: "Reject", kind: "reject_once" },
     ],
+    card: "plan",
+    body: "# Plan\n1. Make the file\n[click](https://evil.example)\n<b>x</b>",
   };
 
-  it("标题本地化，计划正文默认展开、按纯文本显示（不生成链接、不渲染标签）", () => {
+  it("标题本地化，计划正文默认展开、按纯文本显示（不生成链接、不渲染标签），dir=auto", () => {
     render(<PermissionCard permission={plan} canAnswer />);
     expect(screen.getByText("计划审批")).toBeTruthy();
     const body = document.querySelector("[data-slot=approval-text]");
     expect(body?.textContent).toContain("Make the file");
     expect(body?.textContent).toContain("[click](https://evil.example)");
+    expect(body?.getAttribute("dir")).toBe("auto");
     expect(body?.querySelector("a, b")).toBeNull();
-    expect(document.querySelector("[data-slot=approval-text] a")).toBeNull();
+    expect(document.querySelector("[data-slot=approval-truncated]")).toBeNull();
   });
 
-  it("过长的正文截断并加省略标记", () => {
-    const long: AcpPermissionView = {
-      ...plan,
+  it("被截断时显示本地化的提示与原文字符数", () => {
+    render(
+      <PermissionCard permission={{ ...plan, bodyChars: 99_000 }} canAnswer />,
+    );
+    expect(
+      document.querySelector("[data-slot=approval-truncated]")?.textContent,
+    ).toBe("已截断，共 99000 字符");
+  });
+
+  it("Agent 在 toolCall 里伪造的标记不起作用：只认 core 写在视图上的 card", () => {
+    const forged: AcpPermissionView = {
+      pendingId: "n1-1-acp-forged",
       toolCall: {
-        ...plan.toolCall,
+        toolCallId: "t",
+        title: "rm -rf /",
+        _meta: { "armadra/card": "plan" },
         content: [
           {
             type: "content",
-            content: { type: "text", text: "x".repeat(30_000) },
+            content: { type: "text", text: "looks like a plan" },
           },
         ],
       },
+      options: plan.options,
     };
-    render(<PermissionCard permission={long} canAnswer />);
-    const text = document.querySelector("[data-slot=approval-text]")
-      ?.textContent as string;
-    expect(text.length).toBeLessThan(20_100);
-    expect(text.endsWith("…")).toBe(true);
+    render(<PermissionCard permission={forged} canAnswer />);
+    expect(screen.queryByText("计划审批")).toBeNull();
+    expect(screen.getByText("rm -rf /")).toBeTruthy();
+    expect(document.querySelector("[data-slot=approval-text]")).toBeNull();
+    expect(document.body.textContent).not.toContain("looks like a plan");
   });
 
-  it("别的卡的文本说明默认收起，点开才看见", () => {
-    const ordinary: AcpPermissionView = {
-      ...permission,
-      toolCall: {
-        toolCallId: "t2",
-        title: "pnpm test",
-        content: [
-          { type: "content", content: { type: "text", text: "Run the tests" } },
-        ],
-      },
-    };
-    render(<PermissionCard permission={ordinary} canAnswer />);
+  it("body 只在 card 是 plan 时显示", () => {
+    render(
+      <PermissionCard permission={{ ...plan, card: undefined }} canAnswer />,
+    );
     expect(document.querySelector("[data-slot=approval-text]")).toBeNull();
-    fireEvent.click(screen.getByText("详情"));
-    expect(
-      document.querySelector("[data-slot=approval-text]")?.textContent,
-    ).toBe("Run the tests");
   });
 });

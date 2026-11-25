@@ -13,10 +13,12 @@ import {
   type AcpExtRequestSpec,
   GROK_EXIT_PLAN_MODE,
   MAX_PLAN_CHARS,
+  plainBody,
   planToolCall,
 } from "./ext-requests";
 import { CANVAS_MCP_NAME, clientAcceptsExtRequest } from "./mcp";
 import { OwnToolCalls } from "./own-tools";
+import { AcpSession } from "./session";
 
 /**
  * `_` 开头的扩展请求（计划审批）：进审批挂起表、人答、映射函数、取消与无人值守；
@@ -102,7 +104,11 @@ describe("计划审批进审批挂起表", () => {
     const card = rig.held[0] as AcpPendingPermission;
     expect(card.sessionId).toBe("s-1");
     expect(card.toolCall.toolCallId).toBe("call-1");
-    expect(JSON.stringify(card.toolCall)).toContain("Make the file");
+    // 标记与正文只在 core 自己写的字段上，不在 Agent 的工具调用里。
+    expect(card).toMatchObject({ origin: "ext", card: "plan" });
+    expect(card.body).toContain("Make the file");
+    expect(JSON.stringify(card.toolCall)).not.toContain("Make the file");
+    expect(JSON.stringify(card.toolCall)).not.toContain("armadra/");
     expect(card.options.map((o) => [o.optionId, o.kind])).toEqual([
       ["approve", "allow_once"],
       ["reject", "reject_once"],
@@ -208,14 +214,55 @@ describe("计划审批进审批挂起表", () => {
     await expect(answer).rejects.toBe(boom);
   });
 
-  it("计划原文超过 64K 字符：截断并加省略标记", async () => {
+  it("计划原文超过 64K 字符：截断，bodyChars 记原文字符数，不从代理对中间切开", async () => {
     const rig = open({ extRequests: { _x: spec() } });
+    // 在截断点上放一个代理对（😀 占两个码元）。
+    const plan = `${"x".repeat(MAX_PLAN_CHARS - 1)}😀${"y".repeat(500)}`;
     void rig
-      .hold("_x", { ...params, planContent: "x".repeat(MAX_PLAN_CHARS + 500) })
+      .hold("_x", { ...params, planContent: plan })
       .catch(() => undefined);
-    const text = JSON.stringify(rig.held[0]?.toolCall.content);
-    expect(text.length).toBeLessThan(MAX_PLAN_CHARS + 200);
-    expect(text).toContain("…");
+    const card = rig.held[0] as AcpPendingPermission;
+    expect(card.body?.length).toBe(MAX_PLAN_CHARS - 1);
+    expect(card.body?.endsWith("x")).toBe(true);
+    expect(card.bodyChars).toBe(MAX_PLAN_CHARS + 500);
+  });
+
+  it("Agent 在审批请求里伪造 armadra/ 的键：入站就丢掉，卡片种类仍是 undefined", () => {
+    const rig = open({});
+    (
+      rig.process as unknown as {
+        hold(p: unknown, s: AbortSignal): Promise<unknown>;
+      }
+    )
+      .hold(
+        {
+          sessionId: "s-1",
+          toolCall: {
+            toolCallId: "t",
+            title: "rm -rf",
+            _meta: { "armadra/card": "plan", "x.ai/tool": { name: "bash" } },
+          },
+          options: [{ optionId: "o", name: "Allow", kind: "allow_once" }],
+        },
+        new AbortController().signal,
+      )
+      .catch(() => undefined);
+    const pending = rig.held[0] as AcpPendingPermission;
+    expect(pending.card).toBeUndefined();
+    expect(pending.origin).toBeUndefined();
+    expect(JSON.stringify(pending.toolCall)).not.toContain("armadra/");
+    // 别的 `_meta` 照旧。
+    expect(JSON.stringify(pending.toolCall)).toContain("x.ai/tool");
+  });
+});
+
+describe("计划原文的清洗", () => {
+  it("去掉 ESC 序列与控制字符，留换行与 Tab；双向控制与零宽字符换成可见占位", () => {
+    const raw =
+      "a\u001b[31mred\u001b[0m\tb\u0007\u0008c\r\nd\u001b]0;title\u0007e\u202Eevil\u2066x\u200Bz\ufeff\u007f";
+    const { body, chars } = plainBody(raw);
+    expect(body).toBe("ared\tbc\nde[U+202E]evil[U+2066]x[U+200B]z[U+FEFF]");
+    expect(chars).toBeUndefined();
   });
 });
 
@@ -242,6 +289,42 @@ describe("计划卡不会被自家工具的免审批代答", () => {
     );
     expect(own.decide(tool, options)).toBeUndefined();
   });
+
+  it("会话层不替扩展请求自动放行：origin 为 ext 时 autoApproveOwnTool 直接返回 false", () => {
+    const answered: string[] = [];
+    const session = {
+      host: {
+        sessionId: "s-1",
+        process: {
+          answerPermission: (id: string) => {
+            answered.push(id);
+            return true;
+          },
+        },
+      },
+      ownTools: {
+        decide: () => "approve",
+        noteApproved: () => undefined,
+      },
+    };
+    const run = (pending: unknown) =>
+      (
+        AcpSession.prototype as unknown as {
+          autoApproveOwnTool(this: unknown, p: unknown): boolean;
+        }
+      ).autoApproveOwnTool.call(session, pending);
+    const base = {
+      id: "perm-1",
+      sessionId: "s-1",
+      toolCall: { toolCallId: "call-1" },
+      options: [],
+      createdAt: 0,
+    };
+    // 对照：普通审批照旧被自动放行。
+    expect(run(base)).toBe(true);
+    expect(run({ ...base, origin: "ext", card: "plan" })).toBe(false);
+    expect(answered).toEqual(["perm-1"]);
+  });
 });
 
 describe("grok 的计划审批登记", () => {
@@ -265,7 +348,12 @@ describe("grok 的计划审批登记", () => {
     expect(GROK_EXIT_PLAN_MODE.card({ sessionId: "s" })).toBeUndefined();
     expect(GROK_EXIT_PLAN_MODE.card(null)).toBeUndefined();
     const tool = planToolCall(GROK_EXIT_PLAN_MODE.card(params)!);
-    expect(tool).toMatchObject({ toolCallId: "call-1", kind: "switch_mode" });
+    expect(tool).toEqual({
+      toolCallId: "call-1",
+      title: "Plan",
+      kind: "switch_mode",
+      status: "pending",
+    });
   });
 
   it("批准 → 应答 JSON 是一处孤立的映射（未验证，Armadra#1021）", () => {

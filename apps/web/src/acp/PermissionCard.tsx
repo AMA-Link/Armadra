@@ -50,38 +50,6 @@ export function isRiskyKind(kind: AcpToolKind | undefined): boolean {
   return RISKY_KINDS.has(kind);
 }
 
-/** 卡片正文最多显示这么多字符（core 另有 64K 的上限，这里再收一道）。 */
-const PERMISSION_TEXT_CHARS = 20_000;
-/** `toolCall._meta` 里 core 给计划审批卡打的标记（`acp/ext-requests.ts`）。 */
-const PLAN_CARD_MARK = "armadra/card";
-
-/** 这张卡是不是计划审批（core 标的），标题与展开状态据此换。 */
-function isPlanCard(call: AcpToolCall): boolean {
-  const meta = (call as { _meta?: unknown })._meta;
-  return (
-    typeof meta === "object" &&
-    meta !== null &&
-    (meta as Record<string, unknown>)[PLAN_CARD_MARK] === "plan"
-  );
-}
-
-/** `toolCall.content` 里的纯文本块（计划原文、命令的说明），截断后按纯文本显示。 */
-function textBodies(call: AcpToolCall): string[] {
-  const bodies: string[] = [];
-  for (const item of call.content ?? []) {
-    if (item.type !== "content") continue;
-    const block = item.content as { type?: unknown; text?: unknown };
-    if (block.type !== "text" || typeof block.text !== "string") continue;
-    if (block.text.trim() === "") continue;
-    bodies.push(
-      block.text.length > PERMISSION_TEXT_CHARS
-        ? `${block.text.slice(0, PERMISSION_TEXT_CHARS)}\n…`
-        : block.text,
-    );
-  }
-  return bodies;
-}
-
 function inputPreview(value: unknown): string {
   if (value === undefined || value === null) return "";
   let text: string;
@@ -172,12 +140,13 @@ function WillHappen({ permission }: { permission: AcpPermissionView }) {
 function Details({ permission }: { permission: AcpPermissionView }) {
   const t = useT();
   const call = permission.toolCall;
-  // 计划审批的正文就是要看的东西：默认展开；别的卡仍默认收起。
-  const [open, setOpen] = React.useState(isPlanCard(call));
+  // 计划审批的正文就是要看的东西：默认展开；别的卡仍默认收起。种类只认 core 写在视图
+  // 上的 `card`，不看 Agent 的 `toolCall`。
+  const [open, setOpen] = React.useState(permission.card === "plan");
   const diffs = (call.content ?? []).filter((item) => item.type === "diff");
-  const texts = textBodies(call);
+  const body = permission.card === "plan" ? permission.body : undefined;
   const input = inputPreview(call.rawInput);
-  if (diffs.length === 0 && !input && texts.length === 0) return null;
+  if (diffs.length === 0 && !input && !body) return null;
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger asChild>
@@ -201,16 +170,25 @@ function Details({ permission }: { permission: AcpPermissionView }) {
             />
           ) : null,
         )}
-        {texts.map((text, index) => (
-          // 纯文本：不走 markdown、不生成链接；限高可滚动，手机上折行不横向撑开。
+        {body && (
+          // 纯文本：不走 markdown、不生成链接；`dir="auto"` 让右到左的计划也按它自己
+          // 的方向显示；限高可滚动，手机上折行不横向撑开。
           <pre
-            key={index}
             data-slot="approval-text"
+            dir="auto"
             className="max-h-60 overflow-auto rounded-control bg-sunken px-2 py-1 font-sans text-meta break-words whitespace-pre-wrap"
           >
-            {text}
+            {body}
           </pre>
-        ))}
+        )}
+        {body && permission.bodyChars !== undefined && (
+          <p
+            data-slot="approval-truncated"
+            className="text-meta text-muted-foreground"
+          >
+            {t("acp.permission.truncated", { count: permission.bodyChars })}
+          </p>
+        )}
         {input && (
           <pre className="max-h-60 overflow-auto rounded-control bg-sunken px-2 py-1 font-mono text-meta whitespace-pre">
             {input}
@@ -503,7 +481,7 @@ export function PermissionCard({
         ) : (
           <ApprovalText>
             {mcp?.title ??
-              (isPlanCard(permission.toolCall)
+              (permission.card === "plan"
                 ? t("acp.permission.planTitle")
                 : permission.toolCall.title)}
           </ApprovalText>

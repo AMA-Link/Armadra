@@ -107,3 +107,68 @@ describe("ApprovalCard", () => {
     expect(screen.getByRole("group", { name: "live title" })).toBeTruthy();
   });
 });
+
+describe("计划审批：core 卡片 → 时间线条目 → 页面", () => {
+  // 条目就是 core 的 `AcpFeed.permission` 写出来的形状（`card` / `body` / `bodyChars`
+  // 由 `holdExt` 写，toolCall 摘要里没有正文）。
+  const plan: TimelineApprovalItem = {
+    ...base,
+    id: "ap:plan",
+    kind: "approval",
+    pendingId: "plan-1",
+    protocol: "acp",
+    toolCallId: "t-plan",
+    toolCall: { title: "Plan", toolKind: "other" },
+    options: [
+      { optionId: "approve", name: "Approve", kind: "allow_once" },
+      { optionId: "reject", name: "Reject", kind: "reject_once" },
+    ],
+    state: "pending",
+    card: "plan",
+    body: "# Plan\n1. Make the file\n",
+    bodyChars: 70_000,
+  };
+
+  it("两个分支的视图都带上 card / body / bodyChars", () => {
+    for (const view of [
+      permissionViewOf(plan, undefined),
+      permissionViewOf(plan, { ...tool, toolCallId: "t-plan" }),
+    ]) {
+      expect(view).toMatchObject({
+        card: "plan",
+        body: "# Plan\n1. Make the file\n",
+        bodyChars: 70_000,
+      });
+    }
+    expect(permissionViewOf(approval, undefined).card).toBeUndefined();
+  });
+
+  it("页面上看得到「计划审批」标题和计划正文，以及截断提示", () => {
+    for (const lookup of [
+      {},
+      {
+        "tool:t-plan": {
+          ...tool,
+          id: "tool:t-plan",
+          toolCallId: "t-plan",
+          toolKind: "other",
+          title: "exit_plan_mode",
+        },
+      },
+    ]) {
+      const { unmount } = render(
+        <ToolLookupProvider value={lookup as never}>
+          <ApprovalCard approval={plan} canAnswer />
+        </ToolLookupProvider>,
+      );
+      expect(screen.getByText("计划审批")).toBeTruthy();
+      expect(
+        document.querySelector("[data-slot=approval-text]")?.textContent,
+      ).toContain("Make the file");
+      expect(
+        document.querySelector("[data-slot=approval-truncated]")?.textContent,
+      ).toBe("已截断，共 70000 字符");
+      unmount();
+    }
+  });
+});

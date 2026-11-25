@@ -24,14 +24,13 @@ export interface ExtRequestCard {
   readonly sessionId: string;
   /** 关联到 Agent 那边的工具调用。 */
   readonly toolCallId: string;
-  /** 兜底标题；页面认 {@link PLAN_CARD_MARK} 之后按语言显示自己的。 */
+  /** 兜底标题；页面认审批条目上 core 自己写的 `card: "plan"`，按语言显示自己的。 */
   readonly title: string;
-  /** 卡片正文（计划原文，已截断）。 */
+  /** 卡片正文：计划原文，清洗过（见 {@link plainBody}）、截到 {@link MAX_PLAN_CHARS}。 */
   readonly body: string;
+  /** 正文被截断时，原文有多少个字符（码点）。 */
+  readonly bodyChars?: number;
 }
-
-/** 卡片 `toolCall._meta` 里的标记：页面据此把标题换成本地化的「计划审批」。 */
-export const PLAN_CARD_MARK = "armadra/card";
 
 export interface AcpExtRequestSpec {
   readonly kind: "plan-approval";
@@ -52,10 +51,35 @@ export interface AcpExtRequestSpec {
   reply(params: unknown): unknown;
 }
 
-function clip(text: string): string {
-  return text.length > MAX_PLAN_CHARS
-    ? `${text.slice(0, MAX_PLAN_CHARS)}\n…`
-    : text;
+const ESCAPES =
+  // CSI（`ESC [ … 终结符`）、OSC（`ESC ] … BEL | ESC \`）、其余两字节的 ESC 序列。
+  // eslint-disable-next-line no-control-regex
+  /\u001b\[[0-?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)?|\u001b[@-Z\\-_]/g;
+// eslint-disable-next-line no-control-regex
+const CONTROLS = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
+/** 双向控制与零宽字符：换成看得见的占位，不能悄悄改变显示顺序、也不能藏东西。 */
+const INVISIBLES = /[\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/g;
+
+/**
+ * 计划原文 → 能放进卡片的纯文本：去掉 ESC 序列与 C0 / C1 控制字符（保留换行与
+ * Tab，`\r` 去掉），双向控制字符与零宽字符换成 `[U+XXXX]` 占位；超过
+ * {@link MAX_PLAN_CHARS} 就截断，且不从代理对中间切开。截断的提示（「已截断，共 N
+ * 字符」）由页面按语言写，这里只回原文的码点数。
+ */
+export function plainBody(text: string): { body: string; chars?: number } {
+  const clean = text
+    .replace(ESCAPES, "")
+    .replace(CONTROLS, "")
+    .replace(
+      INVISIBLES,
+      (char) =>
+        `[U+${(char.codePointAt(0) as number).toString(16).toUpperCase().padStart(4, "0")}]`,
+    );
+  if (clean.length <= MAX_PLAN_CHARS) return { body: clean };
+  let end = MAX_PLAN_CHARS;
+  const last = clean.charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) end -= 1;
+  return { body: clean.slice(0, end), chars: [...clean].length };
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -77,11 +101,13 @@ export const GROK_EXIT_PLAN_MODE: AcpExtRequestSpec = {
       return undefined;
     }
     const plan = value?.planContent;
+    const { body, chars } = plainBody(typeof plan === "string" ? plan : "");
     return {
       sessionId,
       toolCallId,
       title: "Plan",
-      body: clip(typeof plan === "string" ? plan : ""),
+      body,
+      ...(chars === undefined ? {} : { bodyChars: chars }),
     };
   },
   // 未验证（Armadra#1021）：先按最朴素的猜测写。
@@ -90,17 +116,32 @@ export const GROK_EXIT_PLAN_MODE: AcpExtRequestSpec = {
   },
 };
 
-/** 卡片 → 审批挂起表里的那一条工具调用。 */
+/**
+ * 卡片 → 审批挂起表里的那一条工具调用。只有标题、种类、状态：计划正文与「这是计划
+ * 审批」的标记不放在这里（工具调用是 Agent 的东西，别的字段都可能被它伪造），放在
+ * `AcpPendingPermission` 上只有 `holdExt` 才写的 `card` / `body` 字段。
+ */
 export function planToolCall(card: ExtRequestCard): AcpToolCallUpdate {
   return {
     toolCallId: card.toolCallId,
     title: card.title,
     kind: "switch_mode",
     status: "pending",
-    content:
-      card.body === ""
-        ? []
-        : [{ type: "content", content: { type: "text", text: card.body } }],
-    _meta: { [PLAN_CARD_MARK]: "plan" },
-  } as AcpToolCallUpdate;
+  };
+}
+
+/** 入站审批请求的 `toolCall._meta` 里去掉 `armadra/` 前缀的键：这个命名空间是 core 的。 */
+export function scrubOwnMeta<T extends { readonly _meta?: unknown }>(
+  toolCall: T,
+): T {
+  const meta = toolCall._meta;
+  if (typeof meta !== "object" || meta === null || Array.isArray(meta)) {
+    return toolCall;
+  }
+  const kept = Object.fromEntries(
+    Object.entries(meta as Record<string, unknown>).filter(
+      ([key]) => !key.startsWith("armadra/"),
+    ),
+  );
+  return { ...toolCall, _meta: kept };
 }

@@ -41,7 +41,11 @@ import {
 
 import { STDERR_TAIL_BYTES } from "../language/limits";
 import { redactSecrets } from "../terminal/ssh/redact";
-import { type AcpExtRequestSpec, planToolCall } from "./ext-requests";
+import {
+  type AcpExtRequestSpec,
+  planToolCall,
+  scrubOwnMeta,
+} from "./ext-requests";
 import { clientAcceptsExtRequest } from "./mcp";
 import type {
   AcpElicitationParams,
@@ -119,6 +123,18 @@ export interface AcpPendingPermission {
   readonly toolCall: AcpToolCallUpdate;
   readonly options: readonly AcpPermissionOption[];
   readonly createdAt: number;
+  /**
+   * 这一条是 `_` 开头的扩展请求（`holdExt`）挂的，不是 `session/request_permission`。
+   * **只有 core 会写**这几个字段（Agent 的请求体里没有它们的位置）：会话层据此不替它
+   * 自动放行（`autoApproveOwnTool`）。
+   */
+  readonly origin?: "ext";
+  /** core 写的卡片种类：`plan` = 计划审批，页面据此换标题。 */
+  readonly card?: "plan";
+  /** 计划卡的正文：纯文本，已清洗、截断（`ext-requests.ts` 的 `plainBody`）。 */
+  readonly body?: string;
+  /** 正文被截断时，原文的字符数。 */
+  readonly bodyChars?: number;
 }
 
 /** 一条挂起的 `elicitation/create`（契约 §26.1）。 */
@@ -661,7 +677,8 @@ export class AcpProcess {
     const pending: AcpPendingPermission = {
       id: `perm-${this.pid}-${this.nextPermission}`,
       sessionId: params.sessionId,
-      toolCall: params.toolCall,
+      // `armadra/` 是 core 的命名空间：Agent 发来的这类键一律丢掉。
+      toolCall: scrubOwnMeta(params.toolCall),
       options: [...params.options],
       createdAt: Date.now(),
     };
@@ -717,6 +734,10 @@ export class AcpProcess {
         { optionId: "reject", name: "Reject", kind: "reject_once" },
       ],
       createdAt: Date.now(),
+      origin: "ext",
+      card: "plan",
+      body: card.body,
+      ...(card.bodyChars === undefined ? {} : { bodyChars: card.bodyChars }),
     };
     return new Promise((resolve, reject) => {
       this.pending.set(pending.id, {

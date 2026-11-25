@@ -27,6 +27,14 @@ export interface AcpPermissionView {
    * 没有就由 `toolCall` 现算。
    */
   readonly changes?: readonly AcpPermissionChange[];
+  /**
+   * core 自己写的卡片种类与正文（审批条目上的 `card` / `body` / `bodyChars`，
+   * `holdExt` 写的，Agent 写不进来）：`plan` = 计划审批，标题换成本地化的，正文按
+   * 纯文本显示。**不要**从 `toolCall` 里读这些——那是 Agent 的东西。
+   */
+  readonly card?: "plan";
+  readonly body?: string;
+  readonly bodyChars?: number;
   /** 这次调用的 MCP 来源（工具条目的 `mcp`，#768）：标题、图标与风险徽标按它换。 */
   readonly mcp?: AcpMcpTool;
 }

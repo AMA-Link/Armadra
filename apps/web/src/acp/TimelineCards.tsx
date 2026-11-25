@@ -52,6 +52,26 @@ export function permissionViewOf(
   approval: TimelineApprovalItem,
   tool: TimelineToolItem | undefined,
 ): AcpPermissionView {
+  return { ...baseViewOf(approval, tool), ...coreCardOf(approval) };
+}
+
+/** 审批条目上 core 自己写的卡片字段（计划审批的种类与正文），两个分支都要带上。 */
+function coreCardOf(
+  approval: TimelineApprovalItem,
+): Pick<AcpPermissionView, "card" | "body" | "bodyChars"> {
+  return {
+    ...(approval.card === undefined ? {} : { card: approval.card }),
+    ...(approval.body === undefined ? {} : { body: approval.body }),
+    ...(approval.bodyChars === undefined
+      ? {}
+      : { bodyChars: approval.bodyChars }),
+  };
+}
+
+function baseViewOf(
+  approval: TimelineApprovalItem,
+  tool: TimelineToolItem | undefined,
+): AcpPermissionView {
   const options = approval.options as readonly AcpPermissionOption[];
   const toolCallId = approval.toolCallId ?? approval.pendingId;
   if (tool === undefined) {
