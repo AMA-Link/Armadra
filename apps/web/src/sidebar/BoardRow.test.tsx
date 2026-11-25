@@ -30,7 +30,6 @@ function renderRow(signal?: Parameters<typeof BoardRow>[0]["signal"]) {
         active={false}
         pinned={false}
         {...(signal ? { signal } : {})}
-        canDelete
         onSelect={vi.fn()}
         onDelete={vi.fn()}
         onTogglePin={vi.fn()}

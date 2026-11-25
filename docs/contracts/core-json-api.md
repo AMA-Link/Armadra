@@ -2719,7 +2719,7 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 
 ### 36.1 列表与板记录
 
-`list`、`create`、`update`、`delete`。名字去空白后 1–120 个字符；`sortOrder` 为 `null` 与缺席同义；工作空间里最后一块板删不掉（`409 conflict`）。
+`list`、`create`、`update`、`delete`。名字去空白后 1–120 个字符；`sortOrder` 为 `null` 与缺席同义；最后一块板也能删，工作空间可以没有画板（#1015 起；此前答 `409 conflict`），之后由客户端显示空状态、等用户新建。
 
 <!-- rpc:begin contract=§36.1 -->
 
@@ -2728,7 +2728,7 @@ core 校验远程服务地址与指纹的写法时用具名码（状态均 400�
 | `boards.list`   | query    | `{ workspaceId: string }`                                                             | `{ id: string, workspaceId: string, name: string, sortOrder: integer, viewport: { x: number, y: number, zoom: number }, whiteboard: string, createdAt: string, updatedAt: string }[]` | `unauthenticated`、`forbidden`、`not_found` | `canvas:read`  | 1.7 | `GET /api/workspaces/{workspaceId}/boards`              |
 | `boards.create` | mutation | `{ workspaceId: string, name: string }`                                               | `{ id: string, workspaceId: string, name: string, sortOrder: integer, viewport: { x: number, y: number, zoom: number }, whiteboard: string, createdAt: string, updatedAt: string }`   | `bad_request`、`forbidden`、`not_found`     | `canvas:write` | 1.7 | `POST /api/workspaces/{workspaceId}/boards`             |
 | `boards.update` | mutation | `{ workspaceId: string, boardId: string, name?: string, sortOrder?: number \| null }` | `{ id: string, workspaceId: string, name: string, sortOrder: integer, viewport: { x: number, y: number, zoom: number }, whiteboard: string, createdAt: string, updatedAt: string }`   | `bad_request`、`forbidden`、`not_found`     | `canvas:write` | 1.7 | `PATCH /api/workspaces/{workspaceId}/boards/{boardId}`  |
-| `boards.delete` | mutation | `{ workspaceId: string, boardId: string }`                                            | 无                                                                                                                                                                                    | `forbidden`、`not_found`、`conflict`        | `canvas:write` | 1.7 | `DELETE /api/workspaces/{workspaceId}/boards/{boardId}` |
+| `boards.delete` | mutation | `{ workspaceId: string, boardId: string }`                                            | 无                                                                                                                                                                                    | `forbidden`、`not_found`                    | `canvas:write` | 1.7 | `DELETE /api/workspaces/{workspaceId}/boards/{boardId}` |
 
 <!-- rpc:end -->
 

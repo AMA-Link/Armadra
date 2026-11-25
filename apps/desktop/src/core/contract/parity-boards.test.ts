@@ -241,24 +241,44 @@ describe("boards：画布列表", () => {
       await legacy("POST", boardsPath(), blank),
       await procedure("boards.create", { workspaceId, ...blank }),
     ]);
-    // 最后一块板删不掉：409。
-    const only = await core.call("POST", "/api/workspaces", {
-      name: "Single",
-      rootPath: core.directory,
-      createDirectory: false,
-    });
-    const single = (only.body as { id: string }).id;
-    const lone = (
-      (await core.call("GET", `/api/workspaces/${single}/boards`)).body as {
-        id: string;
-      }[]
-    )[0]!.id;
-    const path = `/api/workspaces/${single}/boards/${lone}`;
+    // 最后一块板也能删（#1015）：三条入口各删一个单板工作空间的那块，都是
+    // 204，删完工作空间里没有画板。
+    const lone = async (name: string) => {
+      // 同一根目录会落回同一个工作空间，所以各给一个子目录。
+      const created = await core.call("POST", "/api/workspaces", {
+        name,
+        rootPath: `${core.directory}/${name.replace(" ", "-")}`,
+        createDirectory: true,
+      });
+      const id = (created.body as { id: string }).id;
+      const boards = (await core.call("GET", `/api/workspaces/${id}/boards`))
+        .body as { id: string }[];
+      return { id, board: boards[0]!.id };
+    };
+    const [first, second, third] = [
+      await lone("Single A"),
+      await lone("Single B"),
+      await lone("Single C"),
+    ];
     expectParity([
-      await table("DELETE", path),
-      await legacy("DELETE", path),
-      await procedure("boards.delete", { workspaceId: single, boardId: lone }),
+      await table(
+        "DELETE",
+        `/api/workspaces/${first.id}/boards/${first.board}`,
+      ),
+      await legacy(
+        "DELETE",
+        `/api/workspaces/${second.id}/boards/${second.board}`,
+      ),
+      await procedure("boards.delete", {
+        workspaceId: third.id,
+        boardId: third.board,
+      }),
     ]);
+    for (const { id } of [first, second, third]) {
+      expect(
+        (await core.call("GET", `/api/workspaces/${id}/boards`)).body,
+      ).toEqual([]);
+    }
   });
 });
 

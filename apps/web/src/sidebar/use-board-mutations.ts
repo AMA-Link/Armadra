@@ -11,6 +11,8 @@ import type { Board, WorkspaceSummary } from "@armadra/shared";
 import { useCanvasStore } from "../store/canvas-store";
 import { runtimeApi } from "../api/client";
 import { sk } from "../sources/scope";
+import { usePreferencesStore, useT } from "../app/preferences-store";
+import { nextBoardName } from "./board-tree";
 
 export function useBoardMutations(workspaceId: string) {
   const queryClient = useQueryClient();
@@ -26,9 +28,22 @@ export function useBoardMutations(workspaceId: string) {
     onError: (cause: Error) => toast.error(cause.message),
   });
 
+  /**
+   * 删哪块都行，最后一块也一样（#1015）。删的是当前画布就先切到同一工作空间的
+   * 下一块，免得画布对着一个不存在的 id；没有下一块就留空，画布区显示空状态。
+   * 置顶过的顺手取消，免得偏好里留着一个不存在的 id。
+   */
   const remove = useMutation({
     mutationFn: (id: string) => runtimeApi.deleteBoard(workspaceId, id),
-    onSuccess: refresh,
+    onSuccess: (_, id) => {
+      const state = useCanvasStore.getState();
+      if (state.workspace?.id === workspaceId && state.boardId === id) {
+        const next = state.boards.find((board) => board.id !== id);
+        state.selectBoard(next?.id ?? null);
+      }
+      usePreferencesStore.getState().setBoardPinned(id, false);
+      refresh();
+    },
     onError: (cause: Error) => toast.error(cause.message),
   });
 
@@ -75,4 +90,27 @@ export function useBoardMutations(workspaceId: string) {
   });
 
   return { create, remove, rename, refresh };
+}
+
+/**
+ * 「新建画布」：按当前语言取下一个默认名，建好就切过去。侧栏那一行与没有画布时
+ * 的空状态共用。
+ */
+export function useNewBoard() {
+  const t = useT();
+  const workspace = useCanvasStore((state) => state.workspace);
+  const { create } = useBoardMutations(workspace?.id ?? "");
+
+  const run = () => {
+    if (!workspace || create.isPending) return;
+    const state = useCanvasStore.getState();
+    const name = nextBoardName(state.boards, (index) =>
+      t("sidebar.boardDefaultName", { index }),
+    );
+    create.mutate(name, {
+      onSuccess: (board) => useCanvasStore.getState().selectBoard(board.id),
+    });
+  };
+
+  return { run, disabled: !workspace || create.isPending };
 }

@@ -19568,16 +19568,6 @@
                 }
               }
             }
-          },
-          "409": {
-            "description": "409",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CoreError"
-                }
-              }
-            }
           }
         },
         "x-armadra": {

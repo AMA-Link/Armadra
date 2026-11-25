@@ -162,6 +162,7 @@ const { useCanvasStore } = await import("../store/canvas-store");
 const { PRESENCE_HEARTBEAT_MS, useBoardSync } =
   await import("./use-board-sync");
 const { markPresenceActivity } = await import("../store/canvas/presence");
+const { runtimeApi } = await import("../api/client");
 const { isReadOnly, presenceClientId } =
   await import("../store/canvas/presence");
 
@@ -509,5 +510,42 @@ describe("useBoardSync", () => {
     );
     renderHook(() => useBoardSync(), { wrapper });
     await waitFor(() => expect(useCanvasStore.getState().workspace).toBeNull());
+  });
+
+  it("工作空间没有画布时留空：不载文档、不算加载中（#1015）", async () => {
+    vi.mocked(runtimeApi.listBoards).mockResolvedValueOnce([]);
+    const { result } = renderHook(() => useBoardSync(), { wrapper });
+    await waitFor(() =>
+      expect(useCanvasStore.getState().workspace?.id).toBe(workspace.id),
+    );
+    await waitFor(() => expect(result.current.boards.data).toEqual([]));
+    expect(useCanvasStore.getState().boardId).toBeNull();
+    expect(result.current.canvasLoading).toBe(false);
+    expect(loadBoard).not.toHaveBeenCalled();
+  });
+
+  it("深链指向已删除的画布时落到列表里的第一块（#1015）", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      `/?workspace=${workspace.id}&board=019ff7d1-0d12-7421-833d-2c5e8d64ed99`,
+    );
+    renderHook(() => useBoardSync(), { wrapper });
+    await waitFor(() =>
+      expect(useCanvasStore.getState().boardId).toBe(board.id),
+    );
+    await waitFor(() => expect(positionOf()).toBe(0));
+  });
+
+  it("没有画布的工作空间别处建了一块后自动切过去（#1015）", async () => {
+    vi.mocked(runtimeApi.listBoards).mockResolvedValueOnce([]);
+    const { result } = renderHook(() => useBoardSync(), { wrapper });
+    await waitFor(() => expect(result.current.boards.data).toEqual([]));
+    expect(useCanvasStore.getState().boardId).toBeNull();
+
+    await act(() => result.current.boards.refetch());
+    await waitFor(() =>
+      expect(useCanvasStore.getState().boardId).toBe(board.id),
+    );
   });
 });

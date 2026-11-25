@@ -215,7 +215,13 @@ describe("the board routes", () => {
       "DELETE",
       `/api/workspaces/${workspaceId}/boards/${boardId}`,
     );
-    expect(last.status).toBe(409);
+    // 最后一块也能删，工作空间留空（#1015）。
+    expect(last.status).toBe(204);
+    const left = await core.call(
+      "GET",
+      `/api/workspaces/${workspaceId}/boards`,
+    );
+    expect(left.body).toEqual([]);
   });
 
   it("stores a node's context-link document and bounds it", async () => {

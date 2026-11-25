@@ -42,8 +42,6 @@ export interface BoardRowProps {
   active: boolean;
   pinned: boolean;
   signal?: BoardSignal;
-  /** 工作空间只剩一块板时不让删。 */
-  canDelete: boolean;
   onSelect: () => void;
   onDelete: () => void;
   onTogglePin: () => void;
@@ -62,7 +60,6 @@ export function BoardRow({
   active,
   pinned,
   signal,
-  canDelete,
   onSelect,
   onDelete,
   onTogglePin,
@@ -91,7 +88,7 @@ export function BoardRow({
     {
       key: "delete",
       label: t("sidebar.boardDelete"),
-      disabled: !canDelete,
+      disabled: false,
       run: () => setConfirming(true),
     },
   ];

@@ -60,7 +60,6 @@ import { PendingRows } from "./PendingRows";
 import {
   BOARD_PAGE_SIZE,
   boardSignals,
-  nextBoardName,
   pinnedEntries,
   startsCollapsed,
   treeWorkspaces,
@@ -71,7 +70,7 @@ import {
 import { idsInSource } from "../app/preferences/sources";
 import { useIsFetching } from "@tanstack/react-query";
 import { activeSourceId, sk } from "../sources/scope";
-import { useBoardMutations } from "./use-board-mutations";
+import { useBoardMutations, useNewBoard } from "./use-board-mutations";
 import { displayName } from "./display-name";
 
 export function WorkspaceTree() {
@@ -416,20 +415,7 @@ function LocalGroup({
  */
 function NewBoardRow() {
   const t = useT();
-  const workspace = useCanvasStore((state) => state.workspace);
-  const boards = useCanvasStore((state) => state.boards);
-  const selectBoard = useCanvasStore((state) => state.selectBoard);
-  const { create } = useBoardMutations(workspace?.id ?? "");
-
-  const run = () => {
-    if (!workspace || create.isPending) return;
-    const name = nextBoardName(boards, (index) =>
-      t("sidebar.boardDefaultName", { index }),
-    );
-    create.mutate(name, {
-      onSuccess: (board) => selectBoard(board.id),
-    });
-  };
+  const newBoard = useNewBoard();
 
   return (
     <div className="px-2 pb-1">
@@ -437,9 +423,9 @@ function NewBoardRow() {
         <Button
           variant="ghost"
           size="sm"
-          disabled={!workspace || create.isPending}
+          disabled={newBoard.disabled}
           className="min-w-0 flex-1 justify-start gap-2 px-1.5 text-body font-normal hover:bg-transparent"
-          onClick={run}
+          onClick={newBoard.run}
         >
           <SquarePen className="size-4 shrink-0 opacity-70" />
           <span className="truncate">{t("sidebar.newBoard")}</span>
@@ -477,7 +463,6 @@ function PinnedRow({
       active={active}
       pinned
       signal={signal}
-      canDelete={false}
       onSelect={onSelect}
       onRename={(name) => rename.mutateAsync({ id: board.id, name })}
       onDelete={() => remove.mutate(board.id)}
@@ -516,9 +501,6 @@ function WorkspaceRow({
   onTogglePinWorkspace: (pinned: boolean) => void;
 }) {
   const t = useT();
-  const storeBoards = useCanvasStore((state) => state.boards);
-  const boardId = useCanvasStore((state) => state.boardId);
-  const selectBoard = useCanvasStore((state) => state.selectBoard);
   const removeWorkspace = useRemoveWorkspace();
   const archiveWorkspace = useArchiveWorkspace();
   const { remove, rename } = useBoardMutations(summary.id);
@@ -535,20 +517,6 @@ function WorkspaceRow({
   const boardsFetching =
     useIsFetching({ queryKey: sk("boards", summary.id) }) > 0;
   const visible = visibleBoards(boards, expandedAll, activeBoardId);
-  const canDelete = boards.length > 1;
-
-  const deleteBoard = (id: string) => {
-    remove.mutate(id, {
-      onSuccess: () => {
-        // 删的是当前画布就先切到别的一块，免得画布对着一个不存在的 id
-        if (active && id === boardId) {
-          const next = storeBoards.find((board) => board.id !== id);
-          selectBoard(next?.id ?? null);
-        }
-      },
-    });
-  };
-
   return (
     <li>
       <div className="group/ws motion-hover flex h-(--row-h) items-center gap-1 rounded-control pr-1 pl-1.5 hover:bg-hover">
@@ -624,10 +592,9 @@ function WorkspaceRow({
               active={board.id === activeBoardId}
               pinned={pinnedBoardIds.includes(board.id)}
               signal={signals[board.id]}
-              canDelete={canDelete}
               onSelect={() => onSelectBoard(board.id)}
               onRename={(name) => rename.mutateAsync({ id: board.id, name })}
-              onDelete={() => deleteBoard(board.id)}
+              onDelete={() => remove.mutate(board.id)}
               onTogglePin={() =>
                 onTogglePin(board.id, !pinnedBoardIds.includes(board.id))
               }
