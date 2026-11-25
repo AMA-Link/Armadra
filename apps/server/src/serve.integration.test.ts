@@ -82,12 +82,17 @@ function call(
 }
 
 /**
- * 启动钩子的看门狗。vitest 的钩子超时只会说 `Hook timed out in 10000ms`，不说
- * 卡在哪；Windows runner 上这个钩子超时过一次（#630），当时没法知道是建临时目录、
- * 装配 core 还是 TLS 监听。这里在默认钩子上限之前自己收口，把当前步骤与每步
- * 耗时写进错误信息。上限不放宽——启动在 Windows 上慢也该慢在可见的地方。
+ * 启动钩子的看门狗。vitest 的钩子超时只会说 `Hook timed out in …ms`，不说卡在
+ * 哪；Windows runner 上这个钩子超时过几次（#630、#1047），当时没法知道是建临时
+ * 目录、装配 core 还是 TLS 监听。这里在钩子上限之前自己收口，把当前步骤与每步
+ * 耗时写进错误信息。
+ *
+ * 上限放到 30 秒（#1047）：Windows runner 上装配 core（建库、跑逐渐变多的迁移、
+ * 各域安装，还有杀毒软件扫临时目录）偶发超过 10 秒，重跑即过，与改动无关；本机
+ * 与 Linux 上整个钩子只要一两秒，所以放宽不会让真正的卡死藏起来——卡死仍在 30
+ * 秒内带着步骤轨迹报出来。
  */
-const HOOK_BUDGET_MS = 10_000;
+const HOOK_BUDGET_MS = 30_000;
 const WATCHDOG_MS =
   Number(process.env.ARMADRA_TEST_WATCHDOG_MS) || HOOK_BUDGET_MS - 1_500;
 const stepLog: { step: string; at: number }[] = [];
