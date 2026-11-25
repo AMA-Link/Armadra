@@ -59,6 +59,8 @@ export interface QueueItem {
   /** 上一次没投出去的 code。排队回执里的 `reason` 就是它。 */
   readonly lastReason?: string;
   readonly settledBy: SettledBy;
+  /** 发送时给了 `--unverified`：出队时同样按它放行（没有状态通道的目标）。 */
+  readonly unverified?: boolean;
   /** 终态回执写进发送方收件箱的时刻；还没写就没有。 */
   readonly notifiedAt?: number;
 }
@@ -84,12 +86,13 @@ interface QueueRow {
   readonly last_reason: string | null;
   readonly settled_by: string;
   readonly notified_at: number | null;
+  readonly unverified: number;
 }
 
 /** 插入时写的那些。`settled_by` / `notified_at` 只在结束时由 UPDATE 写。 */
 const INSERT_COLUMNS =
   "id, workspace_id, source_node_id, target_node_id, origin, message_key, body, " +
-  "hops, trail, created_at, expires_at, attempts, state, last_reason, source_kind, controller_id, run_id, task_id";
+  "hops, trail, created_at, expires_at, attempts, state, last_reason, source_kind, controller_id, run_id, task_id, unverified";
 
 const COLUMNS = `${INSERT_COLUMNS}, settled_by, notified_at`;
 
@@ -129,6 +132,7 @@ function itemOf(row: QueueRow): QueueItem {
     state: row.state as QueueState,
     ...(row.last_reason === null ? {} : { lastReason: row.last_reason }),
     settledBy: row.settled_by as SettledBy,
+    ...(Number(row.unverified) === 1 ? { unverified: true } : {}),
     ...(row.notified_at === null
       ? {}
       : { notifiedAt: Number(row.notified_at) }),
@@ -153,6 +157,8 @@ export interface NewQueueItem {
   /** 直接投出去的那一条一落库就是 `done`；排队的是 `queued`。 */
   readonly state: Extract<QueueState, "queued" | "done">;
   readonly lastReason?: string | undefined;
+  /** `send --unverified`：排队项出队时带回。 */
+  readonly unverified?: boolean;
 }
 
 export type InsertOutcome =
@@ -213,7 +219,7 @@ export function enqueue(
   const changes = database
     .prepare(
       `INSERT OR IGNORE INTO agent_send_queue (${INSERT_COLUMNS}) ` +
-        "SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ? WHERE " +
+        "SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ? WHERE " +
         "(SELECT COUNT(*) FROM agent_send_queue WHERE target_node_id = ? " +
         "AND state IN ('queued','delivering') AND expires_at > ?) < ?",
     )
@@ -235,6 +241,7 @@ export function enqueue(
       item.controllerId ?? null,
       item.runId ?? null,
       item.taskId ?? null,
+      item.unverified === true ? 1 : 0,
       item.targetNodeId,
       item.now,
       SEND_QUEUE_MAX_PER_TARGET,

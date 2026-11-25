@@ -3,7 +3,8 @@ import { type AgentFixture, agentFixture, callerFor } from "../agent/fixture";
 import { putContextLinks } from "../canvas/context-links";
 import { freeLease } from "../drive/lease";
 import { controlDispatcher, type ControlOutcome } from "./control";
-import { SendPump, nodeFreedByProgram } from "./send-pump";
+import { ProgramBlockTracker, programBlocks } from "./program-block";
+import { SendPump, programFreeHook } from "./send-pump";
 import { resetSendLimits } from "./send-limits";
 import { pendingCountFor } from "./send-queue";
 
@@ -68,6 +69,7 @@ function node(
 }
 
 beforeEach(() => {
+  programBlocks.clear();
   resetSendLimits();
   fixture = agentFixture();
   me = fixture.agentNode("Caller");
@@ -97,6 +99,25 @@ describe("a program that reports blocked", () => {
       await run("send", { to: bare.id, body: "做", unverified: true }),
     );
     expect(delivered).toMatchObject({ outcome: "delivered" });
+  });
+
+  it("an --unverified delivery queued behind blocked is delivered once blocked clears", async () => {
+    const bare = node(null, { state: "idle", stateSource: "observed" });
+    quiet(bare.sessionId);
+    fixture.terminal.programs.set(bare.sessionId, { state: "blocked" });
+    expect(
+      ok(await run("send", { to: bare.id, body: "做", unverified: true })),
+    ).toMatchObject({ outcome: "queued", reason: "TARGET_AWAITING_APPROVAL" });
+    expect(pendingCountFor(fixture.database, bare.id, 0)).toBe(1);
+    const pump = new SendPump(() => fixture.collab);
+    await pump.drain(bare.id);
+    expect(fixture.terminal.submits).toHaveLength(0);
+    fixture.terminal.programs.delete(bare.sessionId);
+    pump.noteFree(bare.id);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // 排队项带着 --unverified：没有状态通道的目标不会以 TARGET_STATE_UNVERIFIED 结束。
+    expect(fixture.terminal.submits).toHaveLength(1);
+    expect(pendingCountFor(fixture.database, bare.id, 0)).toBe(0);
   });
 
   it("the first delivery to a CLI that starts silently is vetoed too", async () => {
@@ -171,23 +192,133 @@ describe("a program that reports blocked", () => {
   });
 });
 
+describe("a veto the frames never showed", () => {
+  it("working → blocked → idle inside one throttle window still wakes the pump", async () => {
+    const claude = node("claude", { state: "idle", stateSource: "hook" });
+    fixture.terminal.foreground = { command: "claude" };
+    // 帧节流：投递读的是即时值，事件里一个 `blocked` 帧都没出现过。
+    fixture.terminal.programs.set(claude.sessionId, { state: "blocked" });
+    expect(ok(await run("send", { to: claude.id, body: "做" }))).toMatchObject({
+      outcome: "queued",
+      reason: "TARGET_AWAITING_APPROVAL",
+    });
+    fixture.terminal.programs.delete(claude.sessionId);
+    const freed: string[] = [];
+    const hook = programFreeHook({ noteFree: (id) => freed.push(id) });
+    // 窗口结束时发出的那一帧已经是 working/idle。
+    hook({
+      type: "terminal.program",
+      nodeId: claude.id,
+      status: { state: "idle" },
+    });
+    expect(freed).toEqual([claude.id]);
+  });
+});
+
+describe("a queued --unverified item from before a restart", () => {
+  it("ends through the gate chain as TARGET_STATE_UNVERIFIED instead of being delivered on a stale say-so", async () => {
+    const bare = node(null, { state: "idle", stateSource: "observed" });
+    quiet(bare.sessionId);
+    fixture.terminal.programs.set(bare.sessionId, { state: "blocked" });
+    expect(
+      ok(await run("send", { to: bare.id, body: "做", unverified: true })),
+    ).toMatchObject({ outcome: "queued" });
+    fixture.terminal.programs.delete(bare.sessionId);
+    // 「重启」：这个泵比排队项晚起来（排队项的 created_at 早于它）。
+    const pump = new SendPump(
+      () => fixture.collab,
+      undefined,
+      Math.floor(Date.now() / 1000) + 10,
+    );
+    await pump.drain(bare.id);
+    expect(fixture.terminal.submits).toHaveLength(0);
+    expect(pendingCountFor(fixture.database, bare.id, 0)).toBe(0);
+    const row = fixture.database
+      .prepare(
+        "SELECT state, last_reason, settled_by FROM agent_send_queue WHERE target_node_id = ?",
+      )
+      .get(bare.id) as {
+      state: string;
+      last_reason: string;
+      settled_by: string;
+    };
+    expect(row).toEqual({
+      state: "cancelled",
+      last_reason: "TARGET_STATE_UNVERIFIED",
+      settled_by: "gate",
+    });
+    // 发送方的收件箱里有那条回执，而且说明了为什么。
+    const receipt = fixture.database
+      .prepare(
+        "SELECT body FROM agent_mailbox WHERE message_key LIKE 'receipt:%' AND target_node_id = ?",
+      )
+      .get(me) as { body: string } | undefined;
+    expect(receipt?.body).toContain("TARGET_STATE_UNVERIFIED");
+    expect(receipt?.body).toContain("重启");
+  });
+
+  it("an item queued after the start still goes out", async () => {
+    const bare = node(null, { state: "idle", stateSource: "observed" });
+    quiet(bare.sessionId);
+    fixture.terminal.programs.set(bare.sessionId, { state: "blocked" });
+    ok(await run("send", { to: bare.id, body: "做", unverified: true }));
+    fixture.terminal.programs.delete(bare.sessionId);
+    const pump = new SendPump(
+      () => fixture.collab,
+      undefined,
+      Math.floor(Date.now() / 1000) - 10,
+    );
+    await pump.drain(bare.id);
+    expect(fixture.terminal.submits).toHaveLength(1);
+  });
+});
+
 describe("which node a terminal.program event frees", () => {
-  it("frees on any state but blocked, and when the record is gone", () => {
-    const at = (status?: { state: string }) =>
-      nodeFreedByProgram({ type: "terminal.program", nodeId: "n1", status });
-    expect(at({ state: "blocked" })).toBeUndefined();
-    for (const state of ["idle", "working", "done", "error"]) {
-      expect(at({ state })).toBe("n1");
-    }
-    expect(at(undefined)).toBe("n1");
+  const event = (nodeId: string, state?: string) => ({
+    type: "terminal.program",
+    nodeId,
+    status: state === undefined ? undefined : { state },
+  });
+
+  it("frees only on the transition out of blocked, not on every frame", () => {
+    const tracker = new ProgramBlockTracker();
+    // 没 blocked 过：进度帧一律不叫醒。
+    expect(tracker.observe(event("n1", "working"))).toBeUndefined();
+    expect(tracker.observe(event("n1", "working"))).toBeUndefined();
+    expect(tracker.observe(event("n1", "blocked"))).toBeUndefined();
+    expect(tracker.observe(event("n1", "blocked"))).toBeUndefined();
+    expect(tracker.observe(event("n1", "working"))).toBe("n1");
+    // 解除之后再来的帧不再叫醒。
+    expect(tracker.observe(event("n1", "working"))).toBeUndefined();
+    expect(tracker.observe(event("n1", "idle"))).toBeUndefined();
+  });
+
+  it("frees when the record disappears, per node", () => {
+    const tracker = new ProgramBlockTracker();
+    tracker.observe(event("a", "blocked"));
+    tracker.observe(event("b", "blocked"));
+    expect(tracker.observe(event("a"))).toBe("a");
+    expect(tracker.observe(event("a"))).toBeUndefined();
+    expect(tracker.observe(event("b", "idle"))).toBe("b");
   });
 
   it("ignores other events and sessions without a node", () => {
+    const tracker = new ProgramBlockTracker();
     expect(
-      nodeFreedByProgram({ type: "agent.status", nodeId: "n1" }),
+      tracker.observe({ type: "agent.status", nodeId: "n1" }),
     ).toBeUndefined();
     expect(
-      nodeFreedByProgram({ type: "terminal.program", status: undefined }),
+      tracker.observe({ type: "terminal.program", status: undefined }),
     ).toBeUndefined();
+  });
+
+  it("the hook agent/index.ts installs calls noteFree once, and says the event was its own", () => {
+    const freed: string[] = [];
+    const hook = programFreeHook({ noteFree: (id) => freed.push(id) });
+    expect(hook({ type: "agent.status", nodeId: "n1" })).toBe(false);
+    expect(hook(event("n1", "blocked"))).toBe(true);
+    expect(hook(event("n1", "working"))).toBe(true);
+    expect(hook(event("n1", "working"))).toBe(true);
+    expect(freed).toEqual(["n1"]);
   });
 });

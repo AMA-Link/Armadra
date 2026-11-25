@@ -7,6 +7,7 @@ import { writeReceipts } from "./receipts";
 import { sendLimits } from "./send-limits";
 import { expireQueue, pendingFor, targetsWithPending } from "./send-queue";
 import { type CollabContext, nowSeconds } from "./service";
+import { type ProgramBlockTracker, programBlocks } from "./program-block";
 import { RouterCards } from "./router-cards";
 import { wakeInbox } from "./wake";
 
@@ -57,6 +58,12 @@ export class SendPump {
   constructor(
     private readonly context: () => CollabContext | undefined,
     private readonly onError: (error: unknown) => void = () => {},
+    /**
+     * 这个 core 起来的时刻（秒）。排队项里带 `--unverified` 的、比它早建的，是上一个
+     * core 留下的：当时否决它们的依据（内存里的程序自报状态）已经随重启丢了，
+     * 继续按「自负其责」投进去，可能正投在一张审批卡上。缺省不设这条规则（用例）。
+     */
+    private readonly startedAtSeconds?: number,
   ) {}
 
   /**
@@ -150,10 +157,24 @@ export class SendPump {
         await this.cards.deliver(context, targetNodeId);
         return;
       }
-      // 排队项不带参数：`--no-queue` 是一次性的，一条已经排进去的投递按定义
-      // 就是愿意等的那种。`--interrupt` 同理——打断是投的那一刻的决定，不是
-      // 五分钟后替调用者再做一次。
-      await attempt(context, next, { queue: true, dequeued: true });
+      // 重启前排下的 `--unverified` 项不再带回：当时否决它们的依据（内存里的程序自报
+      // 状态）已随重启丢了。没有状态通道的目标会在门链里自己以
+      // `TARGET_STATE_UNVERIFIED` 结束（回执由下面的 catch 写），有状态通道的目标
+      // 照常投递——它们本来就不靠 `--unverified`。
+      const beforeRestart =
+        this.startedAtSeconds !== undefined &&
+        next.createdAt < this.startedAtSeconds;
+      // 排队项只带 `--unverified`：`--no-queue` 是一次性的，一条已经排进去的投递
+      // 按定义就是愿意等的那种。`--interrupt` 同理——打断是投的那一刻的决定，不是
+      // 五分钟后替调用者再做一次。`--unverified` 是对「这个目标没有状态通道」的
+      // 自负其责，排队前后是同一个目标，所以要带回来（#1026）。
+      await attempt(context, next, {
+        queue: true,
+        dequeued: true,
+        ...(next.unverified === true && !beforeRestart
+          ? { unverified: true }
+          : {}),
+      });
     } catch (error) {
       // 出队时被门链拒绝不是这个泵的失败：那一条已经在 `attempt` 里被落了
       // 状态与理由（`settled_by = 'gate'`）。发起者此刻没有在等回执，所以当场
@@ -284,17 +305,22 @@ export class SendPump {
 }
 
 /**
- * 一条 `terminal.program` 事件放开了哪个节点：状态变成 `blocked` 以外的值、或
- * 记录没了（`status` 缺席）。`blocked` 是投递的否决项（契约 §53、§120），它解除时
- * 目标那一侧可能什么 `agent.status` 都不会再报，所以要靠这条事件叫醒出队泵。
+ * `agent/index.ts` 挂在事件总线上的那一个处理函数：`terminal.program` 里放开了
+ * `blocked` 的节点，叫醒出队泵（`pump.noteFree`）。答「这条事件是不是它的」，
+ * 好让调用方在是的时候不再往下走。
  */
-export function nodeFreedByProgram(event: {
+export function programFreeHook(
+  pump: { noteFree(nodeId: string): void },
+  tracker: ProgramBlockTracker = programBlocks,
+): (event: {
   readonly type: string;
   readonly nodeId?: unknown;
   readonly status?: unknown;
-}): string | undefined {
-  if (event.type !== "terminal.program") return undefined;
-  if (typeof event.nodeId !== "string" || event.nodeId === "") return undefined;
-  const status = event.status as { state?: unknown } | undefined;
-  return status?.state === "blocked" ? undefined : event.nodeId;
+}) => boolean {
+  return (event) => {
+    if (event.type !== "terminal.program") return false;
+    const freed = tracker.observe(event);
+    if (freed !== undefined) pump.noteFree(freed);
+    return true;
+  };
 }

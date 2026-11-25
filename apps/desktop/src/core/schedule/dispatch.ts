@@ -19,7 +19,8 @@ import {
   nodeStateChannel,
   startsSilently,
 } from "../agent/registry";
-import { type AgentStatus, getAgentStatus } from "../agent/status";
+import type { AgentStatus } from "../agent/status";
+import { currentDriverStatus } from "../terminal/manager-status";
 import {
   type ObservedActivity,
   silentStartIdle,
@@ -256,11 +257,20 @@ export class TerminalDispatcher implements Dispatcher {
       return { state: "offline", generation: 0 };
     }
     // 停在一个问题上的 pane 算忙。写进去就是替人回答了那个问题。
-    const status = getAgentStatus(this.context.database, target.nodeId);
+    const status = currentDriverStatus(
+      this.context.database,
+      target.nodeId,
+      session.sessionId,
+    );
     if (status?.state === "blocked" || status?.state === "waiting") {
       return { state: "busy", generation: live };
     }
     if (status?.state === "working") return { state: "busy", generation: live };
+    // 程序自己用 OSC 7501 报了 `blocked`（停在审批上）：与 `send` 同一道否决
+    // （契约 §53、§120）。只否决，不放行。
+    if (terminals.programStatus?.(session.sessionId)?.state === "blocked") {
+      return { state: "busy", generation: live };
+    }
     // 人打了一半的输入：租约过期之后那半行还在，写进去就接在它后面一起提交。
     // 与 `send` 的 `TARGET_INPUT_PENDING` 是同一条（终端域的输入围栏）。
     const observed = terminals.observed?.(session.sessionId);
