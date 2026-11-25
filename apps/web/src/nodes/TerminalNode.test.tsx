@@ -489,6 +489,39 @@ describe("TerminalNode body", () => {
       expect(failing).toHaveBeenCalled();
       failing.mockRestore();
     });
+
+    describe("answers typed on a terminal card (contract §127)", () => {
+      it.each([
+        ["unconfirmed", "按键已发，没有确认生效，请看终端"],
+        ["mismatch", "终端里的结果与所选不一致，请看终端"],
+        ["ambiguous", "终端里同时有多张卡，结果不确定，请看终端"],
+      ] as const)(
+        "%s is said out loud, confirmed is not",
+        async (delivery, text) => {
+          pending();
+          const { toast } = await import("@/ui/toast");
+          const error = vi.spyOn(toast, "error").mockReturnValue("t" as never);
+          const answer = vi
+            .spyOn(await import("./runtime-extras"), "answerApproval")
+            .mockResolvedValue(delivery);
+          renderNode(acpNode());
+          fireEvent.click(await screen.findByRole("button", { name: "允许" }));
+          await waitFor(() =>
+            expect(error).toHaveBeenCalledWith(text, expect.anything()),
+          );
+          answer.mockResolvedValue("confirmed");
+          error.mockClear();
+          cleanup();
+          pending();
+          renderNode(acpNode());
+          fireEvent.click(await screen.findByRole("button", { name: "允许" }));
+          await waitFor(() => expect(answer).toHaveBeenCalledTimes(2));
+          expect(error).not.toHaveBeenCalled();
+          error.mockRestore();
+          answer.mockRestore();
+        },
+      );
+    });
   });
 
   it("zero injection: marks the node, and the approval entry is disabled with its reason (#975)", () => {

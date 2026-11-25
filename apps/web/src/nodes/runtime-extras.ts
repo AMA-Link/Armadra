@@ -1,4 +1,5 @@
 import { agentGateway } from "@/agent";
+import type { ApprovalRecord } from "@/agent/gateway";
 
 /**
  * 权限直答。
@@ -14,6 +15,7 @@ export async function answerApproval(
   workspaceId: string,
   pendingId: string,
   decision: "allow" | "deny",
-): Promise<void> {
-  await agentGateway.answerApproval(workspaceId, pendingId, decision);
+): Promise<ApprovalRecord["delivery"]> {
+  return (await agentGateway.answerApproval(workspaceId, pendingId, decision))
+    .delivery;
 }

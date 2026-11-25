@@ -189,6 +189,27 @@ describe("节点状态与人的答复", () => {
     expect(sent()).toEqual({ json: { pendingId: "p1", decision: "allow" } });
   });
 
+  it("终端卡的答复带 delivery（契约 §127），别的值被拒", async () => {
+    const body = {
+      id: "p1",
+      nodeId: "node-1",
+      workspaceId,
+      request: { protocol: "grok-card" },
+      answer: "allow",
+      answeredBy: "user",
+      createdAt: timestamp,
+      answeredAt: timestamp,
+      revision: 1,
+      route: "keys",
+    };
+    ok({ ...body, delivery: "mismatch" });
+    await expect(
+      runtimeApi.answerApproval("p1", "allow"),
+    ).resolves.toMatchObject({ route: "keys", delivery: "mismatch" });
+    ok({ ...body, delivery: "maybe" });
+    await expect(runtimeApi.answerApproval("p1", "allow")).rejects.toThrow();
+  });
+
   it("被路由门拦下是 403 forbidden，与旧路径同一种错误", async () => {
     stub(() =>
       answer(403, {

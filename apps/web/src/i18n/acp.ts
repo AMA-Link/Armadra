@@ -69,6 +69,10 @@ export const acp: MessageModule = {
     "acp.permission.awaitingDriver": "等待接管",
     "acp.permission.announce": "等待审批：{title}",
     "acp.permission.failed": "没有答上",
+    "acp.permission.delivery.unconfirmed": "按键已发，没有确认生效，请看终端",
+    "acp.permission.delivery.mismatch": "终端里的结果与所选不一致，请看终端",
+    "acp.permission.delivery.ambiguous":
+      "终端里同时有多张卡，结果不确定，请看终端",
     "acp.elicitation.announce": "等待回答：{title}",
     "acp.permission.outcome.allowOnce": "已允许",
     "acp.permission.outcome.allowAlways": "已始终允许",
@@ -259,6 +263,12 @@ export const acp: MessageModule = {
     "acp.permission.awaitingDriver": "Waiting for a driver",
     "acp.permission.announce": "Approval needed: {title}",
     "acp.permission.failed": "Answer not sent",
+    "acp.permission.delivery.unconfirmed":
+      "Key sent but not confirmed; check the terminal",
+    "acp.permission.delivery.mismatch":
+      "The terminal shows a different result; check the terminal",
+    "acp.permission.delivery.ambiguous":
+      "Several cards were open; the result is uncertain, check the terminal",
     "acp.elicitation.announce": "Answer needed: {title}",
     "acp.permission.outcome.allowOnce": "Allowed",
     "acp.permission.outcome.allowAlways": "Always allowed",

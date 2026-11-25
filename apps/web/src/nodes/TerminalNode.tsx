@@ -313,14 +313,25 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
               .resolveApproval(pendingId);
             // 没答上就把头部按钮放回去并说一声（回合还卡在这条审批上），与审批卡
             // 自己的 `answerPermission` 一个做法。
-            answerApproval(workspaceId ?? "", pendingId, decision).catch(() => {
-              if (statusKey !== undefined) {
-                useAgentStatusStore
-                  .getState()
-                  .reopenApproval(statusKey, pendingId);
-              }
-              toast.error(t("acp.permission.failed"));
-            });
+            answerApproval(workspaceId ?? "", pendingId, decision).then(
+              (delivery) => {
+                // 终端卡上的键没被看到生效（契约 §127）：回合可能还停在卡上，
+                // 说出来，让人去终端看一眼。
+                if (delivery !== undefined && delivery !== "confirmed") {
+                  toast.error(t(`acp.permission.delivery.${delivery}`), {
+                    duration: 12_000,
+                  });
+                }
+              },
+              () => {
+                if (statusKey !== undefined) {
+                  useAgentStatusStore
+                    .getState()
+                    .reopenApproval(statusKey, pendingId);
+                }
+                toast.error(t("acp.permission.failed"));
+              },
+            );
           },
         }
       : undefined;
