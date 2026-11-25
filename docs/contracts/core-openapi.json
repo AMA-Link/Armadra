@@ -17852,6 +17852,10 @@
                       "pendingId": {
                         "type": "string"
                       },
+                      "pendingCard": {
+                        "type": "string",
+                        "maxLength": 40
+                      },
                       "sessionPhase": {
                         "enum": ["start", "end"],
                         "type": "string"
