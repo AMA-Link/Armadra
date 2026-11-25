@@ -472,6 +472,9 @@ class GrokSlot implements StateSlot {
     }
     const next = aggregate(views);
     this.scheduleGrace(views);
+    // 一个还没有任何回合的会话没有「完成」可说：只有上面的 session start，状态留空
+    // （与 Claude 起来之后的样子一致，首投放行门认的就是「开场之后还没有状态」）。
+    if (next.turns === 0 && next.state === "done") return;
     const key = next.state;
     const before = this.last;
     if (

@@ -159,6 +159,17 @@ describe("按进程绑定", () => {
     slot!.stop();
   });
 
+  it("会话刚开、还没有任何回合：只说 session start，不报状态（没有「完成」可说）", () => {
+    rows = [{ session_id: "fresh", pid: CHILD_PID, cwd: CWD }];
+    writeActive();
+    writeEvents("fresh", []);
+    const { slot } = open();
+    slot!.start();
+    expect(reports.map((e) => e.kind)).toEqual(["session"]);
+    expect(states()).toEqual([]);
+    slot!.stop();
+  });
+
   it("文件还不存在不是错误，不标记「绑不上」", () => {
     const { slot } = open();
     slot!.start();
