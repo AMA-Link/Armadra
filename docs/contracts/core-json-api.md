@@ -6398,3 +6398,13 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
 - **未核实的规格不上线**：适配器规格有 `verified`；`false`（grok 现在就是）时请求不挂卡，照旧回 `-32601`——依赖升级到带 `features.extRequest` 的版本也不会让一个没核实的应答自动上线。核实之后只改这一个标志和映射函数 `reply`。
 - **应答形状没有核对过**：目前只知道请求的形状，不知道 grok 认哪些应答字段。映射函数是适配器里孤立的一处（今天写的是 `{ approved: true }`，**未验证**，只在批准时调用），用假 Agent 测过「批准 → 映射 → 应答」与各条错误路径，没有用真账号测过 grok 认不认。
 - **grok 的 ACP plan 仍然关着**（`NO_ACP_LANDING`，§124 之前的约定不变）：客户端侧的依赖已经到位（`@armadra/agent` 0.24.0），开启只差用真账号抓批准与拒绝两种应答、核对映射函数（Armadra#1021 写了步骤，以及 #1041），然后把 `verified` 改成 `true`、去掉 `NO_ACP_LANDING` 里的 plan。在那之前用户选不到 plan，不会得到一个被取消的回合。
+
+## 126. ACP 会话的 `_meta`：grok 与 agy 的画布规则（`#1035`）
+
+不改任何线上形状、不升协议版本：`session/new`（以及某些 CLI 的 `session/load`、`session/resume`）的 `_meta` 是 ACP 规范留给各家的扩展位（`@armadra/agent` 0.23.0 起客户端声明 `features.sessionMeta`，`clientAcceptsSessionMeta()`），适配器表的 `sessionMeta` 算出它。
+
+- **画布规则**：`acpCanvasRules()`（`acp/canvas-rules.ts`）一两句话、中英各一，说「这个会话是 Armadra 画布上的一个节点，协作、建 Agent、读相连节点、用浏览器节点一律用 `armadra` MCP 服务器的工具（`canvas_*`、`context_*`、`browser_*`），不要用本 CLI 自带的子代理、后台任务或浏览器代替」，与 `collab/skill.ts` 的 `canvasRules()` 同一个写法（三个前缀写全：grok 先 `search_tool` 查名字，前缀写错就搜不到）。细则在 MCP 服务器自己的 instructions 里，这里只是放在最前面的复述；ACP 下画布动词是 MCP 工具，不是终端里的 `armadra-hook` 命令。整份技能不进系统提示。
+- **只在带了画布 MCP 时才给**：`adapterStartOptions` 只有在这个会话真的带了画布 MCP 服务器（`wanted.length > 0`）时才把规则交给 `acpSessionMeta`。本机没有 `armadra-hook`（`canvasMcpServer` 答空）、SSH 的远端准备失败（传进来的 `mcpServers` 为空）时没有规则，免得告诉模型「一律用 armadra 的工具」而它根本没有。
+- **grok**：`_meta.rules`（追加到系统提示）。用隔离的 `GROK_HOME` 加脚本化模型实测（grok 1.0.92）：`session/new` 带 `_meta.rules` 之后，发给模型的请求里 system 消息含这段文字。**只在 `session/new` 时生效**（grok 文档与 1.0.92 实测：`session/load`、`session/resume` 时 `rules` 被忽略），所以适配器行标 `metaOnNew: true`，恢复时不发。后果：**本 PR 之前建的会话，恢复后拿不到规则**（要新建会话才有）。**不发 `pluginDirs`**：画布工具已经走 MCP、状态来自 ACP 自己，没有要挂的插件目录。**不发 `yoloMode`**：全自动继续走启动旗标 `--always-approve`。grok 文档说开会话 / load 时传 `yoloMode: false` 能关掉 always-approve，但 ACP 里没有会话内切换权限的入口（`session/set_mode` 只认 `default` / `plan`，plan 现在也关着），旗标已经能用，换成 `_meta` 没有任何好处，反而要在每次 load / resume 为非全自动写 `yoloMode: false`、多一条没核对过的线路。
+- **agy**：`_meta.antigravity.systemPrompt.append`。键名与效果没有用真账号核对过，适配器行标 `metaVerified: false`：`acpSessionMeta` 对未核实的行一个键都不发，线路与没有这条时逐字节相同。核对步骤在 Armadra#1053；核对之后改这一个标志（load 被忽略就再加 `metaOnNew`）。
+- **失效安全**：没有 `sessionMeta` 的适配器、没有规则文本、没带画布 MCP、未核实的适配器，`_meta` 都不出现；客户端没声明 `features.sessionMeta`（旧版）时 `metaInjected: false`，会话照常开。

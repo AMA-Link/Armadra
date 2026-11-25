@@ -49,6 +49,7 @@ import {
   resolveCommand,
 } from "../agent/registry";
 import { acpInjection, agentRoleOf } from "../agent/canvas-launch";
+import { acpCanvasRules } from "./canvas-rules";
 import { getAgentStatus } from "../agent/status";
 import { nodeRole } from "../canvas/context-links";
 import { handleForNode } from "../canvas/handles";
@@ -698,6 +699,9 @@ class AcpRuntime {
       );
       const common = {
         cwd: spec.cwd,
+        // 适配器表的 `sessionMeta` 据此算开会话的 `_meta`（没有 `sessionMeta` 或没核实的
+        // 适配器不发）。
+        metaInput: { instructions: acpCanvasRules() },
         ...(mode === undefined ? {} : { mode }),
         ...(role === undefined ? {} : { role }),
         ...(plan.model === undefined ? {} : { modelId: plan.model }),

@@ -183,11 +183,13 @@ describe("acpLaunchPlan", () => {
       "full-auto",
       "plan",
     ]);
-    // Canvas tools ride session/new.mcpServers; the instructions wait for
-    // `_meta` (armadra-agent#327), so the row has no `sessionMeta`.
+    // Canvas tools ride session/new.mcpServers; the instructions go in `_meta`, but the key
+    // is not verified yet, so the row carries `sessionMeta` behind `metaVerified: false`
+    // (nothing is sent; Armadra#1035).
     expect(agy.injection).toEqual({ mcp: true, reuse: [] });
     expect(agy.canvasTools).toBe("mcp");
-    expect(agy.sessionMeta).toBeUndefined();
+    expect(agy.sessionMeta).toBeDefined();
+    expect(agy.metaVerified).toBe(false);
   });
 
   it("refuses a mode with no mapping instead of starting writable", () => {
@@ -278,13 +280,20 @@ describe("pi's bridge (AMA-Link/Armadra#716)", () => {
 describe("session _meta", () => {
   const base = acpAdapter("claude") as AcpAdapter;
 
-  it("is absent on every built-in row today", () => {
+  it("only grok sends one today; agy has the shape but is gated, the rest have none", () => {
     for (const adapter of ACP_ADAPTERS) {
-      expect(adapter.sessionMeta, adapter.agentId).toBeUndefined();
-      expect(
-        acpSessionMeta(adapter, { mode: "default", instructions: "x" }),
-        adapter.agentId,
-      ).toBeUndefined();
+      const sent = acpSessionMeta(adapter, {
+        mode: "default",
+        instructions: "x",
+      });
+      if (adapter.agentId === "grok") {
+        expect(sent, adapter.agentId).toEqual({ rules: "x" });
+      } else {
+        expect(sent, adapter.agentId).toBeUndefined();
+      }
+      if (adapter.agentId !== "grok" && adapter.agentId !== "agy") {
+        expect(adapter.sessionMeta, adapter.agentId).toBeUndefined();
+      }
     }
   });
 

@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { type AcpAdapter, acpAdapter } from "./adapters";
 import { setHookClient } from "../terminal/environment";
+import { acpCanvasRules } from "./canvas-rules";
 import { AcpError } from "./client";
 import {
   type AcpHostSession,
@@ -480,6 +481,66 @@ describe.skipIf(process.platform === "win32")("startAdapter", () => {
     }
   });
 
+  describe("grok 的画布规则（_meta.rules）", () => {
+    const grok = acpAdapter("grok") as AcpAdapter;
+    const canvasMcp = { nodeId: "n", agentId: "grok", dataDir: tmpdir() };
+    const instructions = acpCanvasRules();
+    const start = (extra: Record<string, unknown>) => {
+      const options = adapterStartOptions(grok, {
+        cwd: tmpdir(),
+        env: onPath("grok"),
+        metaInput: { instructions },
+        ...extra,
+      } as never);
+      if (options instanceof AcpError) throw options;
+      return options;
+    };
+    const withHook = <T>(run: () => T): T => {
+      const bin = mkdtempSync(join(tmpdir(), "armadra-test-grok-hook-"));
+      cleanup.push(bin);
+      const hook = join(bin, "armadra-hook");
+      writeFileSync(hook, "#!/bin/sh\n", "utf8");
+      chmodSync(hook, 0o755);
+      setHookClient(hook);
+      try {
+        return run();
+      } finally {
+        setHookClient(undefined);
+      }
+    };
+
+    it("有画布 MCP 时：sessionMeta.rules 是这段规则，且只在 session/new 时带", () => {
+      const options = withHook(() => start({ canvasMcp }));
+      expect(options.mcpServers).toHaveLength(1);
+      expect(options.sessionMeta).toEqual({ rules: instructions });
+      expect(options.sessionMetaOnNew).toBe(true);
+    });
+
+    it("给了 mcpServers（SSH 准备好的那份）也算", () => {
+      const options = start({
+        mcpServers: [
+          {
+            name: "armadra",
+            command: "/bin/armadra-hook",
+            args: ["mcp"],
+            env: [],
+          },
+        ],
+      });
+      expect(options.sessionMeta).toEqual({ rules: instructions });
+    });
+
+    it("没有画布 MCP 就没有 rules：本机没有 armadra-hook，或 SSH 的远端准备失败（mcpServers 为空）", () => {
+      // 本机：没有 armadra-hook，`canvasMcpServer` 答 undefined。
+      setHookClient(undefined);
+      expect(start({ canvasMcp }).sessionMeta).toBeUndefined();
+      expect(start({}).sessionMeta).toBeUndefined();
+      // SSH：`prepareRemote` 失败，传进来的是空数组。
+      expect(start({ mcpServers: [] }).sessionMeta).toBeUndefined();
+      expect(start({ mcpServers: [] }).sessionMetaOnNew).toBeUndefined();
+    });
+  });
+
   it("grok：全自动旗标与 MCP 启动参数都在 stdio 之前，trailingArgs 随选项带出去", () => {
     const grok = acpAdapter("grok") as AcpAdapter;
     const options = adapterStartOptions(
@@ -542,7 +603,11 @@ describe.skipIf(process.platform === "win32")("startAdapter", () => {
       cwd: tmpdir(),
       env: onPath("armadra-fake-acp"),
       metaInput: { instructions: "canvas rules" },
-    });
+      // 画布说明只在会话真的带了画布 MCP 时才给。
+      mcpServers: [
+        { name: "armadra", command: "/bin/armadra-hook", args: [], env: [] },
+      ],
+    } as never);
     if (given instanceof AcpError) throw given;
     expect(given.sessionMeta).toEqual({
       vendor: { rules: "canvas rules", mode: "default" },
