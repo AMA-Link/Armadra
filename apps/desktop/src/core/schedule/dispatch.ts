@@ -14,6 +14,7 @@ import {
   type AgentSettings,
   NO_CUSTOM_AGENTS,
   baseAgent,
+  channelUnbound,
   nodeStateChannel,
   startsSilently,
 } from "../agent/registry";
@@ -175,8 +176,10 @@ export class TerminalDispatcher implements Dispatcher {
         ? false
         : (this.context.terminals()?.remote?.(known.sessionId) ?? false);
     if (
-      nodeStateChannel(baseAgent(settings, node.agentId), { remote }) ===
-      undefined
+      nodeStateChannel(baseAgent(settings, node.agentId), {
+        remote,
+        unbound: channelUnbound(node.id),
+      }) === undefined
     ) {
       return { state: "unsupported", generation: 0 };
     }

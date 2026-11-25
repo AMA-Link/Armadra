@@ -2,9 +2,11 @@ import { runDeliveryBridge } from "../../runs/registry";
 import { expectedProcesses, paneRunsAgent } from "../../agent/launch";
 import {
   baseAgent,
+  channelUnbound,
   hasCapability,
   startsSilently,
   nodeStateChannel,
+  refreshNodeState,
 } from "../../agent/registry";
 import {
   OBSERVED_QUIET,
@@ -1063,6 +1065,8 @@ async function observe(
   if (drive === undefined) {
     throw new Refused(503, "internal_error", "终端域还没有装配好，无法投递。");
   }
+  // 先让这个节点的状态读取槽同步读一次文件尾（grok，契约 §121），再看状态。
+  refreshNodeState(target.id);
   const answer = drive(target.id);
   if (
     session === undefined ||
@@ -1133,6 +1137,7 @@ function hasStateChannel(
         sessionId === undefined
           ? false
           : (context.terminals?.remote?.(sessionId) ?? false),
+      unbound: channelUnbound(target.id),
     }) !== undefined
   );
 }

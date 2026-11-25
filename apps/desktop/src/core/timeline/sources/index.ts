@@ -27,7 +27,11 @@ import { claudeAdapter } from "./claude";
 import { codexAdapter } from "./codex";
 import { copilotTranscript } from "./copilot";
 import { internalReporter } from "../../hook/report";
-import { OBSERVED, stateSourceIsReported } from "../../agent/state-source";
+import {
+  OBSERVED,
+  registerStateRefresher,
+  stateSourceIsReported,
+} from "../../agent/state-source";
 import {
   type StateSlot,
   type StateSlotContext,
@@ -116,6 +120,8 @@ interface OpenSlot {
   readonly slot: StateSlot;
   /** 开槽时会话的代次：同 id 不同代次（原地换代、休眠唤醒）要重开。 */
   readonly generation: number;
+  /** 撤销「判 idle 之前同步读一次」的登记。 */
+  unrefresh: () => void;
 }
 
 /** 终端域对会话的两个事实，槽拿去用；由 `terminal/install.ts` 装配。 */
@@ -327,9 +333,14 @@ export class SourceManager {
       provider,
       slot,
       generation,
+      unrefresh: () => undefined,
     };
     this.slots.set(row.id, open);
     this.armReaper();
+    if (slot.readNow !== undefined) {
+      const read = slot.readNow.bind(slot);
+      open.unrefresh = registerStateRefresher(nodeId, read);
+    }
     try {
       slot.start();
     } catch (error) {
@@ -415,6 +426,7 @@ export class SourceManager {
     if (this.slots.get(open.sessionId) === open) {
       this.slots.delete(open.sessionId);
     }
+    open.unrefresh();
     try {
       open.slot.stop();
     } catch (error) {

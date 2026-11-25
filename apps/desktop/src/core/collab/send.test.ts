@@ -191,13 +191,10 @@ describe("the gate chain", () => {
     });
   });
 
-  // 无注入的内置 CLI（agy、grok）：它在 ACP 下跑完一轮、被切到终端之后，门链看到的是
+  // 无注入的内置 CLI（agy）：它在 ACP 下跑完一轮、被切到终端之后，门链看到的是
   // 「没报过」（`driveTarget` 不把 ACP 留下的行算数），而这个 CLI 的注册表里没有
   // 状态通道——只剩显式的 `--unverified`，不会因为旧行写着「空闲」就放行。
-  it.each([
-    ["agy", "Antigravity"],
-    ["grok", "Grok Build"],
-  ])(
+  it.each([["agy", "Antigravity"]])(
     "refuses a terminal %s that was just switched over from ACP",
     async (id) => {
       const agy = fixture.agentNode("Peer", id);
@@ -219,6 +216,29 @@ describe("the gate chain", () => {
       // 是「排队等」。
     },
   );
+
+  // grok 有状态通道（会话文件，契约 §121）：ACP 切到终端之后，门链同样看到「没报
+  // 过」，但这是「等第一条」，不是「没有通道」——排队，不当成无适配拒绝。
+  it("queues a terminal grok switched over from ACP until its first report", async () => {
+    const grok = fixture.agentNode("Peer", "grok");
+    const grokSession = fixture.session(grok, "grok");
+    fixture.link(me, grok);
+    fixture.terminal.foreground = { command: "grok" };
+    fixture.terminal.drive.set(grok, {
+      nodeId: grok,
+      sessionId: grokSession,
+      state: "starting",
+      stateSource: undefined,
+      lease: freeLease(0),
+      driveGeneration: 0,
+    } as never);
+    const outcome = ok(await run(me, "send", { to: grok, body: "做" }));
+    expect(outcome).toMatchObject({
+      outcome: "queued",
+      reason: "TARGET_STARTING",
+    });
+    expect(fixture.terminal.submits).toHaveLength(0);
+  });
 
   // 「还没报过第一条」与「这个 CLI 没有状态通道」在 `stateSource` 上长得一样。
   // 分不开的代价是一条真实的失败：`open-agent --task` 建的节点刚起 PTY 时一行

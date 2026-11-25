@@ -17,6 +17,7 @@ import {
   stateSourceFor,
   upsertAgentStatus,
 } from "./store";
+import { providerReportsInternally } from "../agent/state-source";
 import { validAgentId } from "../settings/custom-agents";
 import { validNodeId } from "./auth";
 import { notePrompt } from "../collab/prompt-sink";
@@ -193,7 +194,9 @@ export function ingest(
 
   // 没有 hook 通道的 CLI（grok：状态由 core 内部读它的会话文件）：整条丢掉，先于
   // 下面的绑定——抽修订号会推进会话的计数器，一个不该来的上报不能耗它。
-  if (!hasCapability(agentId, "hooks")) return ACCEPTED;
+  if (!hasCapability(agentId, "hooks") || providerReportsInternally(provider)) {
+    return ACCEPTED;
+  }
 
   const posted = readBinding(request.terminalBinding);
   if (posted === "invalid") return ACCEPTED;
