@@ -185,7 +185,7 @@ describe("the canvas integration", () => {
   });
 
   describe("a built-in CLI without injection (contract §120)", () => {
-    it.each(["agy", "grok"])(
+    it.each(["agy"])(
       "is what %s answers: `none`, ACP-only canvas agents",
       (id) => {
         const shape = state(id, options(id));

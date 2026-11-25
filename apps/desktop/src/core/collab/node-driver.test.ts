@@ -73,58 +73,55 @@ afterEach(() => {
 });
 
 /**
- * 没有画布注入的内置 CLI（契约 §120，今天是 agy 与 grok）：这几条按「有没有注入」写，
+ * 没有画布注入的内置 CLI（契约 §120，今天是 agy）：这几条按「有没有注入」写，
  * 不按名字写——下一个无注入的家直接适用。
  */
-describe.each(["agy", "grok"])(
-  "a built-in CLI without canvas injection: %s",
-  (id) => {
-    it("ignores the terminal preference and opens as ACP when the adapter is there", () => {
-      setViewPreferenceForTest("terminal");
-      installAdapter(id);
-      installAdapter("claude-agent-acp");
-      expect(newNodeView(fixture.collab.settings, id)).toEqual({
-        driver: "acp",
-      });
-      // 注入过的家照旧听偏好。
-      expect(newNodeView(fixture.collab.settings, "claude").driver).toBe(
-        "terminal",
-      );
+describe.each(["agy"])("a built-in CLI without canvas injection: %s", (id) => {
+  it("ignores the terminal preference and opens as ACP when the adapter is there", () => {
+    setViewPreferenceForTest("terminal");
+    installAdapter(id);
+    installAdapter("claude-agent-acp");
+    expect(newNodeView(fixture.collab.settings, id)).toEqual({
+      driver: "acp",
     });
+    // 注入过的家照旧听偏好。
+    expect(newNodeView(fixture.collab.settings, "claude").driver).toBe(
+      "terminal",
+    );
+  });
 
-    it("refuses a first task it could never deliver, and still opens an empty terminal", async () => {
-      setViewPreferenceForTest("terminal");
-      // ACP 入口没装：带任务当场拒绝，而不是建出一个节点再把任务取消。
-      const refused = await run("open-agent", { agent: id, task: "do it" });
-      expect(refused).toMatchObject({
-        ok: false,
-        code: "target_surface_unsupported",
-      });
-      expect(() =>
-        newNodeView(fixture.collab.settings, id, { withTask: true }),
-      ).toThrow(/ACP/);
-      // 不带任务：一个普通终端，行为不变。
-      expect(newNodeView(fixture.collab.settings, id).driver).toBe("terminal");
-      const empty = ok(await run("open-agent", { agent: id }));
-      expect(agentOf(empty.id as string).driver).toBe("terminal");
+  it("refuses a first task it could never deliver, and still opens an empty terminal", async () => {
+    setViewPreferenceForTest("terminal");
+    // ACP 入口没装：带任务当场拒绝，而不是建出一个节点再把任务取消。
+    const refused = await run("open-agent", { agent: id, task: "do it" });
+    expect(refused).toMatchObject({
+      ok: false,
+      code: "target_surface_unsupported",
     });
+    expect(() =>
+      newNodeView(fixture.collab.settings, id, { withTask: true }),
+    ).toThrow(/ACP/);
+    // 不带任务：一个普通终端，行为不变。
+    expect(newNodeView(fixture.collab.settings, id).driver).toBe("terminal");
+    const empty = ok(await run("open-agent", { agent: id }));
+    expect(agentOf(empty.id as string).driver).toBe("terminal");
+  });
 
-    it("takes the task over ACP when the adapter is installed", async () => {
-      setViewPreferenceForTest("terminal");
-      installAdapter(id);
-      const created = ok(await run("open-agent", { agent: id, task: "do it" }));
-      expect(agentOf(created.id as string).driver).toBe("acp");
-    });
+  it("takes the task over ACP when the adapter is installed", async () => {
+    setViewPreferenceForTest("terminal");
+    installAdapter(id);
+    const created = ok(await run("open-agent", { agent: id, task: "do it" }));
+    expect(agentOf(created.id as string).driver).toBe("acp");
+  });
 
-    it("refuses a team role's task the same way", async () => {
-      const refused = await run("team", { member: [`${id}|甲|做一件事`] });
-      expect(refused).toMatchObject({
-        ok: false,
-        code: "target_surface_unsupported",
-      });
+  it("refuses a team role's task the same way", async () => {
+    const refused = await run("team", { member: [`${id}|甲|做一件事`] });
+    expect(refused).toMatchObject({
+      ok: false,
+      code: "target_surface_unsupported",
     });
-  },
-);
+  });
+});
 
 describe("the default driver of a new agent node", () => {
   it("is acp when the adapter is installed, terminal when it is not", () => {

@@ -12,8 +12,20 @@ import { basename, dirname, join as nativeJoin } from "node:path";
 import { AMA_KEY_VARIABLES } from "../../agent/ama-credentials";
 import { variablesFor } from "../../agent/credentials/inject";
 import { storedProbe } from "../../agent/probe";
+import {
+  CLAUDE_MODS_BROKEN,
+  CLAUDE_MODS_FALLBACK_ENV,
+  CLAUDE_MODS_MIN,
+  type ClaudeModsGate,
+  type ClaudeModsReason,
+  claudeLoadsMods,
+  claudeModsGate,
+  probedClaudeVersion,
+  versionParts,
+} from "./version-gate";
 import { eventKey } from "./codex";
 import { codexMcpArgs } from "./codex-mcp";
+import { grokArgs } from "./grok";
 import { claudePermissions } from "./claude-allow";
 import {
   claudeMcpConfig,
@@ -103,7 +115,19 @@ export const INJECTED_AGENTS = [
   "omp",
   "copilot",
   "ama",
+  "grok",
 ] as const;
+
+export {
+  CLAUDE_MODS_BROKEN,
+  CLAUDE_MODS_FALLBACK_ENV,
+  CLAUDE_MODS_MIN,
+  type ClaudeModsGate,
+  type ClaudeModsReason,
+  claudeLoadsMods,
+  claudeModsGate,
+  probedClaudeVersion,
+};
 
 export function isInjected(agentId: string): boolean {
   return (INJECTED_AGENTS as readonly string[]).includes(agentId);
@@ -216,6 +240,7 @@ export function artifactLayout(
       };
     }
     case "codex":
+    case "grok":
       return { dir, marker, skill: skillUnder(dir, join) };
     case "opencode": {
       const configDir = join(dir, "config");
@@ -455,7 +480,9 @@ export function artifactFiles(
       break;
     }
     case "codex":
-      // Codex's hooks and instructions are all on the launch line.
+    case "grok":
+      // Codex's hooks and instructions are all on the launch line; grok's
+      // `--rules` and `--allow` are too (`grok.ts`).
       break;
     case "opencode":
       files.set(
@@ -578,12 +605,6 @@ function writeExecutables(
  * (docs/design/canvas-launcher.md §7).
  */
 export const CODEX_SESSION_HOOK_TRUST_MIN = "0.134.0";
-
-function versionParts(version: string): number[] | undefined {
-  const match = /^v?(\d+)\.(\d+)(?:\.(\d+))?/.exec(version.trim());
-  if (match === null) return undefined;
-  return [Number(match[1]), Number(match[2]), Number(match[3] ?? 0)];
-}
 
 /**
  * Whether a Codex of this version gets the hooks. An unknown version (not
@@ -759,94 +780,7 @@ export function codexArgs(
   return args;
 }
 
-/* ------------------------------- Claude mods ------------------------------- */
-
-/**
- * The first Claude Code whose `classic.*` events carry the settings hooks'
- * stdin shape (2.1.293 fixed them; 2.1.287–2.1.292 load mods but hand
- * `classic.PreToolUse` another shape). Contract §57.
- */
-export const CLAUDE_MODS_MIN = "2.1.293";
-
-/**
- * Releases on which the mod is known to misbehave: listing one closes the
- * gate for it without touching the generated module.
- */
-export const CLAUDE_MODS_BROKEN: readonly string[] = [];
-
-/**
- * What makes the launcher start Claude with the full settings hooks instead
- * of the mod, read in the node's own shell: safe mode loads no plugin at all,
- * and with nonessential traffic off the host refuses a plugin's every fetch.
- */
-export const CLAUDE_MODS_FALLBACK_ENV = [
-  "CLAUDE_CODE_SAFE_MODE",
-  "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
-] as const;
-
-/** Why a canvas Claude starts without the mod (`agents.integration.mods.reason`). */
-export type ClaudeModsReason =
-  | "version_below_min"
-  | "version_unknown"
-  | "windows_launcher"
-  | "remote_unprobed";
-
-export interface ClaudeModsGate {
-  readonly enabled: boolean;
-  readonly reason: ClaudeModsReason | null;
-}
-
-/**
- * Whether a Claude Code of this version gets the mod. Unknown (not probed
- * yet, the probe failed, unparsable) answers no — the opposite of Codex's
- * gate: the settings hooks are the measured path, the mod the newer one, and
- * the probe answers within seconds of start-up.
- */
-export function claudeLoadsMods(version: string | null | undefined): boolean {
-  return claudeModsGate(version, { windows: false }).enabled;
-}
-
-/** The gate with its reason, as the integration state reports it. */
-export function claudeModsGate(
-  version: string | null | undefined,
-  options: { readonly windows?: boolean; readonly remote?: boolean } = {},
-): ClaudeModsGate {
-  if (options.windows ?? process.platform === "win32") {
-    // The Windows launcher is a `.launch` file of literal lines: it has no
-    // branch for the environment fallback yet.
-    return { enabled: false, reason: "windows_launcher" };
-  }
-  if (options.remote === true) {
-    return { enabled: false, reason: "remote_unprobed" };
-  }
-  const have =
-    version === undefined || version === null
-      ? undefined
-      : versionParts(version);
-  if (have === undefined) return { enabled: false, reason: "version_unknown" };
-  const need = versionParts(CLAUDE_MODS_MIN) as number[];
-  if (CLAUDE_MODS_BROKEN.includes(have.join("."))) {
-    return { enabled: false, reason: "version_below_min" };
-  }
-  for (let index = 0; index < need.length; index += 1) {
-    const a = have[index] as number;
-    const b = need[index] as number;
-    if (a !== b) {
-      return a > b
-        ? { enabled: true, reason: null }
-        : { enabled: false, reason: "version_below_min" };
-    }
-  }
-  return { enabled: true, reason: null };
-}
-
-/** The built-in Claude's cached probe version, read only. */
-export function probedClaudeVersion(): string | undefined {
-  const probe = storedProbe("claude");
-  return probe?.status === "ok" && probe.version !== null
-    ? probe.version
-    : undefined;
-}
+// The Claude mod gate lives in `./version-gate` (re-exported below).
 
 /* --------------------------------- launcher -------------------------------- */
 
@@ -1411,6 +1345,20 @@ export function injectionFromLayout(
         ],
         env: [],
         fallback: { whenEnvAny: CLAUDE_MODS_FALLBACK_ENV, args: plain },
+      };
+    }
+    case "grok": {
+      const content = skillContent();
+      return {
+        args: grokArgs(
+          clientBin,
+          isFile(layout.skill) && content !== undefined
+            ? content.developerInstructions(layout.skill)
+            : undefined,
+        ),
+        env: [],
+        // `--` ends the flags: the caller's words end in `-- <prompt>`.
+        placement: "before-separator",
       };
     }
     case "codex":

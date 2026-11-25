@@ -42,9 +42,6 @@ export type BuiltinAgentId = (typeof AGENT_IDS)[number];
  */
 export const NON_INJECTED_AGENT_IDS = [
   "agy",
-  // grok：G2 才有注入（`--rules` 与 `--allow`，不写它的任何文件）；之前启动不带
-  // Armadra 的任何东西。
-  "grok",
 ] as const satisfies readonly BuiltinAgentId[];
 export type NonInjectedAgentId = (typeof NON_INJECTED_AGENT_IDS)[number];
 export type InjectedAgentId = Exclude<BuiltinAgentId, NonInjectedAgentId>;
@@ -448,12 +445,14 @@ export const AGENT_REGISTRY: Readonly<Record<BuiltinAgentId, AgentDefinition>> =
       sessionIdFlag: "--session-id",
       resume: { style: "flag", flag: "--resume" },
       exitCommand: "/quit",
-      // 没有 `hooks`：状态源（按进程读它自己写的会话文件）与注入在 G2，那时才声明
-      // `hooks`。`contextLink`、`browser` 是节点的连线与画布动词，经 ACP 驱动的会话由
-      // MCP 服务器带过去；不声明的话，ACP 节点的 `canvas send` / `post` / 读连线 /
-      // 浏览器动词都会被 DRIVE_DENIED 拒绝（与 agy 同一口径）。`subagent` 不给：
-      // 它有自己的 `spawn_subagent`，但没有读卡通道。
+      // `hooks` 在这里的意思是「有状态源」：core 读它自己写的会话文件（`events.jsonl`，
+      // 按节点 PTY 进程在 `active_sessions.json` 里的行绑定，契约 §121），不是有 hook
+      // 文件。不声明 `structuredInputAck`：`events.jsonl` 里没有 prompt 原文，对不回
+      // 回合。`contextLink`、`browser`：终端里画布动词走 shell（`--allow` 放行），
+      // ACP 里走 MCP；不声明的话 `canvas send` 等会被 DRIVE_DENIED 拒绝。`subagent`
+      // 不给：它有自己的 `spawn_subagent`，但没有读卡通道。
       capabilities: [
+        "hooks",
         "resume",
         "contextLink",
         "browser",
