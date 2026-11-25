@@ -398,6 +398,13 @@ describe("ResourceDrawer", () => {
       agentId: null,
       generation: 1,
     });
+    useCanvasStore.setState({
+      document: {
+        board: { id: "b-1", workspaceId: "w-1", name: "Default" },
+        nodes: [],
+        edges: [],
+      } as never,
+    });
     useCanvasStore.getState().setPanel("resources", "drawer");
     render(<ResourceDrawer />);
 
@@ -406,6 +413,18 @@ describe("ResourceDrawer", () => {
     await waitFor(() =>
       expect(adoptOrphanSession).toHaveBeenCalledWith("w-1", "s-orphan"),
     );
+  });
+
+  it("工作空间没有画布时孤立会话不能认领（#1015）", async () => {
+    useCanvasStore.setState({ document: null });
+    useCanvasStore.getState().setPanel("resources", "drawer");
+    render(<ResourceDrawer />);
+
+    const button = await screen.findByRole("button", { name: "附着到新节点" });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    button.click();
+    await Promise.resolve();
+    expect(adoptOrphanSession).not.toHaveBeenCalled();
   });
 
   it("终止孤立会话要先确认", async () => {

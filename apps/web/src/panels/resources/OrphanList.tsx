@@ -44,10 +44,13 @@ export function OrphanList({
 }) {
   const t = useT();
   const addNode = useCanvasStore((state) => state.addNode);
+  // 节点要落在一块打开的画布上：工作空间没有画布时（#1015）先别接管，否则
+  // core 那边接管了、画布上却建不出节点。
+  const hasBoard = useCanvasStore((state) => state.document !== null);
   const [ending, setEnding] = useState<OrphanSession | null>(null);
 
   const adopt = async (orphan: OrphanSession) => {
-    if (!orphan.sessionId) return;
+    if (!orphan.sessionId || !useCanvasStore.getState().document) return;
     try {
       const adopted = await runtimeApi.adoptOrphanSession(
         workspaceId,
@@ -119,6 +122,7 @@ export function OrphanList({
                 size="xs"
                 variant="ghost"
                 className="shrink-0 text-caption"
+                disabled={!hasBoard}
                 onClick={() => void adopt(orphan)}
               >
                 <CornerUpLeft />
