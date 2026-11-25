@@ -113,6 +113,27 @@ export function statusOfCurrentDriver(
   return status;
 }
 
+/**
+ * 这个节点**当前驱动**写下的状态行（已过 {@link statusOfCurrentDriver}）。投递门
+ * （`driveTarget`）、队泵的快探（`silentStarter`）与首投放行门都问它，口径只有
+ * 这一份：读原始的 `agent_status` 会把上一个驱动留下的行当成这个驱动报的。
+ */
+export function currentDriverStatus(
+  database: DatabaseSync,
+  nodeId: string,
+  sessionId: string | undefined = loadSession(database, nodeId)?.sessionId,
+): AgentStatus | undefined {
+  const backendKind =
+    sessionId === undefined
+      ? undefined
+      : (
+          database
+            .prepare("SELECT backend_kind FROM terminal_sessions WHERE id = ?")
+            .get(sessionId) as { backend_kind?: string } | undefined
+        )?.backend_kind;
+  return statusOfCurrentDriver(getAgentStatus(database, nodeId), backendKind);
+}
+
 /** The existing state/lease snapshot, kept separate from PTY lifecycle mutation. */
 export function driveTargetFor(
   database: DatabaseSync,
@@ -122,18 +143,7 @@ export function driveTargetFor(
 ): DriveTarget {
   const sessionId = loadSession(database, nodeId)?.sessionId;
   const live = sessionId === undefined ? undefined : generation(sessionId);
-  const backendKind =
-    sessionId === undefined
-      ? undefined
-      : (
-          database
-            .prepare("SELECT backend_kind FROM terminal_sessions WHERE id = ?")
-            .get(sessionId) as { backend_kind?: string } | undefined
-        )?.backend_kind;
-  const status = statusOfCurrentDriver(
-    getAgentStatus(database, nodeId),
-    backendKind,
-  );
+  const status = currentDriverStatus(database, nodeId, sessionId);
   const currentLease =
     sessionId === undefined ? freeLease(0) : lease(sessionId);
   return {

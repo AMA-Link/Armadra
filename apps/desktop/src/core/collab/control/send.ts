@@ -14,7 +14,7 @@ import {
   silentStartIdle,
   stateSourceIsReported,
 } from "../../agent/target-state";
-import { getAgentStatus } from "../../agent/status";
+import { currentDriverStatus } from "../../terminal/manager-status";
 import { getContextLinks } from "../../canvas/context-links";
 import {
   LEASE_GENERATION,
@@ -1179,7 +1179,7 @@ function sessionStart(
   const session = live.session;
   const observed = context.terminals?.observed?.(session.sessionId);
   return sessionStartIdle({
-    status: getAgentStatus(context.database, live.target.id),
+    status: currentDriverStatus(context.database, live.target.id),
     observed,
     sessionAgeMs: generationAge(session, observed, nowMs),
   });

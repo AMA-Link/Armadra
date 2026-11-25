@@ -204,6 +204,64 @@ describe("open-agent --task", () => {
     expect(pendingFor(fixture.database, created, 0)).toHaveLength(0);
   });
 
+  // Codex 从 ACP 切到终端之后，库里那条 `acp/done` 行不是它的终端报的：快探要和
+  // 门链一个口径，不能把它当「已上报过」而不再探，否则切换期间排的任务一直停在
+  // `TARGET_STARTING` 直到过期。
+  it("切到终端的 Codex：上一个驱动留下的 acp 状态行不拦住快探", async () => {
+    const created = result(
+      await run(me, "open-agent", { agent: "codex", task: "做这件事" }),
+    ).id as string;
+    const sessionId = fixture.session(created, "codex");
+    fixture.database
+      .prepare(
+        `INSERT INTO agent_status
+           (node_id, workspace_id, agent_id, state, state_source, unread, verified,
+            restored, updated_at)
+         VALUES (?, ?, 'codex', 'done', 'acp', 0, 1, 1, '2026-09-20T12:00:00Z')`,
+      )
+      .run(created, fixture.workspaceId);
+    fixture.terminal.drive.set(created, {
+      nodeId: created,
+      sessionId,
+      state: "starting",
+      stateSource: undefined,
+      lease: freeLease(0),
+      driveGeneration: 0,
+    } as never);
+    fixture.database
+      .prepare("UPDATE terminal_sessions SET created_at = ? WHERE id = ?")
+      .run(new Date(Date.now() - 10_000).toISOString(), sessionId);
+    fixture.terminal.activity.set(sessionId, {
+      pending: false,
+      lastInputAt: undefined,
+      lastOutputAt: Date.now() - 5_000,
+    });
+    expect(pendingFor(fixture.database, created, 0)).toHaveLength(1);
+
+    const pump = new SendPump(() => fixture.collab);
+    // 会话后端是终端（`direct`）：那条 `acp` 行不算，Codex 仍是「启动不上报」。
+    expect(await pump.probeSilentStarters()).toBe(1);
+    expect(fixture.terminal.submits).toHaveLength(1);
+
+    // 对照：同一行在 ACP 后端下是这个驱动自己的上报，不再探。
+    const control = result(
+      await run(me, "open-agent", { agent: "codex", task: "另一件事" }),
+    ).id as string;
+    const controlSession = fixture.session(control, "codex");
+    fixture.database
+      .prepare("UPDATE terminal_sessions SET backend_kind = 'acp' WHERE id = ?")
+      .run(controlSession);
+    fixture.database
+      .prepare(
+        `INSERT INTO agent_status
+           (node_id, workspace_id, agent_id, state, state_source, unread, verified,
+            restored, updated_at)
+         VALUES (?, ?, 'codex', 'done', 'acp', 0, 1, 0, '2026-09-20T12:00:00Z')`,
+      )
+      .run(control, fixture.workspaceId);
+    expect(await pump.probeSilentStarters()).toBe(0);
+  });
+
   it("过渡期里 --prompt 等价于 --task，并带一行 warning", async () => {
     const body = result(
       await run(me, "open-agent", { agent: "codex", prompt: "做这件事" }),
