@@ -706,7 +706,12 @@ export class AcpProcess {
     params: unknown,
     signal: AbortSignal,
   ): Promise<unknown> {
-    const spec = this.options.extRequests?.[method];
+    const table = this.options.extRequests;
+    // 方法名来自对端：按自己的键查，别让 `__proto__`、`constructor` 之类的名字读到原型上的东西。
+    const spec =
+      table !== undefined && Object.hasOwn(table, method)
+        ? table[method]
+        : undefined;
     if (spec === undefined || !spec.verified) {
       return Promise.reject(
         new RpcError(RPC_ERRORS.methodNotFound, `unknown method: ${method}`),

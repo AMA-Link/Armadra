@@ -51,20 +51,30 @@ export interface AcpExtRequestSpec {
   reply(params: unknown): unknown;
 }
 
+/**
+ * ESC 序列：CSI（`ESC [ … 终结符`）、**有终结符、不跨行、不超过 4096 字符**的 OSC
+ * （`ESC ] … BEL | ESC \`），以及其余两字节的 ESC 序列——没有终结符的 `ESC ]`
+ * 落在这最后一支里，只删这两个字符，不会吞掉后面的计划正文。
+ */
 const ESCAPES =
-  // CSI（`ESC [ … 终结符`）、OSC（`ESC ] … BEL | ESC \`）、其余两字节的 ESC 序列。
   // eslint-disable-next-line no-control-regex
-  /\u001b\[[0-?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)?|\u001b[@-Z\\-_]/g;
+  /\u001b\[[0-?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b\n]{0,4096}(?:\u0007|\u001b\\)|\u001b[@-Z\\-_]/g;
 // eslint-disable-next-line no-control-regex
 const CONTROLS = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
-/** 双向控制与零宽字符：换成看得见的占位，不能悄悄改变显示顺序、也不能藏东西。 */
-const INVISIBLES = /[\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/g;
+/**
+ * 看不见、却会改变显示或藏东西的字符：换成看得见的 `[U+XXXX]` 占位。双向控制（含
+ * U+061C、U+200E/F、U+202A–E、U+2066–9）、零宽与不可见格式字符（U+00AD、U+115F、
+ * U+180E、U+200B–D、U+2060–4、U+3164、U+FEFF、U+FFF9–B）、行 / 段分隔符
+ * （U+2028/9）、标签字符（U+E0000–E007F）。
+ */
+const INVISIBLES =
+  /[\u00ad\u061c\u115f\u180e\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u2069\u3164\ufeff\ufff9-\ufffb\u{e0000}-\u{e007f}]/gu;
 
 /**
  * 计划原文 → 能放进卡片的纯文本：去掉 ESC 序列与 C0 / C1 控制字符（保留换行与
- * Tab，`\r` 去掉），双向控制字符与零宽字符换成 `[U+XXXX]` 占位；超过
- * {@link MAX_PLAN_CHARS} 就截断，且不从代理对中间切开。截断的提示（「已截断，共 N
- * 字符」）由页面按语言写，这里只回原文的码点数。
+ * Tab，`\r` 去掉），不可见字符换成 `[U+XXXX]` 占位；清洗后超过 {@link MAX_PLAN_CHARS}
+ * 就截断，且不从代理对中间切开。被截断时 `chars` 是**原文**的字符数（UTF-16 码元，
+ * 与截断阈值同一个口径）；截断的提示（「已截断，共 N 字符」）由页面按语言写。
  */
 export function plainBody(text: string): { body: string; chars?: number } {
   const clean = text
@@ -79,7 +89,7 @@ export function plainBody(text: string): { body: string; chars?: number } {
   let end = MAX_PLAN_CHARS;
   const last = clean.charCodeAt(end - 1);
   if (last >= 0xd800 && last <= 0xdbff) end -= 1;
-  return { body: clean.slice(0, end), chars: [...clean].length };
+  return { body: clean.slice(0, end), chars: text.length };
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {
