@@ -6006,7 +6006,7 @@ Copilot 的 ACP 入口只接受 http / sse 的 MCP 服务器，`session/new.mcpS
 答 `{ repo, branch, head: { repo, owner, name } } | null`。`repo` 是基仓库（工作空间选中的 remote，§111.1），`head` 是分支所在的仓库：与基仓库不同就是 fork。`cwd` 取节点最近一个终端会话的工作目录。
 
 - 本机：`git symbolic-ref --short -q HEAD` 取分支，游离 HEAD 答 `null`。有 upstream（`rev-parse --abbrev-ref @{u}`）时按 upstream 的 remote 识别 head 仓库，分支名取 upstream 的分支名（本地名与远端名不同也对得上）；没有 upstream 时按基仓库同名分支。head 与基仓库不在同一个主机上按读不到处理。`cwd` 不在工作空间根所在的仓库里（嵌套 clone）时，用 `cwd` 自己的 `remote -v` 按同一条选主 remote 的规则选基仓库。分支等于默认分支（`refs/remotes/<remote>/HEAD`，没设置时按 `main` / `master`）答 `null`。
-- 远程执行主机：只读 `git.status` 的分支、`git.remotes` 的 remote，按基仓库同名分支，**不识别 fork**（读不到 upstream）；`cwd` 在工作空间根之外、主机不可达、不支持这个操作，一律答 `null`，下次再试。
+- 远程执行主机：只读 `git.status` 的分支、`git.remotes` 的 remote、`git.branches` 的分支表。当前分支有 upstream（`git.branches` 里本地分支的 `upstream`，形如 `refs/remotes/<remote>/<分支>`）时按 upstream 的 remote 识别 head 仓库、分支名取 upstream 的分支名（fork 与本机一致，head 与基仓库不在同一主机按读不到处理）；没有 upstream、或 `git.branches` 读不到 / 不支持时按基仓库同名分支。默认分支取 `<基remote>/HEAD` 的 `symbolicTarget`，缺省按 `main` / `master`。remote 取自工作空间根，`cwd` 在工作空间根之外、主机不可达、不支持这个操作，一律答 `null`，下次再试。
 - 平台不认识的主机答 `null`。读取失败不抛，答 `null`。
 
 ### 116.2 按 head 查 PR：`Forge.pullsByHead?(repo, { owner, ref, name? })`
@@ -6038,7 +6038,7 @@ Copilot 的 ACP 入口只接受 http / sse 的 MCP 服务器，`session/new.mcpS
 
 ### 116.6 限制
 
-- 远程执行主机上的 fork 第一版不识别（同名分支才对得上）。
+- 远程执行主机上的嵌套 clone 用工作空间根的 remote 选基仓库（本机会用 `cwd` 自己的）。
 - 分支共用时参与竞争的只是这一遍查到的节点；回合结束超过 30 分钟又没有 `done` 事件的节点不参与。
 
 ## 117. Agent 节点的交付状态（`#988`）
