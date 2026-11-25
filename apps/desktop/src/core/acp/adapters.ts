@@ -118,6 +118,12 @@ export interface AcpAdapter {
     input: AcpSessionMetaInput,
   ) => AcpSessionMeta | undefined;
   /**
+   * `sessionMeta` 的键名与效果有没有核实过（用真账号 / 脚本化模型看过它真的落进系统提示）。
+   * `false` 的适配器**不发** `_meta`，线路与没有 `sessionMeta` 时逐字节相同；核实之后改成
+   * `true`（Armadra#1035）。缺席 = 不需要核实（没有 `sessionMeta`，或老适配器）。
+   */
+  readonly metaVerified?: boolean;
+  /**
    * 这家会发给客户端、要人决定的 `_` 开头的扩展请求（方法名 → 怎么呈现、怎么应
    * 答，见 `ext-requests.ts`）。缺席 = 没有。客户端不声明 `features.extRequest` 时
    * 不传回调，行为不变。
@@ -246,10 +252,12 @@ export const ACP_ADAPTERS: readonly AcpAdapter[] = [
     modes: ACP_MODE_TABLE.agy,
     // 画布工具走 `session/new.mcpServers`（stdio 被接受、模型看得到工具）。终端注入
     // 在 `agy acp` 下没有对应物（没有 `--settings`；`--add-dir` 的零写入 hook 实测不可行，
-    // 见契约 §120），所以不复用。画布说明（`_meta.antigravity.systemPrompt.append`）：客户端
-    // 现在已经能带 `_meta`（armadra-agent#327，固定版本声明了 `features.sessionMeta`），
-    // 这里还没有 `sessionMeta`，所以没有发。
+    // 见契约 §120），所以不复用。画布说明走 `_meta.antigravity.systemPrompt.append`；键名与
+    // 效果没有用真账号核对过，所以 `metaVerified: false`——不发，核对步骤在 Armadra#1035。
     injection: { mcp: true, reuse: [] },
+    sessionMeta: (input) =>
+      systemPromptAppendMeta("antigravity", input.instructions),
+    metaVerified: false,
     expectedProcess: ["agy"],
     canvasTools: "mcp",
   },
@@ -265,13 +273,19 @@ export const ACP_ADAPTERS: readonly AcpAdapter[] = [
     // sessionId 是同一个 UUIDv7；`session/load`（回放历史）与 `session/resume` 都有。
     sessionId: "same",
     resume: "load",
-    // 全自动走启动旗标 `--always-approve`。客户端现在已经能带 `_meta`（固定版本声明了
-    // `features.sessionMeta`），但这里还没有 `sessionMeta`（`_meta.rules` / `yoloMode` /
-    // `pluginDirs` 一个都没发），见 Armadra#1035。
+    // 全自动仍走启动旗标 `--always-approve`：ACP 里没有会话内切换权限的入口
+    // （`set_mode` 只认 default / plan），`_meta.yoloMode` 只能在 `session/new|load` 时
+    // 定，换过去没有任何好处，也就不发（Armadra#1035 写了评估）。
     modes: ACP_MODE_TABLE.grok,
-    // 画布工具走 stdio `mcpServers`（实测 `mcp_server_connected`）。规则、插件目录
-    // 的 `_meta` 注入还没接（Armadra#1035）；终端的 `--rules` / `--allow` 在 §123。
+    // 画布工具走 stdio `mcpServers`（实测 `mcp_server_connected`）；画布说明走
+    // `_meta.rules`（追加到系统提示，隔离环境 + 脚本化模型实测落进了 system 消息）。
+    // 不发 `pluginDirs`：画布工具已经走 MCP，状态来自 ACP 自己，没有要挂的插件。
     injection: { mcp: true, reuse: [] },
+    sessionMeta: (input) =>
+      input.instructions === undefined || input.instructions.trim() === ""
+        ? undefined
+        : { rules: input.instructions },
+    metaVerified: true,
     // 计划审批（plan 模式提交计划）：先接上管线，plan 模式本身仍关着（见 `NO_ACP_LANDING`）
     // 到应答形状用真账号核对之后再开（Armadra#1021）。
     extRequests: { "_x.ai/exit_plan_mode": GROK_EXIT_PLAN_MODE },
@@ -292,6 +306,7 @@ export function acpSessionMeta(
   adapter: AcpAdapter,
   input: AcpSessionMetaInput,
 ): AcpSessionMeta | undefined {
+  if (adapter.metaVerified === false) return undefined;
   const meta = adapter.sessionMeta?.(input);
   if (meta === undefined) return undefined;
   const entries = Object.entries(meta).filter(([, value]) => {
