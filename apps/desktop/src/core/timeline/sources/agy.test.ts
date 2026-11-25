@@ -140,10 +140,20 @@ describe("agy helpers", () => {
       exists: () => true,
     });
     expect(
-      await adapter.discover?.({ pid: 7, remote: true, cwd: "/w", startedAtMs: 0 }),
+      await adapter.discover?.({
+        pid: 7,
+        remote: true,
+        cwd: "/w",
+        startedAtMs: 0,
+      }),
     ).toBeUndefined();
     expect(
-      await adapter.discover?.({ pid: 7, remote: false, cwd: "/w", startedAtMs: 0 }),
+      await adapter.discover?.({
+        pid: 7,
+        remote: false,
+        cwd: "/w",
+        startedAtMs: 0,
+      }),
     ).toMatchObject({ sessionId: id });
   });
 });
