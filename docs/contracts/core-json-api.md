@@ -6381,7 +6381,8 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
 
 - **特征检测**：`AcpClient` 声明 `features.extRequest`（AMA-Link/armadra-agent#333，已合并、尚未发版）才传 `onExtRequest`（`clientAcceptsExtRequest()`，写法同 `clientAcceptsSessionMeta()`）。固定版本的客户端没有，不传，行为与之前逐字节相同。
 - **适配器表**：`AcpAdapter.extRequests`（方法名 → 规格，`acp/ext-requests.ts`），grok 登记 `_x.ai/exit_plan_mode`。规格有两样：请求参数 → 卡片，和「人的决定 → 应答 JSON」的映射函数 `reply`。
-- **进审批挂起表**：与 `session/request_permission` 同一张表、同一条答复路由（`POST /api/approvals/{pendingId}/answer`）。卡片是一条 `kind: "switch_mode"` 的工具调用，正文是计划原文，`toolCallId` 关联到 Agent 那边的工具调用；选项固定两个：`approve`（`allow_once`）与 `reject`（`reject_once`）。
-- **红线：绝不自动代答**。人选了 `approve` 才按批准回；人选了 `reject`、没选（`cancelled`）、对端撤回请求（`signal` 触发，卡片收起）、进程退出、会话被取消、**没有审批消费者**（无人值守，不一直挂着）一律按拒绝回。
-- **应答形状没有核对过**：目前只知道请求的形状，不知道 grok 认哪些应答字段。映射函数是适配器里孤立的一处（今天写的是 `{ approved: boolean }`，**未验证**），用假 Agent 测过「决定 → 映射 → 应答」这条管线，没有用真账号测过 grok 认不认。
+- **进审批挂起表**：与 `session/request_permission` 同一张表、同一条答复路由（`POST /api/approvals/{pendingId}/answer`）。卡片是一条 `kind: "switch_mode"` 的工具调用，`toolCall._meta["armadra/card"] = "plan"`（页面据此把标题换成本地化的「计划审批」并默认展开正文），正文是计划原文（纯文本，core 截到 64K 字符并加省略标记，页面再收到 20K 字符、限高可滚动、不走 markdown、不生成链接），`toolCallId` 关联到 Agent 那边的工具调用；选项固定两个：`approve`（`allow_once`）与 `reject`（`reject_once`）。卡片标题与按钮文案走页面的 i18n（按钮按选项 `kind` 取「允许 / 拒绝」）。
+- **红线：绝不自动代答，且只有批准才回成功**：只有人点了 `approve` 才回成功的 `result`（经适配器的映射函数）。人选了 `reject`、没选（`cancelled`）、没有审批消费者（无人值守：**不挂卡、立刻回错误**，不会一直挂着也不会批准）、会话被取消一律回错误 `-32800`（`requestCancelled`）；对端撤回请求（`signal` 触发）与连接关闭时卡片收起，回什么由上游客户端决定（`-32800`），进程已经退出就没有人可回。JSON-RPC 的错误不可能被对端读成批准——哪怕映射函数的应答形状是错的。映射函数自己抛了非 `RpcError`，由上游回 `-32603`。
+- **未核实的规格不上线**：适配器规格有 `verified`；`false`（grok 现在就是）时请求不挂卡，照旧回 `-32601`——依赖升级到带 `features.extRequest` 的版本也不会让一个没核实的应答自动上线。核实之后只改这一个标志和映射函数 `reply`。
+- **应答形状没有核对过**：目前只知道请求的形状，不知道 grok 认哪些应答字段。映射函数是适配器里孤立的一处（今天写的是 `{ approved: true }`，**未验证**，只在批准时调用），用假 Agent 测过「批准 → 映射 → 应答」与各条错误路径，没有用真账号测过 grok 认不认。
 - **grok 的 ACP plan 仍然关着**（`NO_ACP_LANDING`，§124 之前的约定不变）：开启要等 (a) armadra-agent 发版、升级固定的依赖，(b) 用真账号抓批准与拒绝两种应答、核对映射。在那之前用户选不到 plan，不会得到一个被取消的回合。

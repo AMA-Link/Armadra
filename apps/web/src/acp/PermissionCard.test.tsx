@@ -582,3 +582,77 @@ describe("PermissionCard", () => {
     });
   });
 });
+
+describe("计划审批卡", () => {
+  const plan: AcpPermissionView = {
+    pendingId: "n1-1-acp-plan",
+    toolCall: {
+      toolCallId: "call-1",
+      title: "Plan",
+      kind: "switch_mode",
+      content: [
+        {
+          type: "content",
+          content: {
+            type: "text",
+            text: "# Plan\n1. Make the file\n[click](https://evil.example)\n<b>x</b>",
+          },
+        },
+      ],
+      _meta: { "armadra/card": "plan" },
+    },
+    options: [
+      { optionId: "approve", name: "Approve", kind: "allow_once" },
+      { optionId: "reject", name: "Reject", kind: "reject_once" },
+    ],
+  };
+
+  it("标题本地化，计划正文默认展开、按纯文本显示（不生成链接、不渲染标签）", () => {
+    render(<PermissionCard permission={plan} canAnswer />);
+    expect(screen.getByText("计划审批")).toBeTruthy();
+    const body = document.querySelector("[data-slot=approval-text]");
+    expect(body?.textContent).toContain("Make the file");
+    expect(body?.textContent).toContain("[click](https://evil.example)");
+    expect(body?.querySelector("a, b")).toBeNull();
+    expect(document.querySelector("[data-slot=approval-text] a")).toBeNull();
+  });
+
+  it("过长的正文截断并加省略标记", () => {
+    const long: AcpPermissionView = {
+      ...plan,
+      toolCall: {
+        ...plan.toolCall,
+        content: [
+          {
+            type: "content",
+            content: { type: "text", text: "x".repeat(30_000) },
+          },
+        ],
+      },
+    };
+    render(<PermissionCard permission={long} canAnswer />);
+    const text = document.querySelector("[data-slot=approval-text]")
+      ?.textContent as string;
+    expect(text.length).toBeLessThan(20_100);
+    expect(text.endsWith("…")).toBe(true);
+  });
+
+  it("别的卡的文本说明默认收起，点开才看见", () => {
+    const ordinary: AcpPermissionView = {
+      ...permission,
+      toolCall: {
+        toolCallId: "t2",
+        title: "pnpm test",
+        content: [
+          { type: "content", content: { type: "text", text: "Run the tests" } },
+        ],
+      },
+    };
+    render(<PermissionCard permission={ordinary} canAnswer />);
+    expect(document.querySelector("[data-slot=approval-text]")).toBeNull();
+    fireEvent.click(screen.getByText("详情"));
+    expect(
+      document.querySelector("[data-slot=approval-text]")?.textContent,
+    ).toBe("Run the tests");
+  });
+});
