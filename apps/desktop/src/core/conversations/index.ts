@@ -197,10 +197,16 @@ export function refresh(
   let removed = 0;
   for (const [provider, root] of roots) {
     const known = knownRows(database, provider);
-    const { rows, seen } = scanProvider(provider, root, known, scope);
+    const { rows, seen, unreadable } = scanProvider(
+      provider,
+      root,
+      known,
+      scope,
+    );
     scanned += seen.length;
     indexed += upsert(database, rows);
-    removed += forgetMissing(database, provider, root, seen);
+    // 这一趟这家读不了（不是没有）：不对账，已有的行留着，下一趟再说。
+    if (!unreadable) removed += forgetMissing(database, provider, root, seen);
   }
   return { scanned, indexed, removed, total: count(database) };
 }
@@ -259,10 +265,11 @@ function scanProvider(
   root: string,
   known: Map<string, KnownRow>,
   scope: Scope,
-): { rows: IndexRow[]; seen: string[] } {
+): { rows: IndexRow[]; seen: string[]; unreadable: boolean } {
   const adapter = historyAdapter(provider);
-  if (adapter === undefined) return { rows: [], seen: [] };
+  if (adapter === undefined) return { rows: [], seen: [], unreadable: false };
   const found = adapter.list(root);
+  const unreadable = adapter.listUnreadable?.(root) ?? false;
   const rows: IndexRow[] = [];
   const seen: string[] = [];
   for (const candidate of found) {
@@ -292,7 +299,7 @@ function scanProvider(
       bytes: candidate.bytes,
     });
   }
-  return { rows, seen };
+  return { rows, seen, unreadable };
 }
 
 /* ---------------------------------- store --------------------------------- */

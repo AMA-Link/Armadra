@@ -148,6 +148,12 @@ export interface HistoryAdapter {
   locate(hint: SessionHint): Located | undefined;
   /** 根目录下的候选会话，复用 `conversations/scan.ts` 的有界遍历。 */
   list(root: string): readonly Candidate[];
+  /**
+   * 最近一次 {@link list} 是不是「这一趟读不了」（而不是「确实没有」）。空列表两种
+   * 都可能：会话索引见到空会把这一家的行全清掉，所以读不了的这一趟不能对账。
+   * 没有这一说的家（读文件目录的几家）不实现，等于永远读得了。
+   */
+  listUnreadable?(root: string): boolean;
   /** 一个候选 → 会话 id、标题与 cwd；读不出来是 `undefined`。 */
   parse(candidate: Candidate): Parsed | undefined;
   /**
