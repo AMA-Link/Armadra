@@ -127,6 +127,15 @@ describe("reading a linked node", () => {
     );
   });
 
+  // agy 没有可读的记录（`readsEntries: false`）：读它的转录是一句解释，不是空内容。
+  it("refuses to read an Antigravity node's transcript, saying so", async () => {
+    const agy = fixture.agentNode("Agy", "agy");
+    fixture.link(me, agy);
+    const refused = await refusalOf(me, "transcript", { node: "Agy" });
+    expect(refused.status).toBe(404);
+    expect(refused.message).toContain("Agy");
+  });
+
   it("says a sticky is empty rather than answering with nothing", async () => {
     const note = fixture.stickyNode("Note", "   ");
     fixture.link(me, note);

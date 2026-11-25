@@ -15,13 +15,16 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { AGENT_REGISTRY } from "@armadra/shared";
 import type { BoardDocument, Conversation, Workspace } from "@armadra/shared";
 
 import { installDomPolyfills, TestProviders } from "../app/test-harness";
+import { usePreferencesStore } from "../app/preferences-store";
 import { useCanvasStore } from "../store/canvas-store";
 import { commandKeysLabel, setShortcutsEnabled } from "../keybindings";
 import { CommandPalette, RAN_MARK_MS } from "./CommandPalette";
 
+const agentsList = vi.fn();
 const conversations = vi.fn();
 const listWorkspaces = vi.fn();
 const loadBoard = vi.fn();
@@ -29,7 +32,7 @@ const fileIndex = vi.fn();
 
 vi.mock("../api/client", () => ({
   runtimeApi: {
-    agents: vi.fn().mockResolvedValue([]),
+    agents: (...args: unknown[]) => agentsList(...args),
     settings: vi.fn().mockResolvedValue({ ssh: { hosts: [] } }),
     conversations: (...args: unknown[]) => conversations(...args),
     listWorkspaces: (...args: unknown[]) => listWorkspaces(...args),
@@ -90,6 +93,7 @@ afterEach(() => {
 
 beforeEach(() => {
   setShortcutsEnabled(true);
+  agentsList.mockResolvedValue([]);
   conversations.mockResolvedValue([row]);
   listWorkspaces.mockResolvedValue([]);
   loadBoard.mockResolvedValue(undefined);
@@ -136,6 +140,63 @@ describe("命令面板的历史对话分组", () => {
     expect(node.data.agent?.pendingLaunch?.after).toEqual([]);
     expect(useCanvasStore.getState().panels.palette).toBe(false);
     expect(container).toBeTruthy();
+  });
+
+  // 没有终端 `resume` 能力位的 CLI 只能经 ACP 接回：看「装没装」，用的是全量清单，
+  // 不是用户在新建菜单里开着的那份；接不回的行禁用，不是点了没反应。
+  describe("只能经 ACP 接回的 CLI", () => {
+    const acpOnly: Conversation = {
+      ...row,
+      provider: "agy",
+      title: "只能 ACP 接回",
+    };
+    const info = (installed: boolean) => ({
+      id: "agy",
+      label: "ACP Only",
+      name: "ACP Only",
+      installed: true,
+      acp: { support: "native", program: "x", installed, resume: "load" },
+    });
+    const optionOf = async () =>
+      (await screen.findByText("只能 ACP 接回")).closest(
+        "[cmdk-item]",
+      ) as HTMLElement;
+
+    // 拿掉终端 `resume` 能力位，不依赖哪一家今天恰好没有它。
+    const definition = AGENT_REGISTRY.agy as { resume?: unknown };
+    const savedResume = definition.resume;
+    beforeEach(() => {
+      delete definition.resume;
+      conversations.mockResolvedValue([acpOnly]);
+    });
+    afterEach(() => {
+      definition.resume = savedResume;
+    });
+
+    it("ACP 入口没装：这一行禁用，点了不开节点", async () => {
+      agentsList.mockResolvedValue([info(false)]);
+      renderPalette();
+      const option = await optionOf();
+      await waitFor(() =>
+        expect(option.getAttribute("aria-disabled")).toBe("true"),
+      );
+      option.click();
+      expect(useCanvasStore.getState().document?.nodes ?? []).toHaveLength(0);
+    });
+
+    it("装了就能点；用户在新建菜单里关掉这家也不影响接回", async () => {
+      usePreferencesStore.setState({ agentModes: { agy: "disabled" } });
+      agentsList.mockResolvedValue([info(true)]);
+      renderPalette();
+      const option = await optionOf();
+      await waitFor(() =>
+        expect(option.getAttribute("aria-disabled")).not.toBe("true"),
+      );
+      option.click();
+      await waitFor(() =>
+        expect(useCanvasStore.getState().document?.nodes ?? []).toHaveLength(1),
+      );
+    });
   });
 
   it("索引为空时不渲染这一组", async () => {
