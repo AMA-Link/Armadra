@@ -228,6 +228,8 @@ export class AcpSession implements AcpSessionIdentity {
   private queued = 0;
   private closed = false;
   private modeState: AcpSessionModeState | null = null;
+  /** 模式目录来自兼容表（host 的 `modesFromTable`）。 */
+  private modesFromTable = false;
   private modelCatalog: AcpModelCatalog | null = null;
   /** 完整配置项（清洗过）与「模式以配置项给出」时的那一项 id（P2-4）。 */
   private configView: TimelineConfigOption[] = [];
@@ -312,6 +314,7 @@ export class AcpSession implements AcpSessionIdentity {
   opened(host: AcpHostSession): void {
     this.host = host;
     this.modeState = host.modes;
+    this.modesFromTable = host.modesFromTable === true;
     this.modelCatalog = host.models;
     this.configView = [...(host.configOptions ?? [])];
     this.modeConfigId = host.modeConfigId;
@@ -913,7 +916,14 @@ export class AcpSession implements AcpSessionIdentity {
     this.ownTools.record(update);
     if (update.sessionUpdate === "current_mode_update") {
       const modeId = (update as { currentModeId?: unknown }).currentModeId;
-      if (typeof modeId === "string" && this.modeState !== null) {
+      if (
+        typeof modeId === "string" &&
+        this.modeState !== null &&
+        // 目录来自兼容表时只认表里有的 id：grok 的 `agent`、`ask` 是 agent 角色，
+        // 不是权限模式，不能顶掉界面上的现值。
+        (!this.modesFromTable ||
+          this.modeState.availableModes.some((mode) => mode.id === modeId))
+      ) {
         this.modeState = { ...this.modeState, currentModeId: modeId };
         if (this.modeConfigId !== undefined) {
           this.configView = withConfigValue(

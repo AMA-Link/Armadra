@@ -26,7 +26,9 @@ import { RPC_ERRORS, RpcError } from "@armadra/agent/acp";
 import {
   type AgentRole,
   type TimelineConfigOption,
-  acpReportsPermissionModes,
+  acpModeIdOf,
+  acpModeSource,
+  acpTableModes,
 } from "@armadra/shared";
 
 import type { PermissionMode } from "../agent/launch";
@@ -387,6 +389,11 @@ export interface AcpHostSession {
   readonly resumeError?: { readonly code: string; readonly message: string };
   readonly capabilities: AcpCapabilities;
   readonly modes: AcpSessionModeState | null;
+  /**
+   * 模式目录是兼容表给的（`ACP_REPORTED_MODES` 的 `table`）：agent 不返回 `modes`，
+   * `current_mode_update` 只认目录里有的 id。
+   */
+  readonly modesFromTable?: boolean;
   /** 要求了模式：落上了没有。没要求时缺席。 */
   readonly modeApplied?: boolean;
   /** 模型目录（§26.2）；客户端或 Agent 不给时为 `null`。 */
@@ -624,12 +631,12 @@ export async function startAcp(
                 touchReplay = touch;
               },
             );
-            modes = reportedModes(options.agentId, result.modes);
+            modes = reportedModes(options.agentId, result.modes, "existing");
             config = configOptionsOf(result);
             opened = "load";
           } else {
             const result = await opener.resumeSession(id, options.cwd);
-            modes = reportedModes(options.agentId, result.modes);
+            modes = reportedModes(options.agentId, result.modes, "existing");
             config = configOptionsOf(result);
             opened = "resume";
           }
@@ -653,7 +660,7 @@ export async function startAcp(
           options.sessionTimeoutMs ?? SESSION_NEW_TIMEOUT_MS,
         );
         sessionId = result.sessionId;
-        modes = reportedModes(options.agentId, result.modes);
+        modes = reportedModes(options.agentId, result.modes, "new");
         config = configOptionsOf(result);
         pi = piMetaOf(result);
       } catch (error) {
@@ -689,28 +696,39 @@ export async function startAcp(
       }
     }
     let modeApplied: boolean | undefined;
-    if (options.modeId !== undefined) {
+    // 目录来自兼容表的家：load / resume 会恢复上次的模式（可能是 plan），而 agent
+    // 没告诉我们现在是哪个——没要求模式时也落一次缺省，免得界面写 default、实际在
+    // plan。
+    const tableModes =
+      options.agentId !== undefined &&
+      acpModeSource(options.agentId) === "table";
+    const wantedMode =
+      options.modeId ??
+      (tableModes && opened !== "new" && options.agentId !== undefined
+        ? acpModeIdOf(options.agentId, "default")
+        : undefined);
+    if (wantedMode !== undefined) {
       modeApplied = await applyMode(
         process_,
         sessionId,
         modes,
-        options.modeId,
+        wantedMode,
         modeConfigId,
       );
-      if (!modeApplied && options.requireMode === true) {
+      if (
+        !modeApplied &&
+        options.requireMode === true &&
+        options.modeId !== undefined
+      ) {
         throw new AcpError(
           "acp_mode_unavailable",
           `the agent has no mode ${options.modeId}`,
         );
       }
       if (modeApplied && modes !== null) {
-        modes = { ...modes, currentModeId: options.modeId };
+        modes = { ...modes, currentModeId: wantedMode };
         if (modeConfigId !== undefined) {
-          configView = withConfigValue(
-            configView,
-            modeConfigId,
-            options.modeId,
-          );
+          configView = withConfigValue(configView, modeConfigId, wantedMode);
         }
       }
     }
@@ -744,6 +762,7 @@ export async function startAcp(
       ...(resumeError === undefined || opened !== "new" ? {} : { resumeError }),
       capabilities,
       modes,
+      ...(tableModes ? { modesFromTable: true } : {}),
       ...(modeApplied === undefined ? {} : { modeApplied }),
       models,
       configOptions: configView,
@@ -1031,8 +1050,24 @@ function exitedError(process_: AcpProcess): AcpError {
 function reportedModes(
   agentId: string | undefined,
   modes: AcpSessionModeState | null | undefined,
+  phase: "new" | "existing",
 ): AcpSessionModeState | null {
-  if (agentId !== undefined && !acpReportsPermissionModes(agentId)) return null;
+  const source = agentId === undefined ? "permission" : acpModeSource(agentId);
+  if (source === "ignore") return null;
+  if (source === "table" && agentId !== undefined) {
+    // agent 不报（或报的不是权限）：目录取兼容表。新会话从缺省起；接回的会话 agent
+    // 已经恢复了上次的模式，现在是哪个不知道（空串），由调用方落一次缺省。
+    const available = acpTableModes(agentId).map((mode) => ({
+      id: mode.id,
+      name: mode.name,
+    }));
+    if (available.length === 0) return null;
+    return {
+      availableModes: available,
+      currentModeId:
+        phase === "new" ? (acpModeIdOf(agentId, "default") ?? "") : "",
+    };
+  }
   return modes ?? null;
 }
 

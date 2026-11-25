@@ -40,9 +40,7 @@
       },
       "grok": {
         "program": "grok",
-        "verified": {
-          "min": "1.0.92"
-        }
+        "verified": null
       }
     }
   },
