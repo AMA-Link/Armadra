@@ -321,11 +321,18 @@ export interface AcpLaunchOptions {
   readonly injectionArgs?: readonly string[];
   /** 节点的角色（`agent.role`）：只有注册表给它配了旗标的 CLI 才加。 */
   readonly role?: AgentRole;
+  /**
+   * 调用方另有的 argv（Copilot 把 stdio MCP 服务器改成启动参数）。排在注入之后、
+   * `trailingArgs` 之前：`stdio` 这类子命令必须最后。
+   */
+  readonly extraArgs?: readonly string[];
 }
 
 export interface AcpLaunchPlan {
-  /** 程序之后的完整 argv。 */
+  /** 程序之后的完整 argv（含末尾的 {@link trailingArgs}）。 */
   readonly args: readonly string[];
+  /** `args` 末尾那段必须排最后的固定 argv；没有就缺席。 */
+  readonly trailingArgs?: readonly string[];
   /** 起会话后要 `session/set_mode` 的 id；缺席 = 不调。 */
   readonly modeId?: string;
 }
@@ -367,10 +374,14 @@ export function acpLaunchPlan(
     }
     args.push(...injection);
   }
-  args.push(...(adapter.trailingArgs ?? []));
-  return mapping.modeId === undefined
-    ? { args }
-    : { args, modeId: mapping.modeId };
+  args.push(...(options.extraArgs ?? []));
+  const trailing = adapter.trailingArgs ?? [];
+  args.push(...trailing);
+  return {
+    args,
+    ...(trailing.length === 0 ? {} : { trailingArgs: trailing }),
+    ...(mapping.modeId === undefined ? {} : { modeId: mapping.modeId }),
+  };
 }
 
 /**

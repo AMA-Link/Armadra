@@ -318,6 +318,11 @@ export interface AcpStartOptions {
   readonly agentId?: string;
   readonly program: string;
   readonly args: readonly string[];
+  /**
+   * `args` 末尾必须排最后的那段（grok 的 `stdio`）。终端登录要在适配器的 argv 后面
+   * 再加方法自己的参数时，加在它前面。
+   */
+  readonly trailingArgs?: readonly string[];
   readonly cwd: string;
   readonly env?: NodeJS.ProcessEnv;
   /** 起会话后 `session/set_mode` 的 id。 */
@@ -904,11 +909,12 @@ function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
 function launchOf(
   options: Pick<
     AcpStartOptions,
-    "program" | "args" | "cwd" | "env" | "transport"
+    "program" | "args" | "cwd" | "env" | "transport" | "trailingArgs"
   >,
 ): {
   program: string;
   args: readonly string[];
+  trailingArgs?: readonly string[];
   cwd: string;
   env?: NodeJS.ProcessEnv;
 } {
@@ -918,7 +924,16 @@ function launchOf(
     cwd: options.cwd,
     ...(options.env === undefined ? {} : { env: options.env }),
   };
-  if (options.transport === undefined) return direct;
+  // 经 transport 改写过的命令行（SSH）不再是「适配器 argv + 末尾那段」的形状，
+  // 末尾的说明不跟过去。
+  if (options.transport === undefined) {
+    return {
+      ...direct,
+      ...(options.trailingArgs === undefined
+        ? {}
+        : { trailingArgs: options.trailingArgs }),
+    };
+  }
   return options.transport({ ...direct, env: options.env });
 }
 
@@ -1176,7 +1191,16 @@ export function adapterStartOptions(
       `${adapter.program} is not installed on this machine`,
     );
   }
+  // 只收 http / sse 的适配器（Copilot）：stdio 服务器改走启动参数（#858）。它们是
+  // argv 的一部分，要排在 `trailingArgs`（grok 的 `stdio`）之前，所以交给计划。
+  const wanted =
+    options.mcpServers ?? acpMcpServers(adapter, options.canvasMcp);
+  const viaArgs = adapter.injection.mcpViaArgs === true;
+  const mcpArgs = viaArgs
+    ? wanted.flatMap((server) => copilotAcpMcpArgs(server as AcpStdioMcpServer))
+    : [];
   const plan = acpLaunchPlan(adapter, {
+    extraArgs: mcpArgs,
     ...(options.mode === undefined ? {} : { mode: options.mode }),
     ...(options.profilePath === undefined
       ? {}
@@ -1206,16 +1230,14 @@ export function adapterStartOptions(
         }
       : ambient;
   const mode = options.mode ?? "default";
-  const { canvasMcp, metaInput, mcpServers: given, ...rest } = options;
+  const {
+    canvasMcp: _canvasMcp,
+    metaInput,
+    mcpServers: _given,
+    ...rest
+  } = options;
   const sessionMeta = acpSessionMeta(adapter, { ...metaInput, mode });
-  // 给了现成的服务器（SSH 节点：执行主机上的 Hook 客户端）就用它们。
-  const wanted = given ?? acpMcpServers(adapter, canvasMcp);
-  // 只收 http / sse 的适配器（Copilot）：stdio 服务器改走启动参数（#858）。
-  const viaArgs = adapter.injection.mcpViaArgs === true;
   const mcpServers = viaArgs ? [] : wanted;
-  const mcpArgs = viaArgs
-    ? wanted.flatMap((server) => copilotAcpMcpArgs(server as AcpStdioMcpServer))
-    : [];
   return {
     ...rest,
     env,
@@ -1223,7 +1245,10 @@ export function adapterStartOptions(
     ...(sessionMeta === undefined ? {} : { sessionMeta }),
     agentId: adapter.agentId,
     program: target?.program ?? resolved,
-    args: [...(target?.args ?? []), ...plan.args, ...mcpArgs],
+    args: [...(target?.args ?? []), ...plan.args],
+    ...(plan.trailingArgs === undefined
+      ? {}
+      : { trailingArgs: plan.trailingArgs }),
     ...(plan.modeId === undefined
       ? {}
       : {
@@ -1254,6 +1279,7 @@ export interface AdapterProcessContext {
   readonly launch: {
     readonly program: string;
     readonly args: readonly string[];
+    readonly trailingArgs?: readonly string[];
     readonly cwd: string;
     readonly env?: NodeJS.ProcessEnv;
   };
@@ -1269,6 +1295,7 @@ export async function withAdapterProcess<T>(
     | "env"
     | "initializeTimeoutMs"
     | "transport"
+    | "trailingArgs"
     | "prestarted"
   >,
   work: (context: AdapterProcessContext) => Promise<T>,

@@ -480,6 +480,56 @@ describe.skipIf(process.platform === "win32")("startAdapter", () => {
     }
   });
 
+  it("grok：全自动旗标与 MCP 启动参数都在 stdio 之前，trailingArgs 随选项带出去", () => {
+    const grok = acpAdapter("grok") as AcpAdapter;
+    const options = adapterStartOptions(
+      { ...grok, injection: { mcp: true, mcpViaArgs: true, reuse: [] } },
+      {
+        cwd: tmpdir(),
+        env: onPath("grok"),
+        mode: "full-auto",
+        mcpServers: [
+          {
+            name: "armadra",
+            command: "/bin/armadra-hook",
+            args: ["mcp"],
+            env: [{ name: "ARMADRA_NODE_ID", value: "n" }],
+          },
+        ],
+      } as never,
+    );
+    if (options instanceof AcpError) throw options;
+    expect(options.args.at(-1)).toBe("stdio");
+    expect(options.args.slice(0, 3)).toEqual([
+      "agent",
+      "--no-leader",
+      "--always-approve",
+    ]);
+    expect(options.args.length).toBeGreaterThan(4);
+    expect(options.trailingArgs).toEqual(["stdio"]);
+    expect(options.mcpServers).toBeUndefined();
+  });
+
+  it("没有 trailingArgs 的家（Copilot）：MCP 启动参数仍在最后，与以前一致", () => {
+    const copilot = acpAdapter("copilot") as AcpAdapter;
+    const options = adapterStartOptions(copilot, {
+      cwd: tmpdir(),
+      env: onPath("copilot"),
+      mcpServers: [
+        {
+          name: "armadra",
+          command: "/bin/armadra-hook",
+          args: ["mcp"],
+          env: [{ name: "ARMADRA_NODE_ID", value: "n" }],
+        },
+      ],
+    } as never);
+    if (options instanceof AcpError) throw options;
+    expect(options.args.slice(0, 2)).toEqual(["--acp", "--stdio"]);
+    expect(options.args.length).toBeGreaterThan(2);
+    expect(options.trailingArgs).toBeUndefined();
+  });
+
   it("derives the session _meta from the adapter row, and sends none without one", () => {
     const withMeta: AcpAdapter = {
       ...adapter,
