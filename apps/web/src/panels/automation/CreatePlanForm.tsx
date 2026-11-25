@@ -304,7 +304,8 @@ export function CreatePlanForm({
    * the frozen definition at the write itself, and reports what it wrote to.
    */
   async function agentTarget() {
-    if (!agentOption) return null;
+    // 没有状态通道的节点不能做计划任务目标（core 的探测答 unsupported）。
+    if (!agentOption || agentOption.noStateChannel) return null;
     let generation = 0n;
     try {
       const session = await runtimeApi.getTerminal(agentOption.sessionId);
@@ -547,7 +548,10 @@ export function CreatePlanForm({
                 <SelectItem value="command">
                   {t("automation.wizard.targetKind.command")}
                 </SelectItem>
-                <SelectItem value="agent" disabled={agents.length === 0}>
+                <SelectItem
+                  value="agent"
+                  disabled={agents.every((option) => option.noStateChannel)}
+                >
                   {t("automation.wizard.targetKind.agent")}
                 </SelectItem>
                 <SelectItem
@@ -624,8 +628,15 @@ export function CreatePlanForm({
                 </SelectTrigger>
                 <SelectContent>
                   {agents.map((option) => (
-                    <SelectItem key={option.nodeId} value={option.nodeId}>
+                    <SelectItem
+                      key={option.nodeId}
+                      value={option.nodeId}
+                      disabled={option.noStateChannel}
+                    >
                       {option.title} · {option.agentId}
+                      {option.noStateChannel
+                        ? ` · ${t("automation.wizard.noStateChannel")}`
+                        : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>

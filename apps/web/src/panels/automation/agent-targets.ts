@@ -1,4 +1,4 @@
-import type { CanvasNode } from "@armadra/shared";
+import { type CanvasNode, agentDefinition } from "@armadra/shared";
 
 import { buildAgentLaunchArgv } from "@/agent/launch";
 import { AgentLaunchSpec, agentLaunchSpec } from "../../api/automations";
@@ -15,6 +15,19 @@ export interface AgentTargetOption {
   agentId: string;
   sessionId: string;
   cwd: string;
+  /**
+   * 这家 CLI 没有状态通道（注册表里没有 `hooks` 能力：grok 的 G1、agy）：节点里回合
+   * 进行中也没有任何上报，计划任务的正文加回车会落进正在工作的 pane。core 的探测
+   * 对它们答 `unsupported`（`schedule/dispatch.ts`），向导这里置灰，不让人建出一份
+   * 必然被拒的计划。自定义条目按 core 的判断，这里不猜。
+   */
+  noStateChannel: boolean;
+}
+
+/** 内置 CLI 里没有状态通道的（注册表的事实）。 */
+export function lacksStateChannel(agentId: string): boolean {
+  const definition = agentDefinition(agentId);
+  return definition !== undefined && !definition.capabilities.includes("hooks");
 }
 
 export function agentTargets(
@@ -33,6 +46,7 @@ export function agentTargets(
       agentId: agent.id,
       sessionId,
       cwd: cwd ?? ".",
+      noStateChannel: lacksStateChannel(agent.id),
     });
   }
   return options;

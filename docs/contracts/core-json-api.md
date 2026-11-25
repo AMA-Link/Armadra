@@ -6245,6 +6245,7 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
   2. 开节点时忽略用户的终端偏好，ACP 可用就走 ACP；
   3. 交接新开目标的终端形态 `400 target_surface_unsupported`（§39.8，同一个码），ACP 形态不受影响；
   4. 驱动切换（`POST /api/acp/nodes/{id}/driver`）把该节点的 `agent_status` 行记为 `restored = 1`（与 Eco 休眠接回同一条规矩）；投递门、队泵的快探与首投放行门只看**当前驱动写下的**状态行——来源是 `acp`、而会话后端不是 ACP 的行视为没有上报，所以 ACP 切到终端的节点没有状态通道时，`send` 答 `TARGET_STATE_UNVERIFIED`（有状态通道的 CLI 则排队等终端自己的第一条上报）。
+- **计划任务（自动化）的目标**：没有状态通道的 Agent（`nodeStateChannel` 答空：今天的 `agy`、`grok`，以及按节点判不成立的远程节点）**不能做计划任务目标**——回合进行中的节点没有任何上报，探测无从知道它在忙，正文加回车会落进正在工作的 pane。core 的 `TerminalDispatcher.supports` 对它们答 `unsupported`，页面的计划向导把这样的节点置灰。ACP 驱动的这类节点（有 ACP 协议自己的回合与审批上报）要不要放行另行讨论（见对应 Issue）。
 - **为什么不升协议版本（agy 落地时的决定，2026-11-24；grok 同理）**：`mode` 在共享层是严格的 `z.enum`（`INJECTION_MODES`），旧客户端收到 `"none"` 会让这一条集成状态解析失败。但 agy 这个内置 id 对旧页面本来就是未知值：`agentInfoSchema.id` 用 `agentIdSchema`，按 `AGENT_IDS` 校验，所以**旧页面（含已经装在手机上的）会因为 agy 这一行让整张 `agents.list`（`z.array(agentInfoSchema)`）解析失败**，agent 菜单与设置页的 Agent 列表都会空掉——这是任何新内置 id 都有的已有性质，不是 `"none"` 带来的——`grok` 这个 id 对旧页面同样是未知值，`AGENT_IDS` 多一项的影响与 agy 那一次完全一样，发版时手机端要同步更新。升级页面是前提，**发版时手机端必须同步更新**；协议 minor 只按 `min(页面, core)` 协商，升了也拦不住旧页面去读这一条，所以 `PROTOCOL_MINOR` 不升（仍是 52）。`mode` 以后再多取值时同样要在那个 PR 里决定。
 
 ## 121. 项目级工作流文件：导入与导出（`#996`）

@@ -90,6 +90,7 @@ const zh = {
   "automation.wizard.workflowRequired": "先选一个工作流",
   "automation.wizard.workflowParamsMissing": "还有参数没填",
   "automation.wizard.agentNode": "Agent 节点",
+  "automation.wizard.noStateChannel": "无状态通道",
   "automation.wizard.prompt": "提示词",
   "automation.wizard.promptRequired": "写入 Agent 的计划必须填提示词",
   "automation.wizard.agentTargetRequired": "先选择一个 Agent 节点",
@@ -253,6 +254,7 @@ const en: Record<keyof typeof zh, string> = {
   "automation.wizard.workflowRequired": "Pick a workflow first",
   "automation.wizard.workflowParamsMissing": "Some parameters are empty",
   "automation.wizard.agentNode": "Agent node",
+  "automation.wizard.noStateChannel": "no status channel",
   "automation.wizard.prompt": "Prompt",
   "automation.wizard.promptRequired":
     "A plan that writes to an Agent needs a prompt",
