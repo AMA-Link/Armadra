@@ -223,7 +223,7 @@ const AGY_ARTIFACT_PANEL = [
 ].join("\n");
 
 const AGY_ARTIFACT_COMMENTS = [
-  "You have 2 unsent comments. Send to agent?",
+  "You have 2 unsent comment(s). Send to agent?",
   "> send + close",
   "  discard + close",
 ].join("\n");
@@ -472,6 +472,21 @@ describe("judgeScreen", () => {
       kind: "dialog",
       dialog: "agy.artifact-comments",
     });
+    // 只有行标记、没有 `Action required` 标题行（滚动出去了）。
+    expect(
+      judgeScreen(
+        profile("agy"),
+        "✓ approved  task.md\n□ new       notes.md\n",
+        false,
+      ),
+    ).toEqual({ kind: "dialog", dialog: "agy.artifact-panel" });
+    expect(
+      judgeScreen(
+        profile("agy"),
+        "Comments will be discarded if you modify the artifact. Open editor?",
+        false,
+      ),
+    ).toEqual({ kind: "dialog", dialog: "agy.artifact-comments" });
     expect(judgeScreen(profile("agy"), "Action required\n", false)).toEqual({
       kind: "dialog",
       dialog: "agy.artifact-panel",

@@ -290,12 +290,15 @@ export const SCREEN_SIGNATURES: Readonly<Record<string, ScreenSignatures>> = {
           "Antigravity CLI 1.5.17 二进制反汇编（ArtifactViewModel 的渲染：`Action required (%d left)`、`□ new` / `✓ approved` / `✗ rejected`），没有真画面",
       },
       {
-        // 审阅面板的查看器关闭前的确认框：选项 `send + close` / `discard + close`。
+        // 审阅面板的两个确认框：查看器关闭前 `You have %d unsent comment(s). Send to agent?`
+        // （选项 `send + close` / `discard + close`），和改工件前
+        // `Comments will be discarded if you modify the artifact. Open editor?`。
         id: "agy.artifact-comments",
-        pattern: /You have \d+ unsent comments?\. Send to agent\?/,
+        pattern:
+          /You have \d+ unsent comment\(s\)\. Send to agent\?|Comments will be discarded if you modify the artifact\. Open editor\?/,
         verified: false,
         source:
-          "Antigravity CLI 1.5.17 二进制反汇编（`You have %d unsent comment(s). Send to agent?`），没有真画面",
+          "Antigravity CLI 1.5.17 二进制反汇编（字面量 `You have %d unsent comment(s). Send to agent?` 与 `Comments will be discarded if you modify the artifact. Open editor?`），没有真画面",
       },
     ],
   },
