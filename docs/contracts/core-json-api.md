@@ -6363,3 +6363,14 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
 **不做**：不代答审批（`answerKeys("grok")` 为空串）、不声明 `structuredInputAck`；`permission_requested` 不产生审批记录。
 
 **旧客户端**：`agentStateSourceSchema` 在共享层是严格的 `z.enum`，没有升级的页面（含已装在手机上的）收到 `stateSource: "transcript"` 的 `agent.status` 解析不过。但它们本来就不认 `grok` 这个内置 id（§120：`AGENT_IDS` 多一项，`agents.list` 整张解析失败），所以这不是新增的不兼容；升级页面是前提，发版时手机端必须同步更新。协议 minor 升到 53，页面按 `min(自己的, core 的)` 谈，旧页面据此知道自己落后。`PROTOCOL_MAJOR` 不变。
+
+## 124. Grok Build 的时间线、历史与成本（`#998`）
+
+不改任何线上形状、不升协议版本：只是 grok 多了三样 core 内部的读取，以及共享的 `TRANSCRIPT_AGENT_IDS` 多一个 `grok`。
+
+- **会话文件**：`$GROK_HOME/sessions/<encodeURIComponent(cwd)>/<会话 id>/`。读 `updates.jsonl`（逐行 ACP 形状的更新）与 `summary.json`（`info.id`、`info.cwd`、`generated_title` / `session_summary`）；不读 `session_search.sqlite`（grok 自己的全文索引）、`events.jsonl`（§123 的状态源读它）、`chat_history.jsonl`（模型侧历史，带系统提示）。格式没有公开：认得的行转、认不得的略过，`summary.json` 读不出来退到首条用户消息与目录名，都不抛错。路径只靠 `encodeURIComponent` 与目录名，不假设路径分隔符，Windows 的 cwd 也一样。
+- **时间线转录适配器**（`timeline/sources/grok.ts`，登记在 `ADAPTERS.grok`）：`user_message_chunk` 开回合（回合 id 含会话 id 与 `promptIndex`），`agent_message_chunk` / `agent_thought_chunk` 是助手文本与思考，`tool_call` / `tool_call_update` 合成工具条目（命令的输出与退出码、编辑的 diff、其余工具的文本；非零退出码记 `failed`），`_x.ai/session/update` 的 `turn_completed` 合上回合并带停止原因。不报上下文占用（文件里没有窗口大小，回合用量是各次请求之和）。条目 id 取行里的 `timestamp_us` 与 `toolCallId`，整段重读幂等。
+- **按 pid 跟到当前会话**：§123 的读取槽在每个新会话的 `session start`、以及此后的每条状态上报里带 `transcriptPath`（该会话目录里的 `updates.jsonl`）；时间线管理器看到路径变了就重新定位，所以 `/new`、`/resume` 换会话后跟到新的那个，旧会话的条目留在同一条时间线里。ACP 驱动的节点（`backend_kind = 'acp'`）不挂这个适配器，它的时间线由 ACP 驱动自己写，两边不会重复出条目。
+- **历史适配器**（`history/grok.ts`，登记在 `HISTORY_ADAPTERS`）：会话索引列 `sessions/*/<id>/updates.jsonl`，标题 / cwd 来自 `summary.json`；定位先认上报的转录路径，否则按会话 id（先试 cwd 那一组，再在根下一层找）；读取把用户 / 助手文本与工具调用归一化成记录。接回终端走 `--resume <id>`（注册表里 `resume` 能力），ACP 走 `session/load`。索引读失败不清空：某个分组读不了沿用上一趟那一组；根读不了又没有上一趟时，`HistoryAdapter.unreadable(root)` 为真，会话索引这一趟不对账。
+- **成本**：来源是 `updates.jsonl` 里每回合的 `turn_completed.usage.modelUsage`（与 `grok usage <会话 id>` 打出的 `usage.json` 同一份记录，读文件不起进程、不要登录）：`inputTokens` 含缓存读（`totalTokens = inputTokens + outputTokens`），所以记 `input` 要减去缓存读与缓存写；`reasoningTokens` 已在 `outputTokens` 里。`costUsdTicks`（10^10 tick = 1 美元，xAI 的计量）作为 grok 自己报的美元记入汇总，价格表不认 grok 的模型时兜底。按 `<会话 id>:<prompt_id>` 去重。
+- **默认视图**：`defaultAgentView` 在偏好「会话」且 grok 的 ACP 适配器没装时，给终端驱动、会话体（`view: "session"`）；装了 ACP 走 ACP。
