@@ -100,6 +100,39 @@ describe("launch parameters", () => {
     ).toEqual(["--permission-mode", "plan"]);
   });
 
+  it("starts Antigravity with its own flags, and refuses to resume what has no session id", () => {
+    expect(
+      planLaunch(NO_CUSTOM, {
+        agentId: "agy",
+        permissionMode: "auto-edit",
+        model: "gemini-4-neon-high",
+        prompt: "do it",
+      }).args,
+    ).toEqual([
+      "--mode",
+      "accept-edits",
+      "--model",
+      "gemini-4-neon-high",
+      "--prompt-interactive",
+      "do it",
+    ]);
+    expect(
+      planLaunch(NO_CUSTOM, { agentId: "agy", permissionMode: "full-auto" })
+        .args,
+    ).toEqual(["--dangerously-skip-permissions"]);
+    expect(supportedPermissionModes("agy")).toEqual([
+      "default",
+      "auto-edit",
+      "full-auto",
+      "plan",
+    ]);
+    // A terminal agy has no status source to learn a session id from, and an
+    // unknown `--conversation` would be ignored: resume is refused, not typed.
+    expect(() =>
+      planLaunch(NO_CUSTOM, { agentId: "agy", resume: "abc" }),
+    ).toThrow(/resume is disabled/);
+  });
+
   it("puts codex's resume subcommand before every flag", () => {
     const plan = planLaunch(NO_CUSTOM, {
       agentId: "codex",

@@ -30,6 +30,7 @@ export const AGENT_IDS = [
   "omp",
   "copilot",
   "ama",
+  "agy",
 ] as const;
 
 export type AgentId = (typeof AGENT_IDS)[number];
@@ -239,6 +240,18 @@ export const AGENT_REGISTRY: readonly AgentDefinition[] = [
       "structuredInputAck",
       "supportsModelSelection",
     ],
+  },
+  {
+    id: "agy",
+    label: "Antigravity",
+    color: "#d6418b",
+    launchCmd: "agy",
+    promptMode: "flag-prompt",
+    expectedProcess: ["agy"],
+    // No status source and no injection: its terminal state is OSC 7501, which
+    // is display-only (contract §53). The links and the canvas verbs are there
+    // for the ACP-driven session (MCP); see `packages/shared/src/agents.ts`.
+    capabilities: ["contextLink", "browser", "supportsModelSelection"],
   },
 ];
 
