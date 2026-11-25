@@ -714,3 +714,30 @@ export const agyAdapter: HistoryAdapter = {
   readEntries,
   readsEntries: false,
 };
+
+/**
+ * 这些会话 id 里，索引库确认是**顶层**（没有父会话、深度 0）的那些。
+ *
+ * 不要求 `step_count > 0`：刚创建、还没写第一步的会话也算。库读不了答 `undefined`
+ * （调用方要保守，不要把「读不了」当成「都不是顶层」）；库里没有的 id 不在结果里。
+ */
+export function topLevelAmong(
+  root: string,
+  ids: readonly string[],
+): Set<string> | undefined {
+  if (ids.length === 0) return new Set();
+  const outcome = withDatabase(root, (database) => {
+    const found = new Set<string>();
+    const statement = database.prepare(
+      "SELECT conversation_id FROM conversation_summaries " +
+        `WHERE app_data_dir = '${APP_DATA_DIR}' AND conversation_id = ? ` +
+        "AND (parent_conversation_id IS NULL OR parent_conversation_id = '') " +
+        "AND COALESCE(nesting_depth, 0) = 0",
+    );
+    for (const id of ids) {
+      if (statement.get(id) !== undefined) found.add(id);
+    }
+    return found;
+  });
+  return outcome.state === "ok" ? outcome.value : undefined;
+}
