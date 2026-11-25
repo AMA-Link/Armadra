@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { initializeContextSequence } from "../terminal/sequences";
 import { uuidV7 } from "../workspaces/support";
 import { type HookFixture, hookFixture, insertSession } from "./fixture";
-import { DONE, WORKING, stateEvent } from "./normalize/event";
+import { BLOCKED, DONE, WORKING, stateEvent } from "./normalize/event";
 import {
   installInternalReporter,
   internalReporter,
@@ -247,5 +247,77 @@ describe("core 内部上报入口", () => {
           .get(it_.nodeId),
       ).toMatchObject({ n: 1 });
     });
+  });
+});
+
+describe("审批记录结案（settlesApproval，契约 §127）", () => {
+  const send = (
+    it_: HookFixture,
+    state: string | undefined,
+    patch: Record<string, unknown> = {},
+    rawPayload?: unknown,
+  ) => {
+    const event =
+      state === undefined
+        ? ({
+            nodeId: it_.nodeId,
+            agentId: "claude",
+            kind: "state",
+          } as ReturnType<typeof stateEvent>)
+        : stateEvent(it_.nodeId, "claude", state as never);
+    event.stateSource = "acp";
+    Object.assign(event, patch);
+    return reportInternal(it_.context, {
+      nodeId: it_.nodeId,
+      agentId: "claude",
+      event,
+      ...(rawPayload === undefined ? {} : { rawPayload }),
+    });
+  };
+  const answerOf = (it_: HookFixture, id: string) =>
+    it_.core.database
+      .prepare("SELECT answer, answered_by FROM agent_approvals WHERE id = ?")
+      .get(id);
+
+  it("按 id 结案：文件里的决定记为 terminal 答的，并发结算事件；已答的不再动", () => {
+    const it_ = fixture();
+    send(it_, BLOCKED, { pendingId: "g-1" }, { protocol: "grok-card" });
+    expect(answerOf(it_, "g-1")).toEqual({ answer: null, answered_by: null });
+    send(it_, WORKING, {
+      settlesApproval: { pendingId: "g-1", answer: "deny" },
+    });
+    expect(answerOf(it_, "g-1")).toEqual({
+      answer: "deny",
+      answered_by: "terminal",
+    });
+    expect(it_.published.some((event) => event.type === "agent.approval")).toBe(
+      true,
+    );
+    send(it_, DONE, {
+      settlesApproval: { pendingId: "g-1", answer: "cancelled" },
+    });
+    expect(answerOf(it_, "g-1")).toEqual({
+      answer: "deny",
+      answered_by: "terminal",
+    });
+  });
+
+  it("不带状态的纯结案报告也生效：按协议关掉这个节点上所有开着的 grok-card，别的审批不动", () => {
+    const it_ = fixture();
+    send(it_, BLOCKED, { pendingId: "g-1" }, { protocol: "grok-card" });
+    send(it_, BLOCKED, { pendingId: "g-2" }, { protocol: "grok-card" });
+    send(it_, BLOCKED, { pendingId: "other" }, { tool: "Bash" });
+    send(it_, undefined, {
+      settlesApproval: { protocol: "grok-card", answer: "cancelled" },
+    });
+    expect(answerOf(it_, "g-1")).toEqual({
+      answer: "cancelled",
+      answered_by: "core",
+    });
+    expect(answerOf(it_, "g-2")).toEqual({
+      answer: "cancelled",
+      answered_by: "core",
+    });
+    expect(answerOf(it_, "other")).toEqual({ answer: null, answered_by: null });
   });
 });

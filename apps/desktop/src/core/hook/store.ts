@@ -475,6 +475,25 @@ export function settleApproval(
     : getApproval(database, pendingId);
 }
 
+/** Closes every still-open approval of `nodeId` whose request has `protocol`. */
+export function settleOpenApprovals(
+  database: DatabaseSync,
+  nodeId: string,
+  protocol: string,
+  now: string = new Date().toISOString(),
+): AgentApproval[] {
+  const open = database
+    .prepare(
+      "SELECT id FROM agent_approvals WHERE node_id = ? AND answer IS NULL " +
+        "AND json_extract(request_json, '$.protocol') = ?",
+    )
+    .all(nodeId, protocol) as { id: string }[];
+  return open.flatMap((row) => {
+    const settled = settleApproval(database, row.id, "cancelled", now);
+    return settled === undefined ? [] : [settled];
+  });
+}
+
 /** Why an answer could not be recorded, in the shape the routes report. */
 export type AnswerRefusal = "bad_request" | "not_found" | "conflict";
 

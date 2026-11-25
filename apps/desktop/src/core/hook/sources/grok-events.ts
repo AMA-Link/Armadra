@@ -355,6 +355,12 @@ export class SessionTail {
   private trail: TrailEntry[] = [];
   unknownLines = 0;
 
+  /** Forgets every open request (a missing `permission_resolved` must not pin `waiting`). */
+  private settleRequests(): void {
+    this.requests = [];
+    this.requestedAt = undefined;
+  }
+
   private note(entry: TrailEntry): void {
     this.trail.push(entry);
     if (this.trail.length > TRAIL) this.trail.shift();
@@ -362,10 +368,10 @@ export class SessionTail {
 
   /**
    * What the file says happened to the request at `offset`, for the check after
-   * keys were typed: its resolution (`allow` / `deny`), `pending` while nothing
-   * resolved it, `ambiguous` when anything else was asked or resolved around it
-   * (the digit may have landed on another card), `unknown` when the line has
-   * left the window.
+   * keys were typed: the first resolution after it (`allow` / `deny`), `pending`
+   * while nothing resolved it, `ambiguous` when another request sits between it
+   * and that resolution (the digit may have landed on the other card),
+   * `unknown` when the line has left the window.
    */
   outcomeAfter(
     offset: number,
@@ -374,11 +380,11 @@ export class SessionTail {
       (entry) => entry.kind === "request" && entry.offset === offset,
     );
     if (at < 0) return "unknown";
-    const after = this.trail.slice(at + 1);
-    if (after.length === 0) return "pending";
-    const first = after[0];
-    if (first?.kind !== "resolved" || after.length > 1) return "ambiguous";
-    return first.decision ?? "ambiguous";
+    for (const entry of this.trail.slice(at + 1)) {
+      if (entry.kind === "request") return "ambiguous";
+      return entry.decision ?? "ambiguous";
+    }
+    return "pending";
   }
 
   /** `offset`: where the line starts in the file; without it a request is `-1`. */
@@ -465,8 +471,14 @@ export class SessionTail {
         // plan / approve) — measured on 1.0.92, no `tool_completed` follows it.
         this.asking = undefined;
         this.inTurn = true;
+        this.settleRequests();
         break;
       case "first_token":
+        // The model is talking again: nothing it asked permission for is still
+        // open, whether or not a `permission_resolved` was written for it.
+        this.inTurn = true;
+        this.settleRequests();
+        break;
       case "phase_changed":
         this.inTurn = true;
         break;
@@ -594,6 +606,13 @@ class GrokSlot implements StateSlot {
       requests: () => this.openRequests(),
       outcomeAfter: (sessionId, offset) =>
         this.followed.get(sessionId)?.tail.outcomeAfter(offset) ?? "unknown",
+    });
+    // A record an earlier slot (or an earlier core run) left open cannot be
+    // answered any more: the registry that checks it died with that slot. If the
+    // card is still up, this slot makes a new record for it.
+    this.context.settleApprovals?.({
+      protocol: GROK_CARD_PROTOCOL,
+      answer: "cancelled",
     });
     this.readNow();
     this.arm();
@@ -723,6 +742,13 @@ class GrokSlot implements StateSlot {
   }
 
   stop(): void {
+    // The record of a card nobody can answer through this slot any more is
+    // closed, so no header keeps a button that does nothing.
+    if (this.card !== undefined) {
+      const { pendingId } = this.card;
+      this.card = undefined;
+      this.context.settleApprovals?.({ pendingId, answer: "cancelled" });
+    }
     this.stopped = true;
     this.unregisterCards?.();
     this.unregisterCards = undefined;
@@ -918,6 +944,8 @@ class GrokSlot implements StateSlot {
     const next = aggregate(views);
     this.scheduleGrace(views);
     const settles = this.settleCard(next);
+    // A turn's end forgets which cards were tried.
+    if (next.state === "done") this.cardTries.clear();
     this.watchCard(next);
     // 一个还没有任何回合的会话没有「完成」可说：只有上面的 session start，状态留空
     // （与 Claude 起来之后的样子一致，首投放行门认的就是「开场之后还没有状态」）。
@@ -1064,7 +1092,7 @@ class GrokSlot implements StateSlot {
         body: card.body.slice(0, 40).map((row) => row.slice(0, 300)),
         options: card.options.map((option) => option.label.slice(0, 200)),
       };
-      const pendingId = `${this.context.nodeId}-grok-${request.offset}-${card.hash.slice(0, 8)}`;
+      const pendingId = `${this.context.nodeId}-grok-${request.offset}-${card.hash.slice(0, 8)}-${this.deps.now().toString(36)}`;
       const event = stateEvent(
         this.context.nodeId,
         this.context.agentId,

@@ -49,6 +49,7 @@ let home: string;
 let timers: FakeTimers;
 let reports: AgentEvent[];
 let payloads: unknown[];
+let settled: unknown[];
 let cardGate: boolean | undefined;
 let table: Map<number, number>;
 let names: Map<number, string>;
@@ -127,6 +128,9 @@ function open(options: { remote?: boolean } = {}) {
     ...(cardGate === undefined
       ? {}
       : { answerCards: async () => cardGate === true }),
+    settleApprovals: (settles) => {
+      settled.push(settles);
+    },
     report: (event, options) => {
       reports.push({ ...event });
       payloads.push(options?.rawPayload);
@@ -147,6 +151,7 @@ beforeEach(() => {
   timers = new FakeTimers(Date.parse("2026-11-25T08:00:00Z"));
   reports = [];
   payloads = [];
+  settled = [];
   cardGate = undefined;
   table = new Map([
     [CHILD_PID, ROOT_PID],
@@ -632,12 +637,24 @@ describe("SessionTail：未决请求的偏移与事后核对", () => {
     expect(tail.outcomeAfter(100)).toBe("pending");
     resolve(150, tail, "deny");
     expect(tail.outcomeAfter(100)).toBe("deny");
-    // resolved, requested, resolved：数字可能落在后一张上。
+    // 之后又来了别的请求：A 的结局取它之后的第一条 resolved，不被后面的牵连。
     request(200, tail);
     resolve(250, tail);
-    expect(tail.outcomeAfter(100)).toBe("ambiguous");
+    expect(tail.outcomeAfter(100)).toBe("deny");
     expect(tail.outcomeAfter(200)).toBe("allow");
     expect(tail.outcomeAfter(999)).toBe("unknown");
+  });
+
+  it("模型又开口了（first_token / loop_started）：漏了 resolved 的请求不再把节点钉在 waiting", () => {
+    for (const type of ["first_token", "loop_started"]) {
+      const tail = new SessionTail();
+      tail.apply({ type: "turn_started" }, 0);
+      request(100, tail);
+      expect(tail.view(1e15).state).toBe("waiting");
+      tail.apply({ type }, 200);
+      expect(tail.view(1e15).state).toBe("working");
+      expect(tail.view(1e15).requests).toBeUndefined();
+    }
   });
 
   it("并行请求：A 之后紧跟 B 再一条 resolved，A 的结局不明", () => {
@@ -699,7 +716,9 @@ describe("终端审批卡：建记录与结案（契约 §127）", () => {
     expect(payload.offset).toBe(
       Buffer.byteLength(file.split("\n").slice(0, 1).join("\n") + "\n"),
     );
-    expect(blocked()[0]?.pendingId).toMatch(/^node-1-grok-\d+-[0-9a-f]{8}$/);
+    expect(blocked()[0]?.pendingId).toMatch(
+      /^node-1-grok-\d+-[0-9a-f]{8}-[0-9a-z]+$/,
+    );
     slot.stop();
   });
 
@@ -728,6 +747,65 @@ describe("终端审批卡：建记录与结案（契约 §127）", () => {
     expect(blocked()).toHaveLength(0);
     expect(states().at(-1)).toBe("waiting");
     cardGate = false;
+    slot.stop();
+  });
+
+  it("槽自己说门关着（answerCards 答 false）：一条记录都不建", async () => {
+    cardGate = false;
+    const slot = await waitingOn();
+    for (let i = 0; i < 4; i += 1) {
+      timers.advance(1000);
+      slot.poke?.();
+      await flush();
+    }
+    expect(blocked()).toHaveLength(0);
+    expect(states().at(-1)).toBe("waiting");
+    slot.stop();
+  });
+
+  it("槽起来就关掉前一个槽留下的 grok-card 记录", async () => {
+    const slot = await waitingOn();
+    expect(settled[0]).toEqual({ protocol: "grok-card", answer: "cancelled" });
+    slot.stop();
+  });
+
+  it("槽停的时候卡还开着：关那一条记录；没有开着的卡就不多关", async () => {
+    const slot = await waitingOn();
+    const pendingId = blocked()[0]?.pendingId;
+    settled = [];
+    slot.stop();
+    expect(settled).toEqual([{ pendingId, answer: "cancelled" }]);
+
+    settled = [];
+    writeEvents("s", [line("turn_started")]);
+    const again = open().slot!;
+    again.start();
+    settled = [];
+    again.stop();
+    expect(settled).toEqual([]);
+  });
+
+  it("回合结束忘掉试过几次：同一张卡（偏移相同）下一回合还能再试", async () => {
+    screenText = "no card here";
+    const slot = await waitingOn();
+    for (let i = 0; i < 5; i += 1) {
+      timers.advance(1000);
+      slot.poke?.();
+      await flush();
+    }
+    expect(blocked()).toHaveLength(0);
+    append("s", [line("turn_ended", { outcome: "cancelled" })]);
+    slot.poke?.();
+    // 文件重写成同样的两行：偏移相同，试次已被忘掉。
+    screenText = CARD;
+    writeEvents("s", [
+      line("turn_started"),
+      line("permission_requested", { tool_name: "run_terminal_command" }),
+    ]);
+    slot.poke?.();
+    timers.advance(PERMISSION_GRACE_MS + 20);
+    await flush();
+    expect(blocked()).toHaveLength(1);
     slot.stop();
   });
 

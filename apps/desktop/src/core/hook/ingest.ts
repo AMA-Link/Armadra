@@ -15,6 +15,7 @@ import {
   getAgentStatus,
   insertApproval,
   settleApproval,
+  settleOpenApprovals,
   stateSourceFor,
   upsertAgentStatus,
 } from "./store";
@@ -407,6 +408,40 @@ export function apply(
     return undefined;
   }
 
+  if (event.settlesApproval !== undefined) {
+    const { pendingId, protocol, answer } = event.settlesApproval;
+    const nowIso = (context.now ?? (() => new Date()))().toISOString();
+    const settled =
+      pendingId !== undefined
+        ? [settleApproval(context.database, pendingId, answer, nowIso)]
+        : protocol !== undefined
+          ? settleOpenApprovals(
+              context.database,
+              event.nodeId,
+              protocol,
+              nowIso,
+            )
+          : [];
+    for (const record of settled) {
+      if (record === undefined) continue;
+      context.bus.emit("workspace.event", {
+        workspaceId,
+        event: {
+          type: "agent.approval",
+          nodeId: event.nodeId,
+          pendingId: record.id,
+          request: {
+            ...record,
+            resolved: true,
+            decision: record.answer ?? answer,
+            answer: record.answer ?? answer,
+            route: "none",
+          },
+        },
+      });
+    }
+  }
+
   const existing = getAgentStatus(context.database, event.nodeId);
   const current: Current =
     existing === undefined
@@ -484,32 +519,6 @@ export function apply(
       });
     } catch (error) {
       context.log.warn("could not record the pending approval", { error });
-    }
-  }
-
-  if (event.settlesApproval !== undefined) {
-    const settled = settleApproval(
-      context.database,
-      event.settlesApproval.pendingId,
-      event.settlesApproval.answer,
-      now.toISOString(),
-    );
-    if (settled !== undefined) {
-      context.bus.emit("workspace.event", {
-        workspaceId,
-        event: {
-          type: "agent.approval",
-          nodeId: event.nodeId,
-          pendingId: settled.id,
-          request: {
-            ...settled,
-            resolved: true,
-            decision: event.settlesApproval.answer,
-            answer: event.settlesApproval.answer,
-            route: "none",
-          },
-        },
-      });
     }
   }
 

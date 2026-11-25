@@ -132,7 +132,9 @@ export interface AgentEvent {
    * Never serialized, for the same reason as `silent`.
    */
   settlesApproval?: {
-    readonly pendingId: string;
+    /** One record by id, or every open record of this node with `protocol`. */
+    readonly pendingId?: string;
+    readonly protocol?: string;
     readonly answer: "allow" | "deny" | "cancelled";
   };
   /**
