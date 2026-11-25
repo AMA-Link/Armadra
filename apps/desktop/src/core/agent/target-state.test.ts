@@ -7,6 +7,7 @@ import {
   SILENT_START_MIN_AGE_MS,
   SILENT_START_QUIET_MS,
   observedQuiet,
+  programBlockStands,
   queueable,
   silentStartIdle,
   stateSourceIsReported,
@@ -188,5 +189,77 @@ describe("silentStartIdle", () => {
       silentStartIdle({ ...gate, sessionAgeMs: SILENT_START_MIN_AGE_MS - 1 }),
     ).toBe(false);
     expect(silentStartIdle({ ...gate, sessionAgeMs: undefined })).toBe(false);
+  });
+});
+
+describe("programBlockStands", () => {
+  const blocked = { state: "blocked", updatedAt: "2026-11-25T10:00:00.000Z" };
+  const report = (patch: Partial<AgentStatus>): AgentStatus => ({
+    nodeId: "n",
+    workspaceId: "w",
+    agentId: "claude",
+    state: "done",
+    stateSource: "hook",
+    unread: false,
+    verified: true,
+    restored: false,
+    updatedAt: "2026-11-25T10:00:05.000Z",
+    lastEventAt: "2026-11-25T10:00:05.000Z",
+    ...patch,
+  });
+
+  it("stands by default, and only blocked stands", () => {
+    expect(programBlockStands(blocked, undefined)).toBe(true);
+    expect(programBlockStands({ state: "working" }, undefined)).toBe(false);
+    expect(programBlockStands(undefined, report({}))).toBe(false);
+  });
+
+  it("a strictly later idle or done report from the CLI itself withdraws it", () => {
+    expect(programBlockStands(blocked, report({}))).toBe(false);
+    expect(programBlockStands(blocked, report({ state: "idle" }))).toBe(false);
+  });
+
+  it("equal times keep the veto", () => {
+    expect(
+      programBlockStands(
+        blocked,
+        report({ lastEventAt: "2026-11-25T10:00:00.000Z" }),
+      ),
+    ).toBe(true);
+  });
+
+  it("reading the receipt does not withdraw: it moves updatedAt, not lastEventAt", () => {
+    expect(
+      programBlockStands(
+        blocked,
+        report({
+          lastEventAt: "2026-11-25T09:59:00.000Z",
+          updatedAt: "2026-11-25T10:30:00.000Z",
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("a done synthesised by the sweep does not withdraw", () => {
+    for (const endedBy of ["stale", "terminated", "modelError"] as const) {
+      expect(programBlockStands(blocked, report({ endedBy }))).toBe(true);
+    }
+  });
+
+  it("anything else weaker keeps the veto", () => {
+    expect(programBlockStands(blocked, report({ state: "working" }))).toBe(
+      true,
+    );
+    expect(programBlockStands(blocked, report({ restored: true }))).toBe(true);
+    expect(
+      programBlockStands(blocked, report({ stateSource: "observed" })),
+    ).toBe(true);
+    const { lastEventAt: _omit, ...withoutTime } = report({});
+    expect(programBlockStands(blocked, withoutTime as AgentStatus)).toBe(true);
+    expect(programBlockStands({ state: "blocked" }, report({}))).toBe(true);
+    // 读不出来的时间：宁可拦。
+    expect(
+      programBlockStands(blocked, report({ lastEventAt: "garbage" })),
+    ).toBe(true);
   });
 });

@@ -248,3 +248,42 @@ export function sessionStartIdle(gate: SessionStartGate): boolean {
   if (gate.observed === undefined) return false;
   return !gate.observed.pending;
 }
+
+/**
+ * 程序自报的 `blocked` 要不要否决这次投递（契约 §53、§120）。
+ *
+ * 默认要。例外只有一条，而且只撤回、从不新增放行：CLI **自己**报了 `idle` / `done`，
+ * 而且那条上报**严格晚于**这条 `blocked` 记录——审批已经答过、回合已经结束，程序
+ * 没来得及清掉它的 `blocked`（崩了、没发 `clear`）。
+ *
+ * 比较的是 `lastEventAt`（上报到达的时刻），不是 `updatedAt`：读回执
+ * （`markAgentStatusRead`）会把 `updatedAt` 往后推，一次「已读」就能让一条旧的
+ * done 看起来比 blocked 新。不算 CLI 自己上报的一律照拦：来源不是上报通道、读回来的
+ * 旧行、清扫合成的结束（`endedBy` 存在）、没有 `lastEventAt`、时间相等或更早、
+ * 任何一边的时间读不出来。两个时间来自不同的钟（`blocked` 取 core 的钟、上报时间
+ * 取写库的钟，同一台机器上是同一个钟）；钟回拨时宁可继续拦。
+ */
+export function programBlockStands(
+  program: { readonly state: string; readonly updatedAt?: string } | undefined,
+  status: AgentStatus | undefined,
+): boolean {
+  if (program?.state !== "blocked") return false;
+  if (
+    status === undefined ||
+    !stateSourceIsReported(status.stateSource) ||
+    status.restored ||
+    status.endedBy !== undefined ||
+    (status.state !== "idle" && status.state !== "done") ||
+    status.lastEventAt === undefined ||
+    program.updatedAt === undefined
+  ) {
+    return true;
+  }
+  const reportedAt = Date.parse(status.lastEventAt);
+  const blockedAt = Date.parse(program.updatedAt);
+  return !(
+    Number.isFinite(reportedAt) &&
+    Number.isFinite(blockedAt) &&
+    reportedAt > blockedAt
+  );
+}
