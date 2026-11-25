@@ -239,6 +239,22 @@ describe("a program that reports blocked", () => {
     expect(programBlocks.nodes()).toEqual([]);
   });
 
+  it("agy waiting for plan approval (blocked / permission, ReviewAvailable) is held even though its footer looks idle", async () => {
+    // 阶段 ReviewAvailable：回合已结束、页脚空闲，agy 的 OSC 7501 报 blocked（Approve plan）。
+    const agy = node("agy", { state: "idle", stateSource: undefined });
+    quiet(agy.sessionId);
+    fixture.terminal.foreground = { command: "agy" };
+    fixture.terminal.programs.set(agy.sessionId, { state: "blocked" });
+    expect(
+      ok(await run("send", { to: agy.id, body: "做", unverified: true })),
+    ).toMatchObject({ outcome: "queued", reason: "TARGET_AWAITING_APPROVAL" });
+    expect(fixture.terminal.submits).toHaveLength(0);
+    fixture.terminal.programs.delete(agy.sessionId);
+    expect(
+      ok(await run("send", { to: agy.id, body: "做", unverified: true })),
+    ).toMatchObject({ outcome: "delivered" });
+  });
+
   it("the first delivery to a CLI that starts silently is vetoed too", async () => {
     const codex = node("codex", { state: "starting", stateSource: undefined });
     fixture.terminal.foreground = { command: "codex" };

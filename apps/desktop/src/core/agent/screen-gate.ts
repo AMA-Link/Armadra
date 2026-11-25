@@ -50,6 +50,12 @@ export interface DialogSignature extends SignatureOrigin {
   readonly id: string;
   /** 对话框里某一行独有的文字。逐行匹配。 */
   readonly pattern: RegExp;
+  /**
+   * 不受位置规则放行：这一行画在输入框**上面**（页脚在它下面），位置规则会把它当成
+   * 「已答过的」，但它说的是一件**还在等人**的事（agy 的「有工件等审」）。命中就
+   * 拦，不看提示符在不在它下面。
+   */
+  readonly sticky?: boolean;
 }
 
 export interface PromptSignature extends SignatureOrigin {
@@ -260,16 +266,36 @@ export const SCREEN_SIGNATURES: Readonly<Record<string, ScreenSignatures>> = {
           "Antigravity CLI 1.5.16 本机真画面的开卡（2026-11-24，选项 `Yes, allow creation` / `Yes, and always allow non-workspace access` / `No, deny creation`）；1.5.17 二进制一致",
       },
       {
-        // 有工件（实施计划、设计文档）等着人审：agy 的状态提示是
-        // `Press ctrl+r to review pending artifacts.`（ctrl+r 打开 Artifact Review
-        // 面板，在里面批准或给反馈）。计划模式（`--mode plan` / `/plan`）下实施
-        // 计划就是这样一个工件，回合不结束，等人。认错的代价是排队，认漏的代价是
-        // 往审阅里写字，所以这一条不管有没有核实都用。
-        id: "agy.artifact-review",
-        pattern: /Press ctrl\+r to review pending artifacts/i,
+        // 回合已经结束、有工件等着人审（计划模式的实施计划就是一个）：阶段是
+        // ReviewAvailable，页脚可以画 `? for shortcuts`，所以输入框看上去是空闲的。
+        // 待审提示 `N artifact(s) · /artifact to review` 画在页脚上方，位置规则会把它
+        // 判成已答过，所以标 `sticky`。真正的拦截靠 OSC 7501 的 `blocked` 否决门
+        // （agy 在这个阶段报 blocked / permission / "Approve plan"，契约 §120），这一条
+        // 只是再兜一层。
+        id: "agy.artifact-pending",
+        pattern: /\d+ artifacts? · \/artifact to review/,
+        verified: false,
+        sticky: true,
+        source:
+          "Antigravity CLI 1.5.17 二进制反汇编（格式串 `%d %s · /artifact to review`），没有真画面",
+      },
+      {
+        // 审阅面板（ctrl+r 或 `/artifact`）：全屏覆盖层，没有页脚。面板里 `y` 是批准、
+        // `n` 是驳回、`shift+a` / `shift+r` 是全部批准 / 驳回，写进去的字会被当成按键。
+        id: "agy.artifact-panel",
+        pattern:
+          /^\s*Action required(?: \(\d+ left\))?\s*$|[□✓✗] (?:new|approved|rejected)\b/,
         verified: false,
         source:
-          "Antigravity CLI 1.5.17 二进制里的渲染字符串（2026-11-25）；没有在真画面上核对过（要真账号在计划模式或开了 Artifact Review 的回合里触发）",
+          "Antigravity CLI 1.5.17 二进制反汇编（ArtifactViewModel 的渲染：`Action required (%d left)`、`□ new` / `✓ approved` / `✗ rejected`），没有真画面",
+      },
+      {
+        // 审阅面板的查看器关闭前的确认框：选项 `send + close` / `discard + close`。
+        id: "agy.artifact-comments",
+        pattern: /You have \d+ unsent comments?\. Send to agent\?/,
+        verified: false,
+        source:
+          "Antigravity CLI 1.5.17 二进制反汇编（`You have %d unsent comment(s). Send to agent?`），没有真画面",
       },
     ],
   },
@@ -398,11 +424,13 @@ export function judgeScreen(
   let lastPrompt = -1;
   let lastDialog = -1;
   let dialog = "";
+  let sticky = "";
   for (const [index, line] of lines.entries()) {
     const hit = profile.dialogs.find((entry) => entry.pattern.test(line));
     if (hit !== undefined) {
       lastDialog = index;
       dialog = hit.id;
+      if (hit.sticky === true) sticky = hit.id;
       continue;
     }
     if (MENU_CUES.some((cue) => cue.test(line))) {
@@ -418,6 +446,8 @@ export function judgeScreen(
   if (lastDialog >= 0 && lastDialog > lastPrompt) {
     return { kind: "dialog", dialog };
   }
+  // 「还在等人」的那类提示画在输入框上面，位置规则放不了它。
+  if (sticky !== "") return { kind: "dialog", dialog: sticky };
   if (first && profile.prompt !== undefined && lastPrompt < 0) {
     return { kind: "no-prompt" };
   }
