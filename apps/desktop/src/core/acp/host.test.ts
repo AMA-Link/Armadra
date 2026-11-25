@@ -243,6 +243,26 @@ describe("startAcp", () => {
     expect(updates).toContain("current_mode_update");
   });
 
+  // agy 接回之后 `currentModeId` 回到 `default`（`session/load` 与 `session/resume`
+  // 的答复里都是；2026-11-24 实测）：模式不跨进程保存，接回后必须重设，否则
+  // 一个说了 `plan` 的节点会以默认模式继续。
+  it.each(["load", "resume"] as const)(
+    "re-applies the permission mode after a session/%s",
+    async (method) => {
+      const session = await start({
+        resume: { sessionId: "fake-3", method },
+        modeId: "plan",
+        requireMode: true,
+      });
+      expect(session).toMatchObject({
+        opened: method,
+        resumed: true,
+        modeApplied: true,
+      });
+      expect(session.modes?.currentModeId).toBe("plan");
+    },
+  );
+
   it("does not report a mode the agent does not offer as applied", async () => {
     const session = await start({ modeId: "acceptEdits" });
     expect(session.modeApplied).toBe(false);

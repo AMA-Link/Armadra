@@ -18,7 +18,7 @@ import {
 import { installContract } from "../http/rpc";
 import { AcpError, acpClientFeatures } from "./client";
 import { FAKE_AGENT, type AcpCore, acpCore } from "./fixture";
-import { startAcp } from "./host";
+import { capabilitiesOf, startAcp } from "./host";
 import type { AcpCapabilities } from "./host";
 
 const capabilities = (
@@ -99,6 +99,55 @@ describe("terminalAuthCommand", () => {
     expect(command.env.TOKEN_MODE).toBe("device");
     expect(command.env.LD_PRELOAD).toBeUndefined();
     expect(command.env["bad name"]).toBeUndefined();
+  });
+});
+
+// agy 1.5.16 的 `initialize` 答复（2026-11-24 实测，已脱敏）：客户端声明
+// `clientCapabilities.auth.terminal` 时多报一条 `terminal-login`（args `--login`），
+// 页面据此列出「在终端里登录」，core 拼出 `agy acp --login`。不需要 agy 专用代码。
+describe("Antigravity's terminal login", () => {
+  const initialize = {
+    protocolVersion: 1,
+    agentInfo: { name: "Antigravity ACP Server", version: "1.5.16" },
+    agentCapabilities: {
+      loadSession: true,
+      sessionCapabilities: { resume: {}, close: {}, load: {}, list: {} },
+      promptCapabilities: { image: true, audio: false, embeddedContext: true },
+      auth: { logout: {} },
+    },
+    authMethods: [
+      { id: "oauth-personal", name: "Log in with Google" },
+      { id: "gemini-api-key", name: "Gemini API key" },
+      {
+        id: "terminal-login",
+        name: "Log in from the terminal",
+        description: "works over SSH",
+        type: "terminal",
+        args: ["--login"],
+      },
+    ],
+  };
+
+  it("lists the terminal method as one the host runs, the others as the agent's own", () => {
+    const methods = capabilitiesOf(initialize as never).authMethods;
+    expect(methods.map((method) => [method.id, method.type])).toEqual([
+      ["oauth-personal", "agent"],
+      ["gemini-api-key", "agent"],
+      ["terminal-login", "terminal"],
+    ]);
+    expect(methods[2]).toMatchObject({ args: ["--login"] });
+  });
+
+  it("runs `agy acp --login`", () => {
+    const method = capabilitiesOf(initialize as never).authMethods[2]!;
+    const command = terminalAuthCommand(
+      { program: "agy", args: ["acp"], env: { PATH: "/bin" } },
+      method,
+    );
+    expect(command).toMatchObject({
+      program: "agy",
+      args: ["acp", "--login"],
+    });
   });
 });
 
