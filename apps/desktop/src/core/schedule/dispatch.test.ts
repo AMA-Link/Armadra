@@ -228,6 +228,18 @@ describe("Agent 目标的探测", () => {
     );
   });
 
+  it("上一个驱动（ACP）留下的 blocked 行不算：当前会话是终端后端，探测照常就绪", async () => {
+    const { database, dispatcher } = setUp();
+    database.prepare("DELETE FROM agent_status").run();
+    database
+      .prepare(
+        "INSERT INTO agent_status (node_id, workspace_id, agent_id, state, state_source, updated_at) " +
+          "VALUES ('node-1', 'ws', 'claude', 'blocked', 'acp', '2026-09-20T00:00:00Z')",
+      )
+      .run();
+    expect((await dispatcher.supports(agentTargetOf())).state).toBe("ready");
+  });
+
   it("正在干活也算忙", async () => {
     const { database, dispatcher } = setUp();
     state(database, "working");
