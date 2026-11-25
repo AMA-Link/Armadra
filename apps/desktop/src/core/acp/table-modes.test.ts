@@ -8,7 +8,6 @@ import { AcpMirror, mirrorPath } from "./mirror";
 import { AcpSession } from "./session";
 import { AcpError } from "./client";
 import { type AcpHostSession, startAcp } from "./host";
-import type { AcpSessionNotification } from "./types";
 
 /**
  * 模式目录来自兼容表的家（grok，`ACP_REPORTED_MODES` 的 `table`）：agent 的
