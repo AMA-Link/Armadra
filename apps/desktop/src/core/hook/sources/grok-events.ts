@@ -1065,6 +1065,7 @@ class GrokSlot implements StateSlot {
         return;
       }
       const gate = await answerCards();
+      this.context.log.debug("grok card gate", { key, ...gate });
       if (!gate.open) {
         // 门关着：这张卡不再问（开了设置之后的下一张卡才算）。设置开着却建不了
         // 记录（版本没验证、节点不是 `--permission-mode` 启动的）时，头部要说原因。
@@ -1088,6 +1089,11 @@ class GrokSlot implements StateSlot {
       const text = await screen();
       if (this.stopped || text === undefined) return;
       const card = parseGrokApprovalCard(text);
+      this.context.log.debug("grok card parsed", {
+        key,
+        parsed: card !== undefined,
+        tail: text.split("\n").filter(Boolean).slice(-3),
+      });
       if (card === undefined) return;
       // 抓屏是异步的：回来之后还得是同一条、而且是唯一一条。
       const open = this.openRequests();
