@@ -120,6 +120,104 @@ describe("a program that reports blocked", () => {
     expect(pendingCountFor(fixture.database, bare.id, 0)).toBe(0);
   });
 
+  describe("a stale blocked", () => {
+    const BLOCKED_AT = "2026-11-25T10:00:00.000Z";
+    function report(
+      nodeId: string,
+      fields: { lastEventAt: string; updatedAt?: string; endedBy?: string },
+    ): void {
+      fixture.database
+        .prepare(
+          "INSERT OR REPLACE INTO agent_status (node_id, workspace_id, agent_id, state, state_source, " +
+            "unread, verified, restored, updated_at, last_event_at, ended_by) " +
+            "VALUES (?, ?, 'claude', 'done', 'hook', 0, 1, 0, ?, ?, ?)",
+        )
+        .run(
+          nodeId,
+          fixture.workspaceId,
+          fields.updatedAt ?? fields.lastEventAt,
+          fields.lastEventAt,
+          fields.endedBy ?? null,
+        );
+    }
+    function setUp() {
+      const claude = node("claude", { state: "idle", stateSource: "hook" });
+      fixture.terminal.foreground = { command: "claude" };
+      fixture.terminal.programs.set(claude.sessionId, {
+        state: "blocked",
+        updatedAt: BLOCKED_AT,
+      });
+      return claude;
+    }
+    const send = async (id: string) =>
+      ok(await run("send", { to: id, body: "做" }));
+
+    it("is withdrawn by the CLI's own done that came strictly later", async () => {
+      const claude = setUp();
+      report(claude.id, { lastEventAt: "2026-11-25T10:00:30.000Z" });
+      expect(await send(claude.id)).toMatchObject({ outcome: "delivered" });
+    });
+
+    it("is not withdrawn by reading the receipt: updatedAt moves, lastEventAt does not", async () => {
+      const claude = setUp();
+      report(claude.id, {
+        lastEventAt: "2026-11-25T09:59:00.000Z",
+        updatedAt: "2026-11-25T10:30:00.000Z",
+      });
+      expect(await send(claude.id)).toMatchObject({
+        outcome: "queued",
+        reason: "TARGET_AWAITING_APPROVAL",
+      });
+    });
+
+    it("is not withdrawn by a done the sweep synthesised", async () => {
+      const claude = setUp();
+      report(claude.id, {
+        lastEventAt: "2026-11-25T10:05:00.000Z",
+        endedBy: "stale",
+      });
+      expect(await send(claude.id)).toMatchObject({
+        outcome: "queued",
+        reason: "TARGET_AWAITING_APPROVAL",
+      });
+    });
+
+    it("equal times keep the veto", async () => {
+      const claude = setUp();
+      report(claude.id, { lastEventAt: BLOCKED_AT });
+      expect(await send(claude.id)).toMatchObject({
+        outcome: "queued",
+        reason: "TARGET_AWAITING_APPROVAL",
+      });
+    });
+  });
+
+  it("the sweep releases a veto no frame ever released, and wakes the pump once", async () => {
+    const claude = node("claude", { state: "idle", stateSource: "hook" });
+    fixture.terminal.foreground = { command: "claude" };
+    fixture.terminal.programs.set(claude.sessionId, { state: "blocked" });
+    expect(ok(await run("send", { to: claude.id, body: "做" }))).toMatchObject({
+      outcome: "queued",
+    });
+    expect(programBlocks.nodes()).toEqual([claude.id]);
+    const pump = new SendPump(() => fixture.collab);
+    // 还被拦着：清扫不放。
+    pump.sweep();
+    expect(programBlocks.nodes()).toEqual([claude.id]);
+    // idle → blocked → idle，摘要相同，一个帧都没发：清扫发现它不再被拦。
+    fixture.terminal.programs.delete(claude.sessionId);
+    pump.sweep();
+    expect(programBlocks.nodes()).toEqual([]);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(fixture.terminal.submits).toHaveLength(1);
+  });
+
+  it("the sweep drops a registration whose node has no session any more", () => {
+    programBlocks.vetoed("gone-node");
+    new SendPump(() => fixture.collab).sweep();
+    expect(programBlocks.nodes()).toEqual([]);
+  });
+
   it("the first delivery to a CLI that starts silently is vetoed too", async () => {
     const codex = node("codex", { state: "starting", stateSource: undefined });
     fixture.terminal.foreground = { command: "codex" };
