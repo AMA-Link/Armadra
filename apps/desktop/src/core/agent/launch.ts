@@ -75,6 +75,8 @@ interface LaunchProfile {
   readonly resume?: ResumeStyle;
   /** `flag-prompt` CLIs take the first prompt behind a flag. */
   readonly promptFlag?: string;
+  /** `argv` prompts: a separator word before the prompt (grok's `--`). */
+  readonly promptSeparator?: "--";
   /**
    * The CLI's own quit command. Eco types it before ending a session, so the
    * CLI writes its session state out itself and `resume` finds it whole.
@@ -190,7 +192,27 @@ const PROFILES: Readonly<Record<string, LaunchProfile>> = {
     exitCommand: "/exit",
     promptFlag: "--prompt-interactive",
   },
+  // `--` 之后全是 prompt：整条 prompt 恰好是子命令名或以 `-` 开头也不会被解析。
+  grok: {
+    permissionFlag: {
+      default: [],
+      "auto-edit": ["--permission-mode", "acceptEdits"],
+      "full-auto": ["--always-approve"],
+      plan: ["--permission-mode", "plan"],
+    },
+    modelFlag: "--model",
+    sessionIdFlag: "--session-id",
+    resume: { style: "flag", flag: "--resume" },
+    promptSeparator: "--",
+    exitCommand: "/quit",
+  },
 };
+
+/** `argv` 的 prompt 前要不要隔一个 `--`（带尾随空格，直接拼进行里）。 */
+function profileSeparator(base: string): string {
+  const separator = PROFILES[base]?.promptSeparator;
+  return separator === undefined ? "" : `${separator} `;
+}
 
 export function launchProfile(agentId: string): LaunchProfile | undefined {
   return PROFILES[agentId];
@@ -386,6 +408,9 @@ export function planLaunch(
         args.push(profile.promptFlag ?? "--prompt", prompt);
         break;
       case "argv":
+        if (profile.promptSeparator !== undefined) {
+          args.push(profile.promptSeparator);
+        }
         args.push(prompt);
         break;
       default:
@@ -436,7 +461,7 @@ export function launchCommand(
   if (mode === "stdin-after-start") return program;
   const flag = PROFILES[base]?.promptFlag;
   return flag === undefined || mode !== "flag-prompt"
-    ? `${program} ${quote(text)}`
+    ? `${program} ${profileSeparator(base)}${quote(text)}`
     : `${program} ${flag} ${quote(text)}`;
 }
 

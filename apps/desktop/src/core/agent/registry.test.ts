@@ -88,7 +88,11 @@ describe("the agent registry", () => {
       "electron",
     ]);
     for (const agent of AGENT_REGISTRY) {
-      if (agent.id !== "ama") expect(agent.expectedProcess).toEqual([agent.id]);
+      if (agent.id === "ama") continue;
+      // grok：npm 包里的二进制真名是 `grok-native`（链接名 `grok`）。
+      expect(agent.expectedProcess).toEqual(
+        agent.id === "grok" ? ["grok", "grok-native"] : [agent.id],
+      );
     }
   });
 
