@@ -68,6 +68,9 @@ import { NodeShell, type NodeShellProps } from "./NodeShell";
 import { NodeStatusPopover } from "./NodeStatusPopover";
 import type { NodeBodyProps } from "./registry";
 import { answerApproval } from "./runtime-extras";
+import { isPlanApproval } from "@/acp/plan-card";
+import { activeSourceId } from "@/sources/scope";
+import { timelineKey, useTimelineStore } from "@/timeline/store";
 import {
   TERMINAL_NODE_ATTRIBUTE,
   registerTerminalFind,
@@ -290,8 +293,23 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
         : null;
   const pendingId = agentStatus?.pendingId;
   const canAnswer = useCanAnswer(workspaceId ?? "", sessionId);
+  // 计划审批（core 写在审批条目上的 `card: "plan"`）不给头部的一键允许 / 拒绝：没看到
+  // 计划就批准不是人要的；按钮换成「跳到卡片」。只读已经在内存里的时间线，不为它取。
+  const planPending = useTimelineStore((state) =>
+    sessionId === null
+      ? false
+      : isPlanApproval(
+          state.entries[timelineKey(activeSourceId(), sessionId)],
+          pendingId,
+        ),
+  );
   const approval =
-    agent && !bare && canAnswer && need === "approval" && pendingId
+    agent &&
+    !bare &&
+    canAnswer &&
+    need === "approval" &&
+    pendingId &&
+    !planPending
       ? {
           pendingId,
           onAnswer: (decision: "allow" | "deny") => {
@@ -321,6 +339,26 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
         data-slot="bare-approval"
       >
         {t("node.answer")}
+      </Button>
+    ) : null;
+  const planButton =
+    agent && !bare && canAnswer && need === "approval" && planPending ? (
+      <Button
+        size="xs"
+        variant="outline"
+        data-slot="open-plan-approval"
+        onClick={() => {
+          const root = document.querySelector(
+            `[${TERMINAL_NODE_ATTRIBUTE}="${id}"]`,
+          );
+          const card = root?.querySelector<HTMLElement>(
+            "[data-slot=acp-permission]",
+          );
+          card?.scrollIntoView({ block: "nearest" });
+          card?.focus();
+        }}
+      >
+        {t("acp.permission.planTitle")}
       </Button>
     ) : null;
   const questionButton =
@@ -719,6 +757,7 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
               {awaitingDriver}
               {bareApproval}
               {questionButton}
+              {planButton}
             </>
           ) : (
             <>
@@ -732,6 +771,7 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
               {awaitingDriver}
               {bareApproval}
               {questionButton}
+              {planButton}
             </>
           )
         }

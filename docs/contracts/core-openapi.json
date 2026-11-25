@@ -3284,7 +3284,8 @@
                                                         }
                                                       },
                                                       "card": {
-                                                        "const": "plan"
+                                                        "type": "string",
+                                                        "maxLength": 40
                                                       },
                                                       "body": {
                                                         "type": "string",
@@ -85680,7 +85681,8 @@
                                 }
                               },
                               "card": {
-                                "const": "plan"
+                                "type": "string",
+                                "maxLength": 40
                               },
                               "body": {
                                 "type": "string",
@@ -87712,7 +87714,8 @@
                                     }
                                   },
                                   "card": {
-                                    "const": "plan"
+                                    "type": "string",
+                                    "maxLength": 40
                                   },
                                   "body": {
                                     "type": "string",
@@ -89387,7 +89390,8 @@
                                 }
                               },
                               "card": {
-                                "const": "plan"
+                                "type": "string",
+                                "maxLength": 40
                               },
                               "body": {
                                 "type": "string",
