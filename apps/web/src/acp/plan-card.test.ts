@@ -1,41 +1,25 @@
 import { describe, expect, it } from "vitest";
-import type { TimelineItem } from "@armadra/shared";
 
-import { isPlanApproval } from "./plan-card";
+import { headerApprovalOf } from "./plan-card";
 
-const base = { turn: 1, ord: 1, rev: 1, source: "acp", at: 1, gen: 0 } as const;
-const approval = (card?: string): TimelineItem =>
-  ({
-    ...base,
-    id: "ap:p1",
-    kind: "approval",
-    pendingId: "p1",
-    protocol: "acp",
-    options: [],
-    state: "pending",
-    ...(card === undefined ? {} : { card }),
-  }) as TimelineItem;
-
-describe("isPlanApproval", () => {
-  it("只有审批条目上 core 写的 card 是 plan 才算", () => {
-    expect(isPlanApproval({ byId: { "ap:p1": approval("plan") } }, "p1")).toBe(
-      true,
-    );
-    expect(isPlanApproval({ byId: { "ap:p1": approval() } }, "p1")).toBe(false);
-    // 以后多一种卡片：旧页面当普通审批。
-    expect(
-      isPlanApproval({ byId: { "ap:p1": approval("future") } }, "p1"),
-    ).toBe(false);
+describe("headerApprovalOf", () => {
+  it("普通审批（状态帧没有 pendingCard）：一键允许 / 拒绝照旧", () => {
+    expect(headerApprovalOf({})).toEqual({ kind: "quick" });
+    expect(headerApprovalOf(undefined)).toEqual({ kind: "quick" });
+    expect(headerApprovalOf({ pendingCard: "" })).toEqual({ kind: "quick" });
   });
 
-  it("条目还没到、没有 pendingId、别的 id：答 false（保持原来的行为）", () => {
-    expect(isPlanApproval(undefined, "p1")).toBe(false);
-    expect(isPlanApproval({ byId: {} }, "p1")).toBe(false);
-    expect(
-      isPlanApproval({ byId: { "ap:p1": approval("plan") } }, undefined),
-    ).toBe(false);
-    expect(isPlanApproval({ byId: { "ap:p1": approval("plan") } }, "p2")).toBe(
-      false,
-    );
+  it("计划审批：不出一键按钮，换成跳到卡片", () => {
+    expect(headerApprovalOf({ pendingCard: "plan" })).toEqual({
+      kind: "card",
+      card: "plan",
+    });
+  });
+
+  it("以后多一种卡片、这个页面不认得：同样不出一键按钮（宁可多一步，不盲批）", () => {
+    expect(headerApprovalOf({ pendingCard: "future" })).toEqual({
+      kind: "card",
+      card: "future",
+    });
   });
 });

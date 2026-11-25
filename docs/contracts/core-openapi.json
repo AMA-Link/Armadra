@@ -1573,6 +1573,10 @@
                                           "type": "string",
                                           "maxLength": 200
                                         },
+                                        "pendingCard": {
+                                          "type": "string",
+                                          "maxLength": 40
+                                        },
                                         "verified": {
                                           "type": "boolean",
                                           "default": false

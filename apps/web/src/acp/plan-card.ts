@@ -1,18 +1,20 @@
-import type { TimelineEntry } from "@/timeline/store";
-
 /**
- * 这条挂起的审批是不是计划审批（core 写在审批条目上的 `card: "plan"`）。
+ * 节点头部对挂起审批的呈现（审批卡自己的种类由 core 写在状态帧的 `pendingCard` 上）。
  *
- * 节点头部的「允许 / 拒绝」快捷按钮只靠状态里的 `pendingId`，看不出是哪种卡片：计划
- * 审批不能在没看到计划的情况下一键批准，头部据此改成「跳到卡片」。条目还没到（时间线
- * 没加载）时答 `false`——保持原来的行为；条目与状态帧是同一批 core 事件，实际上几乎
- * 同时到。
+ * 头部的「允许 / 拒绝」一键按钮只有 `pendingId`，看不出是哪种卡：计划审批不能在没看到
+ * 计划的情况下一键批准。所以只要状态帧带了 `pendingCard`（计划审批是 `plan`，以后的卡片
+ * 种类页面不认得也一样），就不出一键按钮，换成跳到卡片的按钮。读状态帧、不读时间线：
+ * 状态帧与 `pendingId` 同一帧到，没有「时间线还没加载」的窗口；旧页面（不认识这个字段）
+ * 的一键按钮由 core 兜底——答计划卡必须显式 `optionId`，裸的 `decision` 会被 400 拒绝。
  */
-export function isPlanApproval(
-  entry: Pick<TimelineEntry, "byId"> | undefined,
-  pendingId: string | undefined,
-): boolean {
-  if (entry === undefined || pendingId === undefined) return false;
-  const item = entry.byId[`ap:${pendingId}`];
-  return item?.kind === "approval" && item.card === "plan";
+export type HeaderApproval =
+  { readonly kind: "quick" } | { readonly kind: "card"; readonly card: string };
+
+export function headerApprovalOf(
+  status: { readonly pendingCard?: string | undefined } | undefined,
+): HeaderApproval {
+  const card = status?.pendingCard;
+  return card === undefined || card === ""
+    ? { kind: "quick" }
+    : { kind: "card", card };
 }

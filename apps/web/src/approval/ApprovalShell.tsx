@@ -41,6 +41,8 @@ export const ApprovalShell = React.forwardRef<
       aria-labelledby={titleId}
       data-slot={slot}
       data-pending-id={pendingId}
+      // 头部的「跳到卡片」要把焦点放上来（程序聚焦，不进 Tab 顺序）。
+      tabIndex={-1}
       onKeyDown={onKeyDown}
       className={cn("gap-2 rounded-float border-warn/40 p-2.5", className)}
     >
