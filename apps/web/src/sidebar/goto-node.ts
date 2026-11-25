@@ -35,12 +35,7 @@ function focusItemNow(itemId: string): void {
 function recenter(id: string): void {
   for (const delay of CENTER_RETRY_DELAYS) {
     if (delay === 0) requestCenterOnNode(id);
-    else
-      setTimeout(() => {
-        // 测试里 jsdom 可能先于计时器拆除；没有 window 就没有画布可居中。
-        if (typeof window === "undefined") return;
-        requestCenterOnNode(id);
-      }, delay);
+    else setTimeout(() => requestCenterOnNode(id), delay);
   }
 }
 
