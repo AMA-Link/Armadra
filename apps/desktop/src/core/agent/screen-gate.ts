@@ -259,6 +259,18 @@ export const SCREEN_SIGNATURES: Readonly<Record<string, ScreenSignatures>> = {
         source:
           "Antigravity CLI 1.5.16 本机真画面的开卡（2026-11-24，选项 `Yes, allow creation` / `Yes, and always allow non-workspace access` / `No, deny creation`）；1.5.17 二进制一致",
       },
+      {
+        // 有工件（实施计划、设计文档）等着人审：agy 的状态提示是
+        // `Press ctrl+r to review pending artifacts.`（ctrl+r 打开 Artifact Review
+        // 面板，在里面批准或给反馈）。计划模式（`--mode plan` / `/plan`）下实施
+        // 计划就是这样一个工件，回合不结束，等人。认错的代价是排队，认漏的代价是
+        // 往审阅里写字，所以这一条不管有没有核实都用。
+        id: "agy.artifact-review",
+        pattern: /Press ctrl\+r to review pending artifacts/i,
+        verified: false,
+        source:
+          "Antigravity CLI 1.5.17 二进制里的渲染字符串（2026-11-25）；没有在真画面上核对过（要真账号在计划模式或开了 Artifact Review 的回合里触发）",
+      },
     ],
   },
   grok: {

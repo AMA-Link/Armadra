@@ -190,6 +190,13 @@ const AGY_IDLE_DEFAULT = [
   "? for shortcuts                                                                                     Gemini 4 Neon · high",
 ].join("\n");
 
+// 来自 1.5.17 二进制里的渲染字符串（`Press ctrl+r to review pending artifacts.`），
+// 其余行是编的：计划模式下实施计划这个工件等人审，回合不结束。没有真画面。
+const AGY_ARTIFACT_REVIEW = [
+  "● Wrote implementation_plan.md",
+  "  Press ctrl+r to review pending artifacts.",
+].join("\n");
+
 const COPILOT_TRUST = [
   " Confirm folder trust",
   " Do you trust the files in this folder?",
@@ -379,6 +386,35 @@ describe("judgeScreen", () => {
     });
   });
 
+  it("Antigravity：有工件等人审（计划模式的实施计划）就拦，id 是 agy.artifact-review", () => {
+    for (const first of [true, false]) {
+      expect(judgeScreen(profile("agy"), AGY_ARTIFACT_REVIEW, first)).toEqual({
+        kind: "dialog",
+        dialog: "agy.artifact-review",
+      });
+    }
+    // 大小写不敏感，前后有别的字也认。
+    expect(
+      judgeScreen(
+        profile("agy"),
+        "  press CTRL+R to review pending artifacts.  (esc to cancel)",
+        false,
+      ),
+    ).toEqual({ kind: "dialog", dialog: "agy.artifact-review" });
+    // 提示没有了（审完、画面刷新）：不拦。
+    expect(judgeScreen(profile("agy"), "● Done", false)).toEqual({
+      kind: "clear",
+    });
+  });
+
+  it("agy 的工件审阅登记只来自二进制推断，所以标 verified: false", () => {
+    const entry = SCREEN_SIGNATURES.agy?.dialogs.find(
+      (dialog) => dialog.id === "agy.artifact-review",
+    );
+    expect(entry?.verified).toBe(false);
+    expect(entry?.source).toContain("1.5.17");
+  });
+
   it("Grok：目录信任与审批卡都拦，首投与平常一样；答完卡、输入框回来就放行", () => {
     for (const first of [true, false]) {
       expect(judgeScreen(profile("grok"), GROK_TRUST, first)).toEqual({
@@ -502,6 +538,7 @@ const GROK_PLAN_REVIEW_FOCUSED = [
  * （安装包字符串、本机画面或官方文档），其余是编的。不跑任何真 CLI。
  */
 const DIALOG_SCREENS: Readonly<Record<string, string>> = {
+  "agy.artifact-review": AGY_ARTIFACT_REVIEW,
   "agy.folder-trust": AGY_TRUST,
   "agy.approval": AGY_APPROVAL,
   "grok.folder-trust": GROK_TRUST,
