@@ -104,6 +104,14 @@ function markNodeRead(nodeId: string): void {
  * 终端节点（含 Agent，§5.1）。节点体就是 xterm；头部按 §3.4 排：
  * Agent chip → 退出码 → 状态胶囊 →（blocked 时）允许/拒绝 → 右侧图标钮。
  */
+const CARD_NOTICES: readonly string[] = [
+  "unconfirmed",
+  "mismatch",
+  "ambiguous",
+  "unverified_version",
+  "mode_excluded",
+];
+
 export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
   const t = useT();
   const setPanel = useCanvasStore((state) => state.setPanel);
@@ -355,6 +363,19 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
       >
         {t("node.answer")}
       </Button>
+    ) : null;
+  // 终端卡的常驻一句（契约 §127）：键没被看到生效，或设置开着却没代答的原因。
+  const cardNotice = agentStatus?.cardNotice;
+  const cardNoticeChip =
+    agent && cardNotice !== undefined && CARD_NOTICES.includes(cardNotice) ? (
+      <Badge
+        variant="outline"
+        size="sm"
+        data-slot="card-notice"
+        title={t(`node.cardNotice.${cardNotice}`)}
+      >
+        {t(`node.cardNotice.${cardNotice}`)}
+      </Badge>
     ) : null;
   const planButton =
     agent && !bare && canAnswer && need === "approval" && cardPending ? (
@@ -789,6 +810,7 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
               {bareApproval}
               {questionButton}
               {planButton}
+              {cardNoticeChip}
             </>
           ) : (
             <>
@@ -803,6 +825,7 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
               {bareApproval}
               {questionButton}
               {planButton}
+              {cardNoticeChip}
             </>
           )
         }
