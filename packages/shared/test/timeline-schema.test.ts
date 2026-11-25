@@ -203,3 +203,38 @@ describe("timeline schema", () => {
     ).toBe(false);
   });
 });
+
+describe("the approval item's core-written card fields", () => {
+  const approval = {
+    ...base,
+    id: "ap:p1",
+    kind: "approval",
+    pendingId: "p1",
+    protocol: "acp",
+    options: [{ optionId: "approve", name: "Approve", kind: "allow_once" }],
+    state: "pending",
+  };
+
+  it("parses a plan card with its body, and a card kind this build does not know", () => {
+    for (const card of ["plan", "future"]) {
+      const parsed = timelineItemSchema.safeParse({
+        ...approval,
+        card,
+        body: "# Plan",
+        bodyChars: 70_000,
+      });
+      expect(parsed.success, card).toBe(true);
+      expect(parsed.data).toMatchObject({ card, body: "# Plan" });
+    }
+  });
+
+  it("still rejects a card that is not a short string", () => {
+    expect(
+      timelineItemSchema.safeParse({ ...approval, card: "x".repeat(41) })
+        .success,
+    ).toBe(false);
+    expect(timelineItemSchema.safeParse({ ...approval, card: 3 }).success).toBe(
+      false,
+    );
+  });
+});

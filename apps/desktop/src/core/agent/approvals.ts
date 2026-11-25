@@ -117,6 +117,17 @@ export function acpOptionsOf(
 }
 
 /**
+ * The card kind the core wrote on an ACP approval (`request.card`; `plan` =
+ * plan approval from `holdExt`). The agent has no place in its request to put
+ * it: it is added beside `toolCall` and `options`, never taken from them.
+ */
+export function acpCardOf(request: unknown): string | undefined {
+  if (typeof request !== "object" || request === null) return undefined;
+  const card = (request as { card?: unknown }).card;
+  return typeof card === "string" ? card : undefined;
+}
+
+/**
  * The option an ACP answer selects. An explicit `optionId` must be one of the
  * agent's and agree with the decision (`allow_*` for allow, `reject_*` for
  * deny); without one, the first option of the decision's kind — the header's
@@ -367,9 +378,18 @@ export async function answerApproval(
     acpOptions === undefined
       ? undefined
       : acpOptionFor(acpOptions, decision, request.optionId);
+  // A plan approval is never answered by decision alone: the header's allow
+  // button, an old page or a bare API call would pick the first `allow_*`,
+  // which is "approve" — approving a plan nobody has read. The card names its
+  // option.
+  const needsOption =
+    acpOptions !== undefined &&
+    acpCardOf(existing.request) !== undefined &&
+    request.optionId === undefined;
   if (
     existing.answer === null &&
-    ((acpOptions !== undefined && acpOption === undefined) ||
+    (needsOption ||
+      (acpOptions !== undefined && acpOption === undefined) ||
       (acpOptions === undefined && request.optionId !== undefined))
   ) {
     audit(context, existing, {
@@ -383,7 +403,9 @@ export async function answerApproval(
     throw badRequest(
       acpOptions === undefined
         ? "optionId is only for ACP approvals"
-        : "optionId is not one of the agent's options for this decision",
+        : needsOption
+          ? "A plan approval needs an explicit optionId"
+          : "optionId is not one of the agent's options for this decision",
     );
   }
 

@@ -36,6 +36,7 @@ import { acpSwitching } from "../acp/routes";
 import { timelineDomainOf } from "../timeline";
 import { loadNode } from "../collab/nodes";
 import { canvasEnvironment } from "../agent/canvas-launch";
+import { pendingCardField } from "../agent/pending-cards";
 import { type StallKind, stalledOf } from "../agent/stalled";
 import {
   CredentialError,
@@ -1242,6 +1243,7 @@ export interface SessionSummary {
   readonly stateSource?: string;
   readonly unread: boolean;
   readonly pendingId?: string;
+  readonly pendingCard?: string;
   /**
    * `start` / `end` of the agent session the last hook event belonged to.
    * Rule 4 of the hook reducer clears `state` on both, so without this a
@@ -1361,6 +1363,7 @@ export function listSessions(
       ...(stateSource === null ? {} : { stateSource }),
       unread: Number(row.unread ?? 0) !== 0,
       ...(pendingId === null ? {} : { pendingId }),
+      ...pendingCardField(pendingId),
       ...(sessionPhase === null || sessionPhase === undefined
         ? {}
         : { sessionPhase }),

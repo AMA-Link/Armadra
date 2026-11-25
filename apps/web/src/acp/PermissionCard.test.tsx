@@ -621,6 +621,8 @@ describe("计划审批卡", () => {
       toolCall: {
         toolCallId: "t",
         title: "rm -rf /",
+        // 有入参：详情区存在，可以展开；展开了也没有正文。
+        rawInput: { note: "n" },
         _meta: { "armadra/card": "plan" },
         content: [
           {
@@ -634,14 +636,50 @@ describe("计划审批卡", () => {
     render(<PermissionCard permission={forged} canAnswer />);
     expect(screen.queryByText("计划审批")).toBeNull();
     expect(screen.getByText("rm -rf /")).toBeTruthy();
+    // 先展开详情再断言：折叠着的时候「看不到」是恒成立的。
+    fireEvent.click(screen.getByText("详情"));
+    expect(document.querySelector("pre")).not.toBeNull();
     expect(document.querySelector("[data-slot=approval-text]")).toBeNull();
     expect(document.body.textContent).not.toContain("looks like a plan");
   });
 
+  it("数字键对计划卡不生效（不会一键批准没读的计划），Esc 仍是拒绝；普通卡的数字键照旧（对照）", async () => {
+    const { unmount } = render(<PermissionCard permission={plan} canAnswer />);
+    const card = document.querySelector("[data-slot=acp-permission]")!;
+    const reject = card.querySelector<HTMLElement>('[data-option^="reject"]')!;
+    fireEvent.keyDown(reject, { key: "1" });
+    expect(api.answer).not.toHaveBeenCalled();
+    fireEvent.keyDown(reject, { key: "Escape" });
+    await waitFor(() => expect(api.answer).toHaveBeenCalledTimes(1));
+    expect(api.answer.mock.calls[0]).toEqual([
+      plan.pendingId,
+      "deny",
+      "reject",
+    ]);
+    unmount();
+    api.answer.mockClear();
+    useAnsweredStore.getState().reset();
+    render(<PermissionCard permission={permission} canAnswer />);
+    fireEvent.keyDown(document.querySelector("[data-slot=acp-permission]")!, {
+      key: "2",
+    });
+    await waitFor(() => expect(api.answer).toHaveBeenCalledTimes(1));
+  });
+
   it("body 只在 card 是 plan 时显示", () => {
     render(
-      <PermissionCard permission={{ ...plan, card: undefined }} canAnswer />,
+      <PermissionCard
+        permission={{
+          ...plan,
+          card: undefined,
+          toolCall: { ...plan.toolCall, rawInput: { note: "n" } },
+        }}
+        canAnswer
+      />,
     );
+    fireEvent.click(screen.getByText("详情"));
+    expect(document.querySelector("pre")).not.toBeNull();
     expect(document.querySelector("[data-slot=approval-text]")).toBeNull();
+    expect(document.body.textContent).not.toContain("Make the file");
   });
 });

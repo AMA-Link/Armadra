@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { rfc3339 } from "../workspaces/support";
 import {
+  acpCardOf,
   acpOptionFor,
   acpOptionsOf,
   ORPHAN_MINUTES,
@@ -41,6 +42,100 @@ beforeEach(() => {
 
 afterEach(() => {
   fixture.close();
+});
+
+describe("a plan approval is answered by an explicit option only", () => {
+  const options = [
+    { optionId: "approve", name: "Approve", kind: "allow_once" },
+    { optionId: "reject", name: "Reject", kind: "reject_once" },
+  ];
+  beforeEach(() => {
+    insertApproval(fixture.collab, {
+      pendingId: "p-plan",
+      nodeId,
+      workspaceId: fixture.workspaceId,
+      request: {
+        protocol: "acp",
+        toolCall: { toolCallId: "t" },
+        options,
+        card: "plan",
+      },
+    });
+    insertApproval(fixture.collab, {
+      pendingId: "p-plain",
+      nodeId,
+      workspaceId: fixture.workspaceId,
+      request: { protocol: "acp", toolCall: { toolCallId: "t2" }, options },
+    });
+  });
+
+  it('decision allow without an optionId is refused (it would pick the first allow_*, "approve")', async () => {
+    await expect(
+      answerApproval(fixture.collab, "p-plan", { decision: "allow" }),
+    ).rejects.toMatchObject({ status: 400 });
+    await expect(
+      answerApproval(fixture.collab, "p-plan", { decision: "deny" }),
+    ).rejects.toMatchObject({ status: 400 });
+    // Nothing was written: the card is still open.
+    expect(getApproval(fixture.collab, "p-plan").answer).toBeNull();
+    const audits = approvalAudit(fixture.collab, "p-plan");
+    expect(audits.at(-1)).toMatchObject({
+      accepted: false,
+      refusal: "option_invalid",
+    });
+  });
+
+  it("over HTTP too: a bare decision gets a 400, an explicit option goes through", async () => {
+    const bare = await fixture.call("POST", "/api/approvals/p-plan/answer", {
+      decision: "allow",
+    });
+    expect(bare.status).toBe(400);
+    const named = await fixture.call("POST", "/api/approvals/p-plan/answer", {
+      decision: "allow",
+      optionId: "approve",
+    });
+    expect(named.status).toBe(200);
+  });
+
+  it("any card kind this build writes needs the explicit option, not only plan", async () => {
+    insertApproval(fixture.collab, {
+      pendingId: "p-other-card",
+      nodeId,
+      workspaceId: fixture.workspaceId,
+      request: {
+        protocol: "acp",
+        toolCall: { toolCallId: "t3" },
+        options,
+        card: "future",
+      },
+    });
+    await expect(
+      answerApproval(fixture.collab, "p-other-card", { decision: "allow" }),
+    ).rejects.toMatchObject({ status: 400 });
+    const { approval } = await answerApproval(fixture.collab, "p-other-card", {
+      decision: "allow",
+      optionId: "approve",
+    });
+    expect(approval.answer).toBe("allow");
+  });
+
+  it("an ordinary ACP approval still answers by decision alone (the header buttons)", async () => {
+    const { approval } = await answerApproval(fixture.collab, "p-plain", {
+      decision: "allow",
+    });
+    expect(approval.answer).toBe("allow");
+  });
+
+  it("the agent cannot put the card on its own request: only the top-level card counts", () => {
+    expect(
+      acpCardOf({
+        protocol: "acp",
+        toolCall: { card: "plan", _meta: { card: "plan" } },
+      }),
+    ).toBeUndefined();
+    expect(acpCardOf({ card: "plan" })).toBe("plan");
+    expect(acpCardOf(null)).toBeUndefined();
+  });
 });
 
 describe("answering a permission request", () => {

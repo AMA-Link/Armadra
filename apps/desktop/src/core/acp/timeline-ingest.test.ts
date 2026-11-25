@@ -276,6 +276,49 @@ describe("脚本化的 session/update（AcpFeed）", () => {
     ).not.toContain("Make the file");
   });
 
+  it("计划审批结算之后：card 留着，body / bodyChars 去掉；取消同样", async () => {
+    await boot();
+    const { feed, rowId } = feedOf();
+    feed.beginTurn("1-1", { text: "go" });
+    const pending = (id: string) =>
+      ({
+        id,
+        sessionId: "s",
+        createdAt: 1,
+        options: [
+          { optionId: "approve", name: "Approve", kind: "allow_once" },
+          { optionId: "reject", name: "Reject", kind: "reject_once" },
+        ],
+        toolCall: { toolCallId: `t-${id}`, title: "Plan", kind: "switch_mode" },
+        origin: "ext",
+        card: "plan",
+        body: "# Plan\nsecret step\n",
+        bodyChars: 70_000,
+      }) as never;
+    feed.permission("p-a", pending("p-a"));
+    feed.permission("p-b", pending("p-b"));
+    feed.permissionSettled("p-a", pending("p-a"), {
+      by: "answer",
+      outcome: { outcome: "selected", optionId: "approve" },
+    });
+    feed.permissionSettled("p-b", pending("p-b"), {
+      by: "cancelled",
+      outcome: { outcome: "cancelled" },
+    });
+    const all = items(rowId).filter((i) => i.kind === "approval");
+    expect(all).toHaveLength(2);
+    for (const item of all) {
+      expect(item).toMatchObject({ card: "plan" });
+      expect(JSON.stringify(item)).not.toContain("secret step");
+      expect(item).not.toHaveProperty("body");
+      expect(item).not.toHaveProperty("bodyChars");
+    }
+    expect(all.map((i) => (i as { state: string }).state).sort()).toEqual([
+      "answered",
+      "cancelled",
+    ]);
+  });
+
   it("图片落成 blob，条目里没有 base64；工具中间状态与 diff 按 toolCallId 合并", async () => {
     await boot();
     const { feed, rowId } = feedOf();

@@ -54,6 +54,7 @@ import type { AcpFeed } from "./feed";
 import { OwnToolCalls } from "./own-tools";
 import type { AcpHostSession, AcpUpdateMeta } from "./host";
 import type { AcpMirror } from "./mirror";
+import { forgetPendingCard, notePendingCard } from "../agent/pending-cards";
 import { mirrorFrames } from "./mirror-import";
 import { TerminalFeedLink } from "./terminal-feed";
 import { AcpTerminals } from "./terminals";
@@ -987,10 +988,18 @@ export class AcpSession implements AcpSessionIdentity {
     this.permissions.set(pendingId, pending);
     this.byProcessId.set(pending.id, pendingId);
     this.workingSignalled = false;
+    // 计划审批：core 自己写的卡片种类，状态帧（`pendingCard`）与审批记录
+    // （`request.card`，答复时要求显式 `optionId`）都带上。
+    if (pending.card !== undefined) notePendingCard(pendingId, pending.card);
     this.feed?.permission(pendingId, pending);
     this.sink.signal(
       { signal: "permission", pendingId },
-      { protocol: "acp", toolCall: pending.toolCall, options: pending.options },
+      {
+        protocol: "acp",
+        toolCall: pending.toolCall,
+        options: pending.options,
+        ...(pending.card === undefined ? {} : { card: pending.card }),
+      },
     );
   }
 
@@ -1022,6 +1031,7 @@ export class AcpSession implements AcpSessionIdentity {
     if (pendingId === undefined) return;
     this.byProcessId.delete(pending.id);
     this.permissions.delete(pendingId);
+    forgetPendingCard(pendingId);
     this.feed?.permissionSettled(pendingId, pending, settlement);
     if (settlement.by === "cancelled") this.sink.cancelled(pendingId);
     // 答了（或被取消了）：回合还在就回到 working，直到它的 stopReason。

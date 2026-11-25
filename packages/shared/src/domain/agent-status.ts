@@ -38,6 +38,13 @@ export const agentStatusSchema = z.object({
   unread: z.boolean().default(false),
   sessionId: z.string().max(200).optional(),
   pendingId: z.string().max(200).optional(),
+  /**
+   * Which kind of card the pending approval is, written by the core only
+   * (`plan` = plan approval). The node header reads it so that no one-click
+   * allow is offered for a plan nobody has seen. Not a column: the core looks
+   * it up when it builds the frame.
+   */
+  pendingCard: z.string().max(40).optional(),
   /** The reporting hook presented a node token minted by this runtime instance. */
   verified: z.boolean().default(false),
   /** The row was read back from SQLite after a runtime restart. */

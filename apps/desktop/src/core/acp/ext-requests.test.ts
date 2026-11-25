@@ -184,6 +184,25 @@ describe("计划审批进审批挂起表", () => {
     expect(mapping.replies).toBe(0);
   });
 
+  it("方法名按自己的键查：登记表原型链上的键（哪怕是核实过的规格）不算登记过的方法", async () => {
+    const mapping = spec();
+    const table = Object.create({ _inherited: mapping }) as Record<
+      string,
+      AcpExtRequestSpec
+    >;
+    const rig = open({ extRequests: table });
+    await expect(rig.hold("_inherited", params)).rejects.toMatchObject({
+      code: -32601,
+    });
+    for (const name of ["__proto__", "constructor", "toString"]) {
+      await expect(rig.hold(name, params)).rejects.toMatchObject({
+        code: -32601,
+      });
+    }
+    expect(rig.held).toEqual([]);
+    expect(mapping.replies).toBe(0);
+  });
+
   it("不认识的方法与认不出的参数：回错误，不挂卡", async () => {
     const rig = open({ extRequests: { _x: spec() } });
     await expect(rig.hold("_y", params)).rejects.toMatchObject({
@@ -224,7 +243,8 @@ describe("计划审批进审批挂起表", () => {
     const card = rig.held[0] as AcpPendingPermission;
     expect(card.body?.length).toBe(MAX_PLAN_CHARS - 1);
     expect(card.body?.endsWith("x")).toBe(true);
-    expect(card.bodyChars).toBe(MAX_PLAN_CHARS + 500);
+    // 原文的字符数（UTF-16 码元，与截断阈值同一口径）：MAX - 1 个 x、两个码元的 😀、500 个 y。
+    expect(card.bodyChars).toBe(MAX_PLAN_CHARS + 501);
   });
 
   it("Agent 在审批请求里伪造 armadra/ 的键：入站就丢掉，卡片种类仍是 undefined", () => {
@@ -257,6 +277,70 @@ describe("计划审批进审批挂起表", () => {
 });
 
 describe("计划原文的清洗", () => {
+  it("没有终结符的 OSC（ESC ]）只删这两个字符，后面的计划正文原样留着", () => {
+    const { body } = plainBody("before\u001b]0;not closed\nstep 1\nstep 2");
+    expect(body).toBe("before0;not closed\nstep 1\nstep 2");
+    // 同一行里没有终结符也一样；超过 4096 字符的「OSC」也不整段吞掉。
+    expect(plainBody("a\u001b]b c").body).toBe("ab c");
+    const long = "z".repeat(5000);
+    expect(plainBody(`x\u001b]${long}\u0007y`).body).toBe(`x${long}y`);
+    // 不跨行：行尾之前没有终结符，终结符在下一行——不把中间那行吞掉。
+    expect(plainBody("a\u001b]0;t\nstep\u0007b").body).toBe("a0;t\nstepb");
+    // 有终结符、同一行、不超长的才整段删掉。
+    expect(plainBody("x\u001b]0;title\u0007y").body).toBe("xy");
+    expect(plainBody("x\u001b]0;title\u001b\\y").body).toBe("xy");
+  });
+
+  it("不可见字符补全：软连字符、ALM、蒙古文元音分隔符、行 / 段分隔符、不可见运算符、注释符、填充字符、标签字符都换成占位", () => {
+    const cases: Record<string, string> = {
+      "\u00ad": "[U+00AD]",
+      "\u061c": "[U+061C]",
+      "\u180e": "[U+180E]",
+      "\u2028": "[U+2028]",
+      "\u2029": "[U+2029]",
+      "\u2061": "[U+2061]",
+      "\u2064": "[U+2064]",
+      "\ufff9": "[U+FFF9]",
+      "\ufffb": "[U+FFFB]",
+      "\u115f": "[U+115F]",
+      "\u3164": "[U+3164]",
+      "\u{e0041}": "[U+E0041]",
+      "\u{e007f}": "[U+E007F]",
+      "\u206a": "[U+206A]",
+      "\u206f": "[U+206F]",
+      "\u1160": "[U+1160]",
+      "\uffa0": "[U+FFA0]",
+      "\u034f": "[U+034F]",
+      "\u200e": "[U+200E]",
+      "\u2069": "[U+2069]",
+    };
+    for (const [char, shown] of Object.entries(cases)) {
+      expect(plainBody(`a${char}b`).body).toBe(`a${shown}b`);
+    }
+    // 普通文字、CJK、表情不动。
+    expect(plainBody("计划 ✅ 😀 ok").body).toBe("计划 ✅ 😀 ok");
+  });
+
+  it("截断不切在 [U+XXXX] 占位中间；chars 不小于显示出来的那一份", () => {
+    // 占位让清洗后的文本比原文长：1 个零宽字符 → 8 个字符的占位，落在截断点上。
+    const raw = `${"x".repeat(MAX_PLAN_CHARS - 3)}\u200b${"y".repeat(50)}`;
+    const { body, chars } = plainBody(raw);
+    expect(body).toBe("x".repeat(MAX_PLAN_CHARS - 3));
+    expect(body).not.toContain("[U+");
+    expect(chars).toBeGreaterThanOrEqual(raw.length);
+    // 清洗后比原文长很多（大量零宽字符）：chars 取清洗后的长度，不会小于正文。
+    const many = "\u200b".repeat(MAX_PLAN_CHARS);
+    const result = plainBody(many);
+    expect(result.chars).toBeGreaterThanOrEqual(result.body.length);
+  });
+
+  it("bodyChars 按原文计数：清洗掉的字符也算在原文里", () => {
+    const raw = `\u001b[31m${"x".repeat(MAX_PLAN_CHARS + 10)}\u001b[0m`;
+    const { body, chars } = plainBody(raw);
+    expect(body.length).toBe(MAX_PLAN_CHARS);
+    expect(chars).toBe(raw.length);
+  });
+
   it("去掉 ESC 序列与控制字符，留换行与 Tab；双向控制与零宽字符换成可见占位", () => {
     const raw =
       "a\u001b[31mred\u001b[0m\tb\u0007\u0008c\r\nd\u001b]0;title\u0007e\u202Eevil\u2066x\u200Bz\ufeff\u007f";

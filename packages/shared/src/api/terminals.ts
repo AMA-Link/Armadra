@@ -196,6 +196,13 @@ export const sessionSummarySchema = z.object({
   unread: z.boolean().default(false),
   pendingId: z.string().optional(),
   /**
+   * The kind of card the pending approval is (`plan` = plan approval), written
+   * by the core only. Same field as on the `agent.status` frame: this list
+   * rebuilds the mirror after a reload, and without it the header would offer a
+   * one-click allow for a plan until the next frame.
+   */
+  pendingCard: z.string().max(40).optional(),
+  /**
    * `start` / `end` of the agent session the last hook event belonged to. The
    * hook reducer clears `state` on both, so this is what tells a freshly
    * started CLI (idle) from one that has exited (no longer an agent).

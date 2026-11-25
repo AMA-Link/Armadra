@@ -397,12 +397,14 @@ export class AcpFeed {
       (state) => {
         const item = state.items[`ap:${pendingId}`];
         if (item?.kind !== "approval" || item.state !== "pending") return [];
+        // 结算之后计划正文就没用了（卡片收成一行结果）：不把 64K 的文本一直留在时间线里。
+        const { body: _body, bodyChars: _bodyChars, ...settled } = item;
         return [
           {
             seq: state.seq + 1,
             op: "put",
             item: {
-              ...item,
+              ...settled,
               state: outcome === "cancelled" ? "cancelled" : "answered",
               ...(optionId === undefined ? {} : { answer: { optionId } }),
             },

@@ -1573,6 +1573,10 @@
                                           "type": "string",
                                           "maxLength": 200
                                         },
+                                        "pendingCard": {
+                                          "type": "string",
+                                          "maxLength": 40
+                                        },
                                         "verified": {
                                           "type": "boolean",
                                           "default": false
@@ -3284,7 +3288,8 @@
                                                         }
                                                       },
                                                       "card": {
-                                                        "const": "plan"
+                                                        "type": "string",
+                                                        "maxLength": 40
                                                       },
                                                       "body": {
                                                         "type": "string",
@@ -17846,6 +17851,10 @@
                       },
                       "pendingId": {
                         "type": "string"
+                      },
+                      "pendingCard": {
+                        "type": "string",
+                        "maxLength": 40
                       },
                       "sessionPhase": {
                         "enum": ["start", "end"],
@@ -85680,7 +85689,8 @@
                                 }
                               },
                               "card": {
-                                "const": "plan"
+                                "type": "string",
+                                "maxLength": 40
                               },
                               "body": {
                                 "type": "string",
@@ -87712,7 +87722,8 @@
                                     }
                                   },
                                   "card": {
-                                    "const": "plan"
+                                    "type": "string",
+                                    "maxLength": 40
                                   },
                                   "body": {
                                     "type": "string",
@@ -89387,7 +89398,8 @@
                                 }
                               },
                               "card": {
-                                "const": "plan"
+                                "type": "string",
+                                "maxLength": 40
                               },
                               "body": {
                                 "type": "string",

@@ -451,6 +451,9 @@ export function PermissionCard({
       }
       return;
     }
+    // 数字键一键选项：计划审批（core 写的 `card`）没有——一个手滑的数字就批准了没读的计划。
+    // Esc 仍然是拒绝；批准只能点「允许」，或焦点在它上面按 Enter。
+    if (permission.card !== undefined) return;
     if (!/^[1-9]$/.test(event.key)) return;
     const option = options[Number(event.key) - 1];
     if (option === undefined) return;

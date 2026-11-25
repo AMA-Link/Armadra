@@ -68,6 +68,7 @@ import { NodeShell, type NodeShellProps } from "./NodeShell";
 import { NodeStatusPopover } from "./NodeStatusPopover";
 import type { NodeBodyProps } from "./registry";
 import { answerApproval } from "./runtime-extras";
+import { headerApprovalOf } from "@/acp/plan-card";
 import {
   TERMINAL_NODE_ATTRIBUTE,
   registerTerminalFind,
@@ -290,15 +291,36 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
         : null;
   const pendingId = agentStatus?.pendingId;
   const canAnswer = useCanAnswer(workspaceId ?? "", sessionId);
+  // 挂起的审批不是普通审批（计划审批，core 写在状态帧的 `pendingCard` 上）：头部不给
+  // 一键允许 / 拒绝——没看到计划就批准不是人要的；按钮换成「跳到卡片」。读状态帧，
+  // 不读时间线：它与 `pendingId` 同一帧到。
+  const headerApproval = headerApprovalOf(agentStatus);
+  const cardPending = headerApproval.kind === "card";
   const approval =
-    agent && !bare && canAnswer && need === "approval" && pendingId
+    agent &&
+    !bare &&
+    canAnswer &&
+    need === "approval" &&
+    pendingId &&
+    !cardPending
       ? {
           pendingId,
           onAnswer: (decision: "allow" | "deny") => {
             // 先收起按钮：Runtime 的下一条 `agent.status` 未必立刻到，
             // 让用户对着一个已经答过的请求再点一次是最糟的。
-            useAgentStatusStore.getState().resolveApproval(pendingId);
-            void answerApproval(workspaceId ?? "", pendingId, decision);
+            const statusKey = useAgentStatusStore
+              .getState()
+              .resolveApproval(pendingId);
+            // 没答上就把头部按钮放回去并说一声（回合还卡在这条审批上），与审批卡
+            // 自己的 `answerPermission` 一个做法。
+            answerApproval(workspaceId ?? "", pendingId, decision).catch(() => {
+              if (statusKey !== undefined) {
+                useAgentStatusStore
+                  .getState()
+                  .reopenApproval(statusKey, pendingId);
+              }
+              toast.error(t("acp.permission.failed"));
+            });
           },
         }
       : undefined;
@@ -321,6 +343,42 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
         data-slot="bare-approval"
       >
         {t("node.answer")}
+      </Button>
+    ) : null;
+  const planButton =
+    agent && !bare && canAnswer && need === "approval" && cardPending ? (
+      <Button
+        size="xs"
+        variant="outline"
+        data-slot="open-plan-approval"
+        onClick={() => {
+          // 折叠着的节点先展开，卡片才在 DOM 里；然后按 pendingId 找到那一张卡。
+          if (node.collapsed === true) {
+            useCanvasStore.getState().setCollapsed(id, false);
+          }
+          const reveal = () => {
+            const root = document.querySelector(
+              `[${TERMINAL_NODE_ATTRIBUTE}="${id}"]`,
+            );
+            const card = pendingId
+              ? root?.querySelector<HTMLElement>(
+                  `[data-pending-id="${CSS.escape(pendingId)}"]`,
+                )
+              : null;
+            card?.scrollIntoView({ block: "nearest" });
+            // 焦点放在「拒绝」上：误按 Enter 也只是拒绝，不会批准一份没读的计划
+            // （数字键对计划卡不生效，见 `PermissionCard.onKeyDown`）。
+            (
+              card?.querySelector<HTMLElement>('[data-option^="reject"]') ??
+              card
+            )?.focus();
+          };
+          requestAnimationFrame(reveal);
+        }}
+      >
+        {headerApproval.kind === "card" && headerApproval.card === "plan"
+          ? t("acp.permission.planTitle")
+          : t("node.answer")}
       </Button>
     ) : null;
   const questionButton =
@@ -719,6 +777,7 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
               {awaitingDriver}
               {bareApproval}
               {questionButton}
+              {planButton}
             </>
           ) : (
             <>
@@ -732,6 +791,7 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
               {awaitingDriver}
               {bareApproval}
               {questionButton}
+              {planButton}
             </>
           )
         }

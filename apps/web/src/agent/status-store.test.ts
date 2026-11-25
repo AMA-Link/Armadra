@@ -237,6 +237,55 @@ describe("agent status mirror", () => {
     expect(store().statuses[scoped(NODE)]!.state).toBe("working");
   });
 
+  // 刷新后头部不能又出一键允许：会话列表带 `pendingCard`，hydrate 要拷过来。
+  it("restores the pending card kind a reload would otherwise drop", () => {
+    store().hydrate(
+      [
+        {
+          nodeId: NODE,
+          boardId: "board",
+          sessionId: "s1",
+          kind: "terminal",
+          title: "grok",
+          cwd: "/repo",
+          agentId: "claude",
+          state: "blocked",
+          pendingId: "p1",
+          pendingCard: "plan",
+          unread: false,
+          updatedAt: at(0),
+          alive: true,
+        } as SessionSummary,
+      ],
+      WORKSPACE,
+    );
+    expect(store().statuses[scoped(NODE)]).toMatchObject({
+      pendingId: "p1",
+      pendingCard: "plan",
+    });
+    // 没有的就不凭空多一个。
+    store().hydrate(
+      [
+        {
+          nodeId: "other",
+          boardId: "board",
+          sessionId: "s2",
+          kind: "terminal",
+          title: "x",
+          cwd: "/repo",
+          agentId: "claude",
+          state: "blocked",
+          pendingId: "p2",
+          unread: false,
+          updatedAt: at(0),
+          alive: true,
+        } as SessionSummary,
+      ],
+      WORKSPACE,
+    );
+    expect(store().statuses[scoped("other")]).not.toHaveProperty("pendingCard");
+  });
+
   // 刷新后来源徽标要还在：`agent.status` 帧只描述下一个回合，重建镜像的
   // 是这份会话列表（协作通道 §3.2）。
   it("restores the state source a reload would otherwise drop", () => {
