@@ -460,9 +460,12 @@ export function launchCommand(
   const mode = promptModeFor(settings, agentId);
   if (mode === "stdin-after-start") return program;
   const flag = PROFILES[base]?.promptFlag;
-  return flag === undefined || mode !== "flag-prompt"
-    ? `${program} ${profileSeparator(base)}${quote(text)}`
-    : `${program} ${flag} ${quote(text)}`;
+  if (mode === "flag-prompt" && flag !== undefined) {
+    return `${program} ${flag} ${quote(text)}`;
+  }
+  // 分隔符只属于 `argv`：别的模式（含没有旗标可用的 flag-prompt）的 prompt 不是位置
+  // 参数，`--` 加上去会让 CLI 把它当成位置参数。
+  return `${program} ${mode === "argv" ? profileSeparator(base) : ""}${quote(text)}`;
 }
 
 /**
