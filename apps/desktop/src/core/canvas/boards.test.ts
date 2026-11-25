@@ -34,10 +34,9 @@ describe("board rows", () => {
     deleteBoard(core.database, workspaceId, extra.id);
     const remaining = listBoards(core.database, workspaceId);
     expect(remaining).toHaveLength(1);
-    // A workspace always keeps at least one board.
-    expect(() =>
-      deleteBoard(core.database, workspaceId, remaining[0]?.id ?? ""),
-    ).toThrowError(/at least one board/);
+    // The last board goes too, leaving the workspace without boards.
+    deleteBoard(core.database, workspaceId, remaining[0]?.id ?? "");
+    expect(listBoards(core.database, workspaceId)).toEqual([]);
   });
 
   it("bounds the name and the order", () => {

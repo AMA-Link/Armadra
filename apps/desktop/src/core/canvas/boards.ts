@@ -1,12 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { getWorkspace } from "../workspaces/table";
-import {
-  badRequest,
-  conflict,
-  notFound,
-  rfc3339,
-  uuidV7,
-} from "../workspaces/support";
+import { badRequest, notFound, rfc3339, uuidV7 } from "../workspaces/support";
 
 /**
  * The `boards` table: listing, naming, creating, reordering and deleting the
@@ -182,8 +176,8 @@ export function updateBoard(
 }
 
 /**
- * A workspace always keeps at least one board: the canvas has no empty state,
- * and deleting the last one would leave a workspace that cannot be opened.
+ * Any board can go, the last one included: a workspace may have no boards, and
+ * the canvas shows an empty state until one is created (contract §36).
  */
 export function deleteBoard(
   database: DatabaseSync,
@@ -191,12 +185,6 @@ export function deleteBoard(
   boardId: string,
 ): void {
   getBoard(database, workspaceId, boardId);
-  const total = database
-    .prepare("SELECT COUNT(*) AS total FROM boards WHERE workspace_id = ?")
-    .get(workspaceId) as { total: number };
-  if (Number(total.total) <= 1) {
-    throw conflict("A workspace must keep at least one board");
-  }
   database
     .prepare("DELETE FROM boards WHERE id = ? AND workspace_id = ?")
     .run(boardId, workspaceId);
