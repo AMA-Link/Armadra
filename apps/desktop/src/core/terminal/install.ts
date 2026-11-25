@@ -1063,6 +1063,16 @@ export function install(
       });
     },
   );
+  // 轮末（hook / ACP 报 idle 或 waiting）放掉该节点 Agent 自己持有的驱动租约，
+  // 排队的投递不必再等 120 秒空闲窗口（#1011）。人持有的租约不动。
+  const offTurnEnd = context.bus.on("workspace.event", ({ event }) => {
+    if (event.type !== "agent.status") return;
+    const status = (event as { status?: { nodeId?: unknown; state?: unknown } })
+      .status;
+    if (status?.state !== "idle" && status?.state !== "waiting") return;
+    if (typeof status.nodeId !== "string") return;
+    manager.releaseAgentDrive(status.nodeId);
+  });
   const offArchived = context.bus.on(
     "workspace.archived",
     ({ workspaceId }) => {
@@ -1090,6 +1100,7 @@ export function install(
     stop: async (reason?: StopReason) => {
       offRemoving();
       offArchived();
+      offTurnEnd();
       // Withdrawn before the panes go: a verb that reached a bridge over a
       // manager that is shutting down would be told a session is missing
       // rather than that there is nothing to talk to.
