@@ -61,6 +61,9 @@ export const SCOPE_MANAGE = "automation:manage";
 /** 载荷上限，和 Host 的 `MaxAutomationPayloadBytes` 同一个数。 */
 export const MAX_PAYLOAD_BYTES = 64 * 1024;
 
+/** 一次最多问多少个节点。 */
+export const MAX_CHANNEL_QUERY = 200;
+
 const ID_PATTERN = /^[A-Za-z0-9_.-]{1,128}$/;
 
 /** 已验证会话自己的身份与授权位。没有一个字段来自客户端提交的内容。 */
@@ -85,6 +88,11 @@ export interface ScheduleServiceOptions {
    * 而不是客户端说了算——客户端说的那个数可以是它上次看到的那个。
    */
   readonly generationOf?: (sessionId: string) => number | undefined;
+  /** 这些节点有没有状态通道（终端域的事实，向导置灰用）；没有这个口就答空。 */
+  readonly channelsOf?: (
+    workspaceId: string,
+    nodeIds: readonly string[],
+  ) => Record<string, string | null>;
 }
 
 const denied = (why = "这台设备没有这项授权"): ScheduleError =>
@@ -97,6 +105,9 @@ export class ScheduleService implements Authorizer {
   readonly hostId: string;
   private readonly clock: () => number;
   private readonly generationOf: (sessionId: string) => number | undefined;
+  private readonly channelsOf: NonNullable<
+    ScheduleServiceOptions["channelsOf"]
+  >;
 
   constructor(options: ScheduleServiceOptions) {
     this.store = options.store;
@@ -105,6 +116,7 @@ export class ScheduleService implements Authorizer {
     this.hostId = options.hostId;
     this.clock = options.clock ?? (() => Date.now());
     this.generationOf = options.generationOf ?? (() => undefined);
+    this.channelsOf = options.channelsOf ?? (() => ({}));
   }
 
   /* -------------------------------- 权限 ----------------------------------- */
@@ -422,6 +434,18 @@ export class ScheduleService implements Authorizer {
   ): { plans: PlanSnapshot[]; nextId: string; hasMore: boolean } {
     this.authorize(caller, SCOPE_READ);
     return this.engine.listPlans(caller.workspaceId, after, limit);
+  }
+
+  /** 一批节点有没有状态通道；最多问 {@link MAX_CHANNEL_QUERY} 个，只答本工作空间的。 */
+  targetChannels(
+    caller: Caller,
+    nodeIds: readonly string[],
+  ): Record<string, string | null> {
+    this.authorize(caller, SCOPE_READ);
+    return this.channelsOf(
+      caller.workspaceId,
+      nodeIds.filter((id) => ID_PATTERN.test(id)).slice(0, MAX_CHANNEL_QUERY),
+    );
   }
 
   listRuns(

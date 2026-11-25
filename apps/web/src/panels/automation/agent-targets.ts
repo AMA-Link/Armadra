@@ -36,6 +36,22 @@ export function definitionLacksChannel(
   return definition !== undefined && !definition.capabilities.includes("hooks");
 }
 
+/**
+ * 把 core 按节点答的通道（`GET /api/automations/target-channels`）叠到选项上：
+ * 答 `null` 的节点（Windows、读不到会话记录、远程）也置灰。没答的（还在问、问失败、
+ * core 不认得这个节点）保持原样——不知道不置灰，启用时 core 的探测仍会拦。
+ */
+export function withChannels(
+  options: readonly AgentTargetOption[],
+  channels: Readonly<Record<string, string | null>> | undefined,
+): AgentTargetOption[] {
+  return options.map((option) =>
+    channels !== undefined && channels[option.nodeId] === null
+      ? { ...option, noStateChannel: true }
+      : option,
+  );
+}
+
 export function agentTargets(
   nodes: readonly CanvasNode[] | undefined,
 ): AgentTargetOption[] {

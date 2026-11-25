@@ -25,7 +25,7 @@ import { useAccess } from "@/app/use-access";
 import { isAbsoluteHostPath } from "@/lib/host-path";
 import { runtimeApi } from "@/api/client";
 import { useCanvasStore } from "@/store/canvas-store";
-import { agentTargets, frozenLaunch } from "./agent-targets";
+import { agentTargets, frozenLaunch, withChannels } from "./agent-targets";
 import { validCron, validTimezone } from "./model";
 import { TimezonePicker } from "./TimezonePicker";
 import { translateNativeRecurrence } from "./native-recurrence";
@@ -256,7 +256,19 @@ export function CreatePlanForm({
     frozenTarget?.kind === "agent" ? frozenTarget.coldStart : false,
   );
   const nodes = useCanvasStore((store) => store.document?.nodes);
-  const agents = React.useMemo(() => agentTargets(nodes), [nodes]);
+  const staticAgents = React.useMemo(() => agentTargets(nodes), [nodes]);
+  // 通道按节点判（Windows、读不到会话记录的节点），问 core；还没答或问失败就不置灰。
+  const nodeIdsKey = staticAgents.map((option) => option.nodeId).join(",");
+  const channels = useQuery({
+    queryKey: automationKeys.channels(workspaceId, nodeIdsKey),
+    queryFn: () => client.targetChannels(nodeIdsKey.split(",")),
+    enabled: nodeIdsKey !== "",
+    retry: false,
+  });
+  const agents = React.useMemo(
+    () => withChannels(staticAgents, channels.data),
+    [staticAgents, channels.data],
+  );
   const agentNode = nodes?.find((node) => node.id === agentNodeId);
   const agentOption = agents.find((option) => option.nodeId === agentNodeId);
   const [mode, setMode] = React.useState<"existing" | "new">("existing");
@@ -622,7 +634,14 @@ export function CreatePlanForm({
           <>
             {field(
               t("automation.wizard.agentNode"),
-              <Select value={agentNodeId} onValueChange={setAgentNodeId}>
+              <Select
+                value={agentNodeId}
+                onValueChange={setAgentNodeId}
+                // 通道会变（grok 读不到会话记录、节点换了主机）：打开下拉时重问一次。
+                onOpenChange={(open) => {
+                  if (open && nodeIdsKey !== "") void channels.refetch();
+                }}
+              >
                 <SelectTrigger size="sm" className="w-full">
                   <SelectValue />
                 </SelectTrigger>

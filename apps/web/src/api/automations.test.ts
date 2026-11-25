@@ -120,6 +120,20 @@ describe("AutomationApi 的请求", () => {
     expect(String(calls[0]?.init?.body)).not.toContain("configBase64");
   });
 
+  it("按节点问状态通道：只发合法 id，答复里的 null 原样带回，空列表不发请求", async () => {
+    const calls = serve(200, { channels: { a: "transcript", b: null } });
+    const api = new AutomationApi({ workspaceId: "ws-1" });
+    expect(await api.targetChannels(["a", "b", "bad id"])).toEqual({
+      a: "transcript",
+      b: null,
+    });
+    expect(calls[0]?.url).toContain(
+      "/api/automations/target-channels?workspaceId=ws-1&nodeIds=a%2Cb",
+    );
+    expect(await api.targetChannels([])).toEqual({});
+    expect(calls).toHaveLength(1);
+  });
+
   it("激活要求一个 32 字节的摘要，短了就在发出去之前被拒", async () => {
     serve(200, {});
     const api = new AutomationApi({ workspaceId: "ws-1" });

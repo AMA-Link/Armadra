@@ -180,6 +180,17 @@ export class AutomationApi {
         },
       },
       {
+        // 计划向导按节点置灰：哪些 Agent 节点此刻没有状态通道（契约 §4.1）。
+        method: "GET",
+        pattern: /^\/api\/automations\/target-channels$/,
+        handler: (request, caller) => ({
+          channels: service.targetChannels(
+            caller(false),
+            (request.query.get("nodeIds") ?? "").split(",").filter(Boolean),
+          ),
+        }),
+      },
+      {
         method: "GET",
         pattern: /^\/api\/automations\/command-sessions$/,
         handler: (request, caller) => {

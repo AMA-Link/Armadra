@@ -1,7 +1,11 @@
 import { NON_INJECTED_AGENT_IDS } from "@armadra/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AgentFixture, agentFixture, callerFor } from "../agent/fixture";
-import { registerNodeChannelGate } from "../agent/registry";
+import {
+  markChannelUnbound,
+  registerNodeChannelGate,
+  registerStateRefresher,
+} from "../agent/registry";
 import { freeLease } from "../drive/lease";
 import { VERBS, controlDispatcher, type ControlOutcome } from "./control";
 import { SendPump } from "./send-pump";
@@ -279,6 +283,47 @@ describe("the gate chain", () => {
           outcome: "queued",
           reason: "TARGET_STARTING",
         });
+      } finally {
+        off();
+      }
+    });
+
+    // 槽读不了会话记录（unbound）时通道按节点不成立：门看的是 `channelUnbound(节点)`，
+    // 不是这个 provider 的静态事实。
+    it("treats a node whose channel is marked unbound as having none, and waits again once it is bound", async () => {
+      const off = registerNodeChannelGate(
+        "codex",
+        (facts) => facts.unbound !== true,
+      );
+      try {
+        target({ stateSource: undefined, state: "starting" });
+        markChannelUnbound(peer, true);
+        expect(refusal(await send()).code).toBe("TARGET_STATE_UNVERIFIED");
+        markChannelUnbound(peer, false);
+        expect(ok(await send())).toMatchObject({
+          outcome: "queued",
+          reason: "TARGET_STARTING",
+        });
+      } finally {
+        markChannelUnbound(peer, false);
+        off();
+      }
+    });
+
+    // 看状态之前先让节点的槽同步读一次：轮询间隔里刚写下的状态不能被当成旧的。
+    it("lets the node's state reader refresh before the target is observed", async () => {
+      let calls = 0;
+      const off = registerStateRefresher(peer, () => {
+        calls += 1;
+        // 读取槽这一读读到了「正在干活」：之后看到的就是 working。
+        target({ state: "working" });
+      });
+      try {
+        target({ state: "idle" });
+        const outcome = ok(await send());
+        expect(calls).toBeGreaterThan(0);
+        expect(outcome.outcome).not.toBe("delivered");
+        expect(fixture.terminal.submits).toHaveLength(0);
       } finally {
         off();
       }

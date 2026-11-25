@@ -141,6 +141,46 @@ export class TerminalDispatcher implements Dispatcher {
   }
 
   /**
+   * 这些节点此刻有没有状态通道（计划向导据此给节点置灰，契约 §4.1）。
+   *
+   * 与 {@link supportsAgent} 的通道判断同一份事实：节点上这家 CLI 的通道按节点算——
+   * 远程节点、Windows、读不到会话记录（`unbound`）的节点没有。不在这个工作空间、不是
+   * Agent 节点的省略不答；`custom:` 条目而设置取不到也省略（不拿空设置去猜）。
+   * 值是通道的来源名，没有通道是 `null`。
+   */
+  stateChannels(
+    workspaceId: string,
+    nodeIds: readonly string[],
+  ): Record<string, string | null> {
+    const given = this.context.settings?.();
+    const settings = given ?? NO_CUSTOM_AGENTS;
+    const answer: Record<string, string | null> = {};
+    for (const id of nodeIds) {
+      const node = loadNode(this.context.database, id);
+      const agentId = node?.agentId ?? "";
+      if (
+        node === undefined ||
+        node.workspaceId !== workspaceId ||
+        agentId === ""
+      ) {
+        continue;
+      }
+      if (given === undefined && agentId.startsWith("custom:")) continue;
+      const known = loadSession(this.context.database, id);
+      const remote =
+        known === undefined
+          ? false
+          : (this.context.terminals()?.remote?.(known.sessionId) ?? false);
+      answer[id] =
+        nodeStateChannel(baseAgent(settings, agentId), {
+          remote,
+          unbound: channelUnbound(id),
+        }) ?? null;
+    }
+    return answer;
+  }
+
+  /**
    * Agent 目标的探测。
    *
    * 节点存在、是这个 Agent、当前有一个活着的会话，并且那个会话不在等人、输入
