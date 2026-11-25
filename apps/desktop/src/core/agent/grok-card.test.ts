@@ -35,6 +35,15 @@ describe("parseGrokApprovalCard", () => {
     );
   });
 
+  it("矮窗格里 grok 省掉选项之后的 ┃ 收口行（e2e 实测）：同一张卡，哈希相同", () => {
+    const short = parseGrokApprovalCard(fixture("default-80-nobar"));
+    expect(short?.allow).toEqual({ digit: "3", label: "Yes, proceed" });
+    expect(short?.reject.digit).toBe("4");
+    expect(short?.hash).toBe(
+      parseGrokApprovalCard(fixture("default-80"))?.hash,
+    );
+  });
+
   it("超长命令折行（┆ 续行）仍能认", () => {
     const card = parseGrokApprovalCard(fixture("longcmd-80"));
     expect(card?.allow.digit).toBe("3");

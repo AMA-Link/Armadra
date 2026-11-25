@@ -72,10 +72,10 @@ export function parseGrokApprovalCard(
   if (at < 0 || !FOOTER.test(rows[at] ?? "")) return undefined;
   at -= 1;
   while (at >= 0 && rows[at] === "") at -= 1;
-  // 选项之后的收口行。
-  if (at < 0 || !BAR_BLANK.test(rows[at] ?? "")) return undefined;
-  const closeAt = at;
-  at -= 1;
+  // 选项之后的收口行：终端够高时有一行 `┃`，矮的窗格里 grok 会省掉它（e2e 里实测）。
+  // 有没有它都是同一张卡，哈希不含它。
+  if (at >= 0 && BAR_BLANK.test(rows[at] ?? "")) at -= 1;
+  const lastOption = at;
 
   // 选项行必须连续；一出现不是选项的行就到头。
   const options: GrokCardOption[] = [];
@@ -135,7 +135,7 @@ export function parseGrokApprovalCard(
     return undefined;
   }
 
-  const inside = rows.slice(top, closeAt + 1).map(normalize);
+  const inside = rows.slice(top, lastOption + 1).map(normalize);
   const body = bodyRows
     .filter((row) => !BAR_BLANK.test(row))
     .slice(1)
