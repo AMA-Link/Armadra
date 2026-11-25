@@ -231,15 +231,15 @@ describe("Agent 目标的探测", () => {
     expect((await dispatcher.supports(target)).state).toBe("unsupported");
   });
 
-  // 没有状态通道的 CLI（grok 的 G1）：回合进行中也没有任何上报，状态为空不能
+  // 没有状态通道的 CLI（agy 与 G1 时的 grok）：回合进行中也没有任何上报，状态为空不能
   // 当成「空闲」——计划任务的正文加回车会落进正在工作的 pane。
-  it("没有状态通道的 Agent（grok）：不管状态是什么，都是不支持，不写", async () => {
+  it("没有状态通道的 Agent（agy）：不管状态是什么，都是不支持，不写", async () => {
     const { database, dispatcher, written } = setUp();
     database
       .prepare("UPDATE nodes SET data_json = ? WHERE id = 'node-1'")
-      .run(JSON.stringify({ agent: { id: "grok" } }));
+      .run(JSON.stringify({ agent: { id: "agy" } }));
     const target = agentTargetOf();
-    target.agentLaunch!.agentId = "grok";
+    target.agentLaunch!.agentId = "agy";
     for (const value of [null, "idle", "working"]) {
       state(database, value);
       expect(await dispatcher.supports(target)).toEqual({

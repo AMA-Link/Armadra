@@ -20,11 +20,12 @@ function terminal(id: string, agentId: string, ssh = false): CanvasNode {
 }
 
 describe("计划任务的目标", () => {
-  it("没有状态通道的内置 CLI（grok、agy）标记出来，有通道的不标", () => {
-    for (const id of ["grok", "agy"]) expect(lacksStateChannel(id)).toBe(true);
+  it("没有状态通道的内置 CLI（agy）标记出来，有通道的不标（grok 自 G2 起有会话文件通道）", () => {
+    expect(lacksStateChannel("agy")).toBe(true);
     for (const id of [
       "claude",
       "codex",
+      "grok",
       "opencode",
       "pi",
       "omp",
@@ -40,8 +41,8 @@ describe("计划任务的目标", () => {
   it("目标列表带着这个标记，远程与没有 Agent 的终端照旧不列", () => {
     const options = agentTargets([
       terminal("a", "claude"),
-      terminal("b", "grok"),
-      terminal("c", "grok", true),
+      terminal("b", "agy"),
+      terminal("c", "agy", true),
     ]);
     expect(options.map((o) => [o.nodeId, o.noStateChannel])).toEqual([
       ["a", false],
