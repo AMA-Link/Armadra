@@ -119,7 +119,7 @@ export const contextAsIn = (context, nodeId, verb, ...args) =>
 
 /* --------------------------------- ACP ---------------------------------- */
 
-/** 六家的 ACP 入口（与 `core/acp/adapters.ts` 同表；`adapters.test.ts` 守着那一份）。 */
+/** 各家的 ACP 入口（与 `core/acp/adapters.ts` 同表；`adapters.test.ts` 守着那一份）。 */
 export const ACP_PROGRAMS = {
   claude: "claude-agent-acp",
   codex: "codex-acp",
@@ -127,6 +127,7 @@ export const ACP_PROGRAMS = {
   pi: "ama", // `ama --mode acp --bridge pi`
   omp: "omp",
   copilot: "copilot",
+  agy: "agy", // `agy acp`
 };
 
 /**

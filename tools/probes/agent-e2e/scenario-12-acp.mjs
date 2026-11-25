@@ -1,6 +1,6 @@
 // 场景 12：六家 ACP（设计 acp-session-view §11，D13）。C 档。
 //
-// 六家（claude、codex、opencode、pi、omp、copilot）各起一个以 ACP 驱动的节点，
+// 七家（claude、codex、opencode、pi、omp、copilot、agy）各起一个以 ACP 驱动的节点，
 // 按这个顺序以 `peer` 连成环，然后：
 //
 //   1. 预检：每家的 ACP 入口装了没有（`acpAdapterInstalled`）、凭据能不能只复制
@@ -74,6 +74,7 @@ import { DatabaseSync } from "node:sqlite";
 
 import { CREDENTIAL_VARIABLES, probeHome } from "../probe-home.mjs";
 
+import { geminiFingerprint } from "./agy-fingerprint.mjs";
 import { stepTrustDialog } from "./trust-dialog.mjs";
 import {
   ACP_PROGRAMS,
@@ -136,7 +137,15 @@ async function sessionLogOf(api, rowId) {
   return { entries, head };
 }
 
-const ALL_FAMILIES = ["claude", "codex", "opencode", "pi", "omp", "copilot"];
+const ALL_FAMILIES = [
+  "claude",
+  "codex",
+  "opencode",
+  "pi",
+  "omp",
+  "copilot",
+  "agy",
+];
 /** `ARMADRA_E2E_ACP_ONLY=claude,opencode`：只跑其中几家（其余记 skipped）。 */
 const FAMILIES = ALL_FAMILIES;
 export const CHOSEN = new Set(
@@ -386,6 +395,26 @@ export function realPlan(scratch, shims, project) {
     }
   }
 
+  /*
+   * Antigravity：`agy acp`。登录态在用户自己的 `~/.gemini` 里，探针不读、不复制
+   * 任何凭据，所以与 Claude 一样用真实 HOME；Armadra 对它只经 ACP 的
+   * `session/new` 与启动旗标工作，不写 `~/.gemini`（场景 5 的「数据目录外零写入」
+   * 守着这一点）。工作目录是探针的临时项目。
+   */
+  {
+    const agy = which("agy");
+    if (!CHOSEN.has("agy")) skip("agy", "ARMADRA_E2E_ACP_ONLY 没选这家");
+    else if (agy === undefined) skip("agy", "没有 agy");
+    else {
+      writeScript(shims, "agy", [
+        `export HOME=${quote(homedir())}`,
+        `exec ${quote(agy)} "$@"`,
+      ]);
+      kept.push("agy");
+      plan.agy = { program: "agy" };
+    }
+  }
+
   /* Copilot：`copilot --acp --stdio`，令牌只给这一个进程。 */
   {
     const cli = homes.copilot;
@@ -451,6 +480,9 @@ export default async function run12() {
     writeFileSync(join(project, "README.md"), "# acp probe\n");
     execFileSync("git", ["init", "-q", project]);
 
+    // Antigravity 也用真实 HOME（登录态在 ~/.gemini），开场先拍指纹。
+    const geminiBefore =
+      !selfTest && CHOSEN.has("agy") ? geminiFingerprint() : undefined;
     if (!selfTest) {
       // 开场快照：Claude 在真实配置目录里跑。
       report.safety.claudeDefaultMode ??= { before: claudeDefaultMode() };
@@ -528,10 +560,19 @@ export default async function run12() {
       method: "PATCH",
       body: { terminal: { ecoMode: false } },
     });
-    for (const id of active)
+    for (const id of active) {
+      // 没有画布注入的家（agy，契约 §120）答 `mode: "none"`，没有产物可生成。
+      const state = await api(`/api/agents/${id}/integration`).catch(
+        () => undefined,
+      );
+      if (state?.mode === "none") {
+        note(`${id} 没有画布注入`, "mode: none，跳过产物准备");
+        continue;
+      }
       await api(`/api/agents/${id}/integration/install`, {
         method: "POST",
       }).catch((error) => note(`${id} 注入产物准备失败`, error.message));
+    }
     const agentsRows = await api("/api/agents");
     for (const id of active) {
       const row = agentsRows.find((agent) => agent.id === id);
@@ -1316,6 +1357,15 @@ export default async function run12() {
       blockedCalls.length === 0,
       blockedCalls.slice(0, 5),
     );
+    if (geminiBefore !== undefined && plan.agy?.skip === undefined) {
+      const geminiAfter = geminiFingerprint();
+      mark(
+        "agy",
+        "zeroWrite",
+        JSON.stringify(geminiBefore) === JSON.stringify(geminiAfter),
+        "~/.gemini 里的用户配置与带 armadra 的条目前后不同",
+      );
+    }
     report.acp.shots = stack.shots;
 
     /* -------------------- --record-compat：记进兼容表 -------------------- */
