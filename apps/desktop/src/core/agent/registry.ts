@@ -61,8 +61,13 @@ export {
   STATE_SOURCE_ACP,
   STATE_SOURCE_EXTENSION,
   STATE_SOURCE_HOOK,
+  STATE_SOURCE_TRANSCRIPT,
+  channelUnbound,
+  markChannelUnbound,
   nodeStateChannel,
+  refreshNodeState,
   registerNodeChannelGate,
+  registerStateRefresher,
   stateSourceFor,
   stateSourceIsReported,
 } from "./state-source";
@@ -261,8 +266,9 @@ export const AGENT_REGISTRY: readonly AgentDefinition[] = [
     launchCmd: "grok",
     promptMode: "argv",
     expectedProcess: ["grok", "grok-native"],
-    // 没有 `hooks`：状态源与注入在 G2（packages/shared 同一处的说明）。
+    // `hooks` = 有状态源（会话文件，契约 §121）；说明见 packages/shared 同一处。
     capabilities: [
+      "hooks",
       "resume",
       "contextLink",
       "browser",

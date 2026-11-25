@@ -67,6 +67,8 @@ describe("completion shared layer", () => {
     expect(terminalBackendKindSchema.parse("acp")).toBe("acp");
     expect(AGENT_STATE_SOURCES).toContain("acp");
     expect(agentStateSourceSchema.parse("acp")).toBe("acp");
+    expect(AGENT_STATE_SOURCES).toContain("transcript");
+    expect(agentStateSourceSchema.parse("transcript")).toBe("transcript");
   });
 
   it("reads an agent row's acp field, and outdated hosts on the integration state only", () => {

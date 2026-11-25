@@ -1556,7 +1556,8 @@
                                             "hook",
                                             "extension",
                                             "observed",
-                                            "acp"
+                                            "acp",
+                                            "transcript"
                                           ],
                                           "type": "string"
                                         },
@@ -1674,7 +1675,8 @@
                                             "hook",
                                             "extension",
                                             "observed",
-                                            "acp"
+                                            "acp",
+                                            "transcript"
                                           ],
                                           "type": "string"
                                         },
@@ -17817,7 +17819,13 @@
                         "type": "string"
                       },
                       "stateSource": {
-                        "enum": ["hook", "extension", "observed", "acp"],
+                        "enum": [
+                          "hook",
+                          "extension",
+                          "observed",
+                          "acp",
+                          "transcript"
+                        ],
                         "type": "string"
                       },
                       "unread": {

@@ -15,6 +15,7 @@ import {
   STATE_SOURCE_ACP,
   STATE_SOURCE_EXTENSION,
   STATE_SOURCE_HOOK,
+  STATE_SOURCE_TRANSCRIPT,
   stateSourceFor,
   stateSourceIsObserved,
   stateSourceIsReported,
@@ -43,7 +44,12 @@ describe("状态来源的词汇表", () => {
       ).toBe(true);
     }
     expect([...REPORTED_STATE_SOURCES].sort()).toEqual(
-      [STATE_SOURCE_ACP, STATE_SOURCE_EXTENSION, STATE_SOURCE_HOOK].sort(),
+      [
+        STATE_SOURCE_ACP,
+        STATE_SOURCE_EXTENSION,
+        STATE_SOURCE_HOOK,
+        STATE_SOURCE_TRANSCRIPT,
+      ].sort(),
     );
     expect(stateSourceIsObserved(OBSERVED)).toBe(true);
   });
@@ -54,6 +60,8 @@ describe("状态来源的词汇表", () => {
       expect(stateSourceIsReported(source)).toBe(true);
     }
     expect(stateSourceIsRunReport("acp")).toBe(false);
+    // 会话文件来源没有 promptHash 与终端绑定，进不了运行关联报告（契约 §121）。
+    expect(stateSourceIsRunReport("transcript")).toBe(false);
     expect(stateSourceIsRunReport(undefined)).toBe(false);
   });
 
@@ -66,6 +74,7 @@ describe("状态来源的词汇表", () => {
   it("provider 的通道取自表，不取自请求", () => {
     expect(stateSourceFor("claude")).toBe(STATE_SOURCE_HOOK);
     expect(stateSourceFor("pi")).toBe(STATE_SOURCE_EXTENSION);
+    expect(stateSourceFor("grok")).toBe(STATE_SOURCE_TRANSCRIPT);
     expect(stateSourceFor("custom:x")).toBeUndefined();
     // agy has no status source yet: its terminal state is OSC 7501, display only.
     expect(stateSourceFor("agy")).toBeUndefined();
