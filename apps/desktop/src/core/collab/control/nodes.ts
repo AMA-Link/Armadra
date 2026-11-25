@@ -384,6 +384,7 @@ async function openAgentHeld(
     agent,
     newNodeView(context.settings, agentId, {
       resume: resume !== undefined,
+      withTask: task !== undefined,
       ...(surface === undefined ? {} : { surface }),
     }),
   );
@@ -1033,6 +1034,7 @@ async function teamHeld(
       agent,
       newNodeView(context.settings, role.agentId, {
         resume: resume !== undefined,
+        withTask: role.task !== undefined && role.task !== null,
       }),
     );
     const cwd = cwds[index];

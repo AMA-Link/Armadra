@@ -11,7 +11,9 @@ import {
   customAgent,
   resolveCommand,
 } from "../../agent/registry";
+import { isInjected } from "../../hook/install/inject";
 import { settingsDomain } from "../../settings";
+import { Refused } from "../refusals";
 import { completionSettings } from "../../settings/schema";
 
 type Probe = (program: string) => string | undefined;
@@ -66,9 +68,26 @@ export function newNodeView(
     readonly resume?: boolean;
     /** 调用方指定的形态（交接新开目标）：不看用户的默认视图偏好。 */
     readonly surface?: AgentDriver;
+    /** 这个节点一建出来就要投第一条任务（`--task`、team 的角色任务）。 */
+    readonly withTask?: boolean;
   } = {},
 ): { driver?: AgentDriver; view?: AgentView } {
   if (options.surface !== undefined) return { driver: options.surface };
+  const base = baseAgent(settings, agentId);
+  // 没有画布注入的内置 CLI（契约 §120）：终端里没有状态来源也没有技能与 MCP，
+  // 投不进任务、也读不到画布。用户的「终端」偏好在这里不适用，ACP 能用就走 ACP；
+  // ACP 用不了而又带着任务，建出来的节点第一条任务只会被当场取消，不如现在就拒绝。
+  // 不带任务、不要求接回时仍可以建一个终端节点：它是个普通终端。
+  if (!isInjected(base) && options.resume !== true) {
+    if (acpSurfaceAvailable(settings, agentId)) return { driver: "acp" };
+    if (options.withTask === true) {
+      throw new Refused(
+        400,
+        "target_surface_unsupported",
+        `${agentId} 的终端没有画布注入，投不进第一条任务，而它的 ACP 适配器在这台机器上不可用；先装好 ACP 入口，或去掉任务只开一个空节点。`,
+      );
+    }
+  }
   const document = settingsDomain()?.settings.snapshot();
   const setting =
     preferenceOverride ??
