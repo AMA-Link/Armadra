@@ -142,7 +142,7 @@ export const AMA_HOOK_EVENTS = [
 
 /**
  * Grok Build — not hook events: the record types of the session file core reads
- * (`$GROK_HOME/sessions/<cwd>/<id>/events.jsonl`, contract §121). There is no hook
+ * (`$GROK_HOME/sessions/<cwd>/<id>/events.jsonl`, contract §122). There is no hook
  * client; the "events" a status source subscribes to are the lines it reads.
  */
 export const GROK_SESSION_EVENTS = [

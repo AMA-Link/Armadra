@@ -27,7 +27,7 @@ import {
 import { installCoreStateSources } from "./index";
 
 /**
- * grok 的状态读取槽（契约 §121）。文件形状取自 1.0.92 的真文件（events.jsonl、
+ * grok 的状态读取槽（契约 §122）。文件形状取自 1.0.92 的真文件（events.jsonl、
  * active_sessions.json），内容是编的。
  */
 

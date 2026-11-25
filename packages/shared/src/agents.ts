@@ -446,7 +446,7 @@ export const AGENT_REGISTRY: Readonly<Record<BuiltinAgentId, AgentDefinition>> =
       resume: { style: "flag", flag: "--resume" },
       exitCommand: "/quit",
       // `hooks` 在这里的意思是「有状态源」：core 读它自己写的会话文件（`events.jsonl`，
-      // 按节点 PTY 进程在 `active_sessions.json` 里的行绑定，契约 §121），不是有 hook
+      // 按节点 PTY 进程在 `active_sessions.json` 里的行绑定，契约 §122），不是有 hook
       // 文件。不声明 `structuredInputAck`：`events.jsonl` 里没有 prompt 原文，对不回
       // 回合。`contextLink`、`browser`：终端里画布动词走 shell（`--allow` 放行），
       // ACP 里走 MCP；不声明的话 `canvas send` 等会被 DRIVE_DENIED 拒绝。`subagent`

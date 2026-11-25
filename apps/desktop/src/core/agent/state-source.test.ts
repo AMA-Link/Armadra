@@ -60,7 +60,7 @@ describe("状态来源的词汇表", () => {
       expect(stateSourceIsReported(source)).toBe(true);
     }
     expect(stateSourceIsRunReport("acp")).toBe(false);
-    // 会话文件来源没有 promptHash 与终端绑定，进不了运行关联报告（契约 §121）。
+    // 会话文件来源没有 promptHash 与终端绑定，进不了运行关联报告（契约 §122）。
     expect(stateSourceIsRunReport("transcript")).toBe(false);
     expect(stateSourceIsRunReport(undefined)).toBe(false);
   });

@@ -149,7 +149,7 @@ beforeAll(async () => {
   launcher = windowsLauncherPath(spec.runDir, "claude");
   shim = windowsShimPath(spec.shimDir, "claude");
   shimDir = spec.shimDir;
-  // grok 的启动器：注入词放在第一个单独的 `--` 之前（契约 §121 的 place=before-separator）。
+  // grok 的启动器：注入词放在第一个单独的 `--` 之前（契约 §122 的 place=before-separator）。
   const grok = writeLauncher(
     "grok",
     GROK_INJECTED,

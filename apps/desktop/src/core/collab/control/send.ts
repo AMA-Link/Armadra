@@ -1065,7 +1065,7 @@ async function observe(
   if (drive === undefined) {
     throw new Refused(503, "internal_error", "终端域还没有装配好，无法投递。");
   }
-  // 先让这个节点的状态读取槽同步读一次文件尾（grok，契约 §121），再看状态。
+  // 先让这个节点的状态读取槽同步读一次文件尾（grok，契约 §122），再看状态。
   refreshNodeState(target.id);
   const answer = drive(target.id);
   if (

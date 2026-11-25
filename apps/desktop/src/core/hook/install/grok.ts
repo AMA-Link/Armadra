@@ -1,7 +1,7 @@
 import { CLIENT_NAME } from "./events";
 
 /**
- * What a canvas Grok Build gets on its launch line (contract §121) — nothing
+ * What a canvas Grok Build gets on its launch line (contract §122) — nothing
  * written to its configuration, `~/.grok` stays exactly as the user left it.
  *
  * Grok's interactive TUI has no per-process hook, plugin or MCP channel (its

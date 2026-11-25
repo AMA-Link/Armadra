@@ -48,7 +48,7 @@ export const STATE_SOURCE_ACP = "acp";
 /**
  * Core reads a CLI's own session record (grok's `events.jsonl`) for the process
  * the node's terminal is running — no hook, no extension, no protocol of its own
- * (contract §121). A report like the others: a local file the CLI wrote, read
+ * (contract §122). A report like the others: a local file the CLI wrote, read
  * by the core itself, so a client cannot claim it.
  */
 export const STATE_SOURCE_TRANSCRIPT = "transcript";
@@ -85,7 +85,7 @@ export function stateSourceFor(provider: string): string | undefined {
     case "opencode":
     case "ama":
       return STATE_SOURCE_EXTENSION;
-    // grok：没有 hook 客户端，也没有扩展；core 读它自己的会话记录（契约 §121）。
+    // grok：没有 hook 客户端，也没有扩展；core 读它自己的会话记录（契约 §122）。
     // 这是 provider 的通道，**不是**这个节点一定有通道：远程节点、Windows、读不到
     // `active_sessions.json` 的由 `registerNodeChannelGate` 收窄。
     case "grok":
@@ -129,7 +129,7 @@ export function channelUnbound(nodeId: string): boolean {
   return unbound.has(nodeId);
 }
 
-/* ---------------- 判 idle 之前补读一次（状态读取槽，契约 §121） ---------------- */
+/* ---------------- 判 idle 之前补读一次（状态读取槽，契约 §122） ---------------- */
 
 const refreshers = new Map<string, () => void>();
 
