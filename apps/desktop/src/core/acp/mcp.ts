@@ -231,6 +231,7 @@ export function sessionOpener(
   supported: boolean = clientAcceptsMcpServers(),
   meta?: AcpSessionMeta,
   metaSupported: boolean = clientAcceptsSessionMeta(),
+  metaOnNew = false,
 ): AcpSessionOpener {
   const withServers = servers.length > 0 && supported;
   const withMeta = meta !== undefined && metaSupported;
@@ -248,11 +249,16 @@ export function sessionOpener(
     mcpServers: withServers ? servers : [],
     ...(withMeta ? { meta } : {}),
   };
+  // 只在新建时生效的 `_meta`（`metaOnNew`）恢复时不带：发了也被忽略，只会让线路多一段
+  // 没有效果的东西。
+  const reopen: SessionCallOptions = metaOnNew
+    ? { mcpServers: options.mcpServers }
+    : options;
   return {
     newSession: (cwd) => capable.newSession(cwd, undefined, options),
-    loadSession: (id, cwd) => capable.loadSession(id, cwd, undefined, options),
+    loadSession: (id, cwd) => capable.loadSession(id, cwd, undefined, reopen),
     resumeSession: (id, cwd) =>
-      capable.resumeSession(id, cwd, undefined, options),
+      capable.resumeSession(id, cwd, undefined, reopen),
     mcpInjected: withServers,
     metaInjected: withMeta,
   };

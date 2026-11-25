@@ -120,9 +120,14 @@ export interface AcpAdapter {
   /**
    * `sessionMeta` 的键名与效果有没有核实过（用真账号 / 脚本化模型看过它真的落进系统提示）。
    * `false` 的适配器**不发** `_meta`，线路与没有 `sessionMeta` 时逐字节相同；核实之后改成
-   * `true`（Armadra#1035）。缺席 = 不需要核实（没有 `sessionMeta`，或老适配器）。
+   * `true`（agy 的核对步骤在 Armadra#1053）。缺席 = 不需要核实（没有 `sessionMeta`，或老适配器）。
    */
   readonly metaVerified?: boolean;
+  /**
+   * `_meta` 只在 `session/new` 时生效（grok 的文档与 1.0.92 实测：`rules` 在
+   * `session/load|resume` 时被忽略）：`true` 的适配器只在新建会话时带，恢复时不带。
+   */
+  readonly metaOnNew?: boolean;
   /**
    * 这家会发给客户端、要人决定的 `_` 开头的扩展请求（方法名 → 怎么呈现、怎么应
    * 答，见 `ext-requests.ts`）。缺席 = 没有。客户端不声明 `features.extRequest` 时
@@ -253,7 +258,7 @@ export const ACP_ADAPTERS: readonly AcpAdapter[] = [
     // 画布工具走 `session/new.mcpServers`（stdio 被接受、模型看得到工具）。终端注入
     // 在 `agy acp` 下没有对应物（没有 `--settings`；`--add-dir` 的零写入 hook 实测不可行，
     // 见契约 §120），所以不复用。画布说明走 `_meta.antigravity.systemPrompt.append`；键名与
-    // 效果没有用真账号核对过，所以 `metaVerified: false`——不发，核对步骤在 Armadra#1035。
+    // 效果没有用真账号核对过，所以 `metaVerified: false`——不发，核对步骤在 Armadra#1053。
     injection: { mcp: true, reuse: [] },
     sessionMeta: (input) =>
       systemPromptAppendMeta("antigravity", input.instructions),
@@ -274,8 +279,8 @@ export const ACP_ADAPTERS: readonly AcpAdapter[] = [
     sessionId: "same",
     resume: "load",
     // 全自动仍走启动旗标 `--always-approve`：ACP 里没有会话内切换权限的入口
-    // （`set_mode` 只认 default / plan），`_meta.yoloMode` 只能在 `session/new|load` 时
-    // 定，换过去没有任何好处，也就不发（Armadra#1035 写了评估）。
+    // （`set_mode` 只认 default / plan）。文档说 load 时传 `yoloMode: false` 能关掉
+    // always-approve，但旗标已经能用，换成 `_meta` 没有好处，也就不发（契约 §126）。
     modes: ACP_MODE_TABLE.grok,
     // 画布工具走 stdio `mcpServers`（实测 `mcp_server_connected`）；画布说明走
     // `_meta.rules`（追加到系统提示，隔离环境 + 脚本化模型实测落进了 system 消息）。
@@ -286,6 +291,7 @@ export const ACP_ADAPTERS: readonly AcpAdapter[] = [
         ? undefined
         : { rules: input.instructions },
     metaVerified: true,
+    metaOnNew: true,
     // 计划审批（plan 模式提交计划）：先接上管线，plan 模式本身仍关着（见 `NO_ACP_LANDING`）
     // 到应答形状用真账号核对之后再开（Armadra#1021）。
     extRequests: { "_x.ai/exit_plan_mode": GROK_EXIT_PLAN_MODE },

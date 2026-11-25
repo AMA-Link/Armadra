@@ -342,6 +342,8 @@ export interface AcpStartOptions {
    * 时不发，结果里 `metaInjected: false`。
    */
   readonly sessionMeta?: AcpSessionMeta;
+  /** `sessionMeta` 只在 `session/new` 时带（适配器表的 `metaOnNew`）。 */
+  readonly sessionMetaOnNew?: boolean;
   readonly initializeTimeoutMs?: number;
   /**
    * 调用方还需要回放吗：时间线已经有内容时为 `false`，此时 Agent 支持
@@ -606,6 +608,8 @@ export async function startAcp(
       options.mcpServers ?? [],
       undefined,
       options.sessionMeta,
+      undefined,
+      options.sessionMetaOnNew === true,
     );
     let opened: AcpOpenMethod = "new";
     let sessionId: string | undefined;
@@ -1130,6 +1134,7 @@ export interface AcpAdapterStart extends Omit<
   | "resume"
   | "agentId"
   | "sessionMeta"
+  | "sessionMetaOnNew"
 > {
   readonly mode?: PermissionMode;
   readonly profilePath?: string;
@@ -1242,13 +1247,23 @@ export function adapterStartOptions(
     mcpServers: _given,
     ...rest
   } = options;
-  const sessionMeta = acpSessionMeta(adapter, { ...metaInput, mode });
+  // 画布说明只在这个会话真的带了画布 MCP 时才给：没有 MCP（本机没有 armadra-hook、SSH 的
+  // 远端准备失败）就不该告诉模型「一律用 armadra 的工具」。
+  const sessionMeta = acpSessionMeta(adapter, {
+    ...(wanted.length > 0 || metaInput?.instructions === undefined
+      ? metaInput
+      : { ...metaInput, instructions: undefined }),
+    mode,
+  });
   const mcpServers = viaArgs ? [] : wanted;
   return {
     ...rest,
     env,
     ...(mcpServers.length === 0 ? {} : { mcpServers }),
     ...(sessionMeta === undefined ? {} : { sessionMeta }),
+    ...(adapter.metaOnNew === true && sessionMeta !== undefined
+      ? { sessionMetaOnNew: true }
+      : {}),
     ...(adapter.extRequests === undefined
       ? {}
       : { extRequests: adapter.extRequests }),

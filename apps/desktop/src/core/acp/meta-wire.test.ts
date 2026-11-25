@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { acpAdapter, acpSessionMeta, type AcpAdapter } from "./adapters";
-import { canvasInstructions } from "./canvas-instructions";
+import { acpCanvasRules } from "./canvas-rules";
 import { type AcpHostSession, startAcp } from "./host";
 import { CANVAS_MCP_NAME } from "./mcp";
 
@@ -71,6 +71,7 @@ function rig() {
       agentId: string,
       sessionMeta: ReturnType<typeof acpSessionMeta>,
       resume?: { sessionId: string; method: "load" | "resume" },
+      onNew = false,
     ) {
       const session = await startAcp({
         program: process.execPath,
@@ -78,6 +79,7 @@ function rig() {
         cwd: tmpdir(),
         agentId,
         ...(sessionMeta === undefined ? {} : { sessionMeta }),
+        ...(onNew ? { sessionMetaOnNew: true } : {}),
         ...(resume === undefined ? {} : { resume }),
       });
       sessions.push(session);
@@ -88,12 +90,14 @@ function rig() {
 
 const grok = acpAdapter("grok") as AcpAdapter;
 const agy = acpAdapter("agy") as AcpAdapter;
-const INSTRUCTIONS = canvasInstructions();
+const INSTRUCTIONS = acpCanvasRules();
 
 describe("canvas instructions", () => {
   it("name the MCP server and the canvas_* tools, in both languages, and stay short", () => {
     expect(INSTRUCTIONS).toContain(`\`${CANVAS_MCP_NAME}\``);
-    expect(INSTRUCTIONS).toContain("canvas_*");
+    for (const prefix of ["canvas_*", "context_*", "browser_*"]) {
+      expect(INSTRUCTIONS).toContain(prefix);
+    }
     expect(INSTRUCTIONS).toMatch(/画布/);
     expect(INSTRUCTIONS).toMatch(/Armadra board/);
     expect(INSTRUCTIONS.length).toBeLessThan(700);
@@ -159,18 +163,35 @@ describe("through the real client", () => {
     ]);
   });
 
-  it("session/load and session/resume carry it too", async () => {
+  it("session/load and session/resume carry no rules for grok (they are ignored there; only session/new counts)", async () => {
     for (const method of ["load", "resume"] as const) {
       const r = rig();
-      await r.open(
+      const session = await r.open(
         "grok",
         acpSessionMeta(grok, { mode: "default", instructions: INSTRUCTIONS }),
         { sessionId: "s-1", method },
+        grok.metaOnNew === true,
       );
-      expect(r.logged()).toEqual([
-        { method: `session/${method}`, meta: { rules: INSTRUCTIONS } },
-      ]);
+      expect(r.logged()).toEqual([{ method: `session/${method}`, meta: null }]);
+      expect(session.metaInjected).toBe(true);
     }
+    expect(grok.metaOnNew).toBe(true);
+  });
+
+  it("an adapter without metaOnNew keeps sending it on load / resume (the opener default)", async () => {
+    const r = rig();
+    await r.open(
+      "agy",
+      { antigravity: { systemPrompt: { append: "x" } } },
+      { sessionId: "s-1", method: "load" },
+      false,
+    );
+    expect(r.logged()).toEqual([
+      {
+        method: "session/load",
+        meta: { antigravity: { systemPrompt: { append: "x" } } },
+      },
+    ]);
   });
 
   it("agy sends no _meta at all while it is unverified (the wire is as before)", async () => {
