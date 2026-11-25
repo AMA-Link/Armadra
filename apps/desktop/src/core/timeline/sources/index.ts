@@ -114,6 +114,8 @@ interface OpenSlot {
   readonly nodeId: string;
   readonly provider: StateSlotProvider;
   readonly slot: StateSlot;
+  /** 开槽时会话的代次：同 id 不同代次（原地换代、休眠唤醒）要重开。 */
+  readonly generation: number;
 }
 
 /** 终端域对会话的两个事实，槽拿去用；由 `terminal/install.ts` 装配。 */
@@ -136,6 +138,10 @@ export interface SourceManagerOptions {
 export class SourceManager {
   private readonly sources = new Map<string, Source>();
   private readonly slots = new Map<string, OpenSlot>();
+  /** 正在 `provider.open()` 里的会话：open 里同步上报会敲门铃叫回这里，不能重复开。 */
+  private readonly opening = new Set<string>();
+  /** 正在上报的槽：它自己的上报敲出来的门铃不再叫回它（避免同步重入）。 */
+  private readonly reporting = new Set<string>();
   private facts: TerminalFacts | undefined;
   private readonly timers: TailTimers;
   private reaper: unknown;
@@ -172,8 +178,16 @@ export class SourceManager {
    */
   onHook(nodeId: string, event: AgentEvent): void {
     if (this.closed) return;
+    // 槽与转录尾读各自一道 try：一边抛错不能连累另一边。
     try {
       this.pokeSlot(nodeId, event);
+    } catch (error) {
+      this.options.log?.warn("叫醒状态读取槽失败", {
+        nodeId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    try {
       const adapter = transcriptAdapterFor(event.agentId);
       if (adapter === undefined) return;
       const row = this.runningSession(nodeId);
@@ -248,10 +262,10 @@ export class SourceManager {
    * 终端会话起来了（`terminal/manager` 的 `onStart`）：这个节点的 CLI 若登记了状态
    * 读取槽，就在这里开——不等任何上报。任何错误只记日志，不影响终端的创建。
    */
-  onSessionStart(nodeId: string): void {
+  onSessionStart(nodeId: string, sessionId?: string): void {
     if (this.closed) return;
     try {
-      const row = this.runningSession(nodeId);
+      const row = this.runningSession(nodeId, sessionId);
       if (row === undefined) return;
       this.openSlot(row, nodeId);
     } catch (error) {
@@ -263,8 +277,17 @@ export class SourceManager {
   }
 
   private pokeSlot(nodeId: string, event: AgentEvent): void {
-    for (const open of this.slots.values()) {
-      if (open.nodeId === nodeId) open.slot.poke?.();
+    for (const open of [...this.slots.values()]) {
+      if (open.nodeId !== nodeId || this.reporting.has(open.sessionId))
+        continue;
+      try {
+        open.slot.poke?.();
+      } catch (error) {
+        this.options.log?.warn("状态读取槽 poke 失败", {
+          sessionId: open.sessionId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
     // hook 先于 `onStart` 到（或 `onStart` 当时开不了）：补开一次。
     if (stateSlotProviderFor(baseAgent(event.agentId)) !== undefined) {
@@ -274,8 +297,15 @@ export class SourceManager {
   }
 
   private openSlot(row: SessionRow, nodeId: string): OpenSlot | undefined {
+    const generation = row.generation ?? 0;
     const existing = this.slots.get(row.id);
-    if (existing !== undefined) return existing;
+    if (existing !== undefined) {
+      if (existing.generation === generation) return existing;
+      // 原地换代（`recycleSession`、休眠唤醒）：会话 id 不变、代次加一，旧槽读的是
+      // 上一代的进程、带绑定的上报也会被当成过期丢掉，先停再重开。
+      this.dropSlot(existing);
+    }
+    if (this.opening.has(row.id)) return undefined;
     const agentId = baseAgent(row.agentId);
     const provider = stateSlotProviderFor(agentId);
     if (provider === undefined) return undefined;
@@ -283,14 +313,33 @@ export class SourceManager {
     for (const old of [...this.slots.values()]) {
       if (old.nodeId === nodeId && old.sessionId !== row.id) this.dropSlot(old);
     }
-    const slot = provider.open(
-      this.slotContext(row, nodeId, agentId, provider),
-    );
+    this.opening.add(row.id);
+    let slot: StateSlot | undefined;
+    try {
+      slot = provider.open(this.slotContext(row, nodeId, agentId, provider));
+    } finally {
+      this.opening.delete(row.id);
+    }
     if (slot === undefined) return undefined;
-    const open: OpenSlot = { sessionId: row.id, nodeId, provider, slot };
+    const open: OpenSlot = {
+      sessionId: row.id,
+      nodeId,
+      provider,
+      slot,
+      generation,
+    };
     this.slots.set(row.id, open);
     this.armReaper();
-    slot.start();
+    try {
+      slot.start();
+    } catch (error) {
+      this.options.log?.warn("启动状态读取槽失败", {
+        sessionId: row.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      this.dropSlot(open);
+      return undefined;
+    }
     return open;
   }
 
@@ -326,24 +375,29 @@ export class SourceManager {
           });
           return false;
         }
-        return (
-          report({
-            nodeId,
-            agentId,
-            event,
-            ...(options?.rawPayload === undefined
-              ? {}
-              : { rawPayload: options.rawPayload }),
-            ...(options?.bind === true
-              ? {
-                  terminalSession: {
-                    sessionId: row.id,
-                    generation: row.generation ?? 0,
-                  },
-                }
-              : {}),
-          }) !== undefined
-        );
+        this.reporting.add(row.id);
+        try {
+          return (
+            report({
+              nodeId,
+              agentId,
+              event,
+              ...(options?.rawPayload === undefined
+                ? {}
+                : { rawPayload: options.rawPayload }),
+              ...(options?.bind === true
+                ? {
+                    terminalSession: {
+                      sessionId: row.id,
+                      generation: row.generation ?? 0,
+                    },
+                  }
+                : {}),
+            }) !== undefined
+          );
+        } finally {
+          this.reporting.delete(row.id);
+        }
       },
       timers: this.timers,
       watch: this.options.watch,
@@ -369,14 +423,18 @@ export class SourceManager {
 
   /* ------------------------------ 会话与来源 ------------------------------ */
 
-  private runningSession(nodeId: string): SessionRow | undefined {
+  private runningSession(
+    nodeId: string,
+    sessionId?: string,
+  ): SessionRow | undefined {
     const row = this.options.database
       .prepare(
         "SELECT id, workspace_id, agent_id, cwd, created_at, generation FROM terminal_sessions " +
           "WHERE owner_node_id = ? AND status = 'running' AND backend_kind != 'acp' " +
+          (sessionId === undefined ? "" : "AND id = ? ") +
           "ORDER BY created_at DESC, generation DESC LIMIT 1",
       )
-      .get(nodeId) as
+      .get(...(sessionId === undefined ? [nodeId] : [nodeId, sessionId])) as
       | {
           id: string;
           workspace_id: string;
@@ -678,7 +736,14 @@ export class SourceManager {
         .prepare("SELECT status FROM terminal_sessions WHERE id = ?")
         .get(open.sessionId) as { status: string } | undefined;
       if (row?.status === "running") continue;
-      open.slot.readNow?.();
+      try {
+        open.slot.readNow?.();
+      } catch (error) {
+        this.options.log?.warn("状态读取槽收尾读取失败", {
+          sessionId: open.sessionId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
       this.dropSlot(open);
       stopped++;
     }

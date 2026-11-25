@@ -203,6 +203,126 @@ describe("状态读取槽的生命周期", () => {
   });
 });
 
+describe("换代、重入与槽的故障", () => {
+  it("同一个会话原地换代（id 不变、代次加一）：旧槽停掉、按新代次重开", () => {
+    const probe = register("reported");
+    insertSession(r.fixture, { id: SESSION, status: "running", generation: 1 });
+    r.domain.sources.onSessionStart(r.fixture.nodeId, SESSION);
+    r.database
+      .prepare("UPDATE terminal_sessions SET generation = 2 WHERE id = ?")
+      .run(SESSION);
+    r.domain.sources.onSessionStart(r.fixture.nodeId, SESSION);
+    expect(probe.stopped).toHaveLength(1);
+    expect(probe.started).toHaveLength(2);
+    expect(probe.contexts.map((c) => c.generation)).toEqual([1, 2]);
+    expect(r.domain.sources.slotCount).toBe(1);
+  });
+
+  it("同代次再叫一次：不重开", () => {
+    const probe = register("reported");
+    insertSession(r.fixture, { id: SESSION, status: "running", generation: 1 });
+    r.domain.sources.onSessionStart(r.fixture.nodeId, SESSION);
+    r.domain.sources.onSessionStart(r.fixture.nodeId, SESSION);
+    expect(probe.started).toHaveLength(1);
+  });
+
+  it("start 里同步上报：门铃不再叫回它自己，也不会重复开槽", () => {
+    let pokesDuringReport = 0;
+    let reporting = false;
+    const probe = register("reported", (context) => ({
+      start() {
+        reporting = true;
+        const event = stateEvent(context.nodeId, "claude", WORKING);
+        event.stateSource = "extension";
+        context.report(event);
+        reporting = false;
+      },
+      poke() {
+        if (reporting) pokesDuringReport++;
+      },
+      stop() {},
+    }));
+    insertSession(r.fixture, { id: SESSION, status: "running" });
+    installInternalReporter({
+      ...r.fixture.context,
+      onHook: (id, event) => r.domain.sources.onHook(id, event),
+    });
+    r.domain.sources.onSessionStart(r.fixture.nodeId, SESSION);
+    expect(pokesDuringReport).toBe(0);
+    expect(probe.contexts).toHaveLength(1);
+    expect(r.fixture.status()?.state).toBe("working");
+  });
+
+  it("open 里同步上报：门铃补开不会重复 open", () => {
+    const probe = register("reported", (context) => {
+      const event = stateEvent(context.nodeId, "claude", WORKING);
+      event.stateSource = "extension";
+      context.report(event);
+      return { start() {}, stop() {} };
+    });
+    insertSession(r.fixture, { id: SESSION, status: "running" });
+    installInternalReporter({
+      ...r.fixture.context,
+      onHook: (id, event) => r.domain.sources.onHook(id, event),
+    });
+    r.domain.sources.onSessionStart(r.fixture.nodeId, SESSION);
+    expect(probe.contexts).toHaveLength(1);
+    expect(r.domain.sources.slotCount).toBe(1);
+  });
+
+  it("start 抛错：槽不留在表里，已停", () => {
+    const probe = register("reported", () => ({
+      start() {
+        throw new Error("boom");
+      },
+      stop() {},
+    }));
+    insertSession(r.fixture, { id: SESSION, status: "running" });
+    r.domain.sources.onSessionStart(r.fixture.nodeId, SESSION);
+    expect(r.domain.sources.slotCount).toBe(0);
+    expect(probe.stopped).toHaveLength(1);
+  });
+
+  it("readNow 抛错：巡检照样停槽，不中断后面的来源", () => {
+    const probe = register("reported", () => ({
+      start() {},
+      readNow() {
+        throw new Error("boom");
+      },
+      stop() {},
+    }));
+    insertSession(r.fixture, { id: SESSION, status: "running" });
+    r.domain.sources.onSessionStart(r.fixture.nodeId, SESSION);
+    r.database.prepare("UPDATE terminal_sessions SET status = 'exited'").run();
+    expect(() => r.domain.sources.reap()).not.toThrow();
+    expect(probe.stopped).toHaveLength(1);
+    expect(r.domain.sources.slotCount).toBe(0);
+  });
+
+  it("poke 抛错：不连累同一个 hook 的转录门铃", () => {
+    register("reported", () => ({
+      start() {},
+      poke() {
+        throw new Error("boom");
+      },
+      stop() {},
+    }));
+    insertSession(r.fixture, { id: SESSION, status: "running" });
+    r.domain.sources.onSessionStart(r.fixture.nodeId, SESSION);
+    const event = stateEvent(r.fixture.nodeId, "claude", WORKING);
+    expect(() =>
+      r.domain.sources.onHook(r.fixture.nodeId, event),
+    ).not.toThrow();
+  });
+
+  it("按会话 id 开槽：节点上最新的 running 行不是它时不开", () => {
+    const probe = register("reported");
+    insertSession(r.fixture, { id: SESSION, status: "running", generation: 1 });
+    r.domain.sources.onSessionStart(r.fixture.nodeId, "not-a-session");
+    expect(probe.started).toHaveLength(0);
+  });
+});
+
 describe("声明的级别由管理器执行", () => {
   function opened(level: StateSlotLevel): StateSlotContext {
     const probe = register(level);
