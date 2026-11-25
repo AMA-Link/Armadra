@@ -23,6 +23,14 @@ import { CLIENT_NAME } from "./events";
  * sub-command all fall back to the normal approval prompt, with no side effect.
  * A bare-name rule matches only the bare-name command, so both spellings are
  * listed, the absolute one unquoted (a quoted path does not match).
+ *
+ * A data directory with a space in it (measured the same way): the unescaped,
+ * unquoted rule `Bash(/a b/armadra-hook canvas *)` lets through both the
+ * unescaped and the backslash-escaped command spelling; the rule written with
+ * the backslash escape lets through neither, and a quoted command is not let
+ * through by either. So the rule is emitted as is. The skill and `--rules` teach
+ * the bare name `armadra-hook`, which the bare-name rules cover regardless of
+ * where the data directory is.
  */
 export const GROK_ALLOWED_SUBCOMMANDS = ["canvas", "context", "browser"];
 

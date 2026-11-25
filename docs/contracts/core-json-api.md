@@ -6213,7 +6213,7 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
 
 ## 120. 没有画布注入的内置 CLI：`agents.integration` 的 `mode: "none"`（`#997` `#998`）
 
-只增取值，不升版本号；首个答 `none` 的内置 CLI 是 Antigravity（`agy`，#997），第二个是 Grok Build（`grok`，#998 的 G1：状态源与注入在 G2 之前，它启动不带 Armadra 的任何东西）。内置 CLI 不一定都有画布注入：有的 CLI 没有单次生效的 hook / 技能通道（不写用户配置就注入不进去），Armadra 不为它写任何文件。这样的 CLI 在 `GET /api/agents/{agentId}/integration`（与 `agents.integration`）上答一个固定形状，而不是 `400`：
+只增取值，不升版本号；首个答 `none` 的内置 CLI 是 Antigravity（`agy`，#997），Grok Build（`grok`）在 #998 的 G1 时也答过 `none`，G2 起有注入与状态源（§121），不再答 `none`。内置 CLI 不一定都有画布注入：有的 CLI 没有单次生效的 hook / 技能通道（不写用户配置就注入不进去），Armadra 不为它写任何文件。这样的 CLI 在 `GET /api/agents/{agentId}/integration`（与 `agents.integration`）上答一个固定形状，而不是 `400`：
 
 ```json
 {
@@ -6245,7 +6245,7 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
   2. 开节点时忽略用户的终端偏好，ACP 可用就走 ACP；
   3. 交接新开目标的终端形态 `400 target_surface_unsupported`（§39.8，同一个码），ACP 形态不受影响；
   4. 驱动切换（`POST /api/acp/nodes/{id}/driver`）把该节点的 `agent_status` 行记为 `restored = 1`（与 Eco 休眠接回同一条规矩）；投递门、队泵的快探与首投放行门只看**当前驱动写下的**状态行——来源是 `acp`、而会话后端不是 ACP 的行视为没有上报，所以 ACP 切到终端的节点没有状态通道时，`send` 答 `TARGET_STATE_UNVERIFIED`（有状态通道的 CLI 则排队等终端自己的第一条上报）。
-- **计划任务（自动化）的目标**：没有状态通道的 Agent（`nodeStateChannel` 答空：今天的 `agy`、`grok`，以及按节点判不成立的远程节点）**不能做计划任务目标**——回合进行中的节点没有任何上报，探测无从知道它在忙，正文加回车会落进正在工作的 pane。core 的 `TerminalDispatcher.supports` 对它们答 `unsupported`，页面的计划向导把这样的节点置灰。ACP 驱动的这类节点（有 ACP 协议自己的回合与审批上报）要不要放行另行讨论（见对应 Issue）。
+- **计划任务（自动化）的目标**：没有状态通道的 Agent（`nodeStateChannel` 答空：今天的 `agy`，以及按节点判不成立的节点——远程节点、Windows、`grok` 的绑不上，见 §121）**不能做计划任务目标**——回合进行中的节点没有任何上报，探测无从知道它在忙，正文加回车会落进正在工作的 pane。core 的 `TerminalDispatcher.supports` 对它们答 `unsupported`，页面的计划向导把这样的节点置灰。ACP 驱动的这类节点（有 ACP 协议自己的回合与审批上报）要不要放行另行讨论（见对应 Issue）。
 - **为什么不升协议版本（agy 落地时的决定，2026-11-24；grok 同理）**：`mode` 在共享层是严格的 `z.enum`（`INJECTION_MODES`），旧客户端收到 `"none"` 会让这一条集成状态解析失败。但 agy 这个内置 id 对旧页面本来就是未知值：`agentInfoSchema.id` 用 `agentIdSchema`，按 `AGENT_IDS` 校验，所以**旧页面（含已经装在手机上的）会因为 agy 这一行让整张 `agents.list`（`z.array(agentInfoSchema)`）解析失败**，agent 菜单与设置页的 Agent 列表都会空掉——这是任何新内置 id 都有的已有性质，不是 `"none"` 带来的——`grok` 这个 id 对旧页面同样是未知值，`AGENT_IDS` 多一项的影响与 agy 那一次完全一样，发版时手机端要同步更新。升级页面是前提，**发版时手机端必须同步更新**；协议 minor 只按 `min(页面, core)` 协商，升了也拦不住旧页面去读这一条，所以 `PROTOCOL_MINOR` 不升（仍是 52）。`mode` 以后再多取值时同样要在那个 PR 里决定。
 
 ## 121. 项目级工作流文件：导入与导出（`#996`）
@@ -6342,6 +6342,9 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
 - **判 idle 之前补读**：`send` 在看节点状态之前先让读取槽同步读一次文件尾（`refreshNodeState`），轮询间隔的窗口里文件已经写了 `turn_started`、行里还写着 `done` 的情形不会放行投递。
 - **没有通道的节点**（`nodeStateChannel` 答空）：远程执行主机上的节点（读不到本机文件）、Windows（没有这份文件的读取器与 `ps`）、`active_sessions.json` 存在但读不了（`unbound`）。这些节点走观察路径，`send` 答 `TARGET_STATE_UNVERIFIED` 而不是一直排队；计划任务不能以它们为目标（§120）。文件**不存在**不算错误（还没有 grok 跑过）；节点的进程树里没有它的行（grok 还没起、被别的东西起的）什么也不报，节点停在原处。
 - **注入**（不写 grok 的任何文件）：启动器（§13）在 `--` 之前追加 `--rules <一句话，指向技能文件的绝对路径>` 与 `--allow` 规则——`canvas`、`context`、`browser` 三个子命令，裸名与启动器给的绝对路径（不加引号）各一条，与 Claude 的 `claude-allow.ts` 同一组。1.0.92 实测规则 `Bash(<绝对路径> canvas *)` 只放行对应命令；`; …`、`&& …`、`$(…)` 或反引号参数、`>` 重定向、管道、带引号的程序路径、别的子命令都回落到正常的审批提示，没有副作用。画布动词在终端里走 shell，不是 MCP（TUI 没有按进程的 MCP 通道）。
+- **计划审阅**：plan 模式下 `exit_plan_mode` 工具开始后回合**不结束**，grok 画面出现动作栏（`a approve | s request changes | c comment | y copy plan | q quit plan`），焦点在预览时按单个字母就执行动作。所以 `tool_started{tool_name:"exit_plan_mode"}` 起报 `waiting`（带 `awaitingInput` 与 `askKind: "exit_plan_mode"`），到 `tool_completed` 或 `turn_ended` 清除（`questionClosed`）；画面门（§22）另有 `grok.plan-review` 对话框特征，回合结束后才打开的审阅也拦。
+- **绑不上**：节点进程树里有 `grok` 进程、连续约 15 秒没有这个节点的行、且画面不在信任框（信任框答完才有行），标 `unbound`（走观察路径）；行一出现就撤销。`GROK_HOME` 取节点会话启动环境里的，没有再取 core 的。行全部消失（grok 退出）时发 `session end` 并清空记忆；文件被截断则从头重读。
+- **路径带空格**：1.0.92 实测，数据目录带空格时规则 `Bash(<含空格的绝对路径> canvas *)`（不转义、不加引号）既放行不转义也放行反斜杠转义的命令写法；写成反斜杠转义的规则反而什么都不放行，带引号的命令写法两种规则都不放行。所以规则照原样写、不转义；技能与 `--rules` 教的是裸名 `armadra-hook`，由裸名规则覆盖。
 - **启动器放置位**：`.launch` 的 `place=before-separator`（§13）。Windows 的 `armadra-launch.exe` 需要在 Windows 上真跑通过才能合入（本批的合并门）。
 
 **不做**：不代答审批（`answerKeys("grok")` 为空串）、不声明 `structuredInputAck`；`permission_requested` 不产生审批记录。

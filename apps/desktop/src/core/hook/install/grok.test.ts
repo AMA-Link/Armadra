@@ -35,6 +35,13 @@ describe("--allow 规则", () => {
     expect(grokAllowRules("armadra-hook")).toHaveLength(3);
   });
 
+  it("数据目录带空格：规则照原样写，不转义、不加引号（实测见 grok.ts 注释与契约 §121）", () => {
+    const rules = grokAllowRules("/Users/a b/data/bin/armadra-hook");
+    expect(rules).toContain("Bash(/Users/a b/data/bin/armadra-hook canvas *)");
+    expect(rules.some((rule) => rule.includes("\\"))).toBe(false);
+    expect(rules.some((rule) => rule.includes('"'))).toBe(false);
+  });
+
   it("不放行 hook / mcp，也不放行整个程序", () => {
     const text = grokAllowRules(BIN).join("\n");
     expect(text).not.toMatch(/\bhook \*|\bmcp\b/);
