@@ -36,9 +36,7 @@
       },
       "agy": {
         "program": "agy",
-        "verified": {
-          "min": "1.5.16"
-        }
+        "verified": null
       }
     }
   },
