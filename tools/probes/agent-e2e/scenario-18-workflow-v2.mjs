@@ -12,9 +12,8 @@
 //   * 收件箱键与条数：`workflow:<runId>:verify:s2:0` 与 `:1`、共享约定
 //     `workflow:<runId>:contract:0`、汇总角色自己两轮各一条来源 `post`（来源步骤已经
 //     `post` 给汇总角色，`gather` 不再放第二份，所以没有 `s1:1:0` 那种键）；
-//   * 汇总角色每次被别的投递占着驱动租约，最多等 120 秒才轮到下一条，所以整个
-//     场景要四五分钟，等待上限放到 420 秒（轮末释放租约 #1011 之后 CI 实测
-//     仍超过 240 秒，上限暂不收回）；
+//   * 汇总角色一轮结束即放掉自己的驱动租约（#1011），下一条投递不必再等 120 秒
+//     空闲窗口；整个场景在 CI 上约二十几秒，等待上限放到 120 秒；
 //   * `maxRetries: 0`：第一次不通过就升级成关卡（`waiting`，`reason = verifyFailed`），
 //     人 `approve` 之后运行 `succeeded`；
 //   * `.ama/workflows` 往返：文件列表、导入、导出再列出，导入的模板带 `fileRef`。
@@ -240,7 +239,7 @@ export default async function run() {
             const { run: current } = await api(`/api/workflows/runs/${runId}`);
             return accept.includes(current.status) ? current : undefined;
           },
-          { timeout: 420_000, interval: 1000 },
+          { timeout: 120_000, interval: 1000 },
         );
       } catch (error) {
         const { run: current } = await api(`/api/workflows/runs/${runId}`);
@@ -343,7 +342,7 @@ export default async function run() {
         const step = current.steps.find((item) => item.stepId === "s2");
         return step?.status === "waiting" ? { current, step } : undefined;
       },
-      { timeout: 420_000, interval: 1000 },
+      { timeout: 120_000, interval: 1000 },
     );
     s.check(
       "maxRetries 0 升级成关卡，reason 为 verifyFailed",
