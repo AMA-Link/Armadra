@@ -124,7 +124,9 @@ function open(options: { remote?: boolean } = {}) {
     remote: () => options.remote === true,
     env: (name) => (name === "GROK_HOME" ? sessionHome : undefined),
     screen: async () => screenText,
-    ...(cardGate === undefined ? {} : { answerCards: async () => cardGate }),
+    ...(cardGate === undefined
+      ? {}
+      : { answerCards: async () => cardGate === true }),
     report: (event, options) => {
       reports.push({ ...event });
       payloads.push(options?.rawPayload);

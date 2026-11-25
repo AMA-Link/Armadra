@@ -122,6 +122,13 @@ export function BareLaunchRow({
  * 终端审批代答开关（主机设置 `agents.grok.answerCards`，契约 §127）：开 = 节点头部与
  * 手机上点允许 / 拒绝，core 对着终端里的审批卡按那一个数字键。只有 grok 有这一行。
  */
+function answerCardsOn(settings: unknown): boolean {
+  const agents = (settings as { agents?: Record<string, unknown> } | undefined)
+    ?.agents;
+  const grok = agents?.grok as { answerCards?: unknown } | undefined;
+  return grok?.answerCards === true;
+}
+
 export function AnswerCardsRow({
   agent,
 }: {
@@ -138,7 +145,7 @@ export function AnswerCardsRow({
       <ScopeBadge scope="host" />
       <Switch
         size="sm"
-        checked={settings.data?.agents?.grok?.answerCards === true}
+        checked={answerCardsOn(settings.data)}
         disabled={!settings.data || save.isPending}
         aria-label={`${agent.label} ${t("agents.row.answerCards")}`}
         onCheckedChange={(checked) =>
