@@ -100,6 +100,20 @@ export const realRemoteStatusReader: RemoteStatusReader = async (
   path,
 ) => await executeOn(target, "git.status", { path });
 
+/**
+ * 在执行主机上读一个目录的分支表（`git.branches`）：每个本地分支的 upstream
+ * （完整 ref）与 `refs/remotes/<remote>/HEAD` 的指向；连不上、不支持时抛。
+ */
+export type RemoteBranchesReader = (
+  target: ExecutionTarget,
+  path: string,
+) => Promise<unknown>;
+
+export const realRemoteBranchesReader: RemoteBranchesReader = async (
+  target,
+  path,
+) => await executeOn(target, "git.branches", { path });
+
 /** 一个节点此刻所在分支对应的 head（契约 §116）。 */
 export interface NodeBranch {
   /** 基仓库：工作空间选中的 remote，`<主机>/<owner>/<名字>`（契约 §111.1）。 */
@@ -120,6 +134,7 @@ export interface WorkspaceRepositoryOptions {
   readonly git?: GitReader;
   readonly remoteHost?: RemoteHostReader;
   readonly remoteStatus?: RemoteStatusReader;
+  readonly remoteBranches?: RemoteBranchesReader;
   readonly ssh?: SshAliasResolver;
   readonly now?: () => number;
   /**
@@ -202,12 +217,14 @@ export class WorkspaceRepositoryService {
   private readonly git: GitReader;
   private readonly remoteHost: RemoteHostReader;
   private readonly remoteStatus: RemoteStatusReader;
+  private readonly remoteBranches: RemoteBranchesReader;
   private readonly ssh: SshAliasResolver;
 
   constructor(private readonly options: WorkspaceRepositoryOptions) {
     this.git = options.git ?? realGitReader;
     this.remoteHost = options.remoteHost ?? realRemoteHostReader;
     this.remoteStatus = options.remoteStatus ?? realRemoteStatusReader;
+    this.remoteBranches = options.remoteBranches ?? realRemoteBranchesReader;
     this.ssh = options.ssh ?? new SshAliasResolver();
     this.selections = new RemoteSelectionStore(options.database, options.now);
   }
@@ -510,8 +527,45 @@ export class WorkspaceRepositoryService {
     const base = located.remotes.find((entry) => entry.name === chosen?.name);
     if (base === undefined) return null;
     const baseRepo = await this.repoOf(base.url, located.workspaceId, true);
-    if (baseRepo === null || isDefaultBranch(branch, "")) return null;
-    return nodeBranch(baseRepo, { ref: branch, repo: baseRepo });
+    if (baseRepo === null) return null;
+    // 分支表读不到（主机不支持、断线）时退回同名分支，与没有 upstream 一样。
+    let table: RemoteBranchRecord[] = [];
+    try {
+      table = remoteBranchRecords(
+        await this.remoteBranches(target, path === "" ? "." : path),
+      );
+    } catch {
+      table = [];
+    }
+    let head = { ref: branch, repo: baseRepo };
+    const tracked = table.find(
+      (entry) => !entry.remote && entry.name === branch,
+    )?.upstream;
+    const prefix = "refs/remotes/";
+    const via =
+      tracked !== undefined && tracked !== null && tracked.startsWith(prefix)
+        ? [...located.remotes]
+            .sort((a, b) => b.name.length - a.name.length)
+            .find((entry) => tracked.startsWith(`${prefix}${entry.name}/`))
+        : undefined;
+    if (via !== undefined && tracked !== undefined && tracked !== null) {
+      const ref = tracked.slice(`${prefix}${via.name}/`.length);
+      const repo =
+        via.name === base.name
+          ? baseRepo
+          : await this.repoOf(via.url, located.workspaceId, true);
+      if (repo === null || repo.host !== baseRepo.host) return null;
+      if (ref !== "") head = { ref, repo };
+    }
+    const symbolic = table.find(
+      (entry) => entry.remote && entry.name === `${base.name}/HEAD`,
+    )?.symbolicTarget;
+    const known =
+      symbolic?.startsWith(`${prefix}${base.name}/`) === true
+        ? symbolic.slice(`${prefix}${base.name}/`.length)
+        : "";
+    if (isDefaultBranch(head.ref, known)) return null;
+    return nodeBranch(baseRepo, head);
   }
 
   /** 一个 remote 地址 → 平台认识的仓库；不认识的 `null`。 */
@@ -523,6 +577,33 @@ export class WorkspaceRepositoryService {
     const seen = await this.detect(url, workspaceId, remoteHost);
     return seen.detection?.forge == null ? null : seen.detection.repository;
   }
+}
+
+interface RemoteBranchRecord {
+  readonly name: string;
+  readonly remote: boolean;
+  readonly upstream: string | null;
+  readonly symbolicTarget: string | null;
+}
+
+/** `git.branches` 的答复 → 只留用得到的字段；形状不对的条目丢掉。 */
+function remoteBranchRecords(value: unknown): RemoteBranchRecord[] {
+  const list = (value as { branches?: unknown } | null)?.branches;
+  if (!Array.isArray(list)) return [];
+  const text = (v: unknown) => (typeof v === "string" && v !== "" ? v : null);
+  const out: RemoteBranchRecord[] = [];
+  for (const item of list as Record<string, unknown>[]) {
+    if (item === null || typeof item !== "object") continue;
+    const name = text(item.name);
+    if (name === null) continue;
+    out.push({
+      name,
+      remote: item.remote === true,
+      upstream: text(item.upstream),
+      symbolicTarget: text(item.symbolicTarget),
+    });
+  }
+  return out;
 }
 
 /** 默认分支：已知就比对，不知道时按 main / master 算。 */
