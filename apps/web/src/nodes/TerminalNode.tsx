@@ -308,8 +308,19 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
           onAnswer: (decision: "allow" | "deny") => {
             // 先收起按钮：Runtime 的下一条 `agent.status` 未必立刻到，
             // 让用户对着一个已经答过的请求再点一次是最糟的。
-            useAgentStatusStore.getState().resolveApproval(pendingId);
-            void answerApproval(workspaceId ?? "", pendingId, decision);
+            const statusKey = useAgentStatusStore
+              .getState()
+              .resolveApproval(pendingId);
+            // 没答上就把头部按钮放回去并说一声（回合还卡在这条审批上），与审批卡
+            // 自己的 `answerPermission` 一个做法。
+            answerApproval(workspaceId ?? "", pendingId, decision).catch(() => {
+              if (statusKey !== undefined) {
+                useAgentStatusStore
+                  .getState()
+                  .reopenApproval(statusKey, pendingId);
+              }
+              toast.error(t("acp.permission.failed"));
+            });
           },
         }
       : undefined;
@@ -355,7 +366,12 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
                 )
               : null;
             card?.scrollIntoView({ block: "nearest" });
-            card?.focus();
+            // 焦点放在「拒绝」上：误按 Enter 也只是拒绝，不会批准一份没读的计划
+            // （数字键对计划卡不生效，见 `PermissionCard.onKeyDown`）。
+            (
+              card?.querySelector<HTMLElement>('[data-option^="reject"]') ??
+              card
+            )?.focus();
           };
           requestAnimationFrame(reveal);
         }}

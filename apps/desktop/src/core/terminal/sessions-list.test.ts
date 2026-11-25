@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
 
+import { forgetPendingCard, notePendingCard } from "../agent/pending-cards";
 import { fixture, type Fixture } from "../workspaces/fixture";
 import { install as installWorkspaces } from "../workspaces/routes";
 import { listSessions } from "./install";
@@ -126,6 +127,34 @@ describe("工作空间的会话列表", () => {
     const b = listed.find((row) => row.nodeId === "node-b");
     expect([a?.errored, a?.interrupted]).toEqual([true, false]);
     expect([b?.errored, b?.interrupted]).toEqual([false, true]);
+  });
+
+  it("挂起的计划审批：会话摘要带 pendingCard，刷新或重连后头部不会又出一键按钮", async () => {
+    const { core, workspaceId, boardId } = await board();
+    node(core, boardId, "node-a", "A");
+    node(core, boardId, "node-b", "B");
+    session(core, workspaceId, "node-a", "s-a", "2026-09-01T00:00:00Z");
+    session(core, workspaceId, "node-b", "s-b", "2026-09-02T00:00:00Z");
+    const at = new Date().toISOString();
+    const status = core.database.prepare(
+      "INSERT INTO agent_status (node_id, workspace_id, agent_id, state, pending_id, unread, verified, restored, updated_at) " +
+        "VALUES (?, ?, 'claude', 'blocked', ?, 0, 1, 0, ?)",
+    );
+    status.run("node-a", workspaceId, "p-plan", at);
+    status.run("node-b", workspaceId, "p-plain", at);
+    notePendingCard("p-plan", "plan");
+    try {
+      const listed = listSessions(core.database, workspaceId, () => true);
+      expect(listed.find((row) => row.nodeId === "node-a")).toMatchObject({
+        pendingId: "p-plan",
+        pendingCard: "plan",
+      });
+      expect(listed.find((row) => row.nodeId === "node-b")).not.toHaveProperty(
+        "pendingCard",
+      );
+    } finally {
+      forgetPendingCard("p-plan");
+    }
   });
 
   it("带上程序自报的状态，重连的页面靠它补节点头（契约 §53）", async () => {

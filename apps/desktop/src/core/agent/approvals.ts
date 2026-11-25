@@ -384,7 +384,7 @@ export async function answerApproval(
   // option.
   const needsOption =
     acpOptions !== undefined &&
-    acpCardOf(existing.request) === "plan" &&
+    acpCardOf(existing.request) !== undefined &&
     request.optionId === undefined;
   if (
     existing.answer === null &&

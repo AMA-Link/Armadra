@@ -97,6 +97,28 @@ describe("a plan approval is answered by an explicit option only", () => {
     expect(named.status).toBe(200);
   });
 
+  it("any card kind this build writes needs the explicit option, not only plan", async () => {
+    insertApproval(fixture.collab, {
+      pendingId: "p-other-card",
+      nodeId,
+      workspaceId: fixture.workspaceId,
+      request: {
+        protocol: "acp",
+        toolCall: { toolCallId: "t3" },
+        options,
+        card: "future",
+      },
+    });
+    await expect(
+      answerApproval(fixture.collab, "p-other-card", { decision: "allow" }),
+    ).rejects.toMatchObject({ status: 400 });
+    const { approval } = await answerApproval(fixture.collab, "p-other-card", {
+      decision: "allow",
+      optionId: "approve",
+    });
+    expect(approval.answer).toBe("allow");
+  });
+
   it("an ordinary ACP approval still answers by decision alone (the header buttons)", async () => {
     const { approval } = await answerApproval(fixture.collab, "p-plain", {
       decision: "allow",

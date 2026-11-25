@@ -393,6 +393,104 @@ describe("TerminalNode body", () => {
     expect(screen.queryByRole("button", { name: "允许" })).toBeNull();
   });
 
+  describe("a plan approval in the header", () => {
+    const pending = (extra: Record<string, unknown> = {}) =>
+      useAgentStatusStore.setState({
+        statuses: {
+          [scoped("n1")]: {
+            nodeId: "n1",
+            workspaceId: "w",
+            agentId: "codex",
+            state: "blocked",
+            pendingId: "p1",
+            unread: false,
+            verified: true,
+            restored: false,
+            alive: true,
+            updatedAt: "2026-10-03T00:00:00.000Z",
+            ...extra,
+          },
+        } as never,
+      });
+    const acpNode = (collapsed = false) =>
+      ({
+        ...terminalNode({
+          kind: "terminal",
+          agent: { id: "codex", driver: "acp" },
+        }),
+        ...(collapsed ? { collapsed: true } : {}),
+      }) as CanvasNode;
+
+    it("offers allow / deny for an ordinary approval (control)", async () => {
+      pending();
+      renderNode(acpNode());
+      expect(await screen.findByRole("button", { name: "允许" })).toBeTruthy();
+      expect(
+        document.querySelector("[data-slot=open-plan-approval]"),
+      ).toBeNull();
+    });
+
+    it("pendingCard: plan gives no allow / deny, only the button that takes you to the card", async () => {
+      pending({ pendingCard: "plan" });
+      renderNode(acpNode());
+      await screen.findByText("计划审批");
+      expect(screen.queryByRole("button", { name: "允许" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "拒绝" })).toBeNull();
+      expect(
+        document.querySelector("[data-slot=open-plan-approval]"),
+      ).not.toBeNull();
+    });
+
+    it("a card kind this page does not know is treated the same way", async () => {
+      pending({ pendingCard: "future" });
+      renderNode(acpNode());
+      await screen.findByRole("button", { name: "回答" });
+      expect(screen.queryByRole("button", { name: "允许" })).toBeNull();
+    });
+
+    it("clicking it focuses the card's reject button (never the approve one), found by pending id", async () => {
+      Element.prototype.scrollIntoView = vi.fn();
+      pending({ pendingCard: "plan" });
+      const { container } = renderNode(acpNode());
+      const button = await screen.findByText("计划审批");
+      // 会话视图是个桩：自己放一张带 pendingId 的卡（另放一张别的 pendingId 的，不该被选中）。
+      const root = container.querySelector("[data-terminal-node]") ?? container;
+      root.insertAdjacentHTML(
+        "beforeend",
+        `<div data-slot="acp-permission" data-pending-id="other"><button data-option="reject_once" id="other-reject">x</button></div>
+         <div data-slot="acp-permission" data-pending-id="p1">
+           <button data-option="allow_once" id="approve">approve</button>
+           <button data-option="reject_once" id="reject">reject</button>
+         </div>`,
+      );
+      fireEvent.click(button);
+      await waitFor(() => expect(document.activeElement?.id).toBe("reject"));
+    });
+
+    it("expands a collapsed node first so the card exists", async () => {
+      pending({ pendingCard: "plan" });
+      const setCollapsed = vi.spyOn(useCanvasStore.getState(), "setCollapsed");
+      renderNode(acpNode(true));
+      fireEvent.click(await screen.findByText("计划审批"));
+      expect(setCollapsed).toHaveBeenCalledWith("n1", false);
+      setCollapsed.mockRestore();
+    });
+
+    it("a failed one-click answer puts the buttons back and says so", async () => {
+      pending();
+      const failing = vi
+        .spyOn(await import("./runtime-extras"), "answerApproval")
+        .mockRejectedValue(new Error("down"));
+      renderNode(acpNode());
+      fireEvent.click(await screen.findByRole("button", { name: "允许" }));
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "允许" })).toBeTruthy(),
+      );
+      expect(failing).toHaveBeenCalled();
+      failing.mockRestore();
+    });
+  });
+
   it("zero injection: marks the node, and the approval entry is disabled with its reason (#975)", () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },

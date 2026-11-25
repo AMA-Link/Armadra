@@ -643,6 +643,29 @@ describe("计划审批卡", () => {
     expect(document.body.textContent).not.toContain("looks like a plan");
   });
 
+  it("数字键对计划卡不生效（不会一键批准没读的计划），Esc 仍是拒绝；普通卡的数字键照旧（对照）", async () => {
+    const { unmount } = render(<PermissionCard permission={plan} canAnswer />);
+    const card = document.querySelector("[data-slot=acp-permission]")!;
+    const reject = card.querySelector<HTMLElement>('[data-option^="reject"]')!;
+    fireEvent.keyDown(reject, { key: "1" });
+    expect(api.answer).not.toHaveBeenCalled();
+    fireEvent.keyDown(reject, { key: "Escape" });
+    await waitFor(() => expect(api.answer).toHaveBeenCalledTimes(1));
+    expect(api.answer.mock.calls[0]).toEqual([
+      plan.pendingId,
+      "deny",
+      "reject",
+    ]);
+    unmount();
+    api.answer.mockClear();
+    useAnsweredStore.getState().reset();
+    render(<PermissionCard permission={permission} canAnswer />);
+    fireEvent.keyDown(document.querySelector("[data-slot=acp-permission]")!, {
+      key: "2",
+    });
+    await waitFor(() => expect(api.answer).toHaveBeenCalledTimes(1));
+  });
+
   it("body 只在 card 是 plan 时显示", () => {
     render(
       <PermissionCard
