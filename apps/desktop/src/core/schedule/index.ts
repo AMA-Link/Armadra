@@ -129,6 +129,8 @@ export function install(context: CoreContext): ScheduleDomain | undefined {
     hostId,
     generationOf: (sessionId) =>
       dispatchContext.terminals()?.generation(sessionId),
+    channelsOf: (workspaceId, nodeIds) =>
+      dispatcher.stateChannels(workspaceId, nodeIds),
   });
 
   authority.service = service;

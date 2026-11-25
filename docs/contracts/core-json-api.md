@@ -137,10 +137,13 @@ GitHub 那一面（§5、§41.1）的 `code` 自协议 1.11 起是 snake_case，
 | `GET`  | `/api/automations/plans/{planId}/runs`     | —（`?after=&limit=`）                               | `{ runs, nextId, hasMore }`          |
 | `GET`  | `/api/automations/command-sessions`        | —（`?after=&limit=`）                               | `{ sessions, nextId, hasMore }`      |
 | `POST` | `/api/automations/command-sessions`        | `{ sessionId, rootPath, launch }`                   | `CommandSession`                     |
+| `GET`  | `/api/automations/target-channels`         | —（`?nodeIds=a,b`，最多 200 个）                    | `{ channels }`                       |
 
 `PlanSnapshot` 是 `{ plan, revision, configSha256 }`，`RunSnapshot` 是 `{ run, revision }`。`revision` 在这一面是 `number`（修订号是小整数，不是 64 位的时间戳）。
 
 **写入侧收的是普通 JSON**：`config` 是一份 `AutomationPlanConfig`，`launch` 是一份 `CommandLaunchSpec`。0020 之前它们是 base64 的 protobuf（`configBase64` / `launchBase64` / `payloadBase64`），因为那时候库里存的就是字节；现在不是了。
+
+- **`target-channels`**：计划向导给 Agent 节点置灰用。`channels` 是 `{ <节点 id>: <通道来源名> | null }`：有状态通道答来源名（`hook` / `extension` / `transcript` / `acp`），按节点判下来没有答 `null`（远程节点、Windows、读不到会话记录的 `unbound`，契约 §123）。不在本工作空间、不是 Agent 节点、`custom:` 条目而设置取不到的节点不出现在答复里（调用方按「不知道」处理，不置灰）。需要 `automation:read`，不合法的 id 与超出 200 个的部分被丢掉。判据与探测（`TerminalDispatcher.supports`）同一份，所以向导里可选的节点启用时不会因为通道而 409。
 
 ### 4.2 `configSha256`：规范 JSON 的 SHA-256
 

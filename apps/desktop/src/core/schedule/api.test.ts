@@ -63,7 +63,11 @@ interface Fixture {
   ): Promise<Answer>;
 }
 
-function setUp(): Fixture {
+function setUp(
+  options: {
+    channelsOf?: ConstructorParameters<typeof ScheduleService>[0]["channelsOf"];
+  } = {},
+): Fixture {
   const directory = mkdtempSync(join(tmpdir(), "armadra-automation-api-"));
   directories.push(directory);
   const opened: OpenedDatabase = openDatabase({
@@ -121,6 +125,9 @@ function setUp(): Fixture {
     identity: identityStore,
     hostId,
     generationOf: () => 7,
+    ...(options.channelsOf === undefined
+      ? {}
+      : { channelsOf: options.channelsOf }),
   });
   authority.service = service;
   const api = new AutomationApi({ service, identity });
@@ -304,6 +311,36 @@ describe("自动化的 JSON 面", () => {
     );
     expect(runs.status).toBe(200);
     expect(runs.body).toMatchObject({ runs: [], hasMore: false });
+  });
+
+  it("target-channels：按本工作空间问一批节点，只传合法的 id，没有口时答空", async () => {
+    const asked: { workspaceId: string; nodeIds: readonly string[] }[] = [];
+    const fixture = setUp({
+      channelsOf: (workspaceId, nodeIds) => {
+        asked.push({ workspaceId, nodeIds });
+        return { a: "transcript", b: null };
+      },
+    });
+    const answer = await fixture.call(
+      "GET",
+      "/api/automations/target-channels?workspaceId=ws&nodeIds=a,b,bad%20id,",
+    );
+    expect(answer.status).toBe(200);
+    expect(answer.body).toEqual({ channels: { a: "transcript", b: null } });
+    expect(asked).toEqual([{ workspaceId: "ws", nodeIds: ["a", "b"] }]);
+    const bare = setUp();
+    const none = await bare.call(
+      "GET",
+      "/api/automations/target-channels?workspaceId=ws&nodeIds=a",
+    );
+    expect(none.body).toEqual({ channels: {} });
+    const anonymous = await bare.call(
+      "GET",
+      "/api/automations/target-channels?workspaceId=ws&nodeIds=a",
+      undefined,
+      { anonymous: true },
+    );
+    expect(anonymous.status).toBe(401);
   });
 
   it("摘要对不上就是 conflict，而不是一次悄悄的激活", async () => {

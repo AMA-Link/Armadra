@@ -28,6 +28,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   NO_CUSTOM_AGENTS,
+  markChannelUnbound,
   registerNodeChannelGate,
   registerStateRefresher,
 } from "../agent/registry";
@@ -251,6 +252,51 @@ describe("Agent 目标的探测", () => {
       }
       expect(written).toEqual([]);
     } finally {
+      off();
+    }
+  });
+
+  it("节点的通道标成 unbound（读不到会话记录）：不支持；绑上之后恢复", async () => {
+    const { database, dispatcher } = setUp();
+    state(database, "idle");
+    const off = registerNodeChannelGate(
+      "claude",
+      (facts) => facts.unbound !== true,
+    );
+    try {
+      markChannelUnbound("node-1", true);
+      expect((await dispatcher.supports(agentTargetOf())).state).toBe(
+        "unsupported",
+      );
+      markChannelUnbound("node-1", false);
+      expect((await dispatcher.supports(agentTargetOf())).state).toBe("ready");
+    } finally {
+      markChannelUnbound("node-1", false);
+      off();
+    }
+  });
+
+  it("stateChannels 按节点答：有通道答来源名，被门挡掉的答 null，别的工作空间与非 Agent 节点不答", async () => {
+    const { database, dispatcher } = setUp();
+    const off = registerNodeChannelGate(
+      "claude",
+      (facts) => facts.unbound !== true,
+    );
+    try {
+      expect(dispatcher.stateChannels("ws", ["node-1", "nope"])).toEqual({
+        "node-1": "hook",
+      });
+      markChannelUnbound("node-1", true);
+      expect(dispatcher.stateChannels("ws", ["node-1"])).toEqual({
+        "node-1": null,
+      });
+      expect(dispatcher.stateChannels("other-ws", ["node-1"])).toEqual({});
+      database
+        .prepare("UPDATE nodes SET data_json = '{}' WHERE id = 'node-1'")
+        .run();
+      expect(dispatcher.stateChannels("ws", ["node-1"])).toEqual({});
+    } finally {
+      markChannelUnbound("node-1", false);
       off();
     }
   });
