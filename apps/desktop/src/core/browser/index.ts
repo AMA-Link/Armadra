@@ -1,8 +1,4 @@
-import {
-  parseCustomAgents,
-  parseBareLaunch,
-  parseDisabledAgents,
-} from "../settings/custom-agents";
+import { liveAgentSettings } from "../settings/custom-agents";
 import { settingsDomain } from "../settings";
 import type { Caller } from "../collab/nodes";
 import { asRefused } from "../collab/refusals";
@@ -137,14 +133,9 @@ export function install(context: CoreContext): BrowserContext {
     // Read through the settings store on every call rather than snapshotted: a
     // custom Agent whose `browser` capability the user just switched off must
     // stop driving now, not at the next restart.
-    settings: {
-      customAgents: () =>
-        parseCustomAgents(settingsDomain()?.settings.snapshot() ?? {}),
-      disabledAgents: () =>
-        parseDisabledAgents(settingsDomain()?.settings.snapshot() ?? {}),
-      bareLaunch: (agentId) =>
-        parseBareLaunch(settingsDomain()?.settings.snapshot() ?? {}, agentId),
-    },
+    settings: liveAgentSettings(
+      () => settingsDomain()?.settings.snapshot() ?? {},
+    ),
     publish: (workspaceId, event) => {
       context.bus.emit("workspace.event", { workspaceId, event });
     },

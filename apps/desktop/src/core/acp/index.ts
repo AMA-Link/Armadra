@@ -64,11 +64,7 @@ import { insertApproval } from "../hook/store";
 import type { CoreContext } from "../main";
 import { settingsDomain } from "../settings";
 import { timelineDomainOf } from "../timeline";
-import {
-  parseCustomAgents,
-  parseBareLaunch,
-  parseDisabledAgents,
-} from "../settings/custom-agents";
+import { liveAgentSettings } from "../settings/custom-agents";
 import { TerminalError, type TerminalSpec } from "../terminal/backend";
 import type { EnvPairs } from "../terminal/environment";
 import type { Hibernator } from "../terminal/hibernator";
@@ -202,14 +198,8 @@ export function acpTerminal(): AcpTerminalWiring | undefined {
 /** 当前装配的设置（自定义条目每次现读）。 */
 export function agentSettings(): AgentSettings {
   return (
-    collab()?.settings ?? {
-      customAgents: () =>
-        parseCustomAgents(settingsDomain()?.settings.snapshot() ?? {}),
-      disabledAgents: () =>
-        parseDisabledAgents(settingsDomain()?.settings.snapshot() ?? {}),
-      bareLaunch: (agentId) =>
-        parseBareLaunch(settingsDomain()?.settings.snapshot() ?? {}, agentId),
-    }
+    collab()?.settings ??
+    liveAgentSettings(() => settingsDomain()?.settings.snapshot() ?? {})
   );
 }
 
