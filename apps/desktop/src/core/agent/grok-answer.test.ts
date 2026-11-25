@@ -309,15 +309,17 @@ describe("两道门与模式", () => {
       });
     }
   });
-  it("代码里的清单现在是空的：一个版本都不开", () => {
+  it("代码里的清单：只有 e2e 过了的那个版本", () => {
     useGrokVerifiedVersions(undefined);
-    expect(
+    const gate = (version: string) =>
       grokAnswerGate({
         setting: true,
         permissionMode: "plan",
-        version: "1.0.92",
-      }),
-    ).toMatchObject({ open: false });
+        version,
+      });
+    expect(gate("1.0.92")).toEqual({ open: true });
+    expect(gate("1.0.93")).toMatchObject({ reason: "unverified_version" });
+    expect(gate("1.0.91")).toMatchObject({ reason: "unverified_version" });
   });
 });
 

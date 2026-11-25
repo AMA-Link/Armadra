@@ -25,7 +25,7 @@ import { baseAgent } from "./registry";
  */
 
 /** 已在 Armadra 的离线 e2e 里验证过卡片结构的 grok 版本；空 = 谁都不开。 */
-export const GROK_ANSWER_VERIFIED_VERSIONS: readonly string[] = [];
+export const GROK_ANSWER_VERIFIED_VERSIONS: readonly string[] = ["1.0.92"];
 
 /** 用户设置里的开关（缺省关）：`agents.grok.answerCards`。 */
 export const GROK_ANSWER_SETTING = "agents.grok.answerCards";
