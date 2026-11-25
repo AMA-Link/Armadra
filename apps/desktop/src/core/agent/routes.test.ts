@@ -83,6 +83,18 @@ describe("GET /api/agent-status/{nodeId}/transcript", () => {
     expect(answer.status).toBe(501);
   });
 
+  // Antigravity 只有会话索引：定位给得出 key，但没有记录可读。读内容的入口要答
+  // 501，而不是 200 加一片空白（空白会被当成「会话什么都没说」）。
+  it("answers 501 for an index-only provider whose session id is known", async () => {
+    const node = fixture.agentNode("Agy", "agy");
+    statusRow(node, { agentId: "agy", sessionId: "11111111-2222-3333-4444" });
+    const answer = await fixture.call(
+      "GET",
+      `/api/agent-status/${node}/transcript`,
+    );
+    expect(answer.status).toBe(501);
+  });
+
   it("answers 404 for a node that has never reported", async () => {
     const answer = await fixture.call(
       "GET",

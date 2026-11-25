@@ -82,6 +82,21 @@ export function locateHistory(hint: SessionHint): Located | undefined {
   );
 }
 
+/**
+ * 给**读内容**的读者用的定位：与 {@link locateHistory} 同一条路，只是对「只有会话
+ * 索引、没有记录可读」的来源（`readsEntries: false`，agy）答 `undefined`——除非
+ * CLI 报来了一个真文件（`path`）。否则连线读取、交接冻结会拿到一个 key、读出一片
+ * 空白，把「没有转录」当成「会话什么都没说」。读标题的 `historyTitle` 仍用
+ * {@link locateHistory}：索引里有标题就够了。
+ */
+export function locateReadableHistory(hint: SessionHint): Located | undefined {
+  const located = locateHistory(hint);
+  if (located === undefined || located.path !== undefined) return located;
+  return historyAdapter(hint.agentId)?.readsEntries === false
+    ? undefined
+    : located;
+}
+
 /** 旧镜像文件已经不在（core 不再写它），但会话的时间线有内容。 */
 function timelineLocated(path: string | undefined): Located | undefined {
   if (path === undefined || timelineEntriesOf(path) === undefined) {

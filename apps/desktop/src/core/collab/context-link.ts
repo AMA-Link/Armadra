@@ -40,7 +40,7 @@ import { type Args, Refusal, truncate } from "./refusals";
 import { type CollabContext, nowDate } from "./service";
 import {
   describeHistoryCursor,
-  locateHistory,
+  locateReadableHistory,
   readHistoryEntries,
 } from "../history/registry";
 import type { EntryRange, Located } from "../history/types";
@@ -951,7 +951,7 @@ function locateTranscript(
 ): FoundTranscript {
   const status = getAgentStatus(context.database, target.id);
   const agentId = target.agentId ?? status?.agentId ?? "claude";
-  const located = locateHistory(
+  const located = locateReadableHistory(
     historyHint(context.database, target.id, agentId, status),
   );
   if (located === undefined) throw missing(target, agentId);

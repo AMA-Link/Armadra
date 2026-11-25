@@ -1,7 +1,7 @@
 import { readLocatedEntries, readTail } from "../history/files";
 import {
   historyAdapter,
-  locateHistory,
+  locateReadableHistory,
   readHistoryEntries,
 } from "../history/registry";
 import { isAcpMirror } from "../history/acp-mirror";
@@ -77,7 +77,7 @@ export type TranscriptTail =
   | { readonly state: "unreadable" };
 
 export function readTranscriptTail(source: TranscriptSource): TranscriptTail {
-  const located = locateHistory({
+  const located = locateReadableHistory({
     agentId: source.provider,
     transcriptPath: source.path,
     sessionId: source.sessionId,

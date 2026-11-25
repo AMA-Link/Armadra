@@ -9,7 +9,11 @@ import {
   MAX_RENDERED_BYTES,
   renderEntries,
 } from "../collab/transcript";
-import { locateHistory, readHistoryEntries } from "../history/registry";
+import {
+  locateHistory,
+  locateReadableHistory,
+  readHistoryEntries,
+} from "../history/registry";
 import {
   commandFromCapture,
   configuredScope,
@@ -477,7 +481,7 @@ function agentOperations(collab: CollabContext) {
       const status = getAgentStatus(database, nodeId);
       if (status === undefined) throw notFound("This node has never reported");
       const provider = baseAgent(collab.settings, status.agentId);
-      const located = locateHistory(
+      const located = locateReadableHistory(
         historyHint(database, nodeId, provider, status),
       );
       // A provider that keeps nothing readable is **501, not an empty body**.
