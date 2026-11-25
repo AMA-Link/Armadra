@@ -317,9 +317,10 @@ export const timelineApprovalItemSchema = z.object({
   toolCall: timelineApprovalCallSchema.optional(),
   /**
    * core 自己写的卡片种类（`holdExt`，Agent 写不进来）：`plan` = 计划审批，页面据此
-   * 换成本地化的标题并显示 `body`。不取自 Agent 的请求体。
+   * 换成本地化的标题并显示 `body`。不取自 Agent 的请求体。线上放宽成字符串：以后多
+   * 一种卡片时，旧页面收到不认得的值照样能解析整条时间线，只是当作普通审批显示。
    */
-  card: z.literal("plan").optional(),
+  card: z.string().max(40).optional(),
   /** 计划卡的正文：纯文本，core 已去掉控制字符、截到 64K 字符。 */
   body: z.string().max(70_000).optional(),
   /** 正文被截断时，原文有多少字符（页面写「已截断，共 N 字符」）。 */
