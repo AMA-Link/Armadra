@@ -239,9 +239,13 @@ export interface TailView {
 
 /**
  * Tools that hold the turn open on a person: grok does not end the turn while
- * the plan review (`a approve | s request changes | …`) is up.
+ * the plan review (`a approve | s request changes | …`) or a question card
+ * (`1 (○) Red …`) is up. Both are auto-resolved at the permission layer
+ * (`permission_resolved allow wait_ms 0`), so only the tool names say it
+ * (1.0.92, real account). A dismissed card ends the turn `cancelled` with no
+ * `tool_completed`.
  */
-const ASKING_TOOLS = new Set(["exit_plan_mode"]);
+const ASKING_TOOLS = new Set(["exit_plan_mode", "ask_user_question"]);
 
 /**
  * The per-session state machine over `events.jsonl` lines. Pure: feed it parsed
@@ -316,6 +320,11 @@ export class SessionTail {
         break;
       }
       case "loop_started":
+        // A new model loop after the review tool: the review was answered (quit
+        // plan / approve) — measured on 1.0.92, no `tool_completed` follows it.
+        this.asking = undefined;
+        this.inTurn = true;
+        break;
       case "first_token":
       case "phase_changed":
         this.inTurn = true;

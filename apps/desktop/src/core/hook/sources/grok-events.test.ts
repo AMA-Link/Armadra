@@ -505,6 +505,59 @@ describe("计划审阅（exit_plan_mode）", () => {
     slot!.stop();
   });
 
+  it("真账号 1.0.92 的形状：tool_started 后立刻 permission_requested/resolved allow(wait 0)，没有 tool_completed；回答之后是新一轮 loop_started", () => {
+    ready();
+    writeEvents("p", [
+      line("turn_started"),
+      line("loop_started"),
+      line("tool_started", { tool_name: "search_replace" }),
+      line("tool_completed", { tool_name: "search_replace" }),
+      line("loop_started"),
+      line("tool_started", { tool_name: "exit_plan_mode" }),
+      line("permission_requested", { tool_name: "exit_plan_mode" }),
+      line("permission_resolved", {
+        tool_name: "exit_plan_mode",
+        decision: "allow",
+        wait_ms: 0,
+      }),
+    ]);
+    const { slot } = open();
+    slot!.start();
+    expect(states().at(-1)).toBe("waiting");
+    expect(reports.at(-1)?.askKind).toBe("exit_plan_mode");
+    // 用户在审阅里选了 q / a：模型接着跑一轮，回合随后结束。
+    append("p", [line("loop_started"), line("first_token")]);
+    slot!.poke?.();
+    expect(states().at(-1)).toBe("working");
+    append("p", [line("turn_ended", { outcome: "completed" })]);
+    slot!.poke?.();
+    expect(states().at(-1)).toBe("done");
+    slot!.stop();
+  });
+
+  it("question card（ask_user_question）同样：waiting，被取消的回合以 cancelled 结束就清掉", () => {
+    ready();
+    writeEvents("p", [
+      line("turn_started"),
+      line("tool_started", { tool_name: "ask_user_question" }),
+      line("permission_requested", { tool_name: "ask_user_question" }),
+      line("permission_resolved", {
+        tool_name: "ask_user_question",
+        decision: "allow",
+        wait_ms: 0,
+      }),
+    ]);
+    const { slot } = open();
+    slot!.start();
+    const waiting = reports.filter((e) => e.state === "waiting").at(-1);
+    expect(waiting?.askKind).toBe("ask_user_question");
+    append("p", [line("turn_ended", { outcome: "cancelled" })]);
+    slot!.poke?.();
+    expect(reports.at(-1)?.state).toBe("done");
+    expect(reports.at(-1)?.interrupted).toBe(true);
+    slot!.stop();
+  });
+
   it("别的工具不触发 waiting", () => {
     ready();
     writeEvents("p", [

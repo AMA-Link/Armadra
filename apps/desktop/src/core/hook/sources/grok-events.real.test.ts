@@ -119,26 +119,29 @@ describe.skipIf(!REAL)("真 grok 的状态读取槽", () => {
       );
       expect(states()).toEqual([]);
 
-      // 回合 1：working → done。
-      type("Reply with only the word ok.");
-      await until(() => states().includes("done"), "turn 1 done");
-      expect(states()).toEqual(["working", "done"]);
-      expect(reports.find((e) => e.state === "working")?.newTurn).toBe(true);
+      const onlyApproval = process.env.ARMADRA_REAL_GROK_ONLY === "approval";
+      if (!onlyApproval) {
+        // 回合 1：working → done。
+        type("Reply with only the word ok.");
+        await until(() => states().includes("done"), "turn 1 done");
+        expect(states()).toEqual(["working", "done"]);
+        expect(reports.find((e) => e.state === "working")?.newTurn).toBe(true);
 
-      // /new：同一个进程里第二个会话，旧行还在；回合 2 用 --allow 放行的命令。
-      reports.length = 0;
-      type("/new");
-      await until(
-        () => reports.filter((e) => e.kind === "session").length === 1,
-        "second session start",
-      );
-      type(
-        "Use your shell tool (run_terminal_command) to run: echo hi. You must call the tool. Then say done.",
-      );
-      await until(() => states().includes("done"), "turn 2 done");
-      expect(states()).not.toContain("waiting");
-
+        // /new：同一个进程里第二个会话，旧行还在；回合 2 用 --allow 放行的命令。
+        reports.length = 0;
+        type("/new");
+        await until(
+          () => reports.filter((e) => e.kind === "session").length === 1,
+          "second session start",
+        );
+        type(
+          "Use your shell tool (run_terminal_command) to run: echo hi. You must call the tool. Then say done.",
+        );
+        await until(() => states().includes("done"), "turn 2 done");
+        expect(states()).not.toContain("waiting");
+      }
       // 回合 3：需要审批的命令（不在 --allow 里）：窗口过后报 waiting，拒绝它。
+      // `ARMADRA_REAL_GROK_ONLY=approval` 只跑这一回合（省真账号的回合数）。
       reports.length = 0;
       // 注意：裸 `touch` / `mkdir` 属于 grok 的「只读」命令，不会弹审批；写文件的 `sh -c` 会。
       type(
