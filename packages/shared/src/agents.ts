@@ -449,9 +449,16 @@ export const AGENT_REGISTRY: Readonly<Record<BuiltinAgentId, AgentDefinition>> =
       resume: { style: "flag", flag: "--resume" },
       exitCommand: "/quit",
       // 没有 `hooks`：状态源（按进程读它自己写的会话文件）与注入在 G2，那时才声明
-      // `hooks`、`contextLink`、`browser`。`subagent` 不给：它有自己的
-      // `spawn_subagent`，但没有读卡通道。
-      capabilities: ["resume", "supportsModelSelection"],
+      // `hooks`。`contextLink`、`browser` 是节点的连线与画布动词，经 ACP 驱动的会话由
+      // MCP 服务器带过去；不声明的话，ACP 节点的 `canvas send` / `post` / 读连线 /
+      // 浏览器动词都会被 DRIVE_DENIED 拒绝（与 agy 同一口径）。`subagent` 不给：
+      // 它有自己的 `spawn_subagent`，但没有读卡通道。
+      capabilities: [
+        "resume",
+        "contextLink",
+        "browser",
+        "supportsModelSelection",
+      ],
       // npm 包的 `grok` 是指向 `grok-native` 的链接，经它或 `~/.grok/bin/grok`
       // 起，前台进程名都是 `grok`；自更新重启成 `grok-<版本>` 的情形待核实。
       expectedProcess: ["grok", "grok-native"],

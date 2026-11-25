@@ -188,39 +188,42 @@ describe("a new Agent opened as ACP", () => {
     expect(String(read.message)).toContain("canvas_post(");
   });
 
-  it("is refused in terminal form for a built-in without canvas injection, and allowed as ACP", async () => {
-    // 终端里没有技能与 MCP，目标读不到交接（契约 §120）：这条门按「有没有注入」写，
-    // 不按 agy 这个名字。
-    await expect(
-      prepare(
-        fixture.collab,
-        fixture.workspaceId,
-        request({ kind: "new", spec: { agentId: "agy", surface: "terminal" } }),
-      ),
-    ).rejects.toMatchObject({
-      status: 400,
-      code: "target_surface_unsupported",
-    });
-    // 注入过的家不受影响。
-    await expect(
-      prepare(
-        fixture.collab,
-        fixture.workspaceId,
-        request({
-          kind: "new",
-          spec: { agentId: "claude", surface: "terminal" },
-        }),
-      ),
-    ).resolves.toBeDefined();
-    // ACP 形态照常（agy 的 ACP 带 MCP，读得到画布）。
-    await expect(
-      prepare(
-        fixture.collab,
-        fixture.workspaceId,
-        request({ kind: "new", spec: { agentId: "agy", surface: "acp" } }),
-      ),
-    ).resolves.toBeDefined();
-  });
+  it.each(["agy", "grok"])(
+    "is refused in terminal form for %s (no canvas injection), and allowed as ACP",
+    async (id) => {
+      // 终端里没有技能与 MCP，目标读不到交接（契约 §120）：这条门按「有没有注入」写，
+      // 不按 agy、grok 这些名字。
+      await expect(
+        prepare(
+          fixture.collab,
+          fixture.workspaceId,
+          request({ kind: "new", spec: { agentId: id, surface: "terminal" } }),
+        ),
+      ).rejects.toMatchObject({
+        status: 400,
+        code: "target_surface_unsupported",
+      });
+      // 注入过的家不受影响。
+      await expect(
+        prepare(
+          fixture.collab,
+          fixture.workspaceId,
+          request({
+            kind: "new",
+            spec: { agentId: "claude", surface: "terminal" },
+          }),
+        ),
+      ).resolves.toBeDefined();
+      // ACP 形态照常（它们的 ACP 带 MCP，读得到画布）。
+      await expect(
+        prepare(
+          fixture.collab,
+          fixture.workspaceId,
+          request({ kind: "new", spec: { agentId: id, surface: "acp" } }),
+        ),
+      ).resolves.toBeDefined();
+    },
+  );
 
   it("is refused for an agent whose ACP session has no canvas tools, and for one without an adapter", async () => {
     await expect(

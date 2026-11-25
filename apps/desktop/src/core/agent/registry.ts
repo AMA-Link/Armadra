@@ -262,7 +262,12 @@ export const AGENT_REGISTRY: readonly AgentDefinition[] = [
     promptMode: "argv",
     expectedProcess: ["grok", "grok-native"],
     // 没有 `hooks`：状态源与注入在 G2（packages/shared 同一处的说明）。
-    capabilities: ["resume", "supportsModelSelection"],
+    capabilities: [
+      "resume",
+      "contextLink",
+      "browser",
+      "supportsModelSelection",
+    ],
   },
 ];
 
