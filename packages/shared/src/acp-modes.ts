@@ -20,7 +20,8 @@ import { PERMISSION_MODES, type PermissionMode } from "./domain/primitives.js";
  *   * copilot：不报，三个模式都只能走启动旗标；
  *   * pi：ama 的桥（`--bridge pi`）用审批闸实现四个模式，id 与 ama 相同；推理强度
  *     只以 `thought_level` 配置项给出，不进 `modes`；
- *   * ama：`default` / `auto-edit` / `full-auto` / `plan`，id 就是 Armadra 的名字。
+ *   * ama：`default` / `auto-edit` / `full-auto` / `plan`，id 就是 Armadra 的名字；
+ *   * agy：`default` / `accept-edits` / `auto` / `plan`（实跑核实，2026-11-24）。
  * 各家都可能晚报或不报；Agent 报了以它为准，这张表只在报回之前顶上。
  */
 
@@ -82,6 +83,16 @@ export const ACP_MODE_TABLE: Readonly<Record<BuiltinAgentId, AcpModeTable>> = {
     "full-auto": { modeId: "full-auto" },
     plan: { modeId: "plan" },
   },
+  // 实跑核实（agy 1.5.16，2026-11-24）：`session/new` 报 `default` /
+  // `accept-edits` / `auto` / `plan` 四个，`set_mode` 都接受。`auto` 是「批准编辑与
+  // 安全命令、不可逆操作仍问」，不是免审批，所以 `full-auto` 没有 modeId，走启动
+  // 旗标。接回（`session/load`）后 `currentModeId` 回到 `default`，要重设。
+  agy: {
+    default: { modeId: "default" },
+    "auto-edit": { modeId: "accept-edits" },
+    "full-auto": { args: ["--dangerously-skip-permissions"] },
+    plan: { modeId: "plan" },
+  },
 };
 
 /**
@@ -99,6 +110,7 @@ export const ACP_REPORTED_MODES: Readonly<
   omp: "permission",
   copilot: "permission",
   ama: "permission",
+  agy: "permission",
 };
 
 /** 这家报的 `modes` 要不要当权限模式；不认识的 Agent 按权限模式。 */

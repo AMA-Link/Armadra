@@ -149,6 +149,9 @@ export const HOOK_EVENTS: Readonly<Record<BuiltinAgentId, readonly string[]>> =
     omp: OMP_HOOK_EVENTS,
     copilot: COPILOT_HOOK_EVENTS,
     ama: AMA_HOOK_EVENTS,
+    // No status source yet (terminal state is OSC 7501); a command hook comes
+    // with the zero-write `--add-dir` injection, never `PreToolUse`.
+    agy: [],
   };
 
 export type ClaudeHookEvent = (typeof CLAUDE_HOOK_EVENTS)[number];

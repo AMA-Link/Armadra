@@ -241,6 +241,7 @@ export const AGENT_MODEL_SUGGESTIONS: Readonly<
   omp: [],
   copilot: [],
   ama: [],
+  agy: [],
 };
 
 export function modelSuggestions(agentId: string): readonly string[] {

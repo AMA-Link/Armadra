@@ -30,6 +30,11 @@ export const ACP_CLI_FLOOR: Readonly<
   Partial<Record<BuiltinAgentId, AcpCliFloor>>
 > = {
   pi: { minVersion: "1.1.0", package: AGENT_CLI_PACKAGES.pi },
+  // 1.5.15 fixed `session/load` (it answered before the replay finished and
+  // cut a long one off), the `-32002` for an unknown session, tool calls left
+  // open after `session/cancel`, and turns ending while background work ran.
+  // agy has no npm package: it updates itself.
+  agy: { minVersion: "1.5.15", updateCommand: "agy update" },
 };
 
 /** 这家 CLI 的最低版本要求；没有登记（或不是内置 Agent）答 `undefined`。 */
