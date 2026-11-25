@@ -26,7 +26,7 @@ import {
 } from "./types";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { NO_CUSTOM_AGENTS } from "../agent/registry";
+import { NO_CUSTOM_AGENTS, registerNodeChannelGate } from "../agent/registry";
 import type { TerminalBridge } from "../collab/service";
 import { type AgentLaunchRequest, COLD_START_COOLDOWN_MS } from "./cold-start";
 import { TerminalDispatcher } from "./dispatch";
@@ -229,6 +229,51 @@ describe("Agent 目标的探测", () => {
     const target = agentTargetOf();
     target.executionHostId = "0".repeat(32);
     expect((await dispatcher.supports(target)).state).toBe("unsupported");
+  });
+
+  // 没有状态通道的 CLI（grok 的 G1）：回合进行中也没有任何上报，状态为空不能
+  // 当成「空闲」——计划任务的正文加回车会落进正在工作的 pane。
+  it("没有状态通道的 Agent（grok）：不管状态是什么，都是不支持，不写", async () => {
+    const { database, dispatcher, written } = setUp();
+    database
+      .prepare("UPDATE nodes SET data_json = ? WHERE id = 'node-1'")
+      .run(JSON.stringify({ agent: { id: "grok" } }));
+    const target = agentTargetOf();
+    target.agentLaunch!.agentId = "grok";
+    for (const value of [null, "idle", "working"]) {
+      state(database, value);
+      expect(await dispatcher.supports(target)).toEqual({
+        state: "unsupported",
+        generation: 0,
+      });
+    }
+    expect(written).toEqual([]);
+  });
+
+  it("远程节点上本机读文件的通道不成立：按节点判，不按 provider", async () => {
+    const { database, store } = openStore();
+    canvasTables(database);
+    state(database, "idle");
+    const off = registerNodeChannelGate("claude", (facts) => !facts.remote);
+    try {
+      const written: Written[] = [];
+      const terminals: TerminalBridge = {
+        ...bridge(written),
+        remote: () => true,
+      };
+      const dispatcher = new TerminalDispatcher({
+        database,
+        store,
+        hostId: HOST_ID,
+        terminals: () => terminals,
+        clock: () => 1_700_000_000_000,
+      });
+      expect((await dispatcher.supports(agentTargetOf())).state).toBe(
+        "unsupported",
+      );
+    } finally {
+      off();
+    }
   });
 
   it("终端域还没装好时是「不知道」，不是「坏了」", async () => {
