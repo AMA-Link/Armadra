@@ -2,6 +2,52 @@
 
 每个版本一节，按发布倒序。括号里是合入的 PR 编号（github.com/AMA-Link/Armadra，2026-10-11 前为 Owlbay/Armadra，旧编号照常跳转）。兼容范围以 `tools/release/compatibility.json` 为准，发布说明里的 `armadra-compatibility` 围栏由它渲染。桌面、服务器与手机 / 平板 App 共用一条版本线和一个标签 `vX.Y.Z`（规则见 `docs/guides/ci-release.md`「版本规则」）；有手机端改动的版本，在「手机与平板」小节里写，其余写在「桌面 / 服务器」下。2026-10-10 之前手机端曾单独编号（1.0.0、1.1.0），内容并入对应的 0.2.5、0.2.6。
 
+## 0.24.0（2026-11-25）
+
+版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.24.0。随包 `@armadra/agent` 0.24.0（ACP 客户端扩展请求 `onExtRequest`）与平台协议包 0.24.0（没有形状变化，云端协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.24.0。本版以 Grok Build 与 Antigravity（agy）两个内置 Agent 的收尾为主：grok 会话文件状态源、时间线与成本、终端审批代答（缺省关）、计划审批管线，agy 终端时间线与画面门；另有 ACP 会话 `_meta`、blocked 否决的安全撤回、Agent 轮末释放驱动租约等修复。核心库迁移到 0073，核心 JSON API 协议升到 1.53（只增取值）。
+
+Version aligned with armadra-cloud and armadra-agent (all three ship 0.24.0), with `@armadra/agent` 0.24.0 (ACP client extension requests, `onExtRequest`) and platform protocol 0.24.0 (no shape changes, the cloud protocol is still 1.4); matching images `armadra-cloud` / `armadra-relay` 0.24.0. The release mostly finishes the two built-in agents Grok Build and Antigravity (agy): grok session-file state source, timeline and cost, terminal approval answering (off by default) and the plan approval pipeline; agy terminal timeline and screen gates. It also brings ACP session `_meta`, a safe withdrawal of the blocked veto and an agent releasing its drive lease at turn end. The core database moves to 0073 and the core JSON API protocol moves to 1.53 (a value added only).
+
+### 桌面 / 服务器
+
+- grok 会话文件状态源、时间线、历史与成本（#1018、#1025、#1032，Refs #998、#1016、Closes #1024）：状态来自 grok 的会话文件（新增状态来源取值 `transcript`），时间线、历史与 token 成本接入，向导按节点置灰，补了接线用例与陈旧行清理。
+  grok session-file state source, timeline, history and cost (#1018, #1025, #1032, Refs #998, #1016, Closes #1024): state comes from grok's session files (a new state source value `transcript`), the timeline, history and token cost are wired in, the wizard greys out per node, and wiring tests and stale-row cleanup are added.
+- grok 终端审批代答（#1058、#1059，Closes #1027）：`parseGrokApprovalCard` 自底向上锚定、失败即安全；发键前三项核对，发完核对并带 `delivery`，从不重发；两道门（已验证版本清单与设置 `agents.grok.answerCards`，缺省关；节点须以 `--permission-mode` 启动）。头部常驻提示说明为何没有记录或键没生效；离线场景 19 用真 grok 1.0.92 加脚本化模型，允许、拒绝各 20 轮全部送达；已验证版本清单填入 1.0.92。
+  grok terminal approval answering (#1058, #1059, Closes #1027): `parseGrokApprovalCard` anchors from the bottom and fails safe; three checks before sending keys, a check after with `delivery`, never a resend; two gates (a verified-version list and the setting `agents.grok.answerCards`, off by default; the node must be started with `--permission-mode`). A persistent header notice says why no record was made or a key did not take effect; offline scenario 19 runs real grok 1.0.92 with a scripted model, 20 allow and 20 deny turns all delivered; the verified list now holds 1.0.92.
+- ACP 扩展请求与计划审批（#1038、#1043、#1044，Refs #1021、#998，Closes #1041）：以 `_` 开头的扩展请求进审批挂起表，接上 `@armadra/agent` 0.24.0 的 `onExtRequest`（grok 的 ACP 计划审批仍关闭）；计划审批卡收尾：清洗补全不可见字符与未终结的 OSC、`bodyChars` 按原文计数、结算后去掉正文、节点头部不再出一键允许 / 拒绝（改成「计划审批」按钮）。
+  ACP extension requests and plan approval (#1038, #1043, #1044, Refs #1021, #998, Closes #1041): extension requests starting with `_` enter the pending-approval table and connect to `onExtRequest` of `@armadra/agent` 0.24.0 (grok's ACP plan stays off); plan approval card follow-ups: complete invisible-character cleaning and unterminated OSC handling, `bodyChars` counts the original text, the body is dropped on settle, and the node header no longer offers one-click allow / deny (a "Plan approval" button instead).
+- ACP 会话 `_meta`（#1049，Closes #1035）：grok 的 `session/new|load|resume` 带 `_meta.rules`（画布说明），用隔离 `GROK_HOME` 加脚本化模型实测生效；agy 的 `_meta` 写好但未核实，不发。
+  ACP session `_meta` (#1049, Closes #1035): grok's `session/new|load|resume` carry `_meta.rules` (the canvas instructions), verified with an isolated `GROK_HOME` and a scripted model; agy's `_meta` is written but unverified, so nothing is sent.
+- ACP 会话取消收掉终端（#1048，Closes #1045）：`session/cancel` 时终止会话的终端，并摘除被撤回的 `terminal/wait_for_exit` 等待者。
+  ACP cancel terminates terminals (#1048, Closes #1045): `session/cancel` terminates the session's terminals and drops withdrawn `terminal/wait_for_exit` waiters.
+- agy 终端时间线与画面门（#1020、#1034、#1052、#1054，Refs #997、#1022、#1040，Closes #1036）：终端 agy 只到展示级（OSC 7501，不注入 hook）；按进程日志找会话并读转录，时间线可切到会话视图（Windows、远程节点与读不了日志时静默降级）；画面门登记提示符特征与工件审阅（全部未核实，等审靠 blocked 否决门）；agy 已验证版本下限 1.5.16。
+  agy terminal timeline and screen gates (#1020, #1034, #1052, #1054, Refs #997, #1022, #1040, Closes #1036): a terminal agy stays display-only (OSC 7501, no hook injected); the session is found through the process log and its transcript is read, so the timeline can switch to the session view (silent degradation on Windows, remote nodes or unreadable logs); the screen gates register the prompt signature and artifact review (all unverified; waiting for review is held by the blocked veto); the verified agy floor is 1.5.16.
+- blocked 否决的安全撤回（#1031、#1050，Closes #1026、#1039）：程序自报的 `blocked` 只在 CLI 自己的上报说 `idle` / `done` 且严格晚于它时撤回，只撤回、从不新增放行；`--unverified` 存进队列行，出队时带回，排队项不再以 `TARGET_STATE_UNVERIFIED` 结束；清扫核对 tracker，登记泄漏时放掉并叫醒出队泵。
+  Safe withdrawal of the blocked veto (#1031, #1050, Closes #1026, #1039): a program-reported `blocked` is withdrawn only when the CLI's own report says `idle` / `done` and is strictly later, and it only withdraws, never adds a release; `--unverified` is stored on the queue row and comes back on dequeue, so queued items no longer end with `TARGET_STATE_UNVERIFIED`; the sweep checks the tracker and releases leaked registrations, waking the pump.
+- Agent 轮末释放自己持有的终端驱动租约（#1033，Closes #1042，Refs #1011）：此前下一次投递要等两次 120 秒的租约；场景 18 的耗时从约 253 秒降到约 23 秒，等待上限收紧到 120 秒（#1046，Closes #1011）。
+  An agent releases its own terminal drive lease at turn end (#1033, Closes #1042, Refs #1011): the next delivery used to wait for two 120 s lease timeouts; scenario 18 drops from about 253 s to about 23 s and its wait limit is tightened to 120 s (#1046, Closes #1011).
+- 远程执行主机上 fork 工作副本关联 PR（#1030，Closes #1000）：除 `git.status` 的分支外再读 `git.branches`，按当前分支 upstream 的 remote 识别 head 仓库（fork）与分支名。
+  PRs are linked for fork checkouts on remote hosts (#1030, Closes #1000): besides the `git.status` branch, `git.branches` is read, and the head repository (fork) and branch name come from the upstream remote of the current branch.
+- 跳到节点与新建节点后相机偶发不居中（#1037，Closes #1028，Refs #1007）；两个偶发失败（goto-node 计时器、夜间模拟器崩溃）（#1029，Refs #1007、#1012）；serve.integration 在 Windows 上的启动上限放到 30 秒（#1051，Closes #1047）。
+  The camera sometimes did not center after jump and reveal (#1037, Closes #1028, Refs #1007); two flakes (goto-node timer, nightly simulator crash) (#1029, Refs #1007, #1012); the serve.integration startup budget on Windows is 30 s (#1051, Closes #1047).
+
+### 手机与平板
+
+- 本版没有手机 App 的行为改动。注意：核心 JSON API 协议升到 1.53，`agent.status` 的 `stateSource` 多一个 `transcript`；旧页面（含已装在手机上的）的严格枚举解析不过这个值，手机端需同步升级到 0.24.0。
+  No behaviour changes in the mobile app. Note: the core JSON API protocol moves to 1.53 and `stateSource` of `agent.status` gains `transcript`; older pages (including those already installed on phones) parse the strict enum and fail on this value, so update the mobile app to 0.24.0 together.
+
+### 随包 Agent
+
+- `@armadra/agent` 0.24.0：ACP 客户端扩展请求（`AcpClientOptions.onExtRequest(method, params, signal)`，方法名以 `_` 开头，如 grok 的 `_x.ai/exit_plan_mode`；没有回调时仍回 -32601）。
+  `@armadra/agent` 0.24.0: ACP client extension requests (`AcpClientOptions.onExtRequest(method, params, signal)`, for methods starting with `_` such as grok's `_x.ai/exit_plan_mode`; without the callback they still answer -32601).
+
+### 部署说明
+
+- 需要迁移：核心库升到 0073（新增 0073，向前自动执行）；核心 JSON API 协议升到 1.53（只增取值），云端协议（1.4）不变。
+  Migration needed: the core database moves to 0073 (0073 is new and runs forward automatically); the core JSON API protocol moves to 1.53 (a value added only) and the cloud protocol (1.4) is unchanged.
+- 配套镜像 `ghcr.io/ama-link/armadra-cloud:0.24.0`、`ghcr.io/ama-link/armadra-relay:0.24.0` 与协议包 0.24.0 同号（cloud 侧没有面向用户的改动；控制台页面取自本版服务器壳镜像）；推送中继镜像 `ghcr.io/ama-link/armadra-push-relay:0.24.0` 与服务器壳镜像同号。发版顺序同 0.23.0：先打 Armadra `v0.24.0` 标签，服务器壳镜像推送完成后再打 armadra-cloud `v0.24.0`。
+  Matching images `ghcr.io/ama-link/armadra-cloud:0.24.0` and `ghcr.io/ama-link/armadra-relay:0.24.0` share the number with protocol package 0.24.0 (no user-facing changes on the cloud side; console pages come from this version's server shell image); the push-relay image `ghcr.io/ama-link/armadra-push-relay:0.24.0` shares the number with the server shell image. Release order as in 0.23.0: tag Armadra `v0.24.0` first, then tag armadra-cloud `v0.24.0` once the server shell image has been pushed.
+
 ## 0.23.0（2026-11-24）
 
 版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.23.0。随包 `@armadra/agent` 0.23.0（模型档位、嵌套派发、工作流调度与 `/workflow`、ACP 会话 `_meta`）与平台协议包 0.23.0（没有形状变化，云端协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.23.0。本版是功能版：项目级工作流 v2（共享约定、验证与退回、文件导入导出、托管 ama 起跑）、内置 Grok Build 与 Antigravity 两个 Agent、默认画板可删除，核心库迁移到 0072。核心 JSON API 协议仍是 1.52（只增路由与事件，没有改已有形状）。
