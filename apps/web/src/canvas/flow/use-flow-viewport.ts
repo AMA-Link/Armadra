@@ -29,6 +29,7 @@ import {
   type FlowNode,
   type FlowViewport,
 } from "./flow-context";
+import { startCameraIntent } from "./camera-intent";
 import { cameraForNewNode } from "./reveal";
 
 /**
@@ -151,17 +152,23 @@ export function zoomByStep(direction: 1 | -1): void {
   zoomToLevel(direction > 0 ? current * ZOOM_STEP : current / ZOOM_STEP);
 }
 
-/** 会话侧栏点一行 → 把画布居中到那个节点。 */
+/**
+ * 会话侧栏点一行 → 把画布居中到那个节点。是人要去看的地方，取消跟随；
+ * 节点量得到尺寸才落地，量不到按相机意图的时间表再试（`camera-intent.ts`）。
+ */
 export function centerOnNode(nodeId: string): void {
-  const flow = getFlow();
-  if (!flow) return;
-  const node = flow.getNode(nodeId);
-  if (!node) return;
-  const rect = nodeRect(node);
-  const zoom = Math.max(flow.getViewport().zoom, CENTER_MIN_ZOOM);
-  void flow.setCenter(rect.x + rect.width / 2, rect.y + rect.height / 2, {
-    zoom: clampZoom(zoom),
-    duration: duration(FIT_DURATION),
+  if (!getFlow()) return;
+  stopFollowing();
+  startCameraIntent(() => {
+    const flow = getFlow();
+    const rect = measuredNodeBounds(nodeId);
+    if (!flow || !rect) return false;
+    const zoom = Math.max(flow.getViewport().zoom, CENTER_MIN_ZOOM);
+    void flow.setCenter(rect.x + rect.width / 2, rect.y + rect.height / 2, {
+      zoom: clampZoom(zoom),
+      duration: duration(FIT_DURATION),
+    });
+    return true;
   });
 }
 
@@ -179,9 +186,6 @@ export function centerOnNode(nodeId: string): void {
  * 矩形）。刚 `addNode` 完那一帧投影还没落地，所以按一张很短的时间表重试；
  * 量不出来就一次也不动相机，宁可不动也不要对着一个错的矩形居中。
  */
-/** 等投影落地的重试表（毫秒）；成功一次之后剩下的都空跑。 */
-export const REVEAL_RETRY_DELAYS: readonly number[] = [0, 120, 320];
-
 /** 引擎量到的节点矩形；没量到（或尺寸不可知）时是 `null`。 */
 function measuredNodeBounds(nodeId: string): Box | null {
   const flow = getFlow();
@@ -257,22 +261,17 @@ function centreOnMeasured(nodeId: string, expected: Size | null): boolean {
 export function revealNewNode(nodeId: string): void {
   const flow = getFlow();
   if (!flow) return;
-  let done = false;
+  stopFollowing();
   let expected: Size | null = null;
-  const attempt = () => {
-    if (done) return;
+  startCameraIntent(() => {
     if (expected === null && fitNodeToPhone(nodeId)) {
       expected =
         useCanvasStore
           .getState()
           .document?.nodes.find((item) => item.id === nodeId)?.size ?? null;
     }
-    done = centreOnMeasured(nodeId, expected);
-  };
-  for (const delay of REVEAL_RETRY_DELAYS) {
-    if (delay === 0) attempt();
-    else setTimeout(attempt, delay);
-  }
+    return centreOnMeasured(nodeId, expected);
+  });
 }
 
 /**
