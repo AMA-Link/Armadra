@@ -25,6 +25,7 @@ body:
         - GitHub Copilot
         - ama
         - Antigravity
+        - Grok Build
         - 自定义 Agent / Custom agent
         - 其他 / Other
     validations:

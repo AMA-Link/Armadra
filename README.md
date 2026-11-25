@@ -17,7 +17,7 @@
 ---
 
 Armadra 是一块本地优先的 **AI Coding 画布**。Claude Code、Codex、OpenCode、Pi、Oh My Pi 与
-GitHub Copilot 以**真实终端节点**的形式放在无限画布上，保留各自的账户、模型与权限策略。
+GitHub Copilot、Grok Build 以**真实终端节点**的形式放在无限画布上，保留各自的账户、模型与权限策略。
 你可以通过连线共享必要的上下文，通过消息和交接组织分工，在同一张画布上查看资料、执行过程与成果。
 
 画布上的节点承载完整的 Agent 产品与相关资料，连线表达上下文共享和协作关系，分组帮助你组织不同任务。
@@ -78,7 +78,7 @@ AI Coding 画布覆盖软件开发、算法开发、数据分析与科研编程�
 
 ### Agent 协作
 
-- 7 种内置 CLI（含 Antigravity）、协调者 `ama` 与自定义 CLI：启动、resume、权限模式、模型选择、版本探测；节点可绑定 Claude / Copilot 的第二个账号。
+- 8 种内置 CLI（含 Antigravity、Grok Build）、协调者 `ama` 与自定义 CLI：启动、resume、权限模式、模型选择、版本探测；节点可绑定 Claude / Copilot 的第二个账号。
 - Hook / 进程内扩展 / 插件三种状态通道，归一为 `working / waiting / blocked / done`；权限请求在节点头部直答。
 - **画布内注入**：Hook、技能与画布说明只随画布启动带上，画布外启动的 CLI 零影响；SSH 终端同样适用。
 - **按连线读取上下文**：共享上下文 / 派发两种链接，转录、摘要、终端画面按预算读取。
@@ -126,16 +126,17 @@ AI Coding 画布覆盖软件开发、算法开发、数据分析与科研编程�
 
 每个 CLI 有两种驱动方式：**终端模式**（真实 CLI 跑在终端节点里，状态经 Hook / 扩展 / 插件上报）与 **ACP 会话视图**（经各家 ACP 适配器以对话视图驱动）。「已实测」指在真实 CLI 上跑过端到端场景并留下记录，「未实测」指代码与假 Agent 测过、还没在真实 CLI 上跑过。
 
-| CLI            | 状态通道           | 恢复会话                       | 非默认权限模式               | 终端模式                         | ACP 会话视图                                                    |
-| -------------- | ------------------ | ------------------------------ | ---------------------------- | -------------------------------- | --------------------------------------------------------------- |
-| Claude Code    | 命令 Hook          | `--resume ID`                  | auto-edit / full-auto / plan | 已实测                           | 已实测（claude-agent-acp ≥ 0.85.1）                             |
-| Codex          | 命令 Hook          | `resume ID`                    | auto-edit / full-auto / plan | 已实测                           | 未实测（codex-acp）                                             |
-| OpenCode       | 插件               | `--session ID`                 | CLI 默认                     | 已实测注入与状态；端到端场景未跑 | 未实测                                                          |
-| Pi             | 进程内扩展         | `--session PATH_OR_ID`         | CLI 默认                     | 已实测                           | 开会话与切模式已实测（ama 的 pi 桥，Pi 1.5.0）；完整回合未跑    |
-| Oh My Pi       | 进程内扩展         | `--resume ID`                  | auto-edit / full-auto        | 已实测注入与状态；端到端场景未跑 | 未实测                                                          |
-| GitHub Copilot | 命令 Hook          | `--resume ID`                  | auto-edit / full-auto / plan | 已实测注入与状态；端到端场景未跑 | 未实测；不能接回会话                                            |
-| ama            | 宿主适配器         | `--resume ID`                  | auto-edit / full-auto / plan | 随桌面壳打包                     | 未实测                                                          |
-| Antigravity    | OSC 7501（仅展示） | 终端不接回；ACP `session/load` | auto-edit / full-auto / plan | 只有展示级状态，无画布注入       | 握手与会话操作实测过（agy 1.5.16，下限 1.5.15）；端到端场景未跑 |
+| CLI            | 状态通道                        | 恢复会话                       | 非默认权限模式               | 终端模式                                     | ACP 会话视图                                                    |
+| -------------- | ------------------------------- | ------------------------------ | ---------------------------- | -------------------------------------------- | --------------------------------------------------------------- |
+| Claude Code    | 命令 Hook                       | `--resume ID`                  | auto-edit / full-auto / plan | 已实测                                       | 已实测（claude-agent-acp ≥ 0.85.1）                             |
+| Codex          | 命令 Hook                       | `resume ID`                    | auto-edit / full-auto / plan | 已实测                                       | 未实测（codex-acp）                                             |
+| OpenCode       | 插件                            | `--session ID`                 | CLI 默认                     | 已实测注入与状态；端到端场景未跑             | 未实测                                                          |
+| Pi             | 进程内扩展                      | `--session PATH_OR_ID`         | CLI 默认                     | 已实测                                       | 开会话与切模式已实测（ama 的 pi 桥，Pi 1.5.0）；完整回合未跑    |
+| Oh My Pi       | 进程内扩展                      | `--resume ID`                  | auto-edit / full-auto        | 已实测注入与状态；端到端场景未跑             | 未实测                                                          |
+| GitHub Copilot | 命令 Hook                       | `--resume ID`                  | auto-edit / full-auto / plan | 已实测注入与状态；端到端场景未跑             | 未实测；不能接回会话                                            |
+| ama            | 宿主适配器                      | `--resume ID`                  | auto-edit / full-auto / plan | 随桌面壳打包                                 | 未实测                                                          |
+| Antigravity    | OSC 7501（仅展示）              | 终端不接回；ACP `session/load` | auto-edit / full-auto / plan | 只有展示级状态，无画布注入                   | 握手与会话操作实测过（agy 1.5.16，下限 1.5.15）；端到端场景未跑 |
+| Grok Build     | 暂无（G2 起读它自己的会话文件） | `--resume ID`                  | auto-edit / full-auto / plan | 只测了启动与画面门（真画面）；状态与注入未做 | 已实测（1.0.92，`grok agent stdio`）；ACP 下没有 auto-edit      |
 
 ACP 一列以 [tools/release/compatibility.json](tools/release/compatibility.json) 为准（`verified` 为 `null` 即未实测，真跑通过后由探针写入）；终端模式一列以[功能预期总表 §4](docs/status/feature-roadmap.md) 为准。自定义 Agent 可借用任一内置 CLI 的形状。完整差异见 [Agent 协作](docs/guides/agent-collaboration.md)。
 
