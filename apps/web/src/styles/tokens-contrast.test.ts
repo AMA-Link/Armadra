@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
+import { AGENT_IDS } from "@armadra/shared";
+
 import {
   CONTRAST_THRESHOLD,
   composite,
@@ -96,15 +98,8 @@ const THEMES: Theme[] = ["dark", "light"];
 const TEXT = CONTRAST_THRESHOLD.text;
 const GRAPHIC = CONTRAST_THRESHOLD.graphic;
 const READING_SURFACES = ["--bg", "--panel", "--surface-card"];
-const AGENTS = [
-  "claude",
-  "codex",
-  "opencode",
-  "pi",
-  "omp",
-  "copilot",
-  "ama",
-] as const;
+// Every built-in has a brand token pair; the list is the registry's own.
+const AGENTS = AGENT_IDS;
 
 describe("lib/contrast", () => {
   it("黑白是 21:1，同色是 1:1", () => {

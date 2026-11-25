@@ -134,8 +134,9 @@ export function clientAcceptsMcpServers(
 }
 
 /**
- * `AcpClient` 能不能在开会话时带 `_meta`：声明 `features.sessionMeta`。固定的
- * 0.21 没有这个声明，一律答不支持——`_meta` 不发，会话照常开。
+ * `AcpClient` 能不能在开会话时带 `_meta`：声明 `features.sessionMeta`。固定版本的
+ * 客户端还没有这个声明（见 AMA-Link/armadra-agent#327），一律答不支持——`_meta`
+ * 不发，会话照常开。
  *
  * 接口形状（`features.sessionMeta`、`AcpSessionOptions.meta`）由
  * AMA-Link/armadra-agent#327 定死；它落地并升级固定版本之前，这里的约定只是宿主

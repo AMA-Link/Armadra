@@ -28,6 +28,7 @@ export const AGENT_IDS = [
   "omp",
   "copilot",
   "ama",
+  "agy",
 ] as const;
 export type BuiltinAgentId = (typeof AGENT_IDS)[number];
 
@@ -38,8 +39,9 @@ export type BuiltinAgentId = (typeof AGENT_IDS)[number];
  * 新增一家内置 Agent 时，没有注入就加在这里——零注入开关等只对有注入的家有意义的
  * 派生表据此排除它。
  */
-export const NON_INJECTED_AGENT_IDS =
-  [] as const satisfies readonly BuiltinAgentId[];
+export const NON_INJECTED_AGENT_IDS = [
+  "agy",
+] as const satisfies readonly BuiltinAgentId[];
 export type NonInjectedAgentId = (typeof NON_INJECTED_AGENT_IDS)[number];
 export type InjectedAgentId = Exclude<BuiltinAgentId, NonInjectedAgentId>;
 
@@ -383,6 +385,36 @@ export const AGENT_REGISTRY: Readonly<Record<BuiltinAgentId, AgentDefinition>> =
         "Electron",
         "electron",
       ],
+    },
+    agy: {
+      id: "agy",
+      label: "Antigravity",
+      mark: "AG",
+      color: "#d6418b",
+      launchCmd: "agy",
+      promptMode: "flag-prompt",
+      promptFlag: "--prompt-interactive",
+      permissionFlag: {
+        // The user's own `agentMode` decides (auto since 1.5.7); no `--mode default`.
+        default: [],
+        "auto-edit": ["--mode", "accept-edits"],
+        "full-auto": ["--dangerously-skip-permissions"],
+        plan: ["--mode", "plan"],
+      },
+      modelFlag: "--model",
+      // No `sessionIdFlag` and no `resume`: agy cannot pre-mint a session id
+      // (an unknown `--conversation` is ignored and a new one starts), and a
+      // terminal agy has no status source to learn the id from. Resume is an
+      // ACP matter (`session/load`) until the hook lands
+      // (#997, the hook batch).
+      exitCommand: "/exit",
+      // No hook, no resume, no usage: its terminal state is OSC 7501 (display
+      // only, contract §53). `contextLink` and `browser` are the node's links
+      // and the canvas verbs, which a session driven over ACP carries through
+      // the MCP server; the real run of e2e scenario 12 showed that without
+      // `contextLink` an ACP agy node is refused every `canvas send`.
+      capabilities: ["contextLink", "browser", "supportsModelSelection"],
+      expectedProcess: ["agy"],
     },
   };
 

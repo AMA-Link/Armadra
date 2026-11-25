@@ -176,6 +176,20 @@ const PROFILES: Readonly<Record<string, LaunchProfile>> = {
     resume: { style: "flag", flag: "--resume" },
     exitCommand: "/exit",
   },
+  // Antigravity: `--mode` takes accept-edits / plan; there is no flag for the
+  // default (the user's own `agentMode` decides). No session id to pre-mint and
+  // nothing to resume a terminal with (an unknown `--conversation` is ignored).
+  agy: {
+    permissionFlag: {
+      default: [],
+      "auto-edit": ["--mode", "accept-edits"],
+      "full-auto": ["--dangerously-skip-permissions"],
+      plan: ["--mode", "plan"],
+    },
+    modelFlag: "--model",
+    exitCommand: "/exit",
+    promptFlag: "--prompt-interactive",
+  },
 };
 
 export function launchProfile(agentId: string): LaunchProfile | undefined {

@@ -276,7 +276,7 @@ Agent 节点就是终端节点里跑着一个 CLI，没有中间协议：
    `run/<cli>` 按各 CLI 实测的参数引用它们，只在有 `ARMADRA_NODE_ID` 时注入
    （[画布启动器](../design/canvas-launcher.md)），启动行只是 `<launcher> <程序> <旗标>`，
    节点终端 `PATH` 最前面的同名垫片 `shims/<cli>` 让手敲的 CLI 也经启动器：Claude / Codex / Copilot 是**命令 Hook**（行是 `armadra-hook`），
-   Pi / Oh My Pi 是生成的 **TS 扩展**，OpenCode 是插件；Claude ≥ 2.1.293 时除 `PermissionRequest`
+   Pi / Oh My Pi 是生成的 **TS 扩展**，OpenCode 是插件；**Antigravity（agy）没有注入**（契约 §120：它的 `--settings` 不收 hook 与 MCP，也没有单次生效的插件旗标，数据目录里没有它的启动器与产物，终端状态只有 OSC 7501 的展示级上报，协作与休眠续接只在 ACP 下）；Claude ≥ 2.1.293 时除 `PermissionRequest`
    外的事件改由 core 生成的 **mod**（`integration/claude/mod/`，`core/hook/install/claude-mod/`）进程内转发，
    启动器在安全模式或关掉非必要网络时退回全套命令 Hook；交互式会话里 mod 每 3 秒读一次只读的
    `GET /node/overlay`（名字与计数），在提示符上方画横条、来消息弹 toast；mod 还带 `/armadra-*` 斜杠命令

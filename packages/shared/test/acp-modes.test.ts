@@ -73,6 +73,9 @@ describe("ACP_MODE_TABLE", () => {
         "full-auto=full-auto",
         "plan=plan",
       ],
+      // Measured on agy 1.5.16: `auto` is not a no-approval mode, so
+      // `full-auto` is a launch flag with no session mode id.
+      agy: ["default=default", "auto-edit=accept-edits", "plan=plan"],
     };
     for (const [id, candidates] of Object.entries(expected)) {
       expect(table[id], id).toEqual(candidates);
@@ -89,6 +92,10 @@ describe("ACP_MODE_TABLE", () => {
     expect(withBypass).not.toContain("opencode");
     expect(withBypass).not.toContain("omp");
     expect(withBypass).not.toContain("copilot");
+    expect(withBypass).not.toContain("agy");
+    expect(ACP_MODE_TABLE.agy["full-auto"]?.args).toEqual([
+      "--dangerously-skip-permissions",
+    ]);
     // 其余只在启动旗标上有（omp、copilot）或根本没有（opencode）。
     expect(ACP_MODE_TABLE.omp["full-auto"]?.args).toEqual([
       "--approval-mode",

@@ -67,6 +67,8 @@ describe("状态来源的词汇表", () => {
     expect(stateSourceFor("claude")).toBe(STATE_SOURCE_HOOK);
     expect(stateSourceFor("pi")).toBe(STATE_SOURCE_EXTENSION);
     expect(stateSourceFor("custom:x")).toBeUndefined();
+    // agy has no status source yet: its terminal state is OSC 7501, display only.
+    expect(stateSourceFor("agy")).toBeUndefined();
   });
 });
 

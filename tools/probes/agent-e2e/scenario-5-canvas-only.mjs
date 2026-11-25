@@ -98,6 +98,20 @@ export default async function run5(ctx) {
         row(id)?.launcher,
       );
     }
+    // Antigravity（契约 §120）没有画布注入：行上没有启动器，集成状态答
+    // `none`，数据目录里没有它的启动器、垫片与产物目录。它在用户目录里的零写入
+    // 由场景 12 的 `~/.gemini` 指纹守着。
+    const agyState = await api("/api/agents/agy/integration");
+    s.check(
+      "agy 没有画布注入：行上没有启动器，集成状态答 none，数据目录里没有它的产物",
+      row("agy")?.launcher === undefined &&
+        agyState.mode === "none" &&
+        agyState.globalWrites.length === 0 &&
+        !existsSync(join(runDir, "agy")) &&
+        !existsSync(join(data, "integration", "shims", "agy")) &&
+        !existsSync(join(data, "integration", "agy")),
+      { mode: agyState.mode, launcher: row("agy")?.launcher },
+    );
     const claudeLauncher = row("claude")?.launcher;
     const codexLauncher = row("codex")?.launcher;
     const claudeProgram = row("claude")?.resolvedPath || "claude";

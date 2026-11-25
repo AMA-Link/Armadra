@@ -6,6 +6,7 @@ import {
   CLAUDE_HOOK_EVENTS,
   HOOK_CLIENT_REVISION,
   HOOK_EVENTS,
+  NON_INJECTED_AGENT_IDS,
   PERMISSION_MODES,
   assembleLaunchArgv,
   assembleLaunchCommand,
@@ -100,6 +101,61 @@ describe("agent registry", () => {
     }
     expect(AGENT_REGISTRY.opencode.promptFlag).toBeDefined();
     expect(AGENT_REGISTRY.claude.sessionIdFlag).toBe("--session-id");
+  });
+
+  // #997: agy is the first built-in without a status
+  // source or an injection; its terminal state is OSC 7501 and nothing else.
+  it("registers Antigravity as a display-only terminal agent", () => {
+    const agy = AGENT_REGISTRY.agy;
+    expect(agy).toMatchObject({
+      id: "agy",
+      label: "Antigravity",
+      mark: "AG",
+      launchCmd: "agy",
+      promptMode: "flag-prompt",
+      promptFlag: "--prompt-interactive",
+      modelFlag: "--model",
+      exitCommand: "/exit",
+      expectedProcess: ["agy"],
+    });
+    // No hook, resume or usage; links and the browser verb ride ACP's MCP.
+    expect([...agy.capabilities].sort()).toEqual(
+      ["browser", "contextLink", "supportsModelSelection"].sort(),
+    );
+    expect(agy.capabilities).not.toContain("hooks");
+    expect(agy.capabilities).not.toContain("resume");
+    // No session id to pre-mint, and nothing to resume a terminal with.
+    expect(agy.sessionIdFlag).toBeUndefined();
+    expect(agy.resume).toBeUndefined();
+    expect(agy.roleFlag).toBeUndefined();
+    expect(agy.permissionFlag).toEqual({
+      default: [],
+      "auto-edit": ["--mode", "accept-edits"],
+      "full-auto": ["--dangerously-skip-permissions"],
+      plan: ["--mode", "plan"],
+    });
+    expect(HOOK_EVENTS.agy).toEqual([]);
+    expect(NON_INJECTED_AGENT_IDS).toContain("agy");
+    expect(
+      assembleLaunchArgv({
+        agentId: "agy",
+        permissionMode: "plan",
+        model: "gemini-4-neon-high",
+        prompt: "review this",
+        // A resume id is dropped, not turned into a flag agy would ignore.
+        resume: "11111111-2222-3333-4444-555555555555",
+      }),
+    ).toEqual({
+      program: "agy",
+      args: [
+        "--mode",
+        "plan",
+        "--model",
+        "gemini-4-neon-high",
+        "--prompt-interactive",
+        "review this",
+      ],
+    });
   });
 
   // coordinator-agent.md §2.2: every permission mode has a real flag, there
@@ -653,6 +709,7 @@ describe("Windows npm wrappers and Eco quitting", () => {
       omp: "/exit",
       copilot: "/exit",
       ama: "/exit",
+      agy: "/exit",
     });
   });
 });

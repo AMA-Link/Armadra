@@ -1,15 +1,17 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
+import { AGENT_IDS } from "@armadra/shared";
+
 import { agentMark } from "@/agent/launch";
 import { NodeTypeMark } from "./NodeTypeMark";
 
 describe("NodeTypeMark (#969)", () => {
   it("每家内置 Agent 的类型标记互不相同", () => {
-    const ids = ["claude", "codex", "opencode", "pi", "omp", "copilot", "ama"];
-    const marks = ids.map((id) => agentMark(id));
-    expect(new Set(marks).size).toBe(ids.length);
+    const marks = AGENT_IDS.map((id) => agentMark(id));
+    expect(new Set(marks).size).toBe(AGENT_IDS.length);
     expect(agentMark("codex")).toBe("CX");
+    expect(agentMark("agy")).toBe("AG");
   });
 
   it("Agent 画两字符标记，悬停是全名", () => {

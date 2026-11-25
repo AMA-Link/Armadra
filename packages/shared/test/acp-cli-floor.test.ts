@@ -34,6 +34,21 @@ describe("ACP_CLI_FLOOR", () => {
     expect(AGENT_CLI_PACKAGES.pi).not.toContain("mariozechner");
   });
 
+  it("pins agy at 1.5.15 and points at its own updater, not an npm package", () => {
+    expect(acpCliFloor("agy")).toEqual({
+      minVersion: "1.5.15",
+      updateCommand: "agy update",
+    });
+    expect(acpCliOutdated("agy", "1.5.14")).toEqual({
+      agentId: "agy",
+      installed: "1.5.14",
+      minimum: "1.5.15",
+      updateCommand: "agy update",
+    });
+    expect(acpCliOutdated("agy", "1.5.16")).toBeUndefined();
+    expect(AGENT_CLI_PACKAGES).not.toHaveProperty("agy");
+  });
+
   it("has no floor for agents that were not measured", () => {
     expect(acpCliFloor("claude")).toBeUndefined();
     expect(acpCliFloor("custom:pi")).toBeUndefined();

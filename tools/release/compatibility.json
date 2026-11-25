@@ -33,6 +33,10 @@
       "ama": {
         "program": "ama",
         "verified": null
+      },
+      "agy": {
+        "program": "agy",
+        "verified": null
       }
     }
   },

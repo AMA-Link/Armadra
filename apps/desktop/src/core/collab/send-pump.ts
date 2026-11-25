@@ -1,5 +1,5 @@
 import { baseAgent, startsSilently } from "../agent/registry";
-import { getAgentStatus } from "../agent/status";
+import { currentDriverStatus } from "../terminal/manager-status";
 import { stateSourceIsReported } from "../agent/target-state";
 import { attempt } from "./control/send";
 import { loadNode, loadSession } from "./nodes";
@@ -245,7 +245,9 @@ export class SendPump {
       (item) => item.state === "queued",
     );
     if (head?.lastReason === "TARGET_NOT_AT_PROMPT") return true;
-    const status = getAgentStatus(context.database, nodeId);
+    // 与门链同一口径：只看当前驱动写下的行。Codex 从 ACP 切到终端之后，库里那条
+    // `acp` 行不是它的终端报的，按「已上报过」处理就不会再有人去探它。
+    const status = currentDriverStatus(context.database, nodeId);
     if (
       status !== undefined &&
       stateSourceIsReported(status.stateSource) &&

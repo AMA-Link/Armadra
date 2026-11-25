@@ -47,6 +47,29 @@ describe.skipIf(process.platform === "win32")("checkCliFloor", () => {
     expect(error?.message).toContain("@earendil-works/pi-coding-agent");
   });
 
+  it("holds agy at 1.5.15 and tells the user to run its own updater", async () => {
+    const error = await checkCliFloor(
+      "agy",
+      installed("agy"),
+      async () => "1.5.14\n",
+    );
+    expect(error).toMatchObject({
+      code: "acp_cli_outdated",
+      details: {
+        agentId: "agy",
+        installed: "1.5.14",
+        minimum: "1.5.15",
+        updateCommand: "agy update",
+      },
+    });
+    expect(error?.details).not.toHaveProperty("package");
+    expect(error?.message).toContain("agy update");
+    forgetCliVersions();
+    expect(
+      await checkCliFloor("agy", installed("agy"), async () => "1.5.16\n"),
+    ).toBeUndefined();
+  });
+
   it("lets the floor itself and newer versions through", async () => {
     for (const banner of ["1.1.0", "v1.5.0", "2.0.0"]) {
       forgetCliVersions();
