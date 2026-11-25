@@ -103,7 +103,7 @@ describe("injectionFromLayout(grok)", () => {
       "grok",
       layout,
       BIN,
-      (path): path is string => false,
+      (_path): _path is string => false,
     );
     expect(injection?.args).not.toContain("--rules");
     expect(injection?.placement).toBe("before-separator");
