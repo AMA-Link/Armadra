@@ -1,3 +1,4 @@
+import { NON_INJECTED_AGENT_IDS } from "@armadra/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AgentFixture, agentFixture, callerFor } from "../agent/fixture";
 import { registerNodeChannelGate } from "../agent/registry";
@@ -191,10 +192,10 @@ describe("the gate chain", () => {
     });
   });
 
-  // 无注入的内置 CLI（agy）：它在 ACP 下跑完一轮、被切到终端之后，门链看到的是
+  // 无注入的内置 CLI（`NON_INJECTED_AGENT_IDS` 里的每一家）：它在 ACP 下跑完一轮、被切到终端之后，门链看到的是
   // 「没报过」（`driveTarget` 不把 ACP 留下的行算数），而这个 CLI 的注册表里没有
   // 状态通道——只剩显式的 `--unverified`，不会因为旧行写着「空闲」就放行。
-  it.each([["agy", "Antigravity"]])(
+  it.each([...NON_INJECTED_AGENT_IDS])(
     "refuses a terminal %s that was just switched over from ACP",
     async (id) => {
       const agy = fixture.agentNode("Peer", id);

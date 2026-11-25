@@ -1,4 +1,4 @@
-import { TRANSCRIPT_AGENT_IDS } from "@armadra/shared";
+import { NON_INJECTED_AGENT_IDS, TRANSCRIPT_AGENT_IDS } from "@armadra/shared";
 import { ADAPTERS } from "../timeline/sources";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AgentFixture, agentFixture, callerFor } from "../agent/fixture";
@@ -73,16 +73,23 @@ afterEach(() => {
 });
 
 /**
- * 没有画布注入的内置 CLI（契约 §120，今天是 agy）：这几条按「有没有注入」写，
+ * 没有画布注入的内置 CLI（契约 §120）：这几条按「有没有注入」写，
  * 不按名字写——下一个无注入的家直接适用。
  */
-describe.each(["agy"])("a built-in CLI without canvas injection: %s", (id) => {
-  it("ignores the terminal preference and opens as ACP when the adapter is there", () => {
-    setViewPreferenceForTest("terminal");
-    installAdapter(id);
-    installAdapter("claude-agent-acp");
-    expect(newNodeView(fixture.collab.settings, id)).toEqual({
-      driver: "acp",
+describe.each([...NON_INJECTED_AGENT_IDS])(
+  "a built-in CLI without canvas injection: %s",
+  (id) => {
+    it("ignores the terminal preference and opens as ACP when the adapter is there", () => {
+      setViewPreferenceForTest("terminal");
+      installAdapter(id);
+      installAdapter("claude-agent-acp");
+      expect(newNodeView(fixture.collab.settings, id)).toEqual({
+        driver: "acp",
+      });
+      // 注入过的家照旧听偏好。
+      expect(newNodeView(fixture.collab.settings, "claude").driver).toBe(
+        "terminal",
+      );
     });
     // 注入过的家照旧听偏好。
     expect(newNodeView(fixture.collab.settings, "claude").driver).toBe(

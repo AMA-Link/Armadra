@@ -1,3 +1,4 @@
+import { NON_INJECTED_AGENT_IDS } from "@armadra/shared";
 import {
   chmodSync,
   existsSync,
@@ -185,7 +186,7 @@ describe("the canvas integration", () => {
   });
 
   describe("a built-in CLI without injection (contract §120)", () => {
-    it.each(["agy"])(
+    it.each([...NON_INJECTED_AGENT_IDS])(
       "is what %s answers: `none`, ACP-only canvas agents",
       (id) => {
         const shape = state(id, options(id));
