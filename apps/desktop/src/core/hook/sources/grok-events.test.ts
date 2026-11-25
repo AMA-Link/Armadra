@@ -1,4 +1,10 @@
-import { appendFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -42,6 +48,9 @@ const CWD = "/work/demo project";
 let home: string;
 let timers: FakeTimers;
 let reports: AgentEvent[];
+let payloads: unknown[];
+let settled: unknown[];
+let cardGate: boolean | undefined;
 let table: Map<number, number>;
 let names: Map<number, string>;
 let started: Map<number, number>;
@@ -116,8 +125,15 @@ function open(options: { remote?: boolean } = {}) {
     remote: () => options.remote === true,
     env: (name) => (name === "GROK_HOME" ? sessionHome : undefined),
     screen: async () => screenText,
-    report: (event) => {
+    ...(cardGate === undefined
+      ? {}
+      : { answerCards: async () => cardGate === true }),
+    settleApprovals: (settles) => {
+      settled.push(settles);
+    },
+    report: (event, options) => {
       reports.push({ ...event });
+      payloads.push(options?.rawPayload);
       return true;
     },
     timers,
@@ -134,6 +150,9 @@ beforeEach(() => {
   home = tempDir("armadra-grok-home-");
   timers = new FakeTimers(Date.parse("2026-11-25T08:00:00Z"));
   reports = [];
+  payloads = [];
+  settled = [];
+  cardGate = undefined;
   table = new Map([
     [CHILD_PID, ROOT_PID],
     [ROOT_PID, 1],
@@ -576,6 +595,298 @@ describe("SessionTail 与聚合", () => {
     expect(aggregate([idle, working, waiting]).state).toBe("waiting");
     expect(aggregate([idle, working]).state).toBe("working");
     expect(aggregate([idle, idle]).state).toBe("done");
+  });
+});
+
+describe("SessionTail：未决请求的偏移与事后核对", () => {
+  const request = (
+    offset: number,
+    tail: SessionTail,
+    tool = "run_terminal_command",
+  ) => tail.apply({ type: "permission_requested", tool_name: tool }, offset);
+  const resolve = (offset: number, tail: SessionTail, decision = "allow") =>
+    tail.apply({ type: "permission_resolved", decision }, offset);
+
+  it("请求按偏移记，resolved 关掉最早的一条", () => {
+    const tail = new SessionTail();
+    tail.apply({ type: "turn_started" }, 0);
+    request(100, tail);
+    request(200, tail, "write");
+    expect(tail.view(1e15).requests).toEqual([
+      { offset: 100, tool: "run_terminal_command" },
+      { offset: 200, tool: "write" },
+    ]);
+    resolve(300, tail);
+    expect(tail.view(1e15).requests).toEqual([{ offset: 200, tool: "write" }]);
+    // 还有一条没答：仍是 waiting，不因为前一条 resolved 就回到 working。
+    expect(tail.view(1e15).state).toBe("waiting");
+    resolve(400, tail);
+    expect(tail.view(1e15).state).toBe("working");
+  });
+
+  it("回合开始 / 结束清掉未决请求", () => {
+    const tail = new SessionTail();
+    request(100, tail);
+    tail.apply({ type: "turn_ended", outcome: "cancelled" }, 150);
+    expect(tail.view(1e15).requests).toBeUndefined();
+  });
+
+  it("outcomeAfter：答了 / 没答 / 夹着别的 / 出了窗口", () => {
+    const tail = new SessionTail();
+    request(100, tail);
+    expect(tail.outcomeAfter(100)).toBe("pending");
+    resolve(150, tail, "deny");
+    expect(tail.outcomeAfter(100)).toBe("deny");
+    // 之后又来了别的请求：A 的结局取它之后的第一条 resolved，不被后面的牵连。
+    request(200, tail);
+    resolve(250, tail);
+    expect(tail.outcomeAfter(100)).toBe("deny");
+    expect(tail.outcomeAfter(200)).toBe("allow");
+    expect(tail.outcomeAfter(999)).toBe("unknown");
+  });
+
+  it("模型又开口了（first_token / loop_started）：漏了 resolved 的请求不再把节点钉在 waiting", () => {
+    for (const type of ["first_token", "loop_started"]) {
+      const tail = new SessionTail();
+      tail.apply({ type: "turn_started" }, 0);
+      request(100, tail);
+      expect(tail.view(1e15).state).toBe("waiting");
+      tail.apply({ type }, 200);
+      expect(tail.view(1e15).state).toBe("working");
+      expect(tail.view(1e15).requests).toBeUndefined();
+    }
+  });
+
+  it("并行请求：A 之后紧跟 B 再一条 resolved，A 的结局不明", () => {
+    const tail = new SessionTail();
+    request(100, tail);
+    request(200, tail);
+    resolve(300, tail);
+    expect(tail.outcomeAfter(100)).toBe("ambiguous");
+  });
+});
+
+describe("终端审批卡：建记录与结案（契约 §127）", () => {
+  const CARD = readFileSync(
+    join(__dirname, "../../agent/__fixtures__/grok-card/default-120.txt"),
+    "utf8",
+  );
+  const flush = async () => {
+    for (let i = 0; i < 6; i += 1) await Promise.resolve();
+  };
+  const blocked = () => reports.filter((e) => e.state === "blocked");
+
+  beforeEach(() => {
+    rows = [{ session_id: "s", pid: CHILD_PID, cwd: CWD }];
+    writeActive();
+    screenText = CARD;
+    cardGate = true;
+  });
+
+  async function waitingOn(lines: string[] = []) {
+    writeEvents("s", [line("turn_started")]);
+    const { slot } = open();
+    slot!.start();
+    append("s", [
+      line("permission_requested", { tool_name: "run_terminal_command" }),
+      ...lines,
+    ]);
+    slot!.poke?.();
+    timers.advance(PERMISSION_GRACE_MS + 20);
+    await flush();
+    return slot!;
+  }
+
+  it("门开着、认得出、只有一条：建记录，偏移是请求那一行的起点", async () => {
+    const slot = await waitingOn();
+    expect(blocked()).toHaveLength(1);
+    const file = readFileSync(eventsPath("s"), "utf8");
+    const payload = payloads[reports.indexOf(blocked()[0]!)] as {
+      protocol: string;
+      offset: number;
+      sessionId: string;
+      hash: string;
+      tool: string;
+    };
+    expect(payload).toMatchObject({
+      protocol: "grok-card",
+      sessionId: "s",
+      tool: "run_terminal_command",
+    });
+    expect(payload.offset).toBe(
+      Buffer.byteLength(file.split("\n").slice(0, 1).join("\n") + "\n"),
+    );
+    expect(blocked()[0]?.pendingId).toMatch(
+      /^node-1-grok-\d+-[0-9a-f]{8}-[0-9a-z]+$/,
+    );
+    slot.stop();
+  });
+
+  it("同一次读里的第二、第三行：偏移按字节累加（含多字节字符）", async () => {
+    writeEvents("s", [
+      line("turn_started", { note: "画布" }),
+      line("tool_started", { tool_name: "x" }),
+      line("permission_requested", { tool_name: "run_terminal_command" }),
+    ]);
+    const { slot } = open();
+    slot!.start();
+    timers.advance(PERMISSION_GRACE_MS + 20);
+    await flush();
+    const file = readFileSync(eventsPath("s"), "utf8");
+    const before = file.slice(0, file.lastIndexOf("\n", file.length - 2) + 1);
+    const payload = payloads[reports.indexOf(blocked()[0]!)] as {
+      offset: number;
+    };
+    expect(payload.offset).toBe(Buffer.byteLength(before));
+    slot!.stop();
+  });
+
+  it("门关着（缺省）：不建，保持只报 waiting", async () => {
+    cardGate = undefined;
+    const slot = await waitingOn();
+    expect(blocked()).toHaveLength(0);
+    expect(states().at(-1)).toBe("waiting");
+    cardGate = false;
+    slot.stop();
+  });
+
+  it("槽自己说门关着（answerCards 答 false）：一条记录都不建", async () => {
+    cardGate = false;
+    const slot = await waitingOn();
+    for (let i = 0; i < 4; i += 1) {
+      timers.advance(1000);
+      slot.poke?.();
+      await flush();
+    }
+    expect(blocked()).toHaveLength(0);
+    expect(states().at(-1)).toBe("waiting");
+    slot.stop();
+  });
+
+  it("槽起来就关掉前一个槽留下的 grok-card 记录", async () => {
+    const slot = await waitingOn();
+    expect(settled[0]).toEqual({ protocol: "grok-card", answer: "cancelled" });
+    slot.stop();
+  });
+
+  it("槽停的时候卡还开着：关那一条记录；没有开着的卡就不多关", async () => {
+    const slot = await waitingOn();
+    const pendingId = blocked()[0]?.pendingId;
+    settled = [];
+    slot.stop();
+    expect(settled).toEqual([{ pendingId, answer: "cancelled" }]);
+
+    settled = [];
+    writeEvents("s", [line("turn_started")]);
+    const again = open().slot!;
+    again.start();
+    settled = [];
+    again.stop();
+    expect(settled).toEqual([]);
+  });
+
+  it("回合结束忘掉试过几次：同一张卡（偏移相同）下一回合还能再试", async () => {
+    screenText = "no card here";
+    const slot = await waitingOn();
+    for (let i = 0; i < 5; i += 1) {
+      timers.advance(1000);
+      slot.poke?.();
+      await flush();
+    }
+    expect(blocked()).toHaveLength(0);
+    append("s", [line("turn_ended", { outcome: "cancelled" })]);
+    slot.poke?.();
+    // 文件重写成同样的两行：偏移相同，试次已被忘掉。
+    screenText = CARD;
+    writeEvents("s", [
+      line("turn_started"),
+      line("permission_requested", { tool_name: "run_terminal_command" }),
+    ]);
+    slot.poke?.();
+    timers.advance(PERMISSION_GRACE_MS + 20);
+    await flush();
+    expect(blocked()).toHaveLength(1);
+    slot.stop();
+  });
+
+  it("画面认不出：不建，最多试三次", async () => {
+    screenText = "no card here";
+    const slot = await waitingOn();
+    for (let i = 0; i < 6; i += 1) {
+      timers.advance(1000);
+      slot.poke?.();
+      await flush();
+    }
+    expect(blocked()).toHaveLength(0);
+    slot.stop();
+  });
+
+  it("提问卡与计划审阅（asking）不建", async () => {
+    writeEvents("s", [line("turn_started")]);
+    const { slot } = open();
+    slot!.start();
+    append("s", [
+      line("tool_started", { tool_name: "ask_user_question" }),
+      line("permission_requested", { tool_name: "ask_user_question" }),
+    ]);
+    slot!.poke?.();
+    timers.advance(PERMISSION_GRACE_MS + 20);
+    await flush();
+    expect(blocked()).toHaveLength(0);
+    slot!.stop();
+  });
+
+  it("并行：两条未决不建", async () => {
+    writeEvents("s", [line("turn_started")]);
+    const { slot } = open();
+    slot!.start();
+    append("s", [
+      line("permission_requested", { tool_name: "a" }),
+      line("permission_requested", { tool_name: "b" }),
+    ]);
+    slot!.poke?.();
+    timers.advance(PERMISSION_GRACE_MS + 20);
+    await flush();
+    expect(blocked()).toHaveLength(0);
+    slot!.stop();
+  });
+
+  it("人在终端里答了：下一条状态带结案，答案取文件里的决定", async () => {
+    const slot = await waitingOn();
+    const pendingId = blocked()[0]?.pendingId;
+    append("s", [
+      line("permission_resolved", { decision: "deny", wait_ms: 900 }),
+    ]);
+    slot.poke?.();
+    const last = reports.at(-1)!;
+    expect(last.state).toBe("working");
+    expect(last.settlesApproval).toEqual({ pendingId, answer: "deny" });
+    slot.stop();
+  });
+
+  it("回合结束没人答：cancelled；会话消失也 cancelled", async () => {
+    const slot = await waitingOn();
+    const pendingId = blocked()[0]?.pendingId;
+    append("s", [line("turn_ended", { outcome: "cancelled" })]);
+    slot.poke?.();
+    expect(reports.at(-1)?.settlesApproval).toEqual({
+      pendingId,
+      answer: "cancelled",
+    });
+    slot.stop();
+
+    reports = [];
+    payloads = [];
+    const again = await waitingOn();
+    const second = blocked()[0]?.pendingId;
+    rows = [];
+    writeActive();
+    again.poke?.();
+    expect(reports.at(-1)).toMatchObject({
+      kind: "session",
+      settlesApproval: { pendingId: second, answer: "cancelled" },
+    });
+    again.stop();
   });
 });
 

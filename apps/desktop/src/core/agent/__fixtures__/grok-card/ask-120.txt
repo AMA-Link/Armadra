@@ -1,0 +1,24 @@
+
+
+
+
+
+
+
+
+
+
+    ◆ Waiting for answers: Pick a color?…                                                              0.1s ⇣15 [stop]
+
+  ┃
+  ┃  Pick a color?
+  ┃
+  ┃
+  ┃  1 (○) Red   r
+  ┃  2 (○) Blue  b
+  ┃  z (○) Type your answer here
+  ┃
+  ┃  ↑/↓ navigate · y copy                                                                            Enter:submit
+  ┃
+
+  Tab:next answer  │  Esc:scrollback  │  Shift+x:dismiss

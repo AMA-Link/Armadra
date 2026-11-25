@@ -6367,7 +6367,7 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
 - **路径带空格**：1.0.92 实测，数据目录带空格时规则 `Bash(<含空格的绝对路径> canvas *)`（不转义、不加引号）既放行不转义也放行反斜杠转义的命令写法；写成反斜杠转义的规则反而什么都不放行，带引号的命令写法两种规则都不放行。所以规则照原样写、不转义；技能与 `--rules` 教的是裸名 `armadra-hook`，由裸名规则覆盖。
 - **启动器放置位**：`.launch` 的 `place=before-separator`（§13）。Windows 的 `armadra-launch.exe` 需要在 Windows 上真跑通过才能合入（本批的合并门）。
 
-**不做**：不代答审批（`answerKeys("grok")` 为空串）、不声明 `structuredInputAck`；`permission_requested` 不产生审批记录。
+**不做**：不声明 `structuredInputAck`（§127 不改这一条，移到 0.25 的 `#1057`）。审批代答与审批记录自 §127 起有，但缺省关、`answerKeys("grok")` 仍是空串（盲发键永远不发）。
 
 **旧客户端**：`agentStateSourceSchema` 在共享层是严格的 `z.enum`，没有升级的页面（含已装在手机上的）收到 `stateSource: "transcript"` 的 `agent.status` 解析不过。但它们本来就不认 `grok` 这个内置 id（§120：`AGENT_IDS` 多一项，`agents.list` 整张解析失败），所以这不是新增的不兼容；升级页面是前提，发版时手机端必须同步更新。协议 minor 升到 53，页面按 `min(自己的, core 的)` 谈，旧页面据此知道自己落后。`PROTOCOL_MAJOR` 不变。
 
@@ -6411,3 +6411,19 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
 - **grok**：`_meta.rules`（追加到系统提示）。用隔离的 `GROK_HOME` 加脚本化模型实测（grok 1.0.92）：`session/new` 带 `_meta.rules` 之后，发给模型的请求里 system 消息含这段文字。**只在 `session/new` 时生效**（grok 文档与 1.0.92 实测：`session/load`、`session/resume` 时 `rules` 被忽略），所以适配器行标 `metaOnNew: true`，恢复时不发。后果：**本 PR 之前建的会话，恢复后拿不到规则**（要新建会话才有）。**不发 `pluginDirs`**：画布工具已经走 MCP、状态来自 ACP 自己，没有要挂的插件目录。**不发 `yoloMode`**：全自动继续走启动旗标 `--always-approve`。grok 文档说开会话 / load 时传 `yoloMode: false` 能关掉 always-approve，但 ACP 里没有会话内切换权限的入口（`session/set_mode` 只认 `default` / `plan`，plan 现在也关着），旗标已经能用，换成 `_meta` 没有任何好处，反而要在每次 load / resume 为非全自动写 `yoloMode: false`、多一条没核对过的线路。
 - **agy**：`_meta.antigravity.systemPrompt.append`。键名与效果没有用真账号核对过，适配器行标 `metaVerified: false`：`acpSessionMeta` 对未核实的行一个键都不发，线路与没有这条时逐字节相同。核对步骤在 Armadra#1053；核对之后改这一个标志（load 被忽略就再加 `metaOnNew`）。
 - **失效安全**：没有 `sessionMeta` 的适配器、没有规则文本、没带画布 MCP、未核实的适配器，`_meta` 都不出现；客户端没声明 `features.sessionMeta`（旧版）时 `metaInjected: false`，会话照常开。
+
+## 127. grok 的终端审批代答（`#1027`）
+
+不升协议版本，不改线上枚举：审批记录多一种 `request`（`protocol: "grok-card"`），`POST /api/approvals/{pendingId}/answer` 的应答与 `agent.approval` 的结算事件多一个可选字段 `delivery`（`confirmed | unconfirmed | mismatch | ambiguous | not_sent`），设置多一个键 `agents.grok.answerCards`。**缺省全关**：代码里已验证版本清单（`GROK_ANSWER_VERIFIED_VERSIONS`）现在是空的，设置缺省 `false`，两道门都开才有任何行为。
+
+- **为什么不是盲发键**：grok 的权限卡是编号会跳号的菜单（`1 Always allow…`、`3 Yes, proceed`、`4 No, reject…`、`5 Never allow…`，最后一项 always-approve 没有数字），数字键选中即提交，不要回车；Always / Never / always-approve 会把规则写进用户的配置。`events.jsonl` 的 `permission_resolved.decision` 只分 allow / deny，事后分不出选了哪一项。所以只能「先读画面、再按那一个数字」，且选键只依据画面。`answerKeys("grok")` 保持空串。
+- **两道门加一个模式限制**：（1）`GROK_ANSWER_VERIFIED_VERSIONS`：`grok --version` 探到的版本在清单里才开，清单只由离线 e2e 通过后的变更填；探测放在最后：**清单、设置、模式三样都过了才探**，清单是空的或设置关着，core 不会因此起任何 grok 子进程；探到的版本缓存 10 分钟（`GROK_VERSION_TTL_MS`），读的是 core 的 PATH 上的 grok（改成读节点实际在跑的那个记在 `#1027`）；（2）用户设置 `agents.grok.answerCards`（设置页 → Agent → Grok，缺省关）；（3）节点是 Armadra 自己用 `--permission-mode` 启动的（`auto-edit`、`plan`）。缺省模式是 auto-review，分类器是不经键盘的第三个答题者，没验证过，不放开；`full-auto` 没有卡。远程（SSH）节点与 Windows 没有这条通道，不开。
+- **审批记录**：读取槽（§123）见到一条没答的权限请求、不是提问卡 / 计划审阅（`asking`）、全会话只有这一条、门开着、画面解析认得出，才建记录并报 `blocked` + `pendingId`（原来只报 `waiting`）。记录 `request`：`protocol`、`sessionId`、`offset`（`permission_requested` 那一行在 `events.jsonl` 里的字节偏移，请求的身份——行里只有工具名）、`hash`（卡片正文的哈希，焦点标记不算）、`tool`、`title`、`body`（至多 40 行 × 300 字）、`options`（选项标签）。认不出的卡最多试三次，之后这一张不再试；门关着或设置关着不建记录，保持只报 `waiting`，行为与此前一致。
+- **未决请求的清理**：`permission_resolved` 关掉最早的一条；回合开始 / 结束清空；模型又开口（`first_token`、`loop_started`）也清空，漏写 resolved 的请求不会把节点钉在 `waiting`。这与门开不开无关，`waiting` 的判定相对此前没有退步。
+- **结案**：读到 `permission_resolved`、回合结束、会话消失时，下一条状态上报带内部字段 `settlesApproval`（不上线），ingest 把仍开着的记录结案：文件里的决定（人在终端里答的，`answeredBy: "terminal"`）或 `cancelled`（`core`），并发 `agent.approval` 结算事件。从画布答过的记录已经结案，不重复。读取槽**停止**时，仍开着的那条记录按 `cancelled` 关掉；槽**起来**时先把这个节点上前一个槽（或上一次 core 运行）留下的开着的 `grok-card` 记录全部按 `cancelled` 关掉（那张卡若还在，新槽会为它另建记录）。回合结束时忘掉「这张卡试过几次」。
+- **解析器**（`agent/grok-card.ts`，夹具是 1.0.92 的真画面）：自底向上锚定，失败即安全：页脚必须是最后一个非空行且是选择态（`N/M:select`；规则编辑态 `Enter:save`、滚动区 `Tab:permission` 都不是）；选项行必须连续，恰有一个焦点；选项上方是一行 `┃` 空行，再往上是以 `›` 开头的标题；每个选项都得是认得的一种（`Yes, proceed`、`Yes`、`No, reject…`、`Always allow…`、`Never allow…`、`Yes, allow edits…`、`Yes, and don't ask again…`），出现别的整张不认；允许一次与拒绝各恰好一个、都有数字、数字互不相同。允许一次的标签是 `Yes, proceed`（命令）或 `Yes`（编辑），拒绝是 `No, reject (type to add feedback)`，都是整行相等才认，别的写法一律不认。
+- **三项发键前核对**（`verifyGrokCard`）：（1）读取槽同步刷新后恰有一条未决请求，且 `sessionId` 与 `offset` 同记录；（2）`terminals.inputRevision` 在抓屏前后相同（有人在输入栏敲了键也算）；（3）重新抓一屏，解析得到的 `hash` 与记录相同。抓屏是异步的，所以回来之后同步再核（1）（2）一遍，到写键之间没有 `await`。任一项不满足不发键。
+- **预检在 CAS 之前**：`answerApproval` 对 `grok-card` 记录先做上面的核对，并再核两件事：这个节点真是 grok（形状像 `grok-card` 的请求落在别家的节点上不发键，`refusal: not_grok`）、两道门与模式此刻仍然成立（`gate_closed`）；失败答 409（「画面上的卡不是这条审批对应的那张」），审计记 `accepted=false`、`refusal` 为 `card_changed` / `card_unrecognized` / `input_changed` / `no_terminal`，记录保持打开，一个键都不发。通过后才走 §14 的 CAS，落库之后发送前再核一遍（中间隔着一次写，卡可能换了）；这时核不过，记录已答，但一个键都没发，应答 `route: "none"`、`delivery: "not_sent"`（页面提示「没有发键，请在终端里答」，不说「没确认」），审计 `refusal` 写原因。
+- **发完核对与 `delivery`**：键只有一个数字字符，不带回车。发完最多 2 秒读文件，取该请求之后的**第一条** `permission_resolved`：决定与所选一致 → `confirmed`；决定相反 → `mismatch`；请求与这条 resolved 之间还夹着另一条请求（数字可能落在了那一张）→ `ambiguous`；等不到 → `unconfirmed`。**从不重发**（重发会把数字打进下一张卡或输入栏）。应答 `route` 仍是 `keys`；`delivery` 只出现在这条路由上，不在 `route` 枚举里加值。非 `confirmed` 时审计 `refusal` 记 `delivery_<值>`，页面弹错误提示（`acp.permission.delivery.*`），请人去终端看。
+- **设置**：`agents.grok.answerCards`（布尔，缺省 `false`，非布尔丢掉键）；页面在 设置 → Agent → Grok 有一行「终端审批代答」。
+- **本批没有做**：推送与节点头部的常驻提示（现在是一条 12 秒的提示）；auto-review 节点（需要用户的真账号夹具与一次短回合，记在 `#1027`）。

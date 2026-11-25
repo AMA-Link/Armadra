@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { controlDispatcher } from "../collab/control";
 import { type RunningCore, run } from "../main";
+import { collab } from "./index";
 
 /**
  * The agent domain, assembled by the real `run()`.
@@ -48,6 +49,26 @@ async function get(path: string): Promise<{ status: number; body: unknown }> {
     body: text === "" ? undefined : JSON.parse(text),
   };
 }
+
+describe("the assembled agent settings", () => {
+  it("read agents.grok.answerCards live from the settings store (contract §127)", async () => {
+    // The unit tests hand the approval flow its own settings; this is the one
+    // that proves the real core wires the switch into the context it runs on.
+    const settings = collab()?.settings;
+    expect(settings?.answerCards?.("grok")).toBe(false);
+    const patch = (answerCards: boolean) =>
+      fetch(`${base}/api/settings`, {
+        method: "PATCH",
+        headers: { origin: base, "Content-Type": "application/json" },
+        body: JSON.stringify({ agents: { grok: { answerCards } } }),
+      });
+    expect((await patch(true)).status).toBe(200);
+    expect(settings?.answerCards?.("grok")).toBe(true);
+    expect(settings?.answerCards?.("claude")).toBe(false);
+    expect((await patch(false)).status).toBe(200);
+    expect(settings?.answerCards?.("grok")).toBe(false);
+  });
+});
 
 describe("the assembled agent domain", () => {
   it("applies the unified migrations, 0016 included", () => {

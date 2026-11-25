@@ -335,6 +335,13 @@ export const answerApprovalResponseSchema = z.looseObject({
   revision: z.number(),
   /** `acp`: answered on the pending `session/request_permission`. */
   route: z.enum(["file", "keys", "none", "acp"]),
+  /**
+   * Only for keys typed on a terminal card (contract §127): whether the answer
+   * was seen to take effect. Anything but `confirmed` is shown to the person.
+   */
+  delivery: z
+    .enum(["confirmed", "unconfirmed", "mismatch", "ambiguous", "not_sent"])
+    .optional(),
 });
 
 /**

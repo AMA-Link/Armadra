@@ -14,6 +14,8 @@ import {
   findNodeOwner,
   getAgentStatus,
   insertApproval,
+  settleApproval,
+  settleOpenApprovals,
   stateSourceFor,
   upsertAgentStatus,
 } from "./store";
@@ -404,6 +406,40 @@ export function apply(
       event: { type: "agent.subagent", event: serializeEvent(event) },
     });
     return undefined;
+  }
+
+  if (event.settlesApproval !== undefined) {
+    const { pendingId, protocol, answer } = event.settlesApproval;
+    const nowIso = (context.now ?? (() => new Date()))().toISOString();
+    const settled =
+      pendingId !== undefined
+        ? [settleApproval(context.database, pendingId, answer, nowIso)]
+        : protocol !== undefined
+          ? settleOpenApprovals(
+              context.database,
+              event.nodeId,
+              protocol,
+              nowIso,
+            )
+          : [];
+    for (const record of settled) {
+      if (record === undefined) continue;
+      context.bus.emit("workspace.event", {
+        workspaceId,
+        event: {
+          type: "agent.approval",
+          nodeId: event.nodeId,
+          pendingId: record.id,
+          request: {
+            ...record,
+            resolved: true,
+            decision: record.answer ?? answer,
+            answer: record.answer ?? answer,
+            route: "none",
+          },
+        },
+      });
+    }
   }
 
   const existing = getAgentStatus(context.database, event.nodeId);

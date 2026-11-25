@@ -46,6 +46,20 @@ export interface StateSlotContext {
   /** 取这个会话此刻的画面（最后几十行）；取不到答 `undefined`。 */
   screen?(): Promise<string | undefined>;
   /**
+   * 这个节点的审批卡现在可不可以在终端里代答（两道门与启动模式都过了，契约 §127）。
+   * 缺省 / 没装配 = 不可以。只有问「要不要为这张卡建审批记录」时用。
+   */
+  answerCards?(): Promise<boolean>;
+  /**
+   * 只关审批记录、不报状态：一条记录对应的卡没人能再答了（槽停了、槽起来时前一个
+   * 槽留下的）。`pendingId` 关一条，`protocol` 关这个节点上这一种的所有开着的。
+   */
+  settleApprovals?(settles: {
+    readonly pendingId?: string;
+    readonly protocol?: string;
+    readonly answer: "cancelled";
+  }): void;
+  /**
    * 报一条状态。级别由管理器按槽声明的执行：`reported` 的事件必须自带上报级来源；
    * `observed` 的事件来源一律改写成 `observed`。`bind: true` 另给事件自造终端绑定。
    * 没装配上报口（用例、只起部分域的构建）时是空操作，答 `false`。

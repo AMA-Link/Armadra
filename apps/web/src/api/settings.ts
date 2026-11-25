@@ -279,7 +279,11 @@ export interface RuntimeSettingsPatch {
     disabled?: string[] | null;
   } & {
     /** 每家的零注入开关（契约 §113）。 */
-    [Id in BuiltinAgentId]?: { bareLaunch?: boolean };
+    [Id in BuiltinAgentId]?: {
+      bareLaunch?: boolean;
+      /** 只有 grok：在终端里替人答审批卡（契约 §127），缺省关。 */
+      answerCards?: boolean;
+    };
   };
   hooks?: { replyApprovals?: boolean };
   watchdog?: { stalledMinutes?: number; needsHumanMinutes?: number };

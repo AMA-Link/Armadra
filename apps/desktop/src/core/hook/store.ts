@@ -453,6 +453,47 @@ export function insertApproval(
   return written;
 }
 
+/**
+ * Closes an approval nobody answered through Armadra: the person pressed the
+ * key on the terminal, or the turn ended. `false` when it was already answered
+ * (the usual case after an answer from the canvas) or does not exist.
+ */
+export function settleApproval(
+  database: DatabaseSync,
+  pendingId: string,
+  answer: "allow" | "deny" | "cancelled",
+  now: string = new Date().toISOString(),
+): AgentApproval | undefined {
+  const changed = database
+    .prepare(
+      "UPDATE agent_approvals SET answer = ?, answered_by = ?, answered_at = ?, revision = revision + 1 " +
+        "WHERE id = ? AND answer IS NULL",
+    )
+    .run(answer, answer === "cancelled" ? "core" : "terminal", now, pendingId);
+  return Number(changed.changes) === 0
+    ? undefined
+    : getApproval(database, pendingId);
+}
+
+/** Closes every still-open approval of `nodeId` whose request has `protocol`. */
+export function settleOpenApprovals(
+  database: DatabaseSync,
+  nodeId: string,
+  protocol: string,
+  now: string = new Date().toISOString(),
+): AgentApproval[] {
+  const open = database
+    .prepare(
+      "SELECT id FROM agent_approvals WHERE node_id = ? AND answer IS NULL " +
+        "AND json_extract(request_json, '$.protocol') = ?",
+    )
+    .all(nodeId, protocol) as { id: string }[];
+  return open.flatMap((row) => {
+    const settled = settleApproval(database, row.id, "cancelled", now);
+    return settled === undefined ? [] : [settled];
+  });
+}
+
 /** Why an answer could not be recorded, in the shape the routes report. */
 export type AnswerRefusal = "bad_request" | "not_found" | "conflict";
 

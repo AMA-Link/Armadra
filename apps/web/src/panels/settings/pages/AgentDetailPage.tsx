@@ -119,6 +119,44 @@ export function BareLaunchRow({
 }
 
 /**
+ * 终端审批代答开关（主机设置 `agents.grok.answerCards`，契约 §127）：开 = 节点头部与
+ * 手机上点允许 / 拒绝，core 对着终端里的审批卡按那一个数字键。只有 grok 有这一行。
+ */
+function answerCardsOn(settings: unknown): boolean {
+  const agents = (settings as { agents?: Record<string, unknown> } | undefined)
+    ?.agents;
+  const grok = agents?.grok as { answerCards?: unknown } | undefined;
+  return grok?.answerCards === true;
+}
+
+export function AnswerCardsRow({
+  agent,
+}: {
+  agent: Pick<AgentInfo, "id" | "label">;
+}) {
+  const t = useT();
+  const { settings, save } = useRuntimeSettings({ scope: "local" });
+  if (agent.id !== "grok") return null;
+  return (
+    <SettingsRow
+      label={t("agents.row.answerCards")}
+      footnote={t("agents.answerCards.reason")}
+    >
+      <ScopeBadge scope="host" />
+      <Switch
+        size="sm"
+        checked={answerCardsOn(settings.data)}
+        disabled={!settings.data || save.isPending}
+        aria-label={`${agent.label} ${t("agents.row.answerCards")}`}
+        onCheckedChange={(checked) =>
+          save.mutate({ agents: { grok: { answerCards: checked } } })
+        }
+      />
+    </SettingsRow>
+  );
+}
+
+/**
  * Agent CLI 子页（§2.5）：启动 · 安装 · 画布注入三组。
  *
  * 画布注入只说数据目录里本产品的产物（Hook、技能、启动器），不读也不展示
@@ -212,6 +250,7 @@ export function AgentDetailPage({ agent }: { agent: AgentInfo }) {
           </SettingsRow>
         )}
         <BareLaunchRow agent={agent} />
+        <AnswerCardsRow agent={agent} />
         <SettingsRow label={t("settings.launchCommand")}>
           <ScopeBadge scope="device" />
           <Input

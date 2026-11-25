@@ -19,6 +19,9 @@ export interface ApprovalRecord {
   answered: boolean;
   /** 保留字段：core 不做 revision CAS，恒为 0。 */
   revision: bigint;
+  /** 终端卡上的按键有没有被看到生效（契约 §127）；别的路由没有。 */
+  delivery?:
+    "confirmed" | "unconfirmed" | "mismatch" | "ambiguous" | "not_sent";
 }
 
 /**
@@ -67,8 +70,15 @@ export const agentGateway = {
   ): Promise<ApprovalRecord> {
     if (decision !== "allow" && decision !== "deny")
       throw new UnsupportedDecisionError(decision);
-    await runtimeApi.answerApproval(approvalId, decision);
-    return { approvalId, nodeId: "", decision, answered: true, revision: 0n };
+    const answer = await runtimeApi.answerApproval(approvalId, decision);
+    return {
+      approvalId,
+      nodeId: "",
+      decision,
+      answered: true,
+      revision: 0n,
+      ...(answer.delivery === undefined ? {} : { delivery: answer.delivery }),
+    };
   },
 
   /**

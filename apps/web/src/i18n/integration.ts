@@ -31,6 +31,9 @@ export const integration: MessageModule = {
     "agents.row.bareLaunch": "零注入启动",
     "agents.bare.badge": "零注入",
     "agents.bare.reason": "审批、画布工具与协作消息不可用",
+    "agents.row.answerCards": "终端审批代答",
+    "agents.answerCards.reason":
+      "只答允许一次与拒绝；仅限权限模式为自动编辑或计划的节点",
     "agents.attach.pick": "选择…",
     "agents.row.artifacts": "Hook 与技能", // i18n-exempt
     "agents.sessions.indexed": "已索引会话",
@@ -128,6 +131,9 @@ export const integration: MessageModule = {
     "agents.bare.badge": "Bare",
     "agents.bare.reason":
       "Approvals, canvas tools and collaboration messages are unavailable",
+    "agents.row.answerCards": "Answer approvals on the terminal",
+    "agents.answerCards.reason":
+      "Only allow once and reject; only for nodes in auto-edit or plan mode",
     "agents.attach.pick": "Choose…",
     "agents.row.artifacts": "Hooks & skill",
     "agents.sessions.indexed": "Indexed sessions",

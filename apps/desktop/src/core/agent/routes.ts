@@ -633,6 +633,7 @@ function agentOperations(collab: CollabContext) {
       return {
         ...approval,
         route,
+        ...(answer.delivery === undefined ? {} : { delivery: answer.delivery }),
         ...(answer.elicitation === undefined
           ? {}
           : { elicitation: answer.elicitation }),

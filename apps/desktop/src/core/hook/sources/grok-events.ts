@@ -24,7 +24,14 @@ import {
   type StateSlotProvider,
 } from "../../timeline/sources/state-slot";
 import {
+  GROK_CARD_PROTOCOL,
+  type GrokCardRecord,
+  registerGrokCardSource,
+} from "../../agent/grok-answer";
+import { parseGrokApprovalCard } from "../../agent/grok-card";
+import {
   type AgentEvent,
+  BLOCKED,
   DONE,
   WAITING,
   WORKING,
@@ -298,7 +305,28 @@ export interface TailView {
   readonly endedAt?: number;
   /** The tool the turn is parked on until a person answers (`exit_plan_mode`). */
   readonly asking?: string;
+  /**
+   * Permission requests still open, oldest first: the byte offset of the
+   * `permission_requested` line in `events.jsonl` (its identity; the line has
+   * only a tool name) and that name. A `permission_resolved` closes the oldest.
+   */
+  readonly requests?: readonly PendingRequest[];
 }
+
+export interface PendingRequest {
+  readonly offset: number;
+  readonly tool: string;
+}
+
+/** One request or resolution line, kept so an answer can be checked afterwards. */
+interface TrailEntry {
+  readonly kind: "request" | "resolved";
+  readonly offset: number;
+  readonly decision?: "allow" | "deny";
+}
+
+/** How many request / resolution lines {@link SessionTail} remembers. */
+const TRAIL = 16;
 
 /**
  * Tools that hold the turn open on a person: grok does not end the turn while
@@ -323,9 +351,44 @@ export class SessionTail {
   private endedAt = 0;
   private startedAt = 0;
   private asking: string | undefined;
+  private requests: PendingRequest[] = [];
+  private trail: TrailEntry[] = [];
   unknownLines = 0;
 
-  apply(record: unknown): void {
+  /** Forgets every open request (a missing `permission_resolved` must not pin `waiting`). */
+  private settleRequests(): void {
+    this.requests = [];
+    this.requestedAt = undefined;
+  }
+
+  private note(entry: TrailEntry): void {
+    this.trail.push(entry);
+    if (this.trail.length > TRAIL) this.trail.shift();
+  }
+
+  /**
+   * What the file says happened to the request at `offset`, for the check after
+   * keys were typed: the first resolution after it (`allow` / `deny`), `pending`
+   * while nothing resolved it, `ambiguous` when another request sits between it
+   * and that resolution (the digit may have landed on the other card),
+   * `unknown` when the line has left the window.
+   */
+  outcomeAfter(
+    offset: number,
+  ): "allow" | "deny" | "pending" | "ambiguous" | "unknown" {
+    const at = this.trail.findIndex(
+      (entry) => entry.kind === "request" && entry.offset === offset,
+    );
+    if (at < 0) return "unknown";
+    for (const entry of this.trail.slice(at + 1)) {
+      if (entry.kind === "request") return "ambiguous";
+      return entry.decision ?? "ambiguous";
+    }
+    return "pending";
+  }
+
+  /** `offset`: where the line starts in the file; without it a request is `-1`. */
+  apply(record: unknown, offset = -1): void {
     if (typeof record !== "object" || record === null) {
       this.unknownLines += 1;
       return;
@@ -341,20 +404,36 @@ export class SessionTail {
         }
         this.ended = undefined;
         this.requestedAt = undefined;
+        this.requests = [];
         this.asking = undefined;
         break;
       case "permission_requested": {
         const at = typeof line.ts === "string" ? Date.parse(line.ts) : NaN;
         this.requestedAt = Number.isFinite(at) ? at : 0;
         this.inTurn = true;
+        this.requests.push({
+          offset,
+          tool: typeof line.tool_name === "string" ? line.tool_name : "",
+        });
+        this.note({ kind: "request", offset });
         break;
       }
       case "permission_resolved":
-        this.requestedAt = undefined;
+        this.requests.shift();
+        this.note({
+          kind: "resolved",
+          offset,
+          ...(line.decision === "allow" || line.decision === "deny"
+            ? { decision: line.decision }
+            : {}),
+        });
+        // Parallel requests: the next one in line is the one open now.
+        if (this.requests.length === 0) this.requestedAt = undefined;
         break;
       case "turn_ended": {
         this.inTurn = false;
         this.requestedAt = undefined;
+        this.requests = [];
         this.asking = undefined;
         {
           const at = typeof line.ts === "string" ? Date.parse(line.ts) : NaN;
@@ -392,8 +471,14 @@ export class SessionTail {
         // plan / approve) — measured on 1.0.92, no `tool_completed` follows it.
         this.asking = undefined;
         this.inTurn = true;
+        this.settleRequests();
         break;
       case "first_token":
+        // The model is talking again: nothing it asked permission for is still
+        // open, whether or not a `permission_resolved` was written for it.
+        this.inTurn = true;
+        this.settleRequests();
+        break;
       case "phase_changed":
         this.inTurn = true;
         break;
@@ -421,6 +506,7 @@ export class SessionTail {
         turns: this.turns,
         startedAt: this.startedAt,
         requestedAt: this.requestedAt,
+        requests: [...this.requests],
       };
     }
     return {
@@ -496,6 +582,19 @@ class GrokSlot implements StateSlot {
   private noRowSince: number | undefined;
   private noRowUnbound = false;
   private screenCheck = false;
+  /** 已经建了审批记录、还没结案的那张卡。 */
+  private card:
+    | {
+        readonly pendingId: string;
+        readonly sessionId: string;
+        readonly offset: number;
+      }
+    | undefined;
+  /** 每张卡（会话:偏移）试过几次建记录；认不出的最多再试两次。 */
+  private readonly cardTries = new Map<string, number>();
+  /** 一次建记录正在进行（抓屏是异步的）。 */
+  private cardBusy = false;
+  private unregisterCards: (() => void) | undefined;
 
   constructor(
     private readonly context: StateSlotContext,
@@ -503,8 +602,35 @@ class GrokSlot implements StateSlot {
   ) {}
 
   start(): void {
+    this.unregisterCards = registerGrokCardSource(this.context.nodeId, {
+      requests: () => this.openRequests(),
+      outcomeAfter: (sessionId, offset) =>
+        this.followed.get(sessionId)?.tail.outcomeAfter(offset) ?? "unknown",
+    });
+    // A record an earlier slot (or an earlier core run) left open cannot be
+    // answered any more: the registry that checks it died with that slot. If the
+    // card is still up, this slot makes a new record for it.
+    this.context.settleApprovals?.({
+      protocol: GROK_CARD_PROTOCOL,
+      answer: "cancelled",
+    });
     this.readNow();
     this.arm();
+  }
+
+  /** 所有会话里没答的权限请求（偏移是请求的身份）。 */
+  private openRequests(): {
+    sessionId: string;
+    offset: number;
+    tool: string;
+  }[] {
+    const nowMs = this.deps.now();
+    return [...this.followed.entries()].flatMap(([sessionId, followed]) =>
+      (followed.tail.view(nowMs).requests ?? []).map((request) => ({
+        sessionId,
+        ...request,
+      })),
+    );
   }
 
   poke(): void {
@@ -616,7 +742,16 @@ class GrokSlot implements StateSlot {
   }
 
   stop(): void {
+    // The record of a card nobody can answer through this slot any more is
+    // closed, so no header keeps a button that does nothing.
+    if (this.card !== undefined) {
+      const { pendingId } = this.card;
+      this.card = undefined;
+      this.context.settleApprovals?.({ pendingId, answer: "cancelled" });
+    }
     this.stopped = true;
+    this.unregisterCards?.();
+    this.unregisterCards = undefined;
     this.cancel();
     markChannelUnbound(this.context.nodeId, false);
   }
@@ -717,17 +852,30 @@ class GrokSlot implements StateSlot {
       }
       if (size === followed.offset) return;
       const buffer = Buffer.alloc(size - followed.offset);
+      const from = followed.offset;
       const read = readSync(fd, buffer, 0, buffer.length, followed.offset);
       followed.offset += read;
+      const skipFirst = followed.partial === "\u0000skip";
+      // Where the first line of `text` starts in the file: the unfinished line
+      // left from the last read begins before `from`.
+      let lineStart = skipFirst
+        ? from
+        : from - Buffer.byteLength(followed.partial);
       const text = followed.partial + buffer.subarray(0, read).toString("utf8");
       const lines = text.split("\n");
-      const skipFirst = followed.partial === "\u0000skip";
       followed.partial = lines.pop() ?? "";
       lines.forEach((line, index) => {
+        const start = lineStart;
+        // The skip marker is not in the file.
+        lineStart +=
+          Buffer.byteLength(line) - (skipFirst && index === 0 ? 5 : 0) + 1;
         if (skipFirst && index === 0) return;
         if (line === "") return;
         try {
-          followed.tail.apply(JSON.parse(line.replace(/^\u0000skip/, "")));
+          followed.tail.apply(
+            JSON.parse(line.replace(/^\u0000skip/, "")),
+            start,
+          );
         } catch {
           followed.tail.unknownLines += 1;
         }
@@ -743,9 +891,19 @@ class GrokSlot implements StateSlot {
       // later one starts from nothing — no stale state to dedupe against.
       if (this.hadBound) {
         this.hadBound = false;
-        this.send(
-          sessionEvent(this.context.nodeId, this.context.agentId, "end"),
+        const end = sessionEvent(
+          this.context.nodeId,
+          this.context.agentId,
+          "end",
         );
+        if (this.card !== undefined) {
+          end.settlesApproval = {
+            pendingId: this.card.pendingId,
+            answer: "cancelled",
+          };
+          this.card = undefined;
+        }
+        this.send(end);
         this.last = undefined;
         this.announced.clear();
         this.current = undefined;
@@ -785,6 +943,10 @@ class GrokSlot implements StateSlot {
     this.current = current;
     const next = aggregate(views);
     this.scheduleGrace(views);
+    const settles = this.settleCard(next);
+    // A turn's end forgets which cards were tried.
+    if (next.state === "done") this.cardTries.clear();
+    this.watchCard(next);
     // 一个还没有任何回合的会话没有「完成」可说：只有上面的 session start，状态留空
     // （与 Claude 起来之后的样子一致，首投放行门认的就是「开场之后还没有状态」）。
     if (next.turns === 0 && next.state === "done") return;
@@ -799,7 +961,8 @@ class GrokSlot implements StateSlot {
       before.state === key &&
       before.turns === turnsKey &&
       before.asking === asking &&
-      !switched
+      !switched &&
+      settles === undefined
     ) {
       return;
     }
@@ -836,7 +999,118 @@ class GrokSlot implements StateSlot {
       if (next.ended === "error") event.errored = true;
       if (next.ended === "cancelled") event.interrupted = true;
     }
+    if (settles !== undefined) event.settlesApproval = settles;
     this.send(event);
+  }
+
+  /**
+   * 审批记录结案：那条请求不在未决里了（人在终端答了、回合结束、新一张顶上）。
+   * 答案取文件里的 resolved；没有就是 `cancelled`。
+   */
+  private settleCard(
+    next: ReturnType<typeof aggregate>,
+  ): AgentEvent["settlesApproval"] {
+    const card = this.card;
+    if (card === undefined) return undefined;
+    const stillOpen =
+      next.state === "waiting" &&
+      next.asking === undefined &&
+      this.openRequests().some(
+        (request) =>
+          request.sessionId === card.sessionId &&
+          request.offset === card.offset,
+      );
+    if (stillOpen) return undefined;
+    this.card = undefined;
+    const seen = this.followed
+      .get(card.sessionId)
+      ?.tail.outcomeAfter(card.offset);
+    return {
+      pendingId: card.pendingId,
+      answer: seen === "allow" || seen === "deny" ? seen : "cancelled",
+    };
+  }
+
+  /** 等着人的权限卡：门开着、认得出、只有这一条，才建审批记录。 */
+  private watchCard(next: ReturnType<typeof aggregate>): void {
+    if (
+      this.card !== undefined ||
+      this.cardBusy ||
+      next.state !== "waiting" ||
+      next.asking !== undefined
+    ) {
+      return;
+    }
+    const open = this.openRequests();
+    const only = open.length === 1 ? open[0] : undefined;
+    if (only === undefined) return;
+    const key = `${only.sessionId}:${only.offset}`;
+    const tries = this.cardTries.get(key) ?? 0;
+    if (tries >= 3) return;
+    this.cardTries.set(key, tries + 1);
+    void this.recordCard(only).catch(() => undefined);
+  }
+
+  private async recordCard(request: {
+    sessionId: string;
+    offset: number;
+    tool: string;
+  }): Promise<void> {
+    const key = `${request.sessionId}:${request.offset}`;
+    this.cardBusy = true;
+    try {
+      const { answerCards, screen } = this.context;
+      if (answerCards === undefined || screen === undefined) {
+        this.cardTries.set(key, 3);
+        return;
+      }
+      if (!(await answerCards())) {
+        // 门关着：这张卡不再问（开了设置之后的下一张卡才算）。
+        this.cardTries.set(key, 3);
+        return;
+      }
+      const text = await screen();
+      if (this.stopped || text === undefined) return;
+      const card = parseGrokApprovalCard(text);
+      if (card === undefined) return;
+      // 抓屏是异步的：回来之后还得是同一条、而且是唯一一条。
+      const open = this.openRequests();
+      if (
+        open.length !== 1 ||
+        open[0]?.sessionId !== request.sessionId ||
+        open[0]?.offset !== request.offset
+      ) {
+        return;
+      }
+      const record: GrokCardRecord = {
+        protocol: GROK_CARD_PROTOCOL,
+        sessionId: request.sessionId,
+        offset: request.offset,
+        hash: card.hash,
+        tool: request.tool,
+        title: card.title.slice(0, 300),
+        body: card.body.slice(0, 40).map((row) => row.slice(0, 300)),
+        options: card.options.map((option) => option.label.slice(0, 200)),
+      };
+      const pendingId = `${this.context.nodeId}-grok-${request.offset}-${card.hash.slice(0, 8)}-${this.deps.now().toString(36)}`;
+      const event = stateEvent(
+        this.context.nodeId,
+        this.context.agentId,
+        BLOCKED,
+      );
+      event.pendingId = pendingId;
+      event.sessionId = request.sessionId;
+      const transcript = this.transcriptOf(request.sessionId);
+      if (transcript !== undefined) event.transcriptPath = transcript;
+      this.card = {
+        pendingId,
+        sessionId: request.sessionId,
+        offset: request.offset,
+      };
+      this.send(event, undefined, record);
+    } finally {
+      this.cardBusy = false;
+    }
   }
 
   /**
@@ -889,10 +1163,17 @@ class GrokSlot implements StateSlot {
     }, PERMISSION_GRACE_MS + 10);
   }
 
-  private send(event: AgentEvent, sessionId?: string): void {
+  private send(
+    event: AgentEvent,
+    sessionId?: string,
+    rawPayload?: unknown,
+  ): void {
     event.stateSource = STATE_SOURCE_TRANSCRIPT;
     if (sessionId !== undefined) event.sessionId = sessionId;
-    this.context.report(event);
+    this.context.report(
+      event,
+      rawPayload === undefined ? undefined : { rawPayload },
+    );
   }
 }
 
