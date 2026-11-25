@@ -33,6 +33,12 @@
       "ama": {
         "program": "ama",
         "verified": null
+      },
+      "agy": {
+        "program": "agy",
+        "verified": {
+          "min": "1.5.16"
+        }
       }
     }
   },

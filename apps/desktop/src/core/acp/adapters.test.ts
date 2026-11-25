@@ -100,6 +100,8 @@ describe("ACP_ADAPTERS", () => {
     // Copilot 跨进程不可接回，所以永不休眠。
     expect(rule("copilot")).toEqual(["native", "opaque", "none"]);
     expect(rule("ama")).toEqual(["native", "same", "resume"]);
+    // agy：ACP sessionId 就是 CLI 的会话 id（对话库文件名），load 与 resume 都声明。
+    expect(rule("agy")).toEqual(["native", "same", "load"]);
     // ama 的画布工具走 profile 的 host 适配器，不带；其余六家（含 pi 的桥）都带
     // （契约 §48）。
     for (const adapter of ACP_ADAPTERS) {
@@ -157,6 +159,35 @@ describe("acpLaunchPlan", () => {
     expect(acpLaunchPlan(acpAdapter("copilot")!, { mode: "plan" })).toEqual({
       args: ["--acp", "--stdio", "--plan"],
     });
+  });
+
+  it("maps agy's modes as measured: three session modes, full-auto a flag", () => {
+    const agy = acpAdapter("agy")!;
+    expect(agy.program).toBe("agy");
+    expect(acpLaunchPlan(agy)).toEqual({ args: ["acp"], modeId: "default" });
+    expect(acpLaunchPlan(agy, { mode: "auto-edit" })).toEqual({
+      args: ["acp"],
+      modeId: "accept-edits",
+    });
+    expect(acpLaunchPlan(agy, { mode: "plan" })).toEqual({
+      args: ["acp"],
+      modeId: "plan",
+    });
+    // `auto` is not "no approvals": the bypass is the launch flag, no modeId.
+    expect(acpLaunchPlan(agy, { mode: "full-auto" })).toEqual({
+      args: ["acp", "--dangerously-skip-permissions"],
+    });
+    expect(acpPermissionModes(agy)).toEqual([
+      "default",
+      "auto-edit",
+      "full-auto",
+      "plan",
+    ]);
+    // Canvas tools ride session/new.mcpServers; the instructions wait for
+    // `_meta` (armadra-agent#327), so the row has no `sessionMeta`.
+    expect(agy.injection).toEqual({ mcp: true, reuse: [] });
+    expect(agy.canvasTools).toBe("mcp");
+    expect(agy.sessionMeta).toBeUndefined();
   });
 
   it("refuses a mode with no mapping instead of starting writable", () => {

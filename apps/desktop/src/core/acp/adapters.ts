@@ -220,6 +220,25 @@ export const ACP_ADAPTERS: readonly AcpAdapter[] = [
     expectedProcess: ["ama", "ama.cjs"],
     canvasTools: "runners",
   },
+  {
+    agentId: "agy",
+    support: "native",
+    program: "agy",
+    args: ["acp"],
+    // 实跑核实（agy 1.5.16，2026-11-24）：ACP `sessionId` 就是 CLI 的会话 id
+    //（对话库文件名、hook 的 `conversationId`）；`session/load` 与 `session/resume`
+    // 都声明了，接回后 `currentModeId` 回到 `default`，由会话层重设模式。
+    sessionId: "same",
+    resume: "load",
+    modes: ACP_MODE_TABLE.agy,
+    // 画布工具走 `session/new.mcpServers`（stdio 被接受、模型看得到工具）。终端注入
+    // 在 `agy acp` 下没有对应物（没有 `--settings`、`--add-dir` 只用于 hook），所以
+    // 不复用。画布说明（`_meta.antigravity.systemPrompt.append`）要等客户端能带
+    // `_meta`（AMA-Link/armadra-agent#327）；在那之前不带 `sessionMeta`。
+    injection: { mcp: true, reuse: [] },
+    expectedProcess: ["agy"],
+    canvasTools: "mcp",
+  },
 ];
 
 export function acpAdapter(agentId: string): AcpAdapter | undefined {
