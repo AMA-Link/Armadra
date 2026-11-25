@@ -49,6 +49,8 @@
 //      与夹具转录，不要登录与真模型。
 //   17. 终端 OpenCode 的画布审批（#857）：见 agent-e2e/scenario-17-opencode-approval.mjs；
 //      `--only 17` 单跑，要 ARMADRA_E2E_REAL=1，真 OpenCode、免费模型。
+//   18. 工作流 v2（#996）：见 agent-e2e/scenario-18-workflow-v2.mjs；`--only 18` 单跑，假 CLI
+//      两角色 + 带 verify 的 collect（退回再通过、maxRetries 0 升级成关卡）与 .ama/workflows 往返。
 //   10. 六家互读（设计 cli-collaboration §8）：六种 CLI 各起一个交互式 TUI 节点
 //      连成环，下游 `context summary / transcript` 读上游、沿环 send、拒收一条
 //      排队看回执、交接 prepare → accept、会话索引与成本每家都有。没装或认证
@@ -112,6 +114,7 @@ import scenario14 from "./agent-e2e/scenario-14-dispatch-bench.mjs";
 import scenario15 from "./agent-e2e/scenario-15-intake.mjs";
 import scenario16 from "./agent-e2e/scenario-16-handoff.mjs";
 import scenario17 from "./agent-e2e/scenario-17-opencode-approval.mjs";
+import scenario18 from "./agent-e2e/scenario-18-workflow-v2.mjs";
 import { cliPrerequisites, planScenarios } from "./agent-e2e/preflight.mjs";
 import { homedir } from "node:os";
 
@@ -128,7 +131,17 @@ const SCENARIOS = [
 ];
 
 /** 自己起一套 core 的场景：不走 `setup()`（不要真 CLI 的登录，也不起共用页面）。 */
-const STANDALONE = new Set(["9", "11", "12", "13", "14", "15", "16", "17"]);
+const STANDALONE = new Set([
+  "9",
+  "11",
+  "12",
+  "13",
+  "14",
+  "15",
+  "16",
+  "17",
+  "18",
+]);
 
 async function main() {
   // C 档门：要起真 CLI / 真模型的，没设开关就在起任何进程之前退出。
@@ -220,6 +233,11 @@ async function main() {
   if (only.has("17")) {
     report.safety.before ??= fingerprint();
     await scenario17();
+  }
+  // 场景 18：工作流 v2（#996），假 CLI、自己起 core，不要登录与真模型、不起页面。
+  if (only.has("18")) {
+    report.safety.before ??= fingerprint();
+    await scenario18();
   }
   for (const [id, reason] of Object.entries(plan.skip))
     scenario(id).skip(reason);

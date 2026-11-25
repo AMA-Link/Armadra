@@ -6287,3 +6287,42 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
 | `custom:` | 后缀 1–64 个非换行字符 | 同                                            |
 
 `contract.owns` 的 glob 方言（`/` 分段；段内 `*` 与 `?` 是通配且不跨 `/`；整段 `**` 匹配零到多段；结尾 `/` 等于 `/**`）与冲突判定都是 ama 的函数，测试用 ama 随包的 `workflow-glob-vectors.json` 逐条核对。
+
+## 122. 托管运行与档位：`workflow-run`、`HostApi.workflows`、`open-agent --tier`（`#996`）
+
+> 范围：托管的 ama 把项目级工作流文件（§121）交给画布引擎起跑；ama 请求的档位经 `open-agent` 落到成员节点。只交出并起跑：进度在画布上看，关卡在画布上答，ama 不代答。
+
+### 122.1 动词 `workflow-run`
+
+控制动词（`/control/workflow-run`，工具 `canvas_workflow_run`，hook 面，要节点令牌，分级同 `team`）。
+
+| 参数      | 说明                                                                                                                                                                         |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `file`    | 必填，`.ama/workflows/<file>.md` 的 id（文件名去掉 `.md`，规则同 §121.1）                                                                                                    |
+| `hash`    | 可选；给了且与 core 读到的文件原文 `sha256`（§121.2）不同 → `409 workflow_file_changed`                                                                                      |
+| `params`  | 对象，参数名到字符串                                                                                                                                                         |
+| `run-id`  | 可选，UUID；稳定的运行 id。同一个 id 重复来答**已经起的那次**（同一条 `{ runId, … }`），不再起第二次；该 id 已属别的工作空间 `409 run_id_taken`；不是 UUID `400 bad_request` |
+| `dry-run` | 读文件、校验、算参数与渲染长度，不存模板、不起跑，答 `{ dryRun: true }`                                                                                                      |
+
+- **core 自己读**调用方所在工作空间的文件（`readWorkflowFile`，本机与远端执行主机同 §121.1），不接受调用方给的草案。缺 `file` `400 bad_request`；文件缺 `404 not_found`；不合法 `400 invalid_draft`。
+- 先做与真起跑同一套前置检查（引擎 `precheck`：参数、渲染长度、角色 Agent 与权限模式、画板存在），**通过之后**才以 `<工作空间 id>/<文件 id>` 为 `fileRef` upsert 模板（与导入同一条路，§121.2），再在**调用方所在画板**起跑，运行行记 `started_by_node_id = 调用方节点`。**被拒的起跑不碰模板库**（不新建、不改正文、修订号不动）；`dry-run` 的拒绝码与真起跑一致，包括 `permission_mode_unsupported`。拒绝码同 `POST /api/workflows/runs`（§15.3：`invalid_draft`、`permission_mode_unsupported`、参数错误等）。
+- 答 `{ runId, templateId, templateVersion, status, url }`。`url` 是运行 Frame 的深链，格式见 §19.4：`armadra://w/<工作空间 id>/n/<Frame 节点 id>`（不带 `s`，手机按当前连接打开）。**桌面端目前不处理 `armadra://w/…` 深链**（主进程只认 `armadra://join` 与 `armadra://cloud`），所以这个 `url` 给手机或网页端打开用；桌面上请在画布里找运行 Frame。
+- `workflow-run` 要等 Frame 与角色节点建好、第一步投递之后才答，客户端预算用 `WORKFLOW_RUN_TIMEOUT_MS`（60 s），不用普通动词的 15 s；超时会让客户端向下一个端点候选重发，所以重试要带同一个 `run-id`。
+- 调用方不要求是 ama；任何有节点令牌的节点都能调。核不替运行答关卡。
+
+### 122.2 托管 ama（`HostApi.workflows`，host-api 1.5）
+
+适配器（`agent-host/ama/workflows.ts`）在运行时有 `workflows.provide` 时才注册，`versions: [2]`；旧版 ama 没有它，工作流仍由 ama 自己执行。`HostWorkflowHandler.run` 按 `source.scope`：
+
+- `project`：调 `workflow-run`（`file = workflowId`，`hash = source.hash`，`params`，`run-id` = 每次 `run()` 新生成的随机 UUID，所以同一会话里对同一工作流、同样参数的有意重跑会起新的一次；只有传输失败（超时 / 不可达）时才用**同一个** `run-id` 重发一次，核心答已经起的那次；已中止则不重发），答 `{ runId, url }`；ama 把自己的记录记为 `running` 并附 `host: { runId, url }`，之后不再更新。
+- `user` / `config`：文件不在 core 能读的工作空间里，调 `workflow-propose`（草案 = ama 已解析的文档）在画布出草案卡，然后以错误码 `workflow_unsupported` 拒绝 `run()`（ama 记为 `waiting`，`-p` 退出码 10）。
+- **工作空间根下的 `.ama/workflows` 文件是唯一有效的那份**：core 只读调用方所在工作空间根的文件，ama 在 worktree 或子目录（`cwd`）里看到的副本不会被读；因此 404 / 409 的转述会附上这句说明。
+- `run()` 开始前 `signal` 已经中止就直接以 `workflow_aborted` 拒绝、不调 core；动词发出之后的取消 v1 不处理（运行在画布上看、在画布上停）。
+- `user` / `config` 每调用一次就在画板上新出一张草案卡，不去重。
+- 拒绝码原样转述：`workflow_file_changed`（409）、`invalid_draft`、`permission_mode_unsupported` 等；core 不可达是 `workflow_host_unreachable`；core 答了但缺 `runId` 或形状不对是 `workflow_host_error`。
+
+没有 `onUpdate` / `wait` / `cancel`；适配器从不调用回答关卡的接口。
+
+### 122.3 `open-agent --tier`（§15.5 的补充，§119.5）
+
+`open-agent` 多一个 `tier`（`light` / `standard` / `strong` / `max`）：ama 的 runner 把 `SubagentRunRequest.tier`（ama 请求的档位）原样转成它。落地同 §119.5：`model` 同给时 `model` 优先；ama 成员在探测到的版本达到 `AMA_TIER_SINCE`（0.23.0）后写 `agent.tier` 并在启动行带 `--tier`；`claude` 落成模型别名；其余查不到的档位忽略，不报错。

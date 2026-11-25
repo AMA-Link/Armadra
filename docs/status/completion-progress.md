@@ -4476,3 +4476,9 @@ nightly 在 `b8353492`（运行 37338174906）之后连续失败。逐个作业�
 做了什么：草案升到 v2（`description`、`contract`、角色 `tier`、`collect` 的 `verify` / `maxRetries`），`version` 只是格式号、模板修订号改用 `baseVersion`；共享约定与验证说明进角色收件箱，投递正文只追加一句固定短语；新动词 `workflow-verdict`，`collect` 按结论完成、退回来源角色重做或升级成关卡；步骤带 `round` / `verdict`，`workflow.run` 带 `round`、`workflow.gate` 带 `reason`；ama 角色按 `AMA_TIER_SINCE = 0.22.0` 起 `--tier`，草案行带 `hints.tierIgnored`；迁移 0072。契约 §15.1–§15.4 改写，新增 §119。
 
 没做 / 限制：glob 语法与跨角色冲突校验、导入导出项目级文件（`file_ref` 只建了列）等 ama 升级之后；用户自定义档位映射推后；没有「再跑一轮」。
+
+## 工作流 v2：托管运行与档位（Closes #996，H1–H4，2026-11-24）
+
+做了什么：新动词 `workflow-run`（core 自读 `.ama/workflows/<file>.md`、`hash` 不符 409、模板 upsert、在调用方画板起跑并记发起节点、`dry-run`、深链 `url`）；托管 ama 适配器在 `HostApi.workflows`（host-api 1.5）存在时注册，`project` 起跑、`user` / `config` 出草案卡并以 `workflow_unsupported` 拒绝，从不答关卡；`open-agent --tier` 由 runner 透传。契约新增 §122。
+
+没做 / 限制：场景 18（`agent-e2e/scenario-18-workflow-v2.mjs`）本地通过，但要四五分钟：汇总角色自己的 mailbox-wake 持有终端 Agent 驱动租约，下一次引擎投递要等 `TERMINAL_AGENT_IDLE_SECONDS`（120 s）的空闲窗口过去，一轮结束（Stop 钩子 / agent-status idle）不会提前交还租约（只有显式交还与 120 s 空闲扫描两条路），属于产品延迟，没有改 core；用户级与配置级工作流只出草案卡（每次调用一张，不去重）；桌面端不处理 `armadra://w/…` 深链。
