@@ -247,6 +247,9 @@ const CANVAS: Record<ControlVerb, Row> = {
         "one-line title for the work item, at most 80 characters (default: --title)",
       ),
       model: str("model alias, 1–120 characters"),
+      tier: str(
+        "light / standard / strong / max; ignored when --model is given or the agent has no mapping",
+      ),
       worktree: str(
         "a worktree name or path; the node goes in that checkout's Frame (created if missing)",
       ),

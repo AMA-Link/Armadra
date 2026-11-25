@@ -46,6 +46,7 @@ import {
 } from "./preset-names";
 import { enqueue } from "../send-queue";
 import { type CollabContext, nowDate, nowSeconds } from "../service";
+import { tierLaunch } from "./open-agent-tier";
 import { INBOX_WAKE_MODES } from "../wake";
 import {
   createDependencies,
@@ -294,11 +295,11 @@ async function openAgentHeld(
     collapsed === undefined || collapsed.trim() === ""
       ? undefined
       : checkBody(collapsed, "--task");
-  // `--name` 是 runner 起节点时给的名字（补全架构 §5.3），与 `--title` 同义。
-  // 两个都没给就用预设名（Armadra#969），读到画布之后才定。
+  // `--name`（runner 起节点用，补全架构 §5.3）与 `--title` 同义；都没给用预设名（#969）。
   const explicitTitle = args.text("title") ?? args.text("name");
   const permissionMode = readPermissionMode(context, agentId, args);
-  const model = readModel(args);
+  const tier = tierLaunch(context, agentId, args);
+  const model = readModel(args) ?? tier.model;
   const inboxWake = readInboxWake(args);
   const after = args.list("after");
   const condition = readCondition(args);
@@ -371,15 +372,14 @@ async function openAgentHeld(
   // 没有依赖时 core 不起进程：页面挂载节点时自己起 PTY、敲启动行。有依赖时
   // 由依赖服务在条件满足后起——节点数据里不再写 `pendingLaunch`。
   const agent: Record<string, unknown> = { id: agentId };
-  // 权限模式与模型此前一个都没写：页面用 `agent` 字段重拼启动行，字段不在，
-  // 拼出来的就是一条什么都没带的裸线（§8.2 E3 的后半段）。
+  // 页面用 `agent` 字段重拼启动行：字段不在，启动行就不带它（§8.2 E3 的后半段）。
   if (permissionMode !== undefined) agent.permissionMode = permissionMode;
   if (model !== undefined) agent.model = model;
+  if (tier.tier !== undefined) agent.tier = tier.tier;
   if (inboxWake !== undefined) agent.inboxWake = inboxWake;
   // `--resume`：core 起这个节点时敲的是 CLI 自己的 resume 行（契约 §15.5）。
   if (resume !== undefined) agent.resume = resume;
-  // 与页面新建同一条默认驱动规则。`--resume` 例外：接回靠敲进终端的 CLI 自己的
-  // resume 行，只有终端驱动做得到。
+  // 与页面新建同一条默认驱动规则；`--resume` 例外，敲 resume 行只有终端驱动做得到。
   Object.assign(
     agent,
     newNodeView(context.settings, agentId, {
