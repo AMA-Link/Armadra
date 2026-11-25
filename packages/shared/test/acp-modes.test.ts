@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   ACP_MODE_TABLE,
   ACP_REPORTED_MODES,
+  NO_ACP_LANDING,
+  acpModeSource,
+  acpTableModes,
   AGENT_IDS,
   PERMISSION_MODES,
   acpModeCandidates,
@@ -16,17 +19,6 @@ import {
  * ACP 权限模式兼容表（#685）：一家一行，覆盖的模式集合与终端启动旗标一致，
  * 每家会话里能切的候选（含 bypass 一类的全自动）逐家写死在这里。
  */
-/**
- * 终端有旗标、ACP 下确实没有落点的模式：逐家写明理由，不在断言里悄悄放行。
- *   * grok：终端 `--permission-mode acceptEdits` 存在，但 ACP 的 `session/set_mode`
- *     只认 `default` / `ask` / `plan` / `agent`（agent 角色，不是权限），1.0.92
- *     真账号逐个 id 实测，`acceptEdits` 报 `unknown mode id`；ACP 也没有别的入口。
- *     界面按「这家 ACP 没有这个模式」处理，与设置页只给有对应参数的权限模式同一规矩。
- */
-const NO_ACP_LANDING: Readonly<Record<string, readonly string[]>> = {
-  grok: ["auto-edit"],
-};
-
 describe("ACP_MODE_TABLE", () => {
   it("has one row per built-in agent, covering every permission mode", () => {
     expect(Object.keys(ACP_MODE_TABLE).sort()).toEqual([...AGENT_IDS].sort());
@@ -141,9 +133,24 @@ describe("ACP_REPORTED_MODES", () => {
     expect(Object.keys(ACP_REPORTED_MODES).sort()).toEqual(
       [...AGENT_IDS].sort(),
     );
-    // grok 的 `modes`（若哪个版本开始报）是 agent 角色，不是权限，所以丢掉。
-    const ignored = AGENT_IDS.filter((id) => !acpReportsPermissionModes(id));
-    expect(ignored).toEqual(["grok"]);
+    // grok 不返回 `modes`，目录以兼容表为准（`table`）；别家都用 agent 报的。
+    const notReported = AGENT_IDS.filter(
+      (id) => !acpReportsPermissionModes(id),
+    );
+    expect(notReported).toEqual(["grok"]);
+    expect(acpModeSource("grok")).toBe("table");
+    expect(acpModeSource("claude")).toBe("permission");
+    expect(acpModeSource("custom:x")).toBe("permission");
+  });
+
+  it("builds the table agents' catalogue from the compatibility table", () => {
+    expect(acpTableModes("grok")).toEqual([
+      { id: "default", name: "default" },
+      { id: "plan", name: "plan" },
+    ]);
+    // 没有目录要建的家（不是 `table`）也能问，答的是表里带 modeId 的那些。
+    expect(acpTableModes("copilot")).toEqual([]);
+    expect(acpTableModes("custom:x")).toEqual([]);
   });
 
   it("treats an unknown or custom agent as reporting permission modes", () => {
