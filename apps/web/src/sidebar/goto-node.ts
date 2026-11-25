@@ -6,16 +6,15 @@
  * 再等画布把文档同步成 shape——`centerOnNode` 读的是 shape 的包围盒，
  * shape 还没落地时它什么也不做。
  *
- * 所以这里的做法是：订阅 store 等文档到位，然后按一个很短的时间表重发几次
- * 居中请求。居中是幂等的，多发几次的代价只是多算几次包围盒；反过来，
- * 只发一次的代价是用户点了一行却什么都没发生。
+ * 所以这里的做法是：订阅 store 等文档到位，然后发**一次**居中请求。
+ * 「量不到就再等」「后来的视口恢复不许顶掉它」「新请求取代旧请求」都归画布
+ * 那边的相机意图（`canvas/flow/camera-intent.ts`，#1028）；这里不留任何
+ * 计时器，所以画布卸载之后也不会有迟到的居中（#1007）。
  */
 import { requestCenterOnNode } from "../canvas/flow/flow-context";
 import { toItemId } from "../canvas/whiteboard/model";
 import { useCanvasStore } from "../store/canvas-store";
 
-/** 文档到位之后重发居中的时间表（毫秒）。 */
-export const CENTER_RETRY_DELAYS: readonly number[] = [0, 120, 320, 640];
 /** 等文档的上限：超过就放弃订阅，不留着一个永远不触发的监听。 */
 export const GOTO_TIMEOUT_MS = 10_000;
 
@@ -33,11 +32,11 @@ function focusItemNow(itemId: string): void {
 }
 
 function recenter(id: string): void {
-  for (const delay of CENTER_RETRY_DELAYS) {
-    if (delay === 0) requestCenterOnNode(id);
-    else setTimeout(() => requestCenterOnNode(id), delay);
-  }
+  requestCenterOnNode(id);
 }
+
+/** 还在等文档的那一次跳转；新的跳转来了就取消它（连点两行以最后一行为准）。 */
+let cancelPending: (() => void) | null = null;
 
 /**
  * 需要时先切板，等 `ready` 为真（目标已经在那块板的文档里）再 `focus`。
@@ -48,6 +47,8 @@ function gotoWhen(
   ready: (state: ReturnType<typeof useCanvasStore.getState>) => boolean,
   focus: () => void,
 ): void {
+  cancelPending?.();
+  cancelPending = null;
   const state = useCanvasStore.getState();
   if (state.document?.board.id === boardId && ready(state)) {
     focus();
@@ -57,16 +58,18 @@ function gotoWhen(
   state.selectBoard(boardId);
 
   let unsubscribe: (() => void) | null = null;
-  const timer = setTimeout(() => {
-    unsubscribe?.();
-    unsubscribe = null;
-  }, GOTO_TIMEOUT_MS);
-
-  unsubscribe = useCanvasStore.subscribe((next) => {
-    if (next.document?.board.id !== boardId || !ready(next)) return;
+  const stop = () => {
     clearTimeout(timer);
     unsubscribe?.();
     unsubscribe = null;
+    if (cancelPending === stop) cancelPending = null;
+  };
+  const timer = setTimeout(stop, GOTO_TIMEOUT_MS);
+  cancelPending = stop;
+
+  unsubscribe = useCanvasStore.subscribe((next) => {
+    if (next.document?.board.id !== boardId || !ready(next)) return;
+    stop();
     focus();
   });
 }

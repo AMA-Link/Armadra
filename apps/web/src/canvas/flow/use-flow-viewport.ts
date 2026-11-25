@@ -157,7 +157,6 @@ export function zoomByStep(direction: 1 | -1): void {
  * 节点量得到尺寸才落地，量不到按相机意图的时间表再试（`camera-intent.ts`）。
  */
 export function centerOnNode(nodeId: string): void {
-  if (!getFlow()) return;
   stopFollowing();
   startCameraIntent(() => {
     const flow = getFlow();
@@ -259,8 +258,6 @@ function centreOnMeasured(nodeId: string, expected: Size | null): boolean {
 }
 
 export function revealNewNode(nodeId: string): void {
-  const flow = getFlow();
-  if (!flow) return;
   stopFollowing();
   let expected: Size | null = null;
   startCameraIntent(() => {
