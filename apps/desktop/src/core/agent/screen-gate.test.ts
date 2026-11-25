@@ -89,6 +89,49 @@ const CODEX_TRUST = [
   "  enter continue · esc back",
 ].join("\n");
 
+/** Grok Build 1.0.92 的真画面（tmux 取屏，只留辨识度高的几行，路径与内容是编的）。 */
+const GROK_PROMPT = [
+  "     ❯ go                                                           5:34 PM",
+  "     probe done                                                     5:34 PM",
+  "  ╭────────────────────────────────────────────────────────────────────╮",
+  "  │ ❯ probe done                                                       │",
+  "  ╰───────────────────────────────────────────────────────────── Mock ─╯",
+  "  Tab/→:accept suggestion  │  Shift+Tab:mode  │  Ctrl+x:shortcuts",
+].join("\n");
+
+const GROK_EMPTY_PROMPT = [
+  "  ╭────────────────────────────────────────────────────────────────────╮",
+  "  │ ❯                                                                  │",
+  "  ╰───────────────────────────────────────────────────────────── Mock ─╯",
+].join("\n");
+
+const GROK_APPROVAL = [
+  "     ❯ go                                                           5:34 PM",
+  "     ◆ Running probe",
+  "  ┃",
+  "  ┃  ›  probe",
+  '  ┃  │ sh -c "echo x > probe.txt"',
+  "  ┃  e edit pattern",
+  "  ┃",
+  '  ┃  1 (○) Always allow: sh -c "echo x > probe.txt"',
+  "  ┃  3 (●) Yes, proceed",
+  "  ┃  4 (○) No, reject (type to add feedback)",
+  "  ┃  5 (○) Never allow: sh -c",
+  "  ┃    (○) Yes, and don't ask again for anything (always-approve mode)",
+  "  ┃",
+  "  1/5:select  │  Tab:next option  │  e:edit pattern  │  Ctrl+c:cancel",
+].join("\n");
+
+const GROK_TRUST = [
+  "   main /U/y/P/R/T/a/s/grok/proj2",
+  "  Do you trust the contents of this directory?",
+  "  /tmp/demo",
+  "  Grok Build may run or modify contents in this directory,",
+  "  posing security risks.",
+  "  Yes, proceed  y",
+  "  No, quit  n",
+].join("\n");
+
 const COPILOT_TRUST = [
   " Confirm folder trust",
   " Do you trust the files in this folder?",
@@ -221,6 +264,35 @@ describe("judgeScreen", () => {
     });
   });
 
+  it("Grok：输入框（空的或带建议文字）是提示符，滚动区里的回显不是", () => {
+    for (const screen of [GROK_PROMPT, GROK_EMPTY_PROMPT]) {
+      expect(judgeScreen(profile("grok"), screen, true)).toEqual({
+        kind: "clear",
+      });
+    }
+    // 只有滚动区回显、没有输入框：首投看不见提示符。
+    expect(
+      judgeScreen(profile("grok"), "     ❯ go    5:34 PM\n  working…", true),
+    ).toEqual({ kind: "no-prompt" });
+  });
+
+  it("Grok：目录信任与审批卡都拦，首投与平常一样；答完卡、输入框回来就放行", () => {
+    for (const first of [true, false]) {
+      expect(judgeScreen(profile("grok"), GROK_TRUST, first)).toEqual({
+        kind: "dialog",
+        dialog: "grok.folder-trust",
+      });
+      expect(judgeScreen(profile("grok"), GROK_APPROVAL, first)).toEqual({
+        kind: "dialog",
+        dialog: "grok.approval",
+      });
+    }
+    // 卡答过后留在历史里，输入框在它下面：位置规则放行。
+    expect(
+      judgeScreen(profile("grok"), `${GROK_APPROVAL}\n${GROK_PROMPT}`, true),
+    ).toEqual({ kind: "clear" });
+  });
+
   it("没有对话框、也没有核实过的提示符的 CLI 没有画面特征", () => {
     for (const id of ["opencode", "unknown", "constructor", "toString"]) {
       expect(screenProfile(id)).toBeUndefined();
@@ -233,6 +305,8 @@ describe("judgeScreen", () => {
  * （安装包字符串、本机画面或官方文档），其余是编的。不跑任何真 CLI。
  */
 const DIALOG_SCREENS: Readonly<Record<string, string>> = {
+  "grok.folder-trust": GROK_TRUST,
+  "grok.approval": GROK_APPROVAL,
   "claude.workspace-trust": CLAUDE_TRUST_DIALOG,
   "claude.bypass-permissions-warning": CLAUDE_BYPASS_WARNING,
   "claude.auto-mode-default": CLAUDE_AUTO_MODE_DIALOG,

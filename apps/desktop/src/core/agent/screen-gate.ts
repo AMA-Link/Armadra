@@ -227,6 +227,37 @@ export const SCREEN_SIGNATURES: Readonly<Record<string, ScreenSignatures>> = {
       },
     ],
   },
+  grok: {
+    dialogs: [
+      {
+        // 目录里有项目指令 / `.grok` / `.claude`，或用户有自己的 hook 时，除家目录外
+        // 每个目录都问；输入框里打字就是作答（`y` 进、`n` 直接退出），所以它是
+        // 投递的硬前置。「Yes」会把决定记进用户的 `trusted_folders.toml`。
+        id: "grok.folder-trust",
+        pattern:
+          /Do you trust the contents of this directory\?|Grok Build may run or modify contents in this directory/,
+        verified: true,
+        source: "Grok Build 1.0.92 本机画面（tmux / PTY，2026-11-24）",
+      },
+      {
+        // 工具审批卡：选项行 `3 (●) Yes, proceed`（编号会跳号）与页脚
+        // `1/5:select │ Tab:next option`。卡出现时输入框被它顶掉，Enter 或数字键
+        // 就是在替人答题。
+        id: "grok.approval",
+        pattern:
+          /^\s*[┃|]\s+\d\s+\([○●]\)\s+\S|\d\/\d:select\s+[│|]\s+Tab:next option/,
+        verified: true,
+        source: "Grok Build 1.0.92 本机画面（tmux，2026-11-24）",
+      },
+    ],
+    prompt: {
+      // 输入框 `│ ❯ … │`（空的，或带灰色的建议文字）。滚动区里用户消息的回显
+      // `❯ go  5:34 PM` 没有左边框，不是提示符。
+      pattern: /^\s*│\s*❯(?:\s|$)/,
+      verified: true,
+      source: "Grok Build 1.0.92 本机画面（tmux，2026-11-24）",
+    },
+  },
   pi: {
     dialogs: [
       {
