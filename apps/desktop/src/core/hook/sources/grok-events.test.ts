@@ -1,5 +1,5 @@
 import { appendFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -461,6 +461,36 @@ describe("这个节点上有没有通道", () => {
     removeSources = undefined;
     // 撤掉后回到只按 provider 判。
     expect(nodeStateChannel("grok", { remote: true })).toBe("transcript");
+  });
+});
+
+describe("对话记录路径（时间线适配器读它）", () => {
+  it("session start 带 updates.jsonl 的路径，/new 之后换成新会话的；状态上报沿用最近一个", () => {
+    rows = [{ session_id: "one", pid: CHILD_PID, cwd: CWD }];
+    writeActive();
+    writeEvents("one", [line("turn_started")]);
+    const { slot } = open();
+    slot!.start();
+    const starts = () => reports.filter((e) => e.kind === "session");
+    expect(starts()[0]?.transcriptPath).toBe(
+      join(dirname(eventsPath("one")), "updates.jsonl"),
+    );
+    expect(reports.find((e) => e.state === "working")?.transcriptPath).toBe(
+      join(dirname(eventsPath("one")), "updates.jsonl"),
+    );
+    rows = [...rows, { session_id: "two", pid: CHILD_PID, cwd: CWD }];
+    writeActive();
+    writeEvents("two", []);
+    slot!.poke?.();
+    expect(starts().at(-1)?.transcriptPath).toBe(
+      join(dirname(eventsPath("two")), "updates.jsonl"),
+    );
+    append("one", [line("turn_ended", { outcome: "completed" })]);
+    slot!.poke?.();
+    expect(reports.at(-1)?.transcriptPath).toBe(
+      join(dirname(eventsPath("two")), "updates.jsonl"),
+    );
+    slot!.stop();
   });
 });
 

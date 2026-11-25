@@ -1,0 +1,257 @@
+{
+  "head": {},
+  "items": [
+    {
+      "id": "turn:gk:00000000-0000-7000-8000-00000000g001:0",
+      "turn": 1,
+      "ord": 0,
+      "rev": 16,
+      "source": "transcript",
+      "at": 1795584003000,
+      "gen": 0,
+      "kind": "turn",
+      "turnId": "gk:00000000-0000-7000-8000-00000000g001:0",
+      "startedAt": 1795584003000,
+      "endedAt": 1795584017000,
+      "stopReason": "end_turn",
+      "permissionWaitMs": 0
+    },
+    {
+      "id": "u:gk:00000000-0000-7000-8000-00000000g001:0",
+      "turn": 1,
+      "ord": 1,
+      "rev": 2,
+      "source": "transcript",
+      "at": 1795584003000,
+      "gen": 0,
+      "kind": "user",
+      "text": "Add a greeting file and run it"
+    },
+    {
+      "id": "th:1795584004000000",
+      "turn": 1,
+      "ord": 2,
+      "rev": 3,
+      "source": "transcript",
+      "at": 1795584004000,
+      "gen": 0,
+      "kind": "thought",
+      "text": "Plan: write the file, then run it.",
+      "streaming": false
+    },
+    {
+      "id": "a:1795584005000000",
+      "turn": 1,
+      "ord": 3,
+      "rev": 4,
+      "source": "transcript",
+      "at": 1795584005000,
+      "gen": 0,
+      "kind": "assistant",
+      "parts": [
+        {
+          "type": "text",
+          "text": "I'll create the file first."
+        }
+      ],
+      "streaming": false
+    },
+    {
+      "id": "tool:call-a-0",
+      "turn": 1,
+      "ord": 4,
+      "rev": 7,
+      "source": "transcript",
+      "at": 1795584006000,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call-a-0",
+      "toolKind": "edit",
+      "title": "Edit `/work/hello.txt`",
+      "status": "completed",
+      "locations": [
+        {
+          "path": "/work/hello.txt"
+        }
+      ],
+      "input": {
+        "path": "/work/hello.txt",
+        "fields": [
+          {
+            "key": "old_string",
+            "value": ""
+          },
+          {
+            "key": "new_string",
+            "value": "hello\n"
+          }
+        ]
+      },
+      "content": [
+        {
+          "type": "diff",
+          "path": "/work/hello.txt",
+          "oldText": null,
+          "newText": "hello\n"
+        }
+      ],
+      "startedAt": 1795584006000,
+      "endedAt": 1795584008000
+    },
+    {
+      "id": "tool:call-a-1",
+      "turn": 1,
+      "ord": 5,
+      "rev": 10,
+      "source": "transcript",
+      "at": 1795584009000,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call-a-1",
+      "toolKind": "execute",
+      "title": "Execute `cat hello.txt`",
+      "status": "completed",
+      "locations": [],
+      "input": {
+        "command": "cat hello.txt",
+        "fields": [
+          {
+            "key": "description",
+            "value": "Show the file"
+          }
+        ]
+      },
+      "content": [
+        {
+          "type": "terminal",
+          "terminalId": "call-a-1",
+          "command": "cat hello.txt",
+          "output": "hello\n",
+          "exitCode": 0
+        }
+      ],
+      "startedAt": 1795584009000,
+      "endedAt": 1795584011000
+    },
+    {
+      "id": "tool:call-a-2",
+      "turn": 1,
+      "ord": 6,
+      "rev": 12,
+      "source": "transcript",
+      "at": 1795584012000,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call-a-2",
+      "toolKind": "execute",
+      "title": "run_terminal_command",
+      "status": "failed",
+      "locations": [],
+      "input": {
+        "command": "false"
+      },
+      "content": [
+        {
+          "type": "terminal",
+          "terminalId": "call-a-2",
+          "command": "false",
+          "output": "",
+          "exitCode": 1
+        }
+      ],
+      "startedAt": 1795584012000,
+      "endedAt": 1795584013000
+    },
+    {
+      "id": "tool:call-a-3",
+      "turn": 1,
+      "ord": 7,
+      "rev": 14,
+      "source": "transcript",
+      "at": 1795584014000,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "call-a-3",
+      "toolKind": "read",
+      "title": "list_dir",
+      "status": "completed",
+      "locations": [],
+      "input": {
+        "fields": [
+          {
+            "key": "target_directory",
+            "value": "/work"
+          }
+        ]
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "- /work/hello.txt\n"
+        }
+      ],
+      "startedAt": 1795584014000,
+      "endedAt": 1795584015000
+    },
+    {
+      "id": "a:1795584016000000",
+      "turn": 1,
+      "ord": 8,
+      "rev": 15,
+      "source": "transcript",
+      "at": 1795584016000,
+      "gen": 0,
+      "kind": "assistant",
+      "parts": [
+        {
+          "type": "text",
+          "text": "Done."
+        }
+      ],
+      "streaming": false
+    },
+    {
+      "id": "turn:gk:00000000-0000-7000-8000-00000000g001:1",
+      "turn": 2,
+      "ord": 0,
+      "rev": 20,
+      "source": "transcript",
+      "at": 1795584018000,
+      "gen": 0,
+      "kind": "turn",
+      "turnId": "gk:00000000-0000-7000-8000-00000000g001:1",
+      "startedAt": 1795584018000,
+      "endedAt": 1795584021000,
+      "stopReason": "cancelled",
+      "permissionWaitMs": 0
+    },
+    {
+      "id": "u:gk:00000000-0000-7000-8000-00000000g001:1",
+      "turn": 2,
+      "ord": 1,
+      "rev": 18,
+      "source": "transcript",
+      "at": 1795584018000,
+      "gen": 0,
+      "kind": "user",
+      "text": "Now stop"
+    },
+    {
+      "id": "a:1795584019000000",
+      "turn": 2,
+      "ord": 2,
+      "rev": 19,
+      "source": "transcript",
+      "at": 1795584019000,
+      "gen": 0,
+      "kind": "assistant",
+      "parts": [
+        {
+          "type": "text",
+          "text": "Stopping."
+        }
+      ],
+      "streaming": false
+    }
+  ]
+}

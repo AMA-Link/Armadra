@@ -9,7 +9,7 @@ import {
   readdirSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import {
   STATE_SOURCE_TRANSCRIPT,
@@ -417,6 +417,8 @@ class GrokSlot implements StateSlot {
   /** What was last reported: the state, and each session's turn count then. */
   private last: { state: string; turns: string; asking: boolean } | undefined;
   private announced = new Set<string>();
+  /** 最近一次开始的会话：状态上报带它的对话记录路径。 */
+  private current: string | undefined;
   /** Turns seen per session, to tell "a session began a turn" from "the sum moved". */
   private readonly seenTurns = new Map<string, number>();
   private hadBound = false;
@@ -654,6 +656,7 @@ class GrokSlot implements StateSlot {
         );
         this.last = undefined;
         this.announced.clear();
+        this.current = undefined;
         this.followed.clear();
         this.seenTurns.clear();
       }
@@ -671,10 +674,17 @@ class GrokSlot implements StateSlot {
     for (const id of ids) {
       if (this.announced.has(id)) continue;
       this.announced.add(id);
-      this.send(
-        sessionEvent(this.context.nodeId, this.context.agentId, "start"),
-        id,
+      const start = sessionEvent(
+        this.context.nodeId,
+        this.context.agentId,
+        "start",
       );
+      // 会话的对话记录（时间线适配器读它，契约 §124）：与状态文件同目录。`/new`、
+      // `/resume` 换会话时报新的，时间线据此跟到新的那个。
+      this.current = id;
+      const path = this.transcriptOf(id);
+      if (path !== undefined) start.transcriptPath = path;
+      this.send(start, id);
     }
     const next = aggregate(views);
     this.scheduleGrace(views);
@@ -710,6 +720,10 @@ class GrokSlot implements StateSlot {
         : next.state === "working"
           ? stateEvent(this.context.nodeId, this.context.agentId, WORKING)
           : stateEvent(this.context.nodeId, this.context.agentId, DONE);
+    // 开场时文件还没找到的，补在状态上报里（`reduce` 沿用前一条的路径）。
+    const transcript =
+      this.current === undefined ? undefined : this.transcriptOf(this.current);
+    if (transcript !== undefined) event.transcriptPath = transcript;
     if (next.state === "working" && freshTurn) event.newTurn = true;
     // The plan review holds the turn open on a person: say what is asked, and
     // close the question when it is answered (or the turn ends).
@@ -724,6 +738,13 @@ class GrokSlot implements StateSlot {
       if (next.ended === "cancelled") event.interrupted = true;
     }
     this.send(event);
+  }
+
+  private transcriptOf(id: string): string | undefined {
+    const path = this.followed.get(id)?.path;
+    return path === undefined
+      ? undefined
+      : join(dirname(path), "updates.jsonl");
   }
 
   /** A request inside its grace window is re-judged when the window closes. */
