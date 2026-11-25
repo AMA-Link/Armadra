@@ -134,13 +134,12 @@ export function clientAcceptsMcpServers(
 }
 
 /**
- * `AcpClient` 能不能在开会话时带 `_meta`：声明 `features.sessionMeta`。固定版本的
- * 客户端还没有这个声明（见 AMA-Link/armadra-agent#327），一律答不支持——`_meta`
- * 不发，会话照常开。
+ * `AcpClient` 能不能在开会话时带 `_meta`：声明 `features.sessionMeta`（
+ * AMA-Link/armadra-agent#327，`@armadra/agent` 0.23.0 起）。没有这个声明的旧版客户端一律
+ * 答不支持——`_meta` 不发，会话照常开。
  *
  * 接口形状（`features.sessionMeta`、`AcpSessionOptions.meta`）由
- * AMA-Link/armadra-agent#327 定死；它落地并升级固定版本之前，这里的约定只是宿主
- * 一侧的预留，agy 批 1 的 ACP 部分与 grok G3 以它为前置。
+ * AMA-Link/armadra-agent#327 定死，已随 0.23.0 落地；固定版本现在声明它。
  */
 export function clientAcceptsSessionMeta(
   client: { readonly features?: unknown } = AcpClient as {
@@ -153,8 +152,8 @@ export function clientAcceptsSessionMeta(
 
 /**
  * `AcpClient` 能不能接 `_` 开头的扩展请求：声明 `features.extRequest`
- * （AMA-Link/armadra-agent#333，已合并、尚未发版）。固定版本的客户端还没有这个
- * 声明，一律答不支持——不传 `onExtRequest`，线路与之前逐字节相同。
+ * （AMA-Link/armadra-agent#333，`@armadra/agent` 0.24.0 起）。没有这个声明的
+ * 旧版客户端一律答不支持——不传 `onExtRequest`，线路与之前逐字节相同。
  */
 export function clientAcceptsExtRequest(
   client: { readonly features?: unknown } = AcpClient as {
