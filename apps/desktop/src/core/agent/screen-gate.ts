@@ -227,10 +227,18 @@ export const SCREEN_SIGNATURES: Readonly<Record<string, ScreenSignatures>> = {
       },
     ],
   },
-  // Antigravity：只有 `--unverified`（没有状态通道）时才用得到这道门。**没有提示符
-  // 特征**：首投不要求看得见提示符，所以已答过的卡留在画面上时这道门会持续拦截
-  // （没有「输入框在它下面」的位置规则可以放行它）；跟进见 Issue「agy 画面门」。
+  // Antigravity：只有 `--unverified`（没有状态通道）时才用得到这道门。提示符取输入框
+  // 下面那一行页脚：空闲时是 `? for shortcuts … auto · <模型> · <强度>`，生成时换成
+  // `esc to cancel …`，信任框的画面里没有它。agy 不发 OSC 133，所以只能靠页脚。
+  // 有了它，答过的审批卡留在历史里（页脚在它下面）不再持续拦截；卡还在时页脚是否
+  // 还画着没有核实过——这一条要用户在真机上对（Issue #1022）。
   agy: {
+    prompt: {
+      pattern: /^\s*\? for shortcuts\s{2,}\S.*·.*·/,
+      verified: true,
+      source:
+        "Antigravity CLI 1.5.16 本机真画面的空闲页脚（tmux / PTY，2026-11-24，三份）；审批卡出现时页脚是否仍在没有核实",
+    },
     dialogs: [
       {
         // 「Yes」会把目录记进用户的信任列表。

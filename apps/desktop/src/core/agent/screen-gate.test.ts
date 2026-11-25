@@ -295,7 +295,7 @@ describe("judgeScreen", () => {
     ).toEqual({ kind: "no-prompt" });
   });
 
-  it("Antigravity：目录信任与审批卡都拦；没有提示符特征，首投不要求看得见提示符", () => {
+  it("Antigravity：目录信任与审批卡都拦（页脚没有 `? for shortcuts`）", () => {
     for (const first of [true, false]) {
       expect(judgeScreen(profile("agy"), AGY_TRUST, first)).toEqual({
         kind: "dialog",
@@ -306,16 +306,39 @@ describe("judgeScreen", () => {
         dialog: "agy.approval",
       });
     }
-    expect(profile("agy").prompt).toBeUndefined();
   });
 
-  // 没有提示符特征，就没有「输入框在它下面」的位置规则：已答过的卡留在画面上时这道门
-  // 持续拦截。这是已知的取舍（跟进见 Issue），这条用例把它钉住，免得被悄悄改成放行。
-  it("Antigravity：已答过的卡留在历史里仍然拦（没有提示符特征可放行它）", () => {
-    const answered = `${AGY_APPROVAL}\n  Ran command\n> `;
-    expect(judgeScreen(profile("agy"), answered, true)).toEqual({
-      kind: "dialog",
-      dialog: "agy.approval",
+  // 真画面（本机 1.5.16，2026-11-24）：空闲时输入框下面的页脚是 `? for shortcuts …
+  // auto · <模型> · <强度>`，生成时换成 `esc to cancel …`。
+  it("Antigravity：页脚就是提示符，答过的卡留在历史里不再拦，首投要看得见页脚", () => {
+    const idle = [
+      "> Run the shell command: echo hi",
+      "● Ran (echo hi) (ctrl+o to expand)",
+      "──────────────────────────────────────────────",
+      "> Auto mode: edits & safe commands auto-approved (shift+tab to cycle)",
+      "──────────────────────────────────────────────",
+      "? for shortcuts                       auto · Gemini 4 Neon · high",
+    ].join("\n");
+    expect(judgeScreen(profile("agy"), idle, true)).toEqual({ kind: "clear" });
+    // 答过的卡在上面，页脚在它下面：位置规则放行。
+    expect(
+      judgeScreen(profile("agy"), `${AGY_APPROVAL}\n${idle}`, true),
+    ).toEqual({ kind: "clear" });
+    // 卡在页脚下面（卡还开着）：拦。
+    expect(
+      judgeScreen(profile("agy"), `${idle}\n${AGY_APPROVAL}`, false),
+    ).toEqual({ kind: "dialog", dialog: "agy.approval" });
+    // 生成中：页脚是 `esc to cancel`，通用的菜单特征（`Esc to cancel`）把它当成
+    // 一个没见过的菜单——这时目标本来就在忙，投递不会走到这里；看得见它只会更保守。
+    const busy = idle.replace("? for shortcuts", "esc to cancel     ");
+    expect(judgeScreen(profile("agy"), busy, false).kind).toBe("dialog");
+    // 画面上既没有页脚也没有任何对话框（刚起、还在画）：首投等，平常的投递放行。
+    const blank = "Antigravity CLI 1.5.16\n/tmp/demo";
+    expect(judgeScreen(profile("agy"), blank, true)).toEqual({
+      kind: "no-prompt",
+    });
+    expect(judgeScreen(profile("agy"), blank, false)).toEqual({
+      kind: "clear",
     });
   });
 
