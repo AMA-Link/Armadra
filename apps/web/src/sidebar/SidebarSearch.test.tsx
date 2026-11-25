@@ -196,6 +196,40 @@ function renderSearch(onOpenChange = vi.fn()) {
 const rowOf = (text: string) =>
   screen.getByText(text).closest("[cmdk-item]") as HTMLElement;
 
+describe("侧栏搜索：历史对话的接回", () => {
+  const conversation = (provider: string, title: string) => ({
+    provider,
+    sessionId: `${provider}-1`,
+    title,
+    cwd: "/Alpha",
+    updatedAt: timestamp,
+    bytes: 0,
+  });
+
+  it("接不回的行禁用（没有终端 resume、ACP 也不可用），点了没有任何节点被建出来", async () => {
+    // 这里的 `runtimeApi` 没有 `agents`：Agent 清单读不到，agy 的 ACP 入口不可知，
+    // 它又没有终端 `resume`——这一行接不回，必须看得出来，而不是点了没反应。
+    api.conversations.mockResolvedValue([
+      conversation("agy", "agy 的一条会话"),
+    ]);
+    const before = useCanvasStore.getState().document?.nodes.length ?? 0;
+    renderSearch();
+    const row = await waitFor(() => rowOf("agy 的一条会话"));
+    expect(row.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(row);
+    expect(useCanvasStore.getState().document?.nodes.length ?? 0).toBe(before);
+  });
+
+  it("有终端 resume 的 CLI 的行照常可点", async () => {
+    api.conversations.mockResolvedValue([
+      conversation("claude", "claude 的会话"),
+    ]);
+    renderSearch();
+    const row = await waitFor(() => rowOf("claude 的会话"));
+    expect(row.getAttribute("aria-disabled")).not.toBe("true");
+  });
+});
+
 describe("侧栏搜索：版式", () => {
   it("每行有类型图标，次级标签是右对齐的 command-meta，没有尾部对勾占位", async () => {
     renderSearch();

@@ -17,12 +17,14 @@ import { useEffect, useMemo, useState } from "react";
 import { Bot } from "lucide-react";
 
 import { basename } from "../agent/sessions";
+import { useAgentsQuery } from "../app/use-agents";
 import { useT } from "../app/preferences-store";
 import { useOpenWorkspace } from "../app/workspace-actions";
 import { nodeDropPosition } from "../canvas/placement";
 import { formatRelativeTime } from "../lib/format";
 import {
-  resumeLaunchCommand,
+  resumeNodeInput,
+  resumeTarget,
   useConversations,
   type Conversation,
 } from "../meta/conversations";
@@ -57,6 +59,8 @@ export interface SidebarSearchProps {
 
 export function SidebarSearch({ open, onOpenChange }: SidebarSearchProps) {
   const t = useT();
+  // 接回要看「装没装」，不看用户有没有关掉这家：全量清单。
+  const agents = useAgentsQuery().data ?? [];
   const workspace = useCanvasStore((state) => state.workspace);
   const boardId = useCanvasStore((state) => state.boardId);
   const addNode = useCanvasStore((state) => state.addNode);
@@ -88,24 +92,18 @@ export function SidebarSearch({ open, onOpenChange }: SidebarSearchProps) {
 
   /** 选中一条历史对话：在视口中心开一个以 `--resume` 启动的终端节点。 */
   const resume = (conversation: Conversation) => {
-    const command = resumeLaunchCommand(
-      conversation.provider,
-      conversation.sessionId,
-    );
-    if (!command) return;
+    const target = resumeTarget(conversation, agents);
+    if (target === null) return;
     close();
+    const { title, data } = resumeNodeInput(
+      conversation,
+      target,
+      workspace?.rootPath,
+    );
     const id = addNode("terminal", {
       position: nodeDropPosition("terminal"),
-      title: conversation.title,
-      data: {
-        kind: "terminal",
-        cwd: conversation.cwd,
-        agent: {
-          id: conversation.provider,
-          initialCommand: command,
-          pendingLaunch: { command, after: [] },
-        },
-      },
+      title,
+      data: data as never,
     });
     if (id) revealCreatedNode(id);
   };
@@ -169,6 +167,7 @@ export function SidebarSearch({ open, onOpenChange }: SidebarSearchProps) {
                   <CommandItem
                     key={`${conversation.provider}:${conversation.sessionId}`}
                     value={`chat:${conversation.provider}:${conversation.sessionId}`}
+                    disabled={resumeTarget(conversation, agents) === null}
                     onSelect={() => resume(conversation)}
                   >
                     <Bot />

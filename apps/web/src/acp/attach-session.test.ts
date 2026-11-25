@@ -37,6 +37,11 @@ describe("attachCwd", () => {
     expect(attachCwd({ cwd: "/w2/app" }, "/w")).toBeUndefined();
     expect(attachCwd({ cwd: "/other" }, "/w")).toBeUndefined();
     expect(attachCwd({ cwd: "" }, "/w")).toBeUndefined();
+    // 分隔符与盘符大小写不同也认得，返回原样的目录。
+    expect(attachCwd({ cwd: "C:\\w\\app" }, "C:/w")).toBe("C:\\w\\app");
+    expect(attachCwd({ cwd: "c:\\W\\app\\" }, "C:\\w")).toBe("c:\\W\\app");
+    expect(attachCwd({ cwd: "C:\\w2\\app" }, "C:\\w")).toBeUndefined();
+    expect(attachCwd({ cwd: "/W/app" }, "/w")).toBeUndefined();
   });
 });
 

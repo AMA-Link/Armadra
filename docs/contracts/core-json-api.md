@@ -506,10 +506,12 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
 
 每项取值四选一，按顺序判：
 
-- `unsupported`：这家没有历史适配器（`HISTORY_ADAPTERS` 里没有它），三项都是；适配器没有成本来源时只有 `cost` 是。
+- `unsupported`：这家没有历史适配器（`HISTORY_ADAPTERS` 里没有它），三项都是；适配器没有成本来源时只有 `cost` 是；适配器只有会话索引、没有记录可读（`readsEntries: false`，今天是 Antigravity：根是一个会话索引库 `~/.gemini/antigravity-cli/conversation_summaries.db`，键 `agy:<会话 id>`，会话 id 就是 ACP 的 `sessionId`）时 `transcript` 也是 `unsupported`，与根在不在无关；它的会话从索引经 ACP 的 `session/load` 接回（命令面板与侧栏搜索选中一条就开一个 ACP 驱动、`agent.sessionId` 为该会话 id 的节点，终端没有会话 id 可接）。
 - `disabled`：`custom:` 条目关掉了 `contextLink`，只影响 `transcript`。
 - `not-found`：适配器的根目录一个都不存在。
 - `available`：至少一个根目录存在。
+
+`agy` 进了会话索引（`GET /api/conversations` 的 `provider` 取值多一个 `agy`，会话 id 就是 ACP 的 `sessionId`）。共享层的 `conversationProviderSchema` 是严格枚举，**旧页面（含已装在手机上的）收到 `provider: "agy"` 会让整张会话列表解析失败**——与 §120 同一性质（任何新内置 id 都如此），升级页面是前提。core 侧的 `open-agent --resume <会话 id>` 对 agy 答 `400 resume_unsupported`（终端没有会话 id 可接）；只有页面经 ACP 接回（命令面板与侧栏搜索选中一条开 `driver: "acp"`、`agent.sessionId` 为该会话 id 的节点）。索引读失败（复制撕裂、坏页）时 core 保留上一趟读成功的行，不把这一家的行清空；库没了或列不认得才清。
 
 `custom:` 条目按它的 `baseAgent` 找适配器。只 stat 根目录、不扫描文件，所以 `available` 只说明「有地方可读」，不保证有会话或有成本；页面对 `not-found` 与 `unsupported` 写状态词，不写成 0。
 

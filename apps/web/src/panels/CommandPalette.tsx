@@ -3,14 +3,15 @@ import { Bot, type LucideIcon } from "lucide-react";
 import { basename } from "../agent/sessions";
 import { formatRelativeTime } from "../lib/format";
 import {
-  resumeLaunchCommand,
+  resumeNodeInput,
+  resumeTarget,
   useConversations,
   type Conversation,
 } from "../meta/conversations";
 import { COMMANDS, commandKeysLabel, formatKeys } from "../keybindings";
 import { useCanvasStore } from "../store/canvas-store";
 import { useCommandDispatch } from "../app/commands";
-import { useEnabledAgents } from "../app/use-agents";
+import { useAgentsQuery, useEnabledAgents } from "../app/use-agents";
 import { useT, usePreferencesStore } from "../app/preferences-store";
 import { sshMenuItems } from "../canvas/menus/add-menu";
 import { nodeDropPosition } from "../canvas/placement";
@@ -92,6 +93,8 @@ export function CommandPalette() {
   const boardId = useCanvasStore((state) => state.boardId);
   const addNode = useCanvasStore((state) => state.addNode);
   const agents = useEnabledAgents();
+  // 接回要看「装没装」，不看用户有没有关掉这家：全量清单。
+  const allAgents = useAgentsQuery().data ?? [];
   const { run, addMenuItems, centerPosition } = useCommandDispatch();
   const hosts = useSshHosts();
   // SSH 终端项和添加菜单是同一份规格（§21），只是这里另外拼进「新建」组。
@@ -239,26 +242,18 @@ export function CommandPalette() {
 
   /** 选中一条历史对话：在视口中心开一个以 `--resume` 启动的终端节点。 */
   function resume(conversation: Conversation) {
-    const command = resumeLaunchCommand(
-      conversation.provider,
-      conversation.sessionId,
-    );
-    if (!command) return;
+    const target = resumeTarget(conversation, allAgents);
+    if (target === null) return;
     close();
+    const { title, data } = resumeNodeInput(
+      conversation,
+      target,
+      workspace?.rootPath,
+    );
     const id = addNode("terminal", {
       position: nodeDropPosition("terminal"),
-      title: conversation.title,
-      data: {
-        kind: "terminal",
-        cwd: conversation.cwd,
-        agent: {
-          id: conversation.provider,
-          initialCommand: command,
-          // 启动行在这里就定了，交给 `pending-launch`（无依赖 = 提示符一安静
-          // 就敲）而不是让 TerminalSurface 自己拼——它拼不出 `--resume`。
-          pendingLaunch: { command, after: [] },
-        },
-      },
+      title,
+      data: data as never,
     });
     if (id) revealCreatedNode(id);
   }
@@ -377,6 +372,7 @@ export function CommandPalette() {
               <CommandItem
                 key={`${conversation.provider}:${conversation.sessionId}`}
                 value={`${t("meta.conversations")} ${conversation.provider}:${conversation.sessionId}`}
+                disabled={resumeTarget(conversation, allAgents) === null}
                 onSelect={() => resume(conversation)}
               >
                 <Bot />

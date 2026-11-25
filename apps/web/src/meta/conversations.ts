@@ -4,9 +4,11 @@ import {
   agentDefinition,
   conversationsResponseSchema,
   suggestTitleResponseSchema,
+  type AgentInfo,
   type Conversation,
 } from "@armadra/shared";
 
+import { attachCwd } from "../acp/attach-session";
 import { buildResumeLaunch } from "../agent/launch";
 import { runtimeApi } from "../api/client";
 import { currentSource } from "../api/source";
@@ -87,6 +89,68 @@ export function resumeLaunchCommand(
   } catch {
     return null;
   }
+}
+
+/**
+ * 一条历史对话怎么接回：终端的 `--resume` 行，或者经 ACP 的 `session/load`。
+ * 没有终端 `resume` 能力位、但 ACP 入口装了且能接回的 CLI（Antigravity：终端里
+ * 没有会话 id 可接，而 ACP 的 `sessionId` 就是它的会话 id）走后者；都不行是 `null`。
+ */
+export type ResumeTarget =
+  | { readonly kind: "terminal"; readonly command: string }
+  | { readonly kind: "acp" };
+
+export function resumeTarget(
+  conversation: Pick<Conversation, "provider" | "sessionId">,
+  agents: readonly Pick<AgentInfo, "id" | "acp">[],
+): ResumeTarget | null {
+  const command = resumeLaunchCommand(
+    conversation.provider,
+    conversation.sessionId,
+  );
+  if (command) return { kind: "terminal", command };
+  const acp = agents.find((agent) => agent.id === conversation.provider)?.acp;
+  if (acp?.installed === true && acp.resume !== "none") return { kind: "acp" };
+  return null;
+}
+
+/** 接回的新终端节点的标题与数据；命令面板与侧栏搜索共用。 */
+export function resumeNodeInput(
+  conversation: Conversation,
+  target: ResumeTarget,
+  workspaceRoot = "",
+): { title: string; data: Record<string, unknown> } {
+  if (target.kind === "acp") {
+    // 与「接管会话」同一条规矩（`attachCwd`）：只带工作空间里的目录；空串或工作
+    // 空间之外的不写，节点的目录缺省是工作空间根（空 cwd 会让 ACP 会话起不来）。
+    const cwd = attachCwd({ cwd: conversation.cwd }, workspaceRoot);
+    return {
+      title: conversation.title,
+      data: {
+        kind: "terminal",
+        ...(cwd === undefined ? {} : { cwd }),
+        agent: {
+          id: conversation.provider,
+          // 与「接管会话」同一条路：节点记着 CLI 的会话 id，起会话时走接回。
+          driver: "acp",
+          sessionId: conversation.sessionId,
+        },
+      },
+    };
+  }
+  return {
+    title: conversation.title,
+    data: {
+      kind: "terminal",
+      cwd: conversation.cwd,
+      agent: {
+        id: conversation.provider,
+        initialCommand: target.command,
+        // 启动行在这里就定了，交给 `pending-launch`（无依赖 = 提示符一安静就敲）。
+        pendingLaunch: { command: target.command, after: [] },
+      },
+    },
+  };
 }
 
 /* ---------------------------------- hooks --------------------------------- */
