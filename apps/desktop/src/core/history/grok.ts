@@ -66,10 +66,6 @@ export function roots(env: NodeJS.ProcessEnv = process.env): string[] {
 
 /* ---------------------------------- 列表 ---------------------------------- */
 
-interface Listing {
-  readonly found: Candidate[];
-}
-
 /** 每个根上一趟读成功的候选，按分组目录存，读不了的分组沿用它。 */
 const lastGood = new Map<string, Map<string, Candidate[]>>();
 const unreadableRoots = new Set<string>();

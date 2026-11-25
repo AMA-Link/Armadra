@@ -26,7 +26,7 @@ describe("node body default", () => {
 
 describe("preferredView", () => {
   const claude = { id: "claude", acp: { installed: false } } as never;
-  const grok = { id: "grok" } as never;
+  const grok = { id: "no-such-agent" } as never;
   const installed = { id: "claude", acp: { installed: true } } as never;
 
   it("session preference", () => {
