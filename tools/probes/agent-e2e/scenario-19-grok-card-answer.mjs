@@ -2,8 +2,9 @@
 //
 // 真 grok 1.0.92（本机装着的那个）加**脚本化模型**（`mock-model.mjs`）：模型只回本脚本
 // 排好的工具调用，不连任何真账号、不出本机。自己起一套 core（临时数据目录、临时 HOME、
-// 临时 `GROK_HOME`），`agents.grok.answerCards` 开着，节点是带
-// `--permission-mode acceptEdits` 启动的（`auto-edit`）。
+// 临时 `GROK_HOME`），`agents.grok.answerCards` 开着。主体与正例的节点都是**经 Armadra
+// 启动**的：`POST /api/terminals` 带 `launch: true`，core 自己敲出带真旗标的启动行
+// （`--permission-mode acceptEdits`），读取槽读的是 grok 进程自己的 argv。
 //
 // 主体：允许、拒绝各 N 轮（缺省 20，`ARMADRA_E2E_GROK_ROUNDS`）。每一轮：
 //   * 模型调一条要审批的命令，读取槽建出审批记录（`blocked` + `pendingId`）；
@@ -12,8 +13,7 @@
 //   * 允许：命令真的跑了（文件在）；拒绝：命令没跑（文件不在）；
 //   * 审计里 route 是 `keys`、accepted。
 // 全部轮次之后：
-//   * `GROK_HOME` 里的配置（`config.toml` 与顶层的 toml / json，除运行时文件）与工程里的
-//     `.grok` 一字未动——证明从没选到 Always / Never / always-approve；
+//   * `GROK_HOME`（除运行时文件）与工程里的 `.grok` 按内容哈希不变——证明从没选到 Always / Never / always-approve；
 //   * 对照：允许过的那条命令再来一次，卡片又弹出来（没有被记成规则）。
 //
 // 负例（每个都要求「没有发键」或「被识别出来」，且审批记录不被答错）：
@@ -21,7 +21,11 @@
 //   * 计划审阅（plan 模式 `exit_plan_mode`）：不建记录；
 //   * Esc（焦点落到滚动区，页脚不再是选择态）：答复 409，一个键都没发；
 //   * `e`（规则编辑态）：答复 409，一个键都没发；这也是「记录建成之后卡变了」；
-//   * 并行卡（一条消息里两个工具调用）：同时有两条未决时不建记录。
+//   * 并行卡（一条消息里两个工具调用）：grok 逐张出卡，第一张答允许、第二张答拒绝，各自
+//     confirmed，第一张的命令跑了、第二张没跑；
+//   * 设置关着、缺省模式的进程（节点写着 auto-edit 但 argv 里没有旗标）、版本不在清单里
+//     （进程实际跑的可执行文件是版本号改过的副本）：卡弹出来，不建记录、没有键打进去、
+//     没有副作用，头部分别没有提示 / `mode_excluded` / `unverified_version`。
 //
 // 用 grok 的真画面与真文件，所以只在 `grok --version` 是已验证的版本时才有意义；没装或版本
 // 不在清单里记 skipped。不需要 `ARMADRA_E2E_REAL=1`：没有真账号、没有真模型。
@@ -60,11 +64,52 @@ import { mockModelServer } from "./mock-model.mjs";
 const VERIFIED = "1.0.92";
 const ROUNDS = Number(process.env.ARMADRA_E2E_GROK_ROUNDS ?? 20);
 
+/** 目录里所有文件的内容哈希（路径与内容），`skip` 里的顶层名字与 `.lock` 不算。 */
+function dirHash(root, skip = []) {
+  const hash = createHash("sha256");
+  const walk = (dir, top) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    )) {
+      if (top && skip.some((name) => entry.name.startsWith(name))) continue;
+      if (entry.name.endsWith(".lock")) continue;
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) walk(path, false);
+      else {
+        hash.update(`${path.slice(root.length)}\0`);
+        hash.update(readFileSync(path));
+      }
+    }
+  };
+  if (!existsSync(root)) return "absent";
+  walk(root, true);
+  return hash.digest("hex");
+}
+
+/** 一份版本号被改成 1.0.91 的 grok 副本：门探到的版本不在清单里。 */
+function oldGrokCopy(scratch, grok) {
+  const native = realpathSync(grok);
+  const copy = join(scratch, "grok-old");
+  writeFileSync(
+    copy,
+    readFileSync(native).toString("latin1").replaceAll(VERIFIED, "1.0.91"),
+    "latin1",
+  );
+  chmodSync(copy, 0o755);
+  if (process.platform === "darwin")
+    execFileSync("codesign", ["--force", "-s", "-", copy], { stdio: "ignore" });
+  return copy;
+}
+
+/** 画面里与审批卡有关的行（计时、标题行不算）：比较「有没有键打进去」用。 */
+const cardRegion = (screen) =>
+  screen
+    .split("\n")
+    .map((row) => row.trimEnd())
+    .filter((row) => /┃|:select|Enter:save|Tab:permission/.test(row))
+    .join("\n");
+
 const quote = (word) => `'${String(word).replaceAll("'", "'\\''")}'`;
-const sha = (path) =>
-  existsSync(path)
-    ? createHash("sha256").update(readFileSync(path)).digest("hex")
-    : "absent";
 
 export default async function run19() {
   const s = scenario("19-grok-card-answer");
@@ -137,14 +182,19 @@ export default async function run19() {
     // grok 的运行环境：临时 HOME 与 GROK_HOME，permission-mode 由包装脚本给（与启动器
     // 按节点的权限模式追加的旗标一致）。core 自己的 PATH 上也放一个同样环境的 grok，
     // 它探版本时拿到的是同一个。
-    const wrapperFor = (mode) => {
-      const path = join(scratch, `run-grok-${mode}.sh`);
+    // `binary` 与 `mode`：不经 Armadra 启动的节点（缺省模式、旧版本副本）用；`mode` 为
+    // `null` 就是不带权限旗标，grok 按缺省的 auto-review 起。
+    const wrapperFor = (mode, binary = grok) => {
+      const path = join(
+        scratch,
+        `run-grok-${mode ?? "default"}-${binary === grok ? "real" : "old"}.sh`,
+      );
       writeFileSync(
         path,
         [
           "#!/bin/sh",
           `export HOME=${quote(probe.path)} GROK_HOME=${quote(grokHome)} GROK_TELEMETRY_ENABLED=0`,
-          `exec ${quote(grok)} --no-memory --permission-mode ${mode}`,
+          `exec ${quote(binary)} --no-memory${mode === null ? "" : ` --permission-mode ${mode}`}`,
           "",
         ].join("\n"),
       );
@@ -209,8 +259,14 @@ export default async function run19() {
     const rows = (sql, ...params) => database.prepare(sql).all(...params);
     const tmuxSocket = join(data, "tmux.sock");
 
-    /** 起一个 grok 节点（权限模式 `auto-edit` 或 `plan`），等到输入框出现。 */
-    async function startNode(title, mode) {
+    const oldGrok = oldGrokCopy(scratch, grok);
+
+    /**
+     * 起一个 grok 节点，等到输入框出现。`mode`：节点声明的权限模式（`auto-edit` /
+     * `plan`）。`via`：`armadra` 经 core 敲启动行（真旗标）；`default` 不带权限旗标直接
+     * 起（节点上写着 auto-edit，进程实际是缺省模式）；`old` 起版本号改过的副本。
+     */
+    async function startNode(title, mode, via = "armadra") {
       const initial = await api(documentPath);
       const stamp = new Date().toISOString();
       const node = {
@@ -249,8 +305,15 @@ export default async function run19() {
           cwd: project,
           nodeId: node.id,
           agent: { id: "grok" },
-          command: wrapperFor(mode === "plan" ? "plan" : "acceptEdits"),
-          args: [],
+          ...(via === "armadra"
+            ? { launch: true }
+            : {
+                command:
+                  via === "old"
+                    ? wrapperFor("acceptEdits", oldGrok)
+                    : wrapperFor(null),
+                args: [],
+              }),
         },
       });
       const screen = async () =>
@@ -344,9 +407,15 @@ export default async function run19() {
           "SELECT state, pending_id FROM agent_status WHERE node_id = ?",
           node.id,
         );
+      /** 这个节点头部要显示的那句（会话列表里的 `cardNotice`）。 */
+      const notice = async () =>
+        (await api(`/api/workspaces/${workspace.id}/sessions`)).find(
+          (row) => row.nodeId === node.id,
+        )?.cardNotice;
       return {
         node,
         session,
+        notice,
         screen,
         send,
         key,
@@ -382,18 +451,30 @@ export default async function run19() {
 
     /* ------------------------------ 主体：允许 / 拒绝 ------------------------------ */
     const main = await startNode("grok-main", "auto-edit");
+    // 经 Armadra 启动：core 敲的启动行带真旗标，grok 进程自己的 argv 里有它。
+    const argvs = execFileSync("ps", ["-A", "-o", "args="], {
+      encoding: "utf8",
+      maxBuffer: 32 * 1024 * 1024,
+    })
+      .split("\n")
+      .filter((line) => line.includes("--permission-mode acceptEdits"));
+    s.check(
+      "经 Armadra 启动：grok 进程的 argv 带 --permission-mode acceptEdits",
+      argvs.some((line) => /grok/.test(line)),
+      argvs.map((line) => line.slice(0, 160)),
+    );
+    // GROK_HOME（运行时文件除外）与工程里的 .grok 按内容哈希比。
     const snapshot = () => ({
-      config: sha(join(grokHome, "config.toml")),
-      trusted: sha(join(grokHome, "trusted_folders.toml")),
-      top: readdirSync(grokHome)
-        .filter(
-          (name) =>
-            !/^(sessions|logs|active_sessions|slash-mru|memtrace|worktrees|prompt)/.test(
-              name,
-            ) && !name.endsWith(".lock"),
-        )
-        .sort(),
-      project: existsSync(join(project, ".grok")),
+      grokHome: dirHash(grokHome, [
+        "sessions",
+        "logs",
+        "active_sessions",
+        "slash-mru",
+        "memtrace",
+        "worktrees",
+        "prompt",
+      ]),
+      project: dirHash(join(project, ".grok")),
     });
     const before = snapshot();
 
@@ -498,7 +579,7 @@ export default async function run19() {
     );
     const after = snapshot();
     s.check(
-      "GROK_HOME 的配置与工程里的 .grok 一字未动（没选到 Always / Never / always-approve）",
+      "GROK_HOME 与工程里的 .grok 内容哈希不变（没选到 Always / Never / always-approve）",
       JSON.stringify(before) === JSON.stringify(after),
       { before, after },
     );
@@ -521,6 +602,68 @@ export default async function run19() {
     }
 
     /* ---------------------------------- 负例 ---------------------------------- */
+    /** 卡弹出来之后：没有记录、没有键打进去（卡区域不变）、没有副作用。 */
+    async function declined(label, node, file, notice) {
+      queue.push(commandCall(`sh -c "echo x > ${file}"`));
+      await node.send("go");
+      await waitFor(
+        `${label}：画面出现审批卡`,
+        async () =>
+          /\d\/\d:select/.test(await node.screen()) ? true : undefined,
+        { timeout: 60_000, interval: 300 },
+      );
+      const regionBefore = cardRegion(await node.screen());
+      await sleep(3500);
+      const resolved = node
+        .events()
+        .filter((e) => e.type === "permission_resolved").length;
+      s.check(
+        `${label}：不建审批记录、头部${notice === undefined ? "没有提示" : `提示 ${notice}`}、没有键打进去、没有副作用`,
+        node.grokCards().length === 0 &&
+          (await node.notice()) === notice &&
+          cardRegion(await node.screen()) === regionBefore &&
+          resolved === 0 &&
+          !existsSync(join(project, file)),
+        {
+          cards: node.grokCards(),
+          notice: await node.notice(),
+          resolved,
+        },
+      );
+    }
+    // 设置关着：缺省就是关。
+    {
+      await api("/api/settings", {
+        method: "PATCH",
+        body: { agents: { grok: { answerCards: false } } },
+      });
+      const node = await startNode("grok-setting-off", "auto-edit");
+      await declined("设置关着", node, "setting-off.txt", undefined);
+      await api("/api/settings", {
+        method: "PATCH",
+        body: { agents: { grok: { answerCards: true } } },
+      });
+    }
+    // 节点上写着 auto-edit，grok 进程实际是缺省模式（auto-review）起的：读进程 argv，不信节点。
+    {
+      const node = await startNode("grok-default-mode", "auto-edit", "default");
+      await declined(
+        "缺省模式的进程",
+        node,
+        "default-mode.txt",
+        "mode_excluded",
+      );
+    }
+    // 版本不在清单里（探的是进程实际跑的那个可执行文件）。
+    {
+      const node = await startNode("grok-old-version", "auto-edit", "old");
+      await declined(
+        "版本不在清单",
+        node,
+        "old-version.txt",
+        "unverified_version",
+      );
+    }
     // 提问卡：不建记录。
     {
       const node = await startNode("grok-ask", "auto-edit");
@@ -601,6 +744,7 @@ export default async function run19() {
         );
         throw error;
       });
+      const regionBefore = cardRegion(await node.screen());
       const resolvedBefore = node
         .events()
         .filter((e) => e.type === "permission_resolved").length;
@@ -620,11 +764,15 @@ export default async function run19() {
         /409/.test(refused.message ?? "") &&
           node.grokCards().find((row) => row.id === card.id)?.answer === null &&
           resolvedAfter === resolvedBefore &&
+          // 画面上的卡区域与答复之前一字不差：没有键打进去。
+          cardRegion(await node.screen()) === regionBefore &&
           !existsSync(join(project, `${name}.txt`)),
         { refused, resolvedBefore, resolvedAfter },
       );
     }
-    // 并行卡：一条消息两个工具调用。
+    // 并行卡：一条消息两个工具调用。grok 1.0.92 逐张出卡：第一张答完第二张才出现，
+    // 所以唯一的期望是——第一张有记录且只有一条未决、答允许 confirmed；第二张有自己的
+    // （新的）记录、答拒绝 confirmed；第一张的命令跑了、第二张没跑。
     {
       const node = await startNode("grok-parallel", "auto-edit");
       queue.push([
@@ -632,74 +780,58 @@ export default async function run19() {
         ...commandCall('sh -c "echo b > par-b.txt"'),
       ]);
       await node.send("go");
-      await waitFor(
-        "并行卡：画面出现审批卡",
-        async () =>
-          /\d\/\d:select/.test(await node.screen()) ? true : undefined,
+      const first = await waitFor(
+        "并行卡：第一张有记录",
+        () => node.openCard(),
         { timeout: 60_000, interval: 300 },
       );
-      await sleep(2500);
-      const events = node.events();
-      const requested = events.filter(
-        (e) => e.type === "permission_requested",
-      ).length;
-      const resolved = events.filter(
-        (e) => e.type === "permission_resolved",
-      ).length;
-      const open = requested - resolved;
-      note("并行卡：请求 / 已答", { requested, resolved });
-      // 同时有两条未决：不建记录。只有一条（grok 把第二张排在第一张答完之后）：建出的
-      // 记录答下去必须 confirmed。
-      if (open >= 2) {
-        s.check(
-          "并行卡：同时两条未决时不建记录",
-          node.openCard() === undefined,
-          { open, cards: node.grokCards() },
-        );
-      } else {
-        const card = node.openCard();
-        s.check("并行卡：grok 逐张出卡，当前这张有记录", card !== undefined, {
-          requested,
-          resolved,
-        });
-        if (card !== undefined) {
-          const answered = await api(`/api/approvals/${card.id}/answer`, {
+      const count = () => ({
+        requested: node
+          .events()
+          .filter((e) => e.type === "permission_requested").length,
+        resolved: node.events().filter((e) => e.type === "permission_resolved")
+          .length,
+      });
+      const atFirst = count();
+      s.check(
+        "并行卡：第一张出现时只有一条未决请求、一条未答的记录",
+        atFirst.requested === 1 &&
+          atFirst.resolved === 0 &&
+          node.grokCards().filter((row) => row.answer === null).length === 1,
+        atFirst,
+      );
+      const one1 = await api(`/api/approvals/${first.id}/answer`, {
+        method: "POST",
+        body: { decision: "allow", answeredBy: "probe" },
+      }).catch((error) => ({ message: String(error.message) }));
+      s.check(
+        "并行卡：第一张答允许，confirmed",
+        one1.delivery === "confirmed" && one1.route === "keys",
+        one1,
+      );
+      const second = await waitFor(
+        "并行卡：第二张有自己的新记录",
+        () => {
+          const open = node.openCard();
+          return open !== undefined && open.id !== first.id ? open : undefined;
+        },
+        { timeout: 30_000, interval: 300 },
+      ).catch(() => undefined);
+      s.check("并行卡：第二张有新的审批记录", second !== undefined);
+      const two = second
+        ? await api(`/api/approvals/${second.id}/answer`, {
             method: "POST",
-            body: { decision: "allow", answeredBy: "probe" },
-          }).catch((error) => ({ message: String(error.message) }));
-          s.check(
-            "并行卡：答这一张是 confirmed，不会落到另一张上",
-            answered.delivery === "confirmed",
-            answered,
-          );
-          // 第二张顶上来：它有自己的记录（偏移不同），答下去落在它自己身上。
-          const second = await waitFor(
-            "并行卡：第二张有自己的记录",
-            () => {
-              const open = node.openCard();
-              return open !== undefined && open.id !== card.id
-                ? open
-                : undefined;
-            },
-            { timeout: 30_000, interval: 300 },
-          ).catch(() => undefined);
-          s.check("并行卡：第二张有新的审批记录", second !== undefined);
-          if (second !== undefined) {
-            const next = await api(`/api/approvals/${second.id}/answer`, {
-              method: "POST",
-              body: { decision: "deny", answeredBy: "probe" },
-            }).catch((error) => ({ message: String(error.message) }));
-            await sleep(2500);
-            s.check(
-              "并行卡：第一张允许跑了，第二张拒绝没跑，各自 confirmed",
-              next.delivery === "confirmed" &&
-                existsSync(join(project, "par-a.txt")) &&
-                !existsSync(join(project, "par-b.txt")),
-              next,
-            );
-          }
-        }
-      }
+            body: { decision: "deny", answeredBy: "probe" },
+          }).catch((error) => ({ message: String(error.message) }))
+        : undefined;
+      await sleep(2500);
+      s.check(
+        "并行卡：第二张答拒绝 confirmed；第一张的命令跑了、第二张的没跑",
+        two?.delivery === "confirmed" &&
+          existsSync(join(project, "par-a.txt")) &&
+          !existsSync(join(project, "par-b.txt")),
+        two,
+      );
     }
   } catch (error) {
     s.fail(error);
