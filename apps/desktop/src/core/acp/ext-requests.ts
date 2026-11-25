@@ -64,11 +64,11 @@ const CONTROLS = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
 /**
  * 看不见、却会改变显示或藏东西的字符：换成看得见的 `[U+XXXX]` 占位。双向控制（含
  * U+061C、U+200E/F、U+202A–E、U+2066–9）、零宽与不可见格式字符（U+00AD、U+115F、
- * U+180E、U+200B–D、U+2060–4、U+3164、U+FEFF、U+FFF9–B）、行 / 段分隔符
+ * U+034F、U+1160、U+180E、U+200B–D、U+2060–206F、U+3164、U+FEFF、U+FFA0、U+FFF9–B）、行 / 段分隔符
  * （U+2028/9）、标签字符（U+E0000–E007F）。
  */
 const INVISIBLES =
-  /[\u00ad\u061c\u115f\u180e\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u2069\u3164\ufeff\ufff9-\ufffb\u{e0000}-\u{e007f}]/gu;
+  /[\u00ad\u061c\u115f\u180e\u200b-\u200f\u2028\u2029\u202a-\u202e\u034f\u1160\u2060-\u206f\u3164\uffa0\ufeff\ufff9-\ufffb\u{e0000}-\u{e007f}]/gu;
 
 /**
  * 计划原文 → 能放进卡片的纯文本：去掉 ESC 序列与 C0 / C1 控制字符（保留换行与
@@ -89,7 +89,14 @@ export function plainBody(text: string): { body: string; chars?: number } {
   let end = MAX_PLAN_CHARS;
   const last = clean.charCodeAt(end - 1);
   if (last >= 0xd800 && last <= 0xdbff) end -= 1;
-  return { body: clean.slice(0, end), chars: text.length };
+  // 也别切在 `[U+XXXX]` 占位中间。
+  const cut = clean.slice(0, end);
+  const half = /\[U\+[0-9A-F]*$/.exec(cut);
+  return {
+    body: half === null ? cut : cut.slice(0, half.index),
+    // 原文的字符数；清洗只会让文本变长的情形（占位）也不会让它小于显示出来的那一份。
+    chars: Math.max(text.length, clean.length),
+  };
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {

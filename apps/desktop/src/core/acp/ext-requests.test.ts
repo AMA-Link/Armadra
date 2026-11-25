@@ -284,6 +284,8 @@ describe("计划原文的清洗", () => {
     expect(plainBody("a\u001b]b c").body).toBe("ab c");
     const long = "z".repeat(5000);
     expect(plainBody(`x\u001b]${long}\u0007y`).body).toBe(`x${long}y`);
+    // 不跨行：行尾之前没有终结符，终结符在下一行——不把中间那行吞掉。
+    expect(plainBody("a\u001b]0;t\nstep\u0007b").body).toBe("a0;t\nstepb");
     // 有终结符、同一行、不超长的才整段删掉。
     expect(plainBody("x\u001b]0;title\u0007y").body).toBe("xy");
     expect(plainBody("x\u001b]0;title\u001b\\y").body).toBe("xy");
@@ -304,6 +306,11 @@ describe("计划原文的清洗", () => {
       "\u3164": "[U+3164]",
       "\u{e0041}": "[U+E0041]",
       "\u{e007f}": "[U+E007F]",
+      "\u206a": "[U+206A]",
+      "\u206f": "[U+206F]",
+      "\u1160": "[U+1160]",
+      "\uffa0": "[U+FFA0]",
+      "\u034f": "[U+034F]",
       "\u200e": "[U+200E]",
       "\u2069": "[U+2069]",
     };
@@ -312,6 +319,19 @@ describe("计划原文的清洗", () => {
     }
     // 普通文字、CJK、表情不动。
     expect(plainBody("计划 ✅ 😀 ok").body).toBe("计划 ✅ 😀 ok");
+  });
+
+  it("截断不切在 [U+XXXX] 占位中间；chars 不小于显示出来的那一份", () => {
+    // 占位让清洗后的文本比原文长：1 个零宽字符 → 8 个字符的占位，落在截断点上。
+    const raw = `${"x".repeat(MAX_PLAN_CHARS - 3)}\u200b${"y".repeat(50)}`;
+    const { body, chars } = plainBody(raw);
+    expect(body).toBe("x".repeat(MAX_PLAN_CHARS - 3));
+    expect(body).not.toContain("[U+");
+    expect(chars).toBeGreaterThanOrEqual(raw.length);
+    // 清洗后比原文长很多（大量零宽字符）：chars 取清洗后的长度，不会小于正文。
+    const many = "\u200b".repeat(MAX_PLAN_CHARS);
+    const result = plainBody(many);
+    expect(result.chars).toBeGreaterThanOrEqual(result.body.length);
   });
 
   it("bodyChars 按原文计数：清洗掉的字符也算在原文里", () => {
