@@ -2,6 +2,8 @@ import type { DatabaseSync } from "node:sqlite";
 
 import { AGENT_STATES, type AgentEndedBy } from "@armadra/shared";
 
+import { AGENT_STATE_SOURCES } from "../agent/state-source";
+
 /**
  * The `agent_status` and `agent_approvals` tables, as the hook surface reads
  * and writes them.
@@ -17,44 +19,10 @@ import { AGENT_STATES, type AgentEndedBy } from "@armadra/shared";
  * the writer, the reader (`agent/status.ts`) and the wire schema accept the
  * same four values, so a row one of them stores is a row all of them read.
  */
-/**
- * Which channel a state was learned through (协作通道 §3.2). The vocabulary is
- * closed for the same reason the states are: a value nobody recognises would
- * be read as "not a report" by every gate and as a label by the header, which
- * is two different answers to one question.
- */
-export const AGENT_STATE_SOURCES = [
-  "hook",
-  "extension",
-  "observed",
-  // core 以 ACP 驱动的会话（ACP 会话视图设计 §4.1），由 `core/acp` 写入。
-  "acp",
-] as const;
-
-/**
- * Which transport a provider reports on. Derived from the provider, never
- * parsed out of a payload: an extension and a forked client post identical
- * bodies, so a body that could name its own channel could name the strongest
- * one.
- */
-export function stateSourceFor(provider: string): string | undefined {
-  switch (provider) {
-    case "claude":
-    case "codex":
-    case "copilot":
-      return "hook";
-    // Pi, Oh My Pi and opencode report from a module inside the CLI's own
-    // process (协作通道 §3.1 channel B). Same socket, same bearer, same node
-    // token: a different transport, not a different authority.
-    case "pi":
-    case "omp":
-    case "opencode":
-    case "ama":
-      return "extension";
-    default:
-      return undefined;
-  }
-}
+// The vocabulary and the provider → channel table live in `agent/state-source`
+// (one place for every gate to ask); re-exported so this module's callers keep
+// their import path.
+export { AGENT_STATE_SOURCES, stateSourceFor } from "../agent/state-source";
 
 export interface AgentStatusRow {
   readonly nodeId: string;

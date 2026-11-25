@@ -52,78 +52,18 @@ export type AgentCapability = (typeof AGENT_CAPABILITIES)[number];
 
 /* ------------------------------ state sources ----------------------------- */
 
-/** A command Hook the CLI forked: `armadra-hook <provider>` over `hook.sock`. */
-export const STATE_SOURCE_HOOK = "hook";
-/**
- * An extension inside the CLI's own process, speaking the same HTTP on the
- * same socket. Same bearer, same node token, same terminal binding — it is the
- * in-process form of the command Hook, not a more trusted one.
- */
-export const STATE_SOURCE_EXTENSION = "extension";
-/**
- * The PTY-side guess for a terminal with no adapter at all. A display-level
- * hint and nothing more; see {@link stateSourceIsReported}.
- */
-export const OBSERVED = "observed";
-/**
- * A session the core drives over the Agent Client Protocol (ACP 会话视图设计
- * §4.1): the protocol itself reports every turn and every permission request,
- * so it is as much a report as `hook`. Set by `core/acp`, never by a client.
- */
-export const STATE_SOURCE_ACP = "acp";
-
-export const AGENT_STATE_SOURCES = [
-  STATE_SOURCE_HOOK,
-  STATE_SOURCE_EXTENSION,
+// 词汇表、常量与「是否上报」判定都在 `./state-source`；这里只转出，旧的导入路径不变。
+export {
+  AGENT_STATE_SOURCES,
   OBSERVED,
   STATE_SOURCE_ACP,
-] as const;
-
-/**
- * Which channel a provider's status reports arrive on.
- *
- * A property of how that adapter is installed, not of the request: an
- * extension and a command Hook post the same body with the same headers, so
- * trusting a client's own claim would let any of them name the strongest
- * source. `undefined` is a provider with no adapter.
- */
-export function stateSourceFor(provider: string): string | undefined {
-  switch (provider) {
-    case "claude":
-    case "codex":
-    case "copilot":
-      return STATE_SOURCE_HOOK;
-    // Pi, Oh My Pi and opencode report from a module inside the CLI's own
-    // process. Same socket, same bearer, same node token: a different
-    // transport, not a different authority.
-    // `ama` reports through its host adapter, a module inside its own process
-    // (docs/design/coordinator-agent.md §2.3).
-    case "pi":
-    case "omp":
-    case "opencode":
-    case "ama":
-      return STATE_SOURCE_EXTENSION;
-    default:
-      return undefined;
-  }
-}
-
-/**
- * Whether a source is a *report* rather than a guess.
- *
- * The one question every gate has to ask. `hook` and `extension` are two
- * transports for the same authenticated report and both count; `observed` and
- * "nothing has reported" do not — an observation may never satisfy the
- * scheduler's idle gate. Written here, once, so a later caller cannot
- * accidentally spell it as "the source is set".
- */
-export function stateSourceIsReported(source: string | null | undefined) {
-  return (
-    source === STATE_SOURCE_HOOK ||
-    source === STATE_SOURCE_EXTENSION ||
-    source === STATE_SOURCE_ACP
-  );
-}
+  STATE_SOURCE_EXTENSION,
+  STATE_SOURCE_HOOK,
+  nodeStateChannel,
+  registerNodeChannelGate,
+  stateSourceFor,
+  stateSourceIsReported,
+} from "./state-source";
 
 /**
  * 这个 provider 启动完成时会不会一条 hook 事件都不发（`startsSilently`）。

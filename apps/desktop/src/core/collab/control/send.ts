@@ -4,7 +4,7 @@ import {
   baseAgent,
   hasCapability,
   startsSilently,
-  stateSourceFor,
+  nodeStateChannel,
 } from "../../agent/registry";
 import {
   OBSERVED_QUIET,
@@ -548,7 +548,7 @@ export async function attempt(
       state = "idle";
       targetStateLabel = OBSERVED_QUIET;
       firstDelivery = true;
-    } else if (hasStateChannel(context, target)) {
+    } else if (hasStateChannel(context, target, live.session.sessionId)) {
       return queueOrRefuse(
         context,
         item,
@@ -1119,10 +1119,21 @@ export function acceptsFromSubs(target: NodeRef): boolean {
  * 自定义 Agent 按 base 问，与门链上其它几条一致；没有 agent 的裸终端没有通道，
  * 它永远走 §4.3 的 `--unverified` 那条路。
  */
-function hasStateChannel(context: CollabContext, target: NodeRef): boolean {
+function hasStateChannel(
+  context: CollabContext,
+  target: NodeRef,
+  sessionId?: string,
+): boolean {
   if (target.agentId === null) return false;
+  // 按节点判，不只按 provider：SSH 节点、版本不够的节点上，这家 CLI 的通道可能
+  // 不成立，一直排队等一条不会来的首报只会等到过期（审查 P1-6）。
   return (
-    stateSourceFor(baseAgent(context.settings, target.agentId)) !== undefined
+    nodeStateChannel(baseAgent(context.settings, target.agentId), {
+      remote:
+        sessionId === undefined
+          ? false
+          : (context.terminals?.remote?.(sessionId) ?? false),
+    }) !== undefined
   );
 }
 

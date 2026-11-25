@@ -18,6 +18,7 @@ import type { AgentEvent } from "../hook/normalize";
 import type { TerminalBinding } from "../hook/ingest";
 import { sanitizePaste } from "../terminal/backend";
 import { rfc3339 } from "../workspaces/support";
+import { stateSourceIsRunReport } from "../agent/state-source";
 import type { TrustedReport } from "./evaluate";
 
 export function promptDigest(prompt: string): string {
@@ -156,7 +157,7 @@ export function recordTrustedReport(
 ): number | undefined {
   if (
     !event.verified ||
-    !["hook", "extension"].includes(event.stateSource ?? "") ||
+    !stateSourceIsRunReport(event.stateSource) ||
     !["state", "session"].includes(event.kind)
   )
     return undefined;

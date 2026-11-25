@@ -66,6 +66,39 @@ export const AGENT_STATE_SOURCES = [
   "acp",
 ] as const;
 
+/**
+ * 「是否上报」的判定与词汇表的唯一出处。
+ *
+ * 判一条状态来源算不算「CLI 自己报的」，全仓库只问这里，不再各处手写
+ * `=== "hook" || …`：新增来源时只改这一处，`apps/desktop/src/core/agent/state-source.test.ts`
+ * 守着没有人绕开它。三档：
+ *   * {@link stateSourceIsReported}：上报级——`hook`、`extension`、`acp`。能满足
+ *     空闲门、能当休眠与投递的依据；
+ *   * {@link stateSourceIsRunReport}：能进运行关联报告的上报——只有带终端绑定、
+ *     验过节点令牌的 `hook` 与 `extension`（`acp` 不经这条路）；
+ *   * {@link stateSourceIsObserved}：观察级——`observed`，只是猜测，仅用于显示。
+ */
+export const REPORTED_STATE_SOURCES = ["hook", "extension", "acp"] as const;
+export const RUN_REPORT_STATE_SOURCES = ["hook", "extension"] as const;
+
+export function stateSourceIsReported(
+  source: string | null | undefined,
+): boolean {
+  return (REPORTED_STATE_SOURCES as readonly string[]).includes(source ?? "");
+}
+
+export function stateSourceIsRunReport(
+  source: string | null | undefined,
+): boolean {
+  return (RUN_REPORT_STATE_SOURCES as readonly string[]).includes(source ?? "");
+}
+
+export function stateSourceIsObserved(
+  source: string | null | undefined,
+): boolean {
+  return source === "observed";
+}
+
 export const PERMISSION_MODES = [
   "default",
   "auto-edit",

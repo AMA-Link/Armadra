@@ -26,6 +26,14 @@ import type { TimelineDomain } from "../index";
 import { claudeAdapter } from "./claude";
 import { codexAdapter } from "./codex";
 import { copilotTranscript } from "./copilot";
+import { internalReporter } from "../../hook/report";
+import { OBSERVED, stateSourceIsReported } from "../../agent/state-source";
+import {
+  type StateSlot,
+  type StateSlotContext,
+  type StateSlotProvider,
+  stateSlotProviderFor,
+} from "./state-slot";
 import { mapHookActivity } from "./hook-activity";
 import { opencodeTranscript } from "./opencode";
 import { amaTranscript, ompTranscript, piTranscript } from "./pi";
@@ -52,6 +60,14 @@ export {
 export type { TailCursor } from "./tailer";
 export type { TranscriptAdapter } from "./types";
 export { mapHookActivity } from "./hook-activity";
+export {
+  registerStateSlot,
+  stateSlotProviderFor,
+  type StateSlot,
+  type StateSlotContext,
+  type StateSlotLevel,
+  type StateSlotProvider,
+} from "./state-slot";
 
 /** 登记的适配器。键是 `baseAgent` 之后的代理 id。 */
 export const ADAPTERS: Readonly<Record<string, TranscriptAdapter>> = {
@@ -89,6 +105,23 @@ interface SessionRow {
   readonly agentId: string;
   readonly cwd: string;
   readonly createdAtMs: number;
+  readonly generation?: number;
+}
+
+/** 一个终端会话上开着的状态读取槽（见 `state-slot.ts`）。 */
+interface OpenSlot {
+  readonly sessionId: string;
+  readonly nodeId: string;
+  readonly provider: StateSlotProvider;
+  readonly slot: StateSlot;
+  /** 开槽时会话的代次：同 id 不同代次（原地换代、休眠唤醒）要重开。 */
+  readonly generation: number;
+}
+
+/** 终端域对会话的两个事实，槽拿去用；由 `terminal/install.ts` 装配。 */
+export interface TerminalFacts {
+  pid(sessionId: string): number | undefined;
+  remote(sessionId: string): boolean;
 }
 
 export interface SourceManagerOptions {
@@ -104,6 +137,12 @@ export interface SourceManagerOptions {
 
 export class SourceManager {
   private readonly sources = new Map<string, Source>();
+  private readonly slots = new Map<string, OpenSlot>();
+  /** 正在 `provider.open()` 里的会话：open 里同步上报会敲门铃叫回这里，不能重复开。 */
+  private readonly opening = new Set<string>();
+  /** 正在上报的槽：它自己的上报敲出来的门铃不再叫回它（避免同步重入）。 */
+  private readonly reporting = new Set<string>();
+  private facts: TerminalFacts | undefined;
   private readonly timers: TailTimers;
   private reaper: unknown;
   private closed = false;
@@ -113,6 +152,16 @@ export class SourceManager {
     private readonly options: SourceManagerOptions,
   ) {
     this.timers = options.timers ?? realTailTimers;
+  }
+
+  /** 终端域装配好之后给槽用的会话事实；没装配时 pid 读不到、远程按本机算。 */
+  setTerminalFacts(facts: TerminalFacts | undefined): void {
+    this.facts = facts;
+  }
+
+  /** 测试与诊断：这个会话上开着的状态读取槽。 */
+  slotOf(sessionId: string): StateSlot | undefined {
+    return this.slots.get(sessionId)?.slot;
   }
 
   /** 测试与诊断：这条时间线的尾读器。 */
@@ -129,6 +178,15 @@ export class SourceManager {
    */
   onHook(nodeId: string, event: AgentEvent): void {
     if (this.closed) return;
+    // 槽与转录尾读各自一道 try：一边抛错不能连累另一边。
+    try {
+      this.pokeSlot(nodeId, event);
+    } catch (error) {
+      this.options.log?.warn("叫醒状态读取槽失败", {
+        nodeId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
     try {
       const adapter = transcriptAdapterFor(event.agentId);
       if (adapter === undefined) return;
@@ -198,22 +256,192 @@ export class SourceManager {
     });
   }
 
+  /* ----------------------------- 状态读取槽 ----------------------------- */
+
+  /**
+   * 终端会话起来了（`terminal/manager` 的 `onStart`）：这个节点的 CLI 若登记了状态
+   * 读取槽，就在这里开——不等任何上报。任何错误只记日志，不影响终端的创建。
+   */
+  onSessionStart(nodeId: string, sessionId?: string): void {
+    if (this.closed) return;
+    try {
+      const row = this.runningSession(nodeId, sessionId);
+      if (row === undefined) return;
+      this.openSlot(row, nodeId);
+    } catch (error) {
+      this.options.log?.warn("开状态读取槽失败", {
+        nodeId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private pokeSlot(nodeId: string, event: AgentEvent): void {
+    for (const open of [...this.slots.values()]) {
+      if (open.nodeId !== nodeId || this.reporting.has(open.sessionId))
+        continue;
+      try {
+        open.slot.poke?.();
+      } catch (error) {
+        this.options.log?.warn("状态读取槽 poke 失败", {
+          sessionId: open.sessionId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    // hook 先于 `onStart` 到（或 `onStart` 当时开不了）：补开一次。
+    if (stateSlotProviderFor(baseAgent(event.agentId)) !== undefined) {
+      const row = this.runningSession(nodeId);
+      if (row !== undefined) this.openSlot(row, nodeId);
+    }
+  }
+
+  private openSlot(row: SessionRow, nodeId: string): OpenSlot | undefined {
+    const generation = row.generation ?? 0;
+    const existing = this.slots.get(row.id);
+    if (existing !== undefined) {
+      if (existing.generation === generation) return existing;
+      // 原地换代（`recycleSession`、休眠唤醒）：会话 id 不变、代次加一，旧槽读的是
+      // 上一代的进程、带绑定的上报也会被当成过期丢掉，先停再重开。
+      this.dropSlot(existing);
+    }
+    if (this.opening.has(row.id)) return undefined;
+    const agentId = baseAgent(row.agentId);
+    const provider = stateSlotProviderFor(agentId);
+    if (provider === undefined) return undefined;
+    // 同一节点上一个会话行的槽不再需要了。
+    for (const old of [...this.slots.values()]) {
+      if (old.nodeId === nodeId && old.sessionId !== row.id) this.dropSlot(old);
+    }
+    this.opening.add(row.id);
+    let slot: StateSlot | undefined;
+    try {
+      slot = provider.open(this.slotContext(row, nodeId, agentId, provider));
+    } finally {
+      this.opening.delete(row.id);
+    }
+    if (slot === undefined) return undefined;
+    const open: OpenSlot = {
+      sessionId: row.id,
+      nodeId,
+      provider,
+      slot,
+      generation,
+    };
+    this.slots.set(row.id, open);
+    this.armReaper();
+    try {
+      slot.start();
+    } catch (error) {
+      this.options.log?.warn("启动状态读取槽失败", {
+        sessionId: row.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      this.dropSlot(open);
+      return undefined;
+    }
+    return open;
+  }
+
+  private slotContext(
+    row: SessionRow,
+    nodeId: string,
+    agentId: string,
+    provider: StateSlotProvider,
+  ): StateSlotContext {
+    const log = this.options.log;
+    return {
+      nodeId,
+      workspaceId: row.workspaceId,
+      agentId,
+      sessionId: row.id,
+      generation: row.generation ?? 0,
+      cwd: row.cwd,
+      startedAtMs: row.createdAtMs,
+      pid: () => this.facts?.pid(row.id),
+      remote: () => this.facts?.remote(row.id) ?? false,
+      report: (event, options) => {
+        const report = internalReporter();
+        if (report === undefined) return false;
+        // 级别由这里执行，不信槽自己：观察级的事件一律写成 `observed`；上报级的
+        // 事件必须自带上报级来源，否则整条丢（槽写错了来源是槽的 bug，不是
+        // 偷偷降级成观察的理由）。
+        if (provider.level === "observed") {
+          event.stateSource = OBSERVED;
+        } else if (!stateSourceIsReported(event.stateSource)) {
+          log?.warn("上报级的槽写了非上报级的来源，丢弃", {
+            agentId,
+            stateSource: event.stateSource,
+          });
+          return false;
+        }
+        this.reporting.add(row.id);
+        try {
+          return (
+            report({
+              nodeId,
+              agentId,
+              event,
+              ...(options?.rawPayload === undefined
+                ? {}
+                : { rawPayload: options.rawPayload }),
+              ...(options?.bind === true
+                ? {
+                    terminalSession: {
+                      sessionId: row.id,
+                      generation: row.generation ?? 0,
+                    },
+                  }
+                : {}),
+            }) !== undefined
+          );
+        } finally {
+          this.reporting.delete(row.id);
+        }
+      },
+      timers: this.timers,
+      watch: this.options.watch,
+      stat: this.options.stat,
+      log: {
+        warn: (message, fields) => log?.warn(message, fields),
+        debug: (message, fields) => log?.debug?.(message, fields),
+      },
+    };
+  }
+
+  private dropSlot(open: OpenSlot): void {
+    try {
+      open.slot.stop();
+    } catch (error) {
+      this.options.log?.warn("停状态读取槽失败", {
+        sessionId: open.sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    this.slots.delete(open.sessionId);
+  }
+
   /* ------------------------------ 会话与来源 ------------------------------ */
 
-  private runningSession(nodeId: string): SessionRow | undefined {
+  private runningSession(
+    nodeId: string,
+    sessionId?: string,
+  ): SessionRow | undefined {
     const row = this.options.database
       .prepare(
-        "SELECT id, workspace_id, agent_id, cwd, created_at FROM terminal_sessions " +
+        "SELECT id, workspace_id, agent_id, cwd, created_at, generation FROM terminal_sessions " +
           "WHERE owner_node_id = ? AND status = 'running' AND backend_kind != 'acp' " +
+          (sessionId === undefined ? "" : "AND id = ? ") +
           "ORDER BY created_at DESC, generation DESC LIMIT 1",
       )
-      .get(nodeId) as
+      .get(...(sessionId === undefined ? [nodeId] : [nodeId, sessionId])) as
       | {
           id: string;
           workspace_id: string;
           agent_id: string | null;
           cwd: string;
           created_at: string;
+          generation: number;
         }
       | undefined;
     if (row === undefined) return undefined;
@@ -223,6 +451,7 @@ export class SourceManager {
       agentId: row.agent_id ?? "",
       cwd: row.cwd,
       createdAtMs: Date.parse(row.created_at) || 0,
+      generation: Number(row.generation) || 0,
     };
   }
 
@@ -440,7 +669,52 @@ export class SourceManager {
         });
       }
     }
+    resumed += this.resumeSlots();
     return resumed;
+  }
+
+  /** core 重启：仍在 `running` 的会话上，登记过槽的 CLI 重新开槽（槽自己重放文件尾恢复状态）。 */
+  private resumeSlots(): number {
+    const rows = this.options.database
+      .prepare(
+        "SELECT id, owner_node_id AS nodeId, workspace_id, agent_id, cwd, created_at, generation " +
+          "FROM terminal_sessions WHERE status = 'running' AND backend_kind != 'acp' " +
+          "AND owner_node_id IS NOT NULL",
+      )
+      .all() as {
+      id: string;
+      nodeId: string;
+      workspace_id: string;
+      agent_id: string | null;
+      cwd: string;
+      created_at: string;
+      generation: number;
+    }[];
+    let opened = 0;
+    for (const session of rows) {
+      if (stateSlotProviderFor(baseAgent(session.agent_id ?? "")) === undefined)
+        continue;
+      try {
+        const open = this.openSlot(
+          {
+            id: session.id,
+            workspaceId: session.workspace_id,
+            agentId: session.agent_id ?? "",
+            cwd: session.cwd,
+            createdAtMs: Date.parse(session.created_at) || 0,
+            generation: Number(session.generation) || 0,
+          },
+          session.nodeId,
+        );
+        if (open !== undefined) opened++;
+      } catch (error) {
+        this.options.log?.warn("接回状态读取槽失败", {
+          sessionId: session.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return opened;
   }
 
   /* ------------------------------- 巡检与收尾 ------------------------------- */
@@ -450,13 +724,29 @@ export class SourceManager {
     this.reaper = this.timers.setTimeout(() => {
       this.reaper = undefined;
       this.reap();
-      if (this.sources.size > 0) this.armReaper();
+      if (this.sources.size > 0 || this.slots.size > 0) this.armReaper();
     }, REAP_INTERVAL_MS);
   }
 
   /** 停掉会话行已经不是 `running` 的来源（最后再读一次）。 */
   reap(): number {
     let stopped = 0;
+    for (const open of [...this.slots.values()]) {
+      const row = this.options.database
+        .prepare("SELECT status FROM terminal_sessions WHERE id = ?")
+        .get(open.sessionId) as { status: string } | undefined;
+      if (row?.status === "running") continue;
+      try {
+        open.slot.readNow?.();
+      } catch (error) {
+        this.options.log?.warn("状态读取槽收尾读取失败", {
+          sessionId: open.sessionId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      this.dropSlot(open);
+      stopped++;
+    }
     for (const source of [...this.sources.values()]) {
       const row = this.options.database
         .prepare("SELECT status FROM terminal_sessions WHERE id = ?")
@@ -478,10 +768,16 @@ export class SourceManager {
     return this.sources.size;
   }
 
+  /** 开着的状态读取槽个数（测试与诊断）。 */
+  get slotCount(): number {
+    return this.slots.size;
+  }
+
   close(): void {
     this.closed = true;
     if (this.reaper !== undefined) this.timers.clearTimeout(this.reaper);
     this.reaper = undefined;
     for (const source of [...this.sources.values()]) this.drop(source);
+    for (const open of [...this.slots.values()]) this.dropSlot(open);
   }
 }

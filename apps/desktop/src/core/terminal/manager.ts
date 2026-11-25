@@ -171,6 +171,7 @@ export class TerminalManager {
     dormantAfterSeconds: number;
   };
   private readonly onExit: TerminalManagerOptions["onExit"];
+  private readonly onStart: TerminalManagerOptions["onStart"];
   private stopping = false;
   private readonly sequenceDirectory: string | undefined;
   /** 程序自报的状态（契约 §53），只在内存里。 */
@@ -188,6 +189,7 @@ export class TerminalManager {
     this.policy = options.policy ?? (() => DEFAULT_POLICY);
     this.limitGate = new LimitGate(options.database, options.limits);
     this.onExit = options.onExit;
+    this.onStart = options.onStart;
     this.attachments = new AttachmentBook(this.clock);
     this.drives = new TerminalDriveBook({
       database: this.database,
@@ -302,6 +304,11 @@ export class TerminalManager {
     const kindOfRow = String(row.backend_kind) as BackendKind;
     const shell = String(row.shell);
     const command = (row.command as string | null) ?? undefined;
+    // 接回的 SSH 会话没有创建时的请求可查，主机取自节点数据（`data.ssh.hostId`），
+    // 否则 `isRemote` 与休眠的「remote」挡板都会把它当本机会话。
+    const ownerNode = (row.owner_node_id as string | null) ?? null;
+    const sshHostId =
+      ownerNode === null ? undefined : adoptedSshHost(this.database, ownerNode);
     this.remember({
       id,
       key,
@@ -329,6 +336,7 @@ export class TerminalManager {
         args: [],
         env: [],
         size: { cols: DEFAULT_COLS, rows: DEFAULT_ROWS },
+        ...(sshHostId === undefined ? {} : { sshHostId }),
       },
     });
   }
@@ -516,6 +524,18 @@ export class TerminalManager {
     this.drives.remember(record.id, driveRef(record));
     this.attachments.register(record.id);
     this.records.set(record.id, record);
+    try {
+      this.onStart?.({
+        workspaceId: record.workspaceId,
+        sessionId: record.id,
+        nodeId: record.ownerNodeId,
+      });
+    } catch (error) {
+      this.log("会话起来的通知失败", {
+        sessionId: record.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private forget(sessionId: string): void {
@@ -936,6 +956,17 @@ export class TerminalManager {
     return record?.inputRevision;
   }
 
+  /** 这个会话 PTY 的进程号；没有活着的记录或读不到答 `undefined`。 */
+  pidOf(sessionId: string): number | undefined {
+    const record = this.records.get(sessionId);
+    return record === undefined || record.exited ? undefined : record.pid;
+  }
+
+  /** 这个会话跑在 SSH 主机上（读不到本机文件的那一种）；不认识的会话答 `false`。 */
+  isRemote(sessionId: string): boolean {
+    return this.records.get(sessionId)?.spec.sshHostId !== undefined;
+  }
+
   observedActivity(sessionId: string): ObservedActivity | undefined {
     return observedActivityFor(this.records.get(sessionId));
   }
@@ -1318,4 +1349,19 @@ export class TerminalManager {
 /** 事件要带的那点身份：租约属于会话，徽标画在节点上。 */
 function driveRef(record: SessionRecord): DriveSessionRef {
   return { workspaceId: record.workspaceId, nodeId: record.ownerNodeId };
+}
+
+/** 节点数据里的 SSH 主机（`data.ssh.hostId`）；不是 SSH 节点答 `undefined`。 */
+function adoptedSshHost(
+  database: DatabaseSync,
+  nodeId: string,
+): string | undefined {
+  const row = database
+    .prepare(
+      "SELECT json_extract(data_json, '$.ssh.hostId') AS host_id FROM nodes WHERE id = ?",
+    )
+    .get(nodeId) as { host_id: unknown } | undefined;
+  return typeof row?.host_id === "string" && row.host_id !== ""
+    ? row.host_id
+    : undefined;
 }

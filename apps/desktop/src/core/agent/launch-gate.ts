@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { EventBus } from "../bus";
+import { stateSourceIsReported } from "./state-source";
 
 /**
  * 启动闸门（界面第二波 §8.2、契约 §52）：同一份 CLI 配置目录上的启动排队。
@@ -350,9 +351,6 @@ export function activeLaunchGate(): LaunchGate | undefined {
   return active;
 }
 
-/** 来源是上报（不是观察、不是重启读回来的行）的一条状态。 */
-const REPORTED = new Set(["hook", "extension", "acp"]);
-
 /**
  * 装配闸门：持有者的节点报出第一条状态（`SessionStart` 或任何一条真上报）就
  * 放行下一个。返回退订。
@@ -369,7 +367,7 @@ export function installLaunchGate(bus: EventBus): () => void {
     };
     if (typeof status.nodeId !== "string") return;
     if (status.restored === true) return;
-    if (!REPORTED.has(String(status.stateSource ?? ""))) return;
+    if (!stateSourceIsReported(String(status.stateSource ?? ""))) return;
     gate.release(status.nodeId);
   });
   return () => {
