@@ -1,4 +1,9 @@
-import { stateSourceIsReported } from "./state-source";
+import {
+  STATE_SOURCE_ACP,
+  STATE_SOURCE_EXTENSION,
+  STATE_SOURCE_HOOK,
+  stateSourceIsReported,
+} from "./state-source";
 import type { AgentStatus } from "./status";
 
 /**
@@ -250,7 +255,11 @@ export function sessionStartIdle(gate: SessionStartGate): boolean {
 }
 
 /** 能撤回 `blocked` 的上报来源：CLI 自己的上报（hook、扩展、ACP）；core 自己读文件得到的（transcript）不算。 */
-const WITHDRAWING_SOURCES: readonly string[] = ["hook", "extension", "acp"];
+const WITHDRAWING_SOURCES: readonly string[] = [
+  STATE_SOURCE_HOOK,
+  STATE_SOURCE_EXTENSION,
+  STATE_SOURCE_ACP,
+];
 
 /**
  * 程序自报的 `blocked` 要不要否决这次投递（契约 §53、§120）。
