@@ -7,6 +7,7 @@ import {
   readMirrorEntries,
   sliceTimelineEntries,
 } from "./acp-mirror";
+import { agyAdapter } from "./agy";
 import { claudeAdapter } from "./claude";
 import { codexAdapter } from "./codex";
 import { copilotAdapter, eventEntries } from "./copilot";
@@ -36,6 +37,7 @@ export const HISTORY_ADAPTERS: readonly HistoryAdapter[] = [
   piAdapter,
   ompAdapter,
   copilotAdapter,
+  agyAdapter,
 ];
 
 /**

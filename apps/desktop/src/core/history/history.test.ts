@@ -11,6 +11,7 @@ import {
 import { digestEntries, digestTranscript } from "../collab/transcript-summary";
 import { PROVIDERS, defaultRoots } from "../conversations";
 import { COST_SOURCES } from "../usage/cost-sources";
+import { agyAdapter } from "./agy";
 import { claudeAdapter } from "./claude";
 import { codexAdapter } from "./codex";
 import { copilotAdapter } from "./copilot";
@@ -60,6 +61,7 @@ describe("注册表", () => {
       "pi",
       "omp",
       "copilot",
+      "agy",
     ]);
     expect(HISTORY_ADAPTERS.map((adapter) => adapter.agentId)).toEqual([
       "claude",
@@ -68,6 +70,7 @@ describe("注册表", () => {
       "pi",
       "omp",
       "copilot",
+      "agy",
     ]);
     // 快照式来源不进逐行成本表。
     expect(Object.keys(COST_SOURCES)).toEqual([
@@ -112,6 +115,7 @@ describe("注册表", () => {
       ...piAdapter.roots().map((root) => ["pi", root]),
       ...ompAdapter.roots().map((root) => ["omp", root]),
       ...copilotAdapter.roots().map((root) => ["copilot", root]),
+      ...agyAdapter.roots().map((root) => ["agy", root]),
     ]);
   });
 });

@@ -52,9 +52,13 @@ export function availabilityOf(
   return {
     index: found,
     cost: adapter.cost === undefined ? "unsupported" : found,
-    transcript: hasCapability(settings, agentId, "contextLink")
-      ? found
-      : "disabled",
+    // 只有会话索引、没有记录可读的来源（agy）：转录不可用，与根目录在不在无关。
+    transcript:
+      adapter.readsEntries === false
+        ? "unsupported"
+        : hasCapability(settings, agentId, "contextLink")
+          ? found
+          : "disabled",
   };
 }
 

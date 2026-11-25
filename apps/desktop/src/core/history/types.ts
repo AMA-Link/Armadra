@@ -161,6 +161,12 @@ export interface HistoryAdapter {
   ): EntryRange;
   readonly cost?: CostCollector;
   /**
+   * `false` = 这家只有会话索引、没有记录可读（`readEntries` 恒答空）。连线读取的
+   * 「转录」可用性据此答 `unsupported`，而不是「available」后再读出一片空白。
+   * 缺省 = 有记录。
+   */
+  readonly readsEntries?: false;
+  /**
    * 把 `readEntries` 的游标说成给读者看的一句话。不给就是字节（文件来源）；
    * 游标不是字节的来源（OpenCode 的消息时间）自己说。
    */
