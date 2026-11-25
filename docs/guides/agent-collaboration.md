@@ -17,7 +17,7 @@ Armadra 启动真实 CLI，保留各 CLI 的账户、模型选择、工具策略
 
 `ama` 是 Armadra 自己的协调 Agent（随包的 `@armadra/agent`），见下文「协调者与 runners」。
 
-**Antigravity（`agy`）是第一个没有画布注入的内置 CLI，Grok Build（`grok`）是第二个（G1：状态源与注入在 G2）**（契约 §120）：它的 `--settings` 不收 hook 与 MCP，也没有单次生效的插件旗标，Armadra 不为它写任何用户文件。终端里只有 OSC 7501 的展示级状态（工作中 / 等审批 / 完成），没有会话 id 和状态来源，所以协作投递、派发与休眠续接只在 ACP 下可用。零写入的 hook（`--add-dir` 加载 `.agents/hooks.json`）已实测可行，列入后续批次（[设计](../design/agent-collaboration-channels.md)）。
+**Antigravity（`agy`）是第一个没有画布注入的内置 CLI，Grok Build（`grok`）是第二个（G1：状态源与注入在 G2）**（契约 §120）：它的 `--settings` 不收 hook 与 MCP，也没有单次生效的插件旗标，Armadra 不为它写任何用户文件。终端里只有 OSC 7501 的展示级状态（工作中 / 等审批 / 完成），没有会话 id 和状态来源，所以协作投递、派发与休眠续接只在 ACP 下可用。零写入的 hook（`--add-dir` 加载 `.agents/hooks.json`）实测加载得了，但 agy 把工作区按路径字典序排，我们的目录可能排在项目前面而成为主工作区（模型会把文件写进去），所以终端 agy 不注入、只到展示级，原因与三回合实测表见契约 §120。ACP 下 agy 会自己缓存 `~/.gemini/antigravity-cli/mcp/armadra/`：Armadra 不写也不清理，卸载后可手动删。
 
 「启动提示」这一列只描述**人**在这里敲一条带提示词的启动行时会拼成什么。Agent
 新建的节点不走这一列：`canvas open-agent` 的启动行从不带提示词，第一条任务由

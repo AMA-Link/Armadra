@@ -6247,6 +6247,18 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
   4. 驱动切换（`POST /api/acp/nodes/{id}/driver`）把该节点的 `agent_status` 行记为 `restored = 1`（与 Eco 休眠接回同一条规矩）；投递门、队泵的快探与首投放行门只看**当前驱动写下的**状态行——来源是 `acp`、而会话后端不是 ACP 的行视为没有上报，所以 ACP 切到终端的节点没有状态通道时，`send` 答 `TARGET_STATE_UNVERIFIED`（有状态通道的 CLI 则排队等终端自己的第一条上报）。
 - **计划任务（自动化）的目标**：没有状态通道的 Agent（`nodeStateChannel` 答空：今天的 `agy`，以及按节点判不成立的节点——远程节点、Windows、`grok` 的绑不上，见 §123）**不能做计划任务目标**——回合进行中的节点没有任何上报，探测无从知道它在忙，正文加回车会落进正在工作的 pane。core 的 `TerminalDispatcher.supports` 对它们答 `unsupported`，页面的计划向导把这样的节点置灰。ACP 驱动的这类节点（有 ACP 协议自己的回合与审批上报）要不要放行另行讨论（见对应 Issue）。
 - **为什么不升协议版本（agy 落地时的决定，2026-11-24；grok 同理）**：`mode` 在共享层是严格的 `z.enum`（`INJECTION_MODES`），旧客户端收到 `"none"` 会让这一条集成状态解析失败。但 agy 这个内置 id 对旧页面本来就是未知值：`agentInfoSchema.id` 用 `agentIdSchema`，按 `AGENT_IDS` 校验，所以**旧页面（含已经装在手机上的）会因为 agy 这一行让整张 `agents.list`（`z.array(agentInfoSchema)`）解析失败**，agent 菜单与设置页的 Agent 列表都会空掉——这是任何新内置 id 都有的已有性质，不是 `"none"` 带来的——`grok` 这个 id 对旧页面同样是未知值，`AGENT_IDS` 多一项的影响与 agy 那一次完全一样，发版时手机端要同步更新。升级页面是前提，**发版时手机端必须同步更新**；协议 minor 只按 `min(页面, core)` 协商，升了也拦不住旧页面去读这一条，所以 `PROTOCOL_MINOR` 不升（仍是 52）。`mode` 以后再多取值时同样要在那个 PR 里决定。
+- **终端 agy 为什么只到展示级（#997，2026-11-24 实测，agy 1.5.16）**：零写入的 hook 只有一条路——`--add-dir <我们的目录>` 加载其中的 `.agents/hooks.json`（实测不需要把该目录放进 `trustedWorkspaces`，hook 照样加载）。但 agy 把 `--add-dir` 与 cwd 合成工作区列表后**按路径字典序排序**，排第一的是主工作区：hook 载荷的 `cwd`、模型写文件与跑 shell 的位置都是它。注入目录在数据目录下，路径排在项目前面时它就成了主工作区，模型看得见也改得动 hooks.json 与 shim，文件落进注入目录。传参顺序没有影响；`agy --help` 没有指定主工作区的开关，`--project` 要写 agy 自己的项目配置。所以终端 agy 没有零写入的状态通道，也就没有会话 id、休眠接回与派发，退回 OSC 7501 的展示级；协作投递只能 `--unverified`。三回合实测（TUI，极短提示）：
+
+  | 回合 | 项目目录                             | 注入目录             | `workspacePaths` 第一项（hook `cwd`） | 文件落在                       |
+  | ---- | ------------------------------------ | -------------------- | ------------------------------------- | ------------------------------ |
+  | 1    | `/tmp/agy-p0-proj`                   | `/private/tmp/…/add` | 注入目录                              | 注入目录                       |
+  | 2    | `/private/tmp/aaa-proj`              | `/tmp/zzz-add`       | 项目                                  | 项目                           |
+  | 3    | `/tmp/zz-project-with-a-long-name-…` | `/tmp/aa`            | 注入目录                              | （没跑到落地，列表已足够判定） |
+
+  回合 3 把「字典序」与「路径长的在前」区分开：是字典序。让注入目录总排在项目之后只能靠造一个字典序最大的路径（例如 `/tmp` 下的符号链接），那要在数据目录之外建文件，仍可能被排在它后面的项目目录压过，不采用。
+
+- **ACP 下 agy 自己缓存 `mcp/armadra/`**：交给 agy 的 MCP 服务器（名字 `armadra`）会让 agy 在 `~/.gemini/antigravity-cli/mcp/armadra/` 写下工具清单与服务器说明。这是 agy 写的，Armadra 不写也不清理；卸载 Armadra 后可以手动删。场景 12 的 `~/.gemini` 指纹只排除这一个目录。
+- **投递的第二道保险（所有 CLI 通用）**：状态通道说空闲时，若终端程序自己用 OSC 7501 报了 `blocked`（停在审批上），`send` 按 `TARGET_AWAITING_APPROVAL` 处理（排队或 `--no-queue` 拒绝）。只做否决：程序报别的状态不放行任何东西。画面门（`agent/screen-gate.ts`）登记了 agy 的信任框（`Yes, I trust this folder`）与审批卡（`Yes, and always allow` 等）。
 
 ## 121. 项目级工作流文件：导入与导出（`#996`）
 
