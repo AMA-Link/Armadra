@@ -203,6 +203,23 @@ describe("路径与键", () => {
   it("工作区 URI 转成路径，坏的是空串；时间戳转成 UTC，从未写过的是 undefined", () => {
     expect(cwdOf('["file:///work/my%20app"]')).toBe("/work/my app");
     expect(cwdOf('["file:///a","file:///b"]')).toBe("/a");
+    // 取第一个不在 `integration/agy/` 下的工作区；只剩 Armadra 自己的目录就是空串。
+    expect(
+      cwdOf(
+        '["file:///data/integration/agy/armadra-workspace","file:///work/app"]',
+      ),
+    ).toBe("/work/app");
+    expect(
+      cwdOf(
+        '["file:///C:/Users/me/AppData/integration/agy/ws","file:///C:/work/app"]',
+      ),
+    ).toBe("C:\\work\\app");
+    expect(cwdOf('["file:///data/integration/agy/armadra-workspace"]')).toBe(
+      "",
+    );
+    expect(cwdOf('["file:///work/integration/agyx"]')).toBe(
+      "/work/integration/agyx",
+    );
     expect(cwdOf("[]")).toBe("");
     expect(cwdOf("not json")).toBe("");
     expect(cwdOf('["https://example.com"]')).toBe("");

@@ -636,7 +636,20 @@ export function cwdOf(value: unknown): string {
   } catch {
     return "";
   }
-  const first = Array.isArray(list) ? list[0] : undefined;
+  if (!Array.isArray(list)) return "";
+  // 取第一个不是 Armadra 自己目录的工作区：agy 把 `--add-dir` 与 cwd 合在一起按
+  // 字典序排，我们若有目录挂在 `<数据目录>/integration/agy/` 下，它可能排在项目前面。
+  for (const item of list) {
+    const path = pathOfUri(item);
+    if (path !== "" && !OWN_DIRECTORY.test(path)) return path;
+  }
+  return "";
+}
+
+/** `<数据目录>/integration/agy/…`：Armadra 自己生成的目录，不是用户的项目。 */
+const OWN_DIRECTORY = /[\\/]integration[\\/]agy(?:[\\/]|$)/;
+
+function pathOfUri(first: unknown): string {
   if (typeof first !== "string") return "";
   const parsed = /^file:\/\/([^/?#]*)(\/[^?#]*)?(?:[?#].*)?$/i.exec(first);
   if (parsed === null) return "";
