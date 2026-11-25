@@ -3,7 +3,8 @@ import { Bot, type LucideIcon } from "lucide-react";
 import { basename } from "../agent/sessions";
 import { formatRelativeTime } from "../lib/format";
 import {
-  resumeLaunchCommand,
+  resumeNodeInput,
+  resumeTarget,
   useConversations,
   type Conversation,
 } from "../meta/conversations";
@@ -239,26 +240,14 @@ export function CommandPalette() {
 
   /** 选中一条历史对话：在视口中心开一个以 `--resume` 启动的终端节点。 */
   function resume(conversation: Conversation) {
-    const command = resumeLaunchCommand(
-      conversation.provider,
-      conversation.sessionId,
-    );
-    if (!command) return;
+    const target = resumeTarget(conversation, agents);
+    if (target === null) return;
     close();
+    const { title, data } = resumeNodeInput(conversation, target);
     const id = addNode("terminal", {
       position: nodeDropPosition("terminal"),
-      title: conversation.title,
-      data: {
-        kind: "terminal",
-        cwd: conversation.cwd,
-        agent: {
-          id: conversation.provider,
-          initialCommand: command,
-          // 启动行在这里就定了，交给 `pending-launch`（无依赖 = 提示符一安静
-          // 就敲）而不是让 TerminalSurface 自己拼——它拼不出 `--resume`。
-          pendingLaunch: { command, after: [] },
-        },
-      },
+      title,
+      data: data as never,
     });
     if (id) revealCreatedNode(id);
   }
