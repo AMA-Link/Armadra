@@ -205,6 +205,7 @@ describe("programBlockStands", () => {
     restored: false,
     updatedAt: "2026-11-25T10:00:05.000Z",
     lastEventAt: "2026-11-25T10:00:05.000Z",
+    doneAt: "2026-11-25T10:00:05.000Z",
     ...patch,
   });
 
@@ -214,52 +215,67 @@ describe("programBlockStands", () => {
     expect(programBlockStands(undefined, report({}))).toBe(false);
   });
 
-  it("a strictly later idle or done report from the CLI itself withdraws it", () => {
-    expect(programBlockStands(blocked, report({}))).toBe(false);
-    expect(programBlockStands(blocked, report({ state: "idle" }))).toBe(false);
+  it("a done that began strictly later, reported by the CLI itself, withdraws it", () => {
+    for (const stateSource of ["hook", "extension", "acp"]) {
+      expect(programBlockStands(blocked, report({ stateSource }))).toBe(false);
+    }
   });
 
   it("equal times keep the veto", () => {
     expect(
       programBlockStands(
         blocked,
-        report({ lastEventAt: "2026-11-25T10:00:00.000Z" }),
+        report({ doneAt: "2026-11-25T10:00:00.000Z" }),
       ),
     ).toBe(true);
   });
 
-  it("reading the receipt does not withdraw: it moves updatedAt, not lastEventAt", () => {
+  it("moving updatedAt or lastEventAt does not withdraw: only doneAt counts", () => {
+    // 读回执推 updatedAt；同会话的 SessionStart / 之后的 SessionEnd 推 lastEventAt。
     expect(
       programBlockStands(
         blocked,
         report({
-          lastEventAt: "2026-11-25T09:59:00.000Z",
+          doneAt: "2026-11-25T09:59:00.000Z",
           updatedAt: "2026-11-25T10:30:00.000Z",
+          lastEventAt: "2026-11-25T10:30:00.000Z",
         }),
       ),
     ).toBe(true);
   });
 
-  it("a done synthesised by the sweep does not withdraw", () => {
+  it("the transcript channel (grok) never withdraws: it replays and re-reports", () => {
+    expect(
+      programBlockStands(blocked, report({ stateSource: "transcript" })),
+    ).toBe(true);
+    expect(
+      programBlockStands(blocked, report({ stateSource: "observed" })),
+    ).toBe(true);
+  });
+
+  it("a done the sweep synthesised does not withdraw", () => {
     for (const endedBy of ["stale", "terminated", "modelError"] as const) {
       expect(programBlockStands(blocked, report({ endedBy }))).toBe(true);
     }
   });
 
-  it("anything else weaker keeps the veto", () => {
+  it("only done withdraws: idle and working keep the veto", () => {
+    expect(programBlockStands(blocked, report({ state: "idle" }))).toBe(true);
     expect(programBlockStands(blocked, report({ state: "working" }))).toBe(
       true,
     );
+  });
+
+  it("anything else weaker keeps the veto", () => {
     expect(programBlockStands(blocked, report({ restored: true }))).toBe(true);
-    expect(
-      programBlockStands(blocked, report({ stateSource: "observed" })),
-    ).toBe(true);
-    const { lastEventAt: _omit, ...withoutTime } = report({});
+    const { doneAt: _omit, ...withoutTime } = report({});
     expect(programBlockStands(blocked, withoutTime as AgentStatus)).toBe(true);
     expect(programBlockStands({ state: "blocked" }, report({}))).toBe(true);
-    // 读不出来的时间：宁可拦。
+    expect(programBlockStands(blocked, report({ doneAt: "garbage" }))).toBe(
+      true,
+    );
     expect(
-      programBlockStands(blocked, report({ lastEventAt: "garbage" })),
+      programBlockStands(blocked, report({ stateSource: undefined as never })),
     ).toBe(true);
   });
 });

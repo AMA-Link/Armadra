@@ -124,20 +124,28 @@ describe("a program that reports blocked", () => {
     const BLOCKED_AT = "2026-11-25T10:00:00.000Z";
     function report(
       nodeId: string,
-      fields: { lastEventAt: string; updatedAt?: string; endedBy?: string },
+      fields: {
+        doneAt: string;
+        lastEventAt?: string;
+        updatedAt?: string;
+        endedBy?: string;
+        source?: string;
+      },
     ): void {
       fixture.database
         .prepare(
           "INSERT OR REPLACE INTO agent_status (node_id, workspace_id, agent_id, state, state_source, " +
-            "unread, verified, restored, updated_at, last_event_at, ended_by) " +
-            "VALUES (?, ?, 'claude', 'done', 'hook', 0, 1, 0, ?, ?, ?)",
+            "unread, verified, restored, updated_at, last_event_at, ended_by, done_at) " +
+            "VALUES (?, ?, 'claude', 'done', ?, 0, 1, 0, ?, ?, ?, ?)",
         )
         .run(
           nodeId,
           fixture.workspaceId,
-          fields.updatedAt ?? fields.lastEventAt,
-          fields.lastEventAt,
+          fields.source ?? "hook",
+          fields.updatedAt ?? fields.doneAt,
+          fields.lastEventAt ?? fields.doneAt,
           fields.endedBy ?? null,
+          fields.doneAt,
         );
     }
     function setUp() {
@@ -154,15 +162,16 @@ describe("a program that reports blocked", () => {
 
     it("is withdrawn by the CLI's own done that came strictly later", async () => {
       const claude = setUp();
-      report(claude.id, { lastEventAt: "2026-11-25T10:00:30.000Z" });
+      report(claude.id, { doneAt: "2026-11-25T10:00:30.000Z" });
       expect(await send(claude.id)).toMatchObject({ outcome: "delivered" });
     });
 
-    it("is not withdrawn by reading the receipt: updatedAt moves, lastEventAt does not", async () => {
+    it("is not withdrawn by anything that only moves updatedAt or lastEventAt", async () => {
       const claude = setUp();
       report(claude.id, {
-        lastEventAt: "2026-11-25T09:59:00.000Z",
+        doneAt: "2026-11-25T09:59:00.000Z",
         updatedAt: "2026-11-25T10:30:00.000Z",
+        lastEventAt: "2026-11-25T10:30:00.000Z",
       });
       expect(await send(claude.id)).toMatchObject({
         outcome: "queued",
@@ -173,8 +182,20 @@ describe("a program that reports blocked", () => {
     it("is not withdrawn by a done the sweep synthesised", async () => {
       const claude = setUp();
       report(claude.id, {
-        lastEventAt: "2026-11-25T10:05:00.000Z",
+        doneAt: "2026-11-25T10:05:00.000Z",
         endedBy: "stale",
+      });
+      expect(await send(claude.id)).toMatchObject({
+        outcome: "queued",
+        reason: "TARGET_AWAITING_APPROVAL",
+      });
+    });
+
+    it("is not withdrawn by the transcript channel (grok) even when its done looks later", async () => {
+      const claude = setUp();
+      report(claude.id, {
+        doneAt: "2026-11-25T10:05:00.000Z",
+        source: "transcript",
       });
       expect(await send(claude.id)).toMatchObject({
         outcome: "queued",
@@ -184,7 +205,7 @@ describe("a program that reports blocked", () => {
 
     it("equal times keep the veto", async () => {
       const claude = setUp();
-      report(claude.id, { lastEventAt: BLOCKED_AT });
+      report(claude.id, { doneAt: BLOCKED_AT });
       expect(await send(claude.id)).toMatchObject({
         outcome: "queued",
         reason: "TARGET_AWAITING_APPROVAL",
