@@ -1,0 +1,251 @@
+{
+  "head": {},
+  "items": [
+    {
+      "id": "turn:ag:2026-11-25T05:23:49Z:0",
+      "turn": 1,
+      "ord": 0,
+      "rev": 9,
+      "source": "transcript",
+      "at": 1795584229000,
+      "gen": 0,
+      "kind": "turn",
+      "turnId": "ag:2026-11-25T05:23:49Z:0",
+      "startedAt": 1795584229000,
+      "endedAt": 1795584235000,
+      "stopReason": "end_turn",
+      "permissionWaitMs": 0
+    },
+    {
+      "id": "u:ag:2026-11-25T05:23:49Z:0",
+      "turn": 1,
+      "ord": 1,
+      "rev": 2,
+      "source": "transcript",
+      "at": 1795584229000,
+      "gen": 0,
+      "kind": "user",
+      "text": "Create a file p0.txt containing hi, then run pwd"
+    },
+    {
+      "id": "th:2026-11-25T05:23:50Z:1",
+      "turn": 1,
+      "ord": 2,
+      "rev": 3,
+      "source": "transcript",
+      "at": 1795584230000,
+      "gen": 0,
+      "kind": "thought",
+      "text": "Check where the workspace is first.",
+      "streaming": false
+    },
+    {
+      "id": "tool:2026-11-25T05:23:50Z:1:0",
+      "turn": 1,
+      "ord": 3,
+      "rev": 5,
+      "source": "transcript",
+      "at": 1795584230000,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "2026-11-25T05:23:50Z:1:0",
+      "toolKind": "execute",
+      "title": "Print working directory",
+      "status": "completed",
+      "locations": [],
+      "input": {
+        "fields": [
+          {
+            "key": "CommandLine",
+            "value": "pwd"
+          },
+          {
+            "key": "WaitMsBeforeAsync",
+            "value": "5000"
+          },
+          {
+            "key": "toolSummary",
+            "value": "Print working directory"
+          }
+        ]
+      },
+      "content": [
+        {
+          "type": "terminal",
+          "terminalId": "2026-11-25T05:23:50Z:1:0",
+          "output": "/tmp/demo",
+          "exitCode": 0
+        }
+      ],
+      "startedAt": 1795584230000,
+      "endedAt": 1795584231000
+    },
+    {
+      "id": "tool:2026-11-25T05:23:52Z:3:0",
+      "turn": 1,
+      "ord": 4,
+      "rev": 7,
+      "source": "transcript",
+      "at": 1795584232000,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "2026-11-25T05:23:52Z:3:0",
+      "toolKind": "edit",
+      "title": "write_file",
+      "status": "completed",
+      "locations": [],
+      "input": {
+        "fields": [
+          {
+            "key": "Content",
+            "value": "hi"
+          },
+          {
+            "key": "Overwrite",
+            "value": "true"
+          },
+          {
+            "key": "Path",
+            "value": "/tmp/demo/p0.txt"
+          }
+        ]
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "Created file."
+        }
+      ],
+      "startedAt": 1795584232000,
+      "endedAt": 1795584233000
+    },
+    {
+      "id": "a:2026-11-25T05:23:55Z:6",
+      "turn": 1,
+      "ord": 5,
+      "rev": 8,
+      "source": "transcript",
+      "at": 1795584235000,
+      "gen": 0,
+      "kind": "assistant",
+      "parts": [
+        {
+          "type": "text",
+          "text": "Created p0.txt containing hi, and the working directory is /tmp/demo."
+        }
+      ],
+      "streaming": false
+    },
+    {
+      "id": "turn:ag:2026-11-25T05:24:10Z:7",
+      "turn": 2,
+      "ord": 0,
+      "rev": 17,
+      "source": "transcript",
+      "at": 1795584250000,
+      "gen": 0,
+      "kind": "turn",
+      "turnId": "ag:2026-11-25T05:24:10Z:7",
+      "startedAt": 1795584250000,
+      "endedAt": 1795584253000,
+      "stopReason": "end_turn",
+      "permissionWaitMs": 0
+    },
+    {
+      "id": "u:ag:2026-11-25T05:24:10Z:7",
+      "turn": 2,
+      "ord": 1,
+      "rev": 11,
+      "source": "transcript",
+      "at": 1795584250000,
+      "gen": 0,
+      "kind": "user",
+      "text": "Now run a command that fails"
+    },
+    {
+      "id": "tool:2026-11-25T05:24:11Z:8:0",
+      "turn": 2,
+      "ord": 2,
+      "rev": 14,
+      "source": "transcript",
+      "at": 1795584251000,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "2026-11-25T05:24:11Z:8:0",
+      "toolKind": "execute",
+      "title": "List a missing directory",
+      "status": "failed",
+      "locations": [],
+      "input": {
+        "fields": [
+          {
+            "key": "CommandLine",
+            "value": "ls /nonexistent"
+          },
+          {
+            "key": "toolSummary",
+            "value": "List a missing directory"
+          }
+        ]
+      },
+      "content": [
+        {
+          "type": "terminal",
+          "terminalId": "2026-11-25T05:24:11Z:8:0",
+          "output": "ls: /nonexistent: No such file or directory",
+          "exitCode": 2
+        }
+      ],
+      "startedAt": 1795584251000,
+      "endedAt": 1795584252000
+    },
+    {
+      "id": "tool:2026-11-25T05:24:11Z:8:1",
+      "turn": 2,
+      "ord": 3,
+      "rev": 15,
+      "source": "transcript",
+      "at": 1795584251000,
+      "gen": 0,
+      "kind": "tool",
+      "toolCallId": "2026-11-25T05:24:11Z:8:1",
+      "toolKind": "read",
+      "title": "read_file",
+      "status": "completed",
+      "locations": [],
+      "input": {
+        "fields": [
+          {
+            "key": "Path",
+            "value": "/tmp/demo/p0.txt"
+          }
+        ]
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "hi"
+        }
+      ],
+      "startedAt": 1795584251000,
+      "endedAt": 1795584252000
+    },
+    {
+      "id": "a:2026-11-25T05:24:13Z:11",
+      "turn": 2,
+      "ord": 4,
+      "rev": 16,
+      "source": "transcript",
+      "at": 1795584253000,
+      "gen": 0,
+      "kind": "assistant",
+      "parts": [
+        {
+          "type": "text",
+          "text": "The command failed with exit code 2."
+        }
+      ],
+      "streaming": false
+    }
+  ]
+}

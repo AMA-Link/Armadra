@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { AGENT_IDS } from "./agents";
 import {
+  DISCOVERED_TRANSCRIPT_AGENT_IDS,
   TRANSCRIPT_AGENT_IDS,
   hasTranscript,
   defaultAgentDriver,
@@ -82,5 +83,28 @@ describe("defaultAgentView", () => {
       );
     }
     expect(hasTranscript("custom:x")).toBe(false);
+  });
+});
+
+describe("a transcript that core has to go and find (agy)", () => {
+  it("can be switched to the session body by hand but is not given it by default", () => {
+    for (const id of DISCOVERED_TRANSCRIPT_AGENT_IDS) {
+      expect(hasTranscript(id)).toBe(true);
+      expect(
+        defaultAgentView({
+          setting: "acp",
+          acpInstalled: false,
+          baseAgentId: id,
+        }),
+      ).toEqual({ driver: "terminal" });
+    }
+    // 别的有转录的 CLI 照旧给会话体。
+    expect(
+      defaultAgentView({
+        setting: "acp",
+        acpInstalled: false,
+        baseAgentId: "claude",
+      }),
+    ).toEqual({ driver: "terminal", view: "session" });
   });
 });

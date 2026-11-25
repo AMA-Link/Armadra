@@ -41,6 +41,7 @@ import {
   setCopyHooksForTest,
   setMaxCopyBytesForTest,
   setWarningLog,
+  topLevelAmong,
 } from "./agy";
 import { availabilityOf } from "./availability";
 import {
@@ -674,6 +675,30 @@ describe("读失败不清空索引", () => {
     database.exec("CREATE TABLE conversation_summaries (conversation_id text)");
     database.close();
     expect(candidates(dbPath)).toEqual([]);
+  });
+});
+
+describe("topLevelAmong", () => {
+  it("keeps the top-level conversations of the index, drops children and unknowns, and says nothing when the index cannot be read", () => {
+    createDatabase([
+      ...MIXED,
+      // 刚创建、还没写第一步：不要求 step_count，仍然是顶层。
+      { id: "fresh", steps: 0 },
+    ]).close();
+    expect(
+      topLevelAmong(dbPath, [
+        "c-new",
+        "sub-1",
+        "sub-2",
+        "ide-1",
+        "ghost",
+        "fresh",
+      ]),
+    ).toEqual(new Set(["c-new", "fresh"]));
+    expect(topLevelAmong(dbPath, [])).toEqual(new Set());
+    writeFileSync(dbPath, "this is not a database");
+    writeFileSync(`${dbPath}-wal`, "");
+    expect(topLevelAmong(dbPath, ["c-new"])).toBeUndefined();
   });
 });
 

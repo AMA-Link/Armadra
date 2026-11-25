@@ -50,6 +50,20 @@ export interface RecordSourceOptions {
   readonly stat?: StatFn | undefined;
 }
 
+export interface DiscoveredSession {
+  readonly sessionId: string;
+  readonly transcriptPath: string;
+}
+
+/** {@link TranscriptAdapter.discover} 能用的事实。 */
+export interface DiscoverContext {
+  /** 这个会话的 PTY 进程号；读不到（远程、休眠）答 `undefined`。 */
+  readonly pid: number | undefined;
+  readonly remote: boolean;
+  readonly cwd: string;
+  readonly startedAtMs: number;
+}
+
 export interface TranscriptAdapter {
   /** 与 `agent_status.agent_id` 的基础 id 一致。 */
   readonly agentId: string;
@@ -62,6 +76,14 @@ export interface TranscriptAdapter {
   convert(record: unknown, sink: TimelineSink): void;
   /** hook 里的工具名 → 时间线工具 kind（活动的 `toolKind`）。 */
   toolKind(toolName: string): string;
+  /**
+   * 没有 hook 的 CLI 自己去找会话（#1036）：管理器在终端会话起来之后按间隔问它，
+   * 答出会话 id 与转录路径就建来源。只用于观察级展示，不写 `agent_status`、不进任何
+   * 门。远程节点（本机文件读不到）与读不出来的一律答 `undefined`，不报错。
+   */
+  discover?(
+    context: DiscoverContext,
+  ): Promise<DiscoveredSession | undefined> | DiscoveredSession | undefined;
   /**
    * 来源不是 JSONL 文件时的读取器工厂；有它就不走尾读器。`locate` 仍可答一个路径
    * （OpenCode 答库文件，只用来判断「这台机器上有没有」）。
