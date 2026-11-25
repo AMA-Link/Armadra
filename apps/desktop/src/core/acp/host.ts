@@ -26,7 +26,9 @@ import { RPC_ERRORS, RpcError } from "@armadra/agent/acp";
 import {
   type AgentRole,
   type TimelineConfigOption,
-  acpReportsPermissionModes,
+  acpModeIdOf,
+  acpModeSource,
+  acpTableModes,
 } from "@armadra/shared";
 
 import type { PermissionMode } from "../agent/launch";
@@ -316,6 +318,11 @@ export interface AcpStartOptions {
   readonly agentId?: string;
   readonly program: string;
   readonly args: readonly string[];
+  /**
+   * `args` 末尾必须排最后的那段（grok 的 `stdio`）。终端登录要在适配器的 argv 后面
+   * 再加方法自己的参数时，加在它前面。
+   */
+  readonly trailingArgs?: readonly string[];
   readonly cwd: string;
   readonly env?: NodeJS.ProcessEnv;
   /** 起会话后 `session/set_mode` 的 id。 */
@@ -387,6 +394,11 @@ export interface AcpHostSession {
   readonly resumeError?: { readonly code: string; readonly message: string };
   readonly capabilities: AcpCapabilities;
   readonly modes: AcpSessionModeState | null;
+  /**
+   * 模式目录是兼容表给的（`ACP_REPORTED_MODES` 的 `table`）：agent 不返回 `modes`，
+   * `current_mode_update` 只认目录里有的 id。
+   */
+  readonly modesFromTable?: boolean;
   /** 要求了模式：落上了没有。没要求时缺席。 */
   readonly modeApplied?: boolean;
   /** 模型目录（§26.2）；客户端或 Agent 不给时为 `null`。 */
@@ -624,12 +636,12 @@ export async function startAcp(
                 touchReplay = touch;
               },
             );
-            modes = reportedModes(options.agentId, result.modes);
+            modes = reportedModes(options.agentId, result.modes, "existing");
             config = configOptionsOf(result);
             opened = "load";
           } else {
             const result = await opener.resumeSession(id, options.cwd);
-            modes = reportedModes(options.agentId, result.modes);
+            modes = reportedModes(options.agentId, result.modes, "existing");
             config = configOptionsOf(result);
             opened = "resume";
           }
@@ -653,7 +665,7 @@ export async function startAcp(
           options.sessionTimeoutMs ?? SESSION_NEW_TIMEOUT_MS,
         );
         sessionId = result.sessionId;
-        modes = reportedModes(options.agentId, result.modes);
+        modes = reportedModes(options.agentId, result.modes, "new");
         config = configOptionsOf(result);
         pi = piMetaOf(result);
       } catch (error) {
@@ -689,28 +701,39 @@ export async function startAcp(
       }
     }
     let modeApplied: boolean | undefined;
-    if (options.modeId !== undefined) {
+    // 目录来自兼容表的家：load / resume 会恢复上次的模式（可能是 plan），而 agent
+    // 没告诉我们现在是哪个——没要求模式时也落一次缺省，免得界面写 default、实际在
+    // plan。
+    const tableModes =
+      options.agentId !== undefined &&
+      acpModeSource(options.agentId) === "table";
+    const wantedMode =
+      options.modeId ??
+      (tableModes && opened !== "new" && options.agentId !== undefined
+        ? acpModeIdOf(options.agentId, "default")
+        : undefined);
+    if (wantedMode !== undefined) {
       modeApplied = await applyMode(
         process_,
         sessionId,
         modes,
-        options.modeId,
+        wantedMode,
         modeConfigId,
       );
-      if (!modeApplied && options.requireMode === true) {
+      if (
+        !modeApplied &&
+        options.requireMode === true &&
+        options.modeId !== undefined
+      ) {
         throw new AcpError(
           "acp_mode_unavailable",
           `the agent has no mode ${options.modeId}`,
         );
       }
       if (modeApplied && modes !== null) {
-        modes = { ...modes, currentModeId: options.modeId };
+        modes = { ...modes, currentModeId: wantedMode };
         if (modeConfigId !== undefined) {
-          configView = withConfigValue(
-            configView,
-            modeConfigId,
-            options.modeId,
-          );
+          configView = withConfigValue(configView, modeConfigId, wantedMode);
         }
       }
     }
@@ -744,6 +767,7 @@ export async function startAcp(
       ...(resumeError === undefined || opened !== "new" ? {} : { resumeError }),
       capabilities,
       modes,
+      ...(tableModes ? { modesFromTable: true } : {}),
       ...(modeApplied === undefined ? {} : { modeApplied }),
       models,
       configOptions: configView,
@@ -885,11 +909,12 @@ function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
 function launchOf(
   options: Pick<
     AcpStartOptions,
-    "program" | "args" | "cwd" | "env" | "transport"
+    "program" | "args" | "cwd" | "env" | "transport" | "trailingArgs"
   >,
 ): {
   program: string;
   args: readonly string[];
+  trailingArgs?: readonly string[];
   cwd: string;
   env?: NodeJS.ProcessEnv;
 } {
@@ -899,7 +924,16 @@ function launchOf(
     cwd: options.cwd,
     ...(options.env === undefined ? {} : { env: options.env }),
   };
-  if (options.transport === undefined) return direct;
+  // 经 transport 改写过的命令行（SSH）不再是「适配器 argv + 末尾那段」的形状，
+  // 末尾的说明不跟过去。
+  if (options.transport === undefined) {
+    return {
+      ...direct,
+      ...(options.trailingArgs === undefined
+        ? {}
+        : { trailingArgs: options.trailingArgs }),
+    };
+  }
   return options.transport({ ...direct, env: options.env });
 }
 
@@ -1031,8 +1065,24 @@ function exitedError(process_: AcpProcess): AcpError {
 function reportedModes(
   agentId: string | undefined,
   modes: AcpSessionModeState | null | undefined,
+  phase: "new" | "existing",
 ): AcpSessionModeState | null {
-  if (agentId !== undefined && !acpReportsPermissionModes(agentId)) return null;
+  const source = agentId === undefined ? "permission" : acpModeSource(agentId);
+  if (source === "ignore") return null;
+  if (source === "table" && agentId !== undefined) {
+    // agent 不报（或报的不是权限）：目录取兼容表。新会话从缺省起；接回的会话 agent
+    // 已经恢复了上次的模式，现在是哪个不知道（空串），由调用方落一次缺省。
+    const available = acpTableModes(agentId).map((mode) => ({
+      id: mode.id,
+      name: mode.name,
+    }));
+    if (available.length === 0) return null;
+    return {
+      availableModes: available,
+      currentModeId:
+        phase === "new" ? (acpModeIdOf(agentId, "default") ?? "") : "",
+    };
+  }
   return modes ?? null;
 }
 
@@ -1141,7 +1191,16 @@ export function adapterStartOptions(
       `${adapter.program} is not installed on this machine`,
     );
   }
+  // 只收 http / sse 的适配器（Copilot）：stdio 服务器改走启动参数（#858）。它们是
+  // argv 的一部分，要排在 `trailingArgs`（grok 的 `stdio`）之前，所以交给计划。
+  const wanted =
+    options.mcpServers ?? acpMcpServers(adapter, options.canvasMcp);
+  const viaArgs = adapter.injection.mcpViaArgs === true;
+  const mcpArgs = viaArgs
+    ? wanted.flatMap((server) => copilotAcpMcpArgs(server as AcpStdioMcpServer))
+    : [];
   const plan = acpLaunchPlan(adapter, {
+    extraArgs: mcpArgs,
     ...(options.mode === undefined ? {} : { mode: options.mode }),
     ...(options.profilePath === undefined
       ? {}
@@ -1171,16 +1230,14 @@ export function adapterStartOptions(
         }
       : ambient;
   const mode = options.mode ?? "default";
-  const { canvasMcp, metaInput, mcpServers: given, ...rest } = options;
+  const {
+    canvasMcp: _canvasMcp,
+    metaInput,
+    mcpServers: _given,
+    ...rest
+  } = options;
   const sessionMeta = acpSessionMeta(adapter, { ...metaInput, mode });
-  // 给了现成的服务器（SSH 节点：执行主机上的 Hook 客户端）就用它们。
-  const wanted = given ?? acpMcpServers(adapter, canvasMcp);
-  // 只收 http / sse 的适配器（Copilot）：stdio 服务器改走启动参数（#858）。
-  const viaArgs = adapter.injection.mcpViaArgs === true;
   const mcpServers = viaArgs ? [] : wanted;
-  const mcpArgs = viaArgs
-    ? wanted.flatMap((server) => copilotAcpMcpArgs(server as AcpStdioMcpServer))
-    : [];
   return {
     ...rest,
     env,
@@ -1188,7 +1245,10 @@ export function adapterStartOptions(
     ...(sessionMeta === undefined ? {} : { sessionMeta }),
     agentId: adapter.agentId,
     program: target?.program ?? resolved,
-    args: [...(target?.args ?? []), ...plan.args, ...mcpArgs],
+    args: [...(target?.args ?? []), ...plan.args],
+    ...(plan.trailingArgs === undefined
+      ? {}
+      : { trailingArgs: plan.trailingArgs }),
     ...(plan.modeId === undefined
       ? {}
       : {
@@ -1219,6 +1279,7 @@ export interface AdapterProcessContext {
   readonly launch: {
     readonly program: string;
     readonly args: readonly string[];
+    readonly trailingArgs?: readonly string[];
     readonly cwd: string;
     readonly env?: NodeJS.ProcessEnv;
   };
@@ -1234,6 +1295,7 @@ export async function withAdapterProcess<T>(
     | "env"
     | "initializeTimeoutMs"
     | "transport"
+    | "trailingArgs"
     | "prestarted"
   >,
   work: (context: AdapterProcessContext) => Promise<T>,

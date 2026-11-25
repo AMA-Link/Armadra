@@ -54,6 +54,7 @@ const AGENTS = [
   "copilot",
   "ama",
   "agy",
+  "grok",
 ];
 const STATUS: [string, string, string][] = [
   ["--danger", "--danger-text", "--danger-soft"],

@@ -345,6 +345,9 @@ export async function setup(clis) {
     // 用这一份，core 才认得出它的会话。
     XDG_DATA_HOME: join(scratch, "xdg-data"),
     COPILOT_HOME: join(scratch, "copilot-home"),
+    // grok 的会话、配置、登录态都在 `GROK_HOME` 下：不给的话 core 的历史读取会去读
+    // 操作员真实的 `~/.grok`。
+    GROK_HOME: join(scratch, "grok-home"),
     PI_CODING_AGENT_DIR: join(scratch, "pi-agent"),
     SHELL: shell,
     ARMADRA_TEST_ECO_IDLE_SECONDS: String(ECO_IDLE_SECONDS),

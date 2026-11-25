@@ -111,6 +111,7 @@ OpenCode 多两行 `OPENCODE_CONFIG_DIR='…'; export OPENCODE_CONFIG_DIR`（在
 - 不依赖 `bash`，只用 POSIX `sh`（`#!/bin/sh`）：与远端启动器 `bin/armadra-hook` 同一假设。
 - 注入文件写错（路径不存在）由 CLI 报错，与今天一样；启动器自己不检查文件。
 - 调用者的参数里出现 `--` 之后的词也照传。
+- **注入位置**（`LauncherSpec.placement`，缺省 `after`）：注入 argv 默认接在调用者的词之后。prompt 前有 `--` 的 CLI（grok：`grok <旗标> -- <prompt>`，`--` 之后全是 prompt）用 `before-separator`：启动器把参数轮转一遍，在第一个单独的 `--` 之前插入注入词（没有 `--` 就接在最后），环境分支（`fallback`）同样处理；词是字面量，只在启动器自己的参数表里搬动，不经 `eval`。Windows 的 `.launch` 加 `place=before-separator` 一行（缺省不写，旧程序读到的文本不变），`armadra-launch.exe` 在命令行里按 C 运行库的引号规则找第一个单独的 `--`。执行主机的那份与本机用同一个生成器，`Injection.placement` 一路带过去。
 
 ### 4.2 `shims/<cli>`
 

@@ -70,6 +70,12 @@ export interface AcpAdapter {
   /** 程序之后固定的 argv。 */
   readonly args: readonly string[];
   /**
+   * 固定 argv 里**必须排在最后**的那一段，放在模式 argv、注入 argv 之后。grok 的
+   * `stdio` 是子命令，它的 `--always-approve`、`--plugin-dir` 这些选项要在它之前
+   * （实测 `grok agent stdio --always-approve` 不认）。
+   */
+  readonly trailingArgs?: readonly string[];
+  /**
    * 运行时才知道值的那个旗标：`ama --profile <path>`。给了 profile 路径才加，
    * 没给就不加（ama 自己用缺省 profile）。
    */
@@ -239,6 +245,27 @@ export const ACP_ADAPTERS: readonly AcpAdapter[] = [
     expectedProcess: ["agy"],
     canvasTools: "mcp",
   },
+  {
+    agentId: "grok",
+    support: "native",
+    program: "grok",
+    // `--no-leader`：会话 pid 就是适配器 pid，也不被用户配置里的 `use_leader`
+    // 带到共享的 leader 进程上；`stdio` 必须最后（见 `trailingArgs`）。
+    args: ["agent", "--no-leader"],
+    trailingArgs: ["stdio"],
+    // 真账号实测（1.0.92）：`session/new` 的 sessionId 与会话目录名、hook 的
+    // sessionId 是同一个 UUIDv7；`session/load`（回放历史）与 `session/resume` 都有。
+    sessionId: "same",
+    resume: "load",
+    // 全自动走启动旗标 `--always-approve`；`_meta.yoloMode` 等 armadra-agent 的会话
+    // `_meta` 通道，到时在这里加 `sessionMeta`。
+    modes: ACP_MODE_TABLE.grok,
+    // 画布工具走 stdio `mcpServers`（实测 `mcp_server_connected`）。规则、插件目录
+    // 的 `_meta` 注入与终端的 `--rules` / `--allow` 在 G2 与 `_meta` 通道之后。
+    injection: { mcp: true, reuse: [] },
+    expectedProcess: ["grok", "grok-native"],
+    canvasTools: "mcp",
+  },
 ];
 
 export function acpAdapter(agentId: string): AcpAdapter | undefined {
@@ -294,11 +321,18 @@ export interface AcpLaunchOptions {
   readonly injectionArgs?: readonly string[];
   /** 节点的角色（`agent.role`）：只有注册表给它配了旗标的 CLI 才加。 */
   readonly role?: AgentRole;
+  /**
+   * 调用方另有的 argv（Copilot 把 stdio MCP 服务器改成启动参数）。排在注入之后、
+   * `trailingArgs` 之前：`stdio` 这类子命令必须最后。
+   */
+  readonly extraArgs?: readonly string[];
 }
 
 export interface AcpLaunchPlan {
-  /** 程序之后的完整 argv。 */
+  /** 程序之后的完整 argv（含末尾的 {@link trailingArgs}）。 */
   readonly args: readonly string[];
+  /** `args` 末尾那段必须排最后的固定 argv；没有就缺席。 */
+  readonly trailingArgs?: readonly string[];
   /** 起会话后要 `session/set_mode` 的 id；缺席 = 不调。 */
   readonly modeId?: string;
 }
@@ -310,7 +344,7 @@ export type AcpLaunchError = {
 
 /**
  * 一次启动的 argv 与模式 id。顺序：固定 argv → profile → 角色 → 模式 argv → 注入
- * （`passthrough` 的放最后，前面隔 `--`）。没有落点的模式答错误而不是悄悄
+ * （`passthrough` 的放最后，前面隔 `--`），再是 `trailingArgs`。没有落点的模式答错误而不是悄悄
  * 用缺省：一个说了 `plan` 却以可写模式起来的会话比起不来更糟。
  */
 export function acpLaunchPlan(
@@ -340,9 +374,14 @@ export function acpLaunchPlan(
     }
     args.push(...injection);
   }
-  return mapping.modeId === undefined
-    ? { args }
-    : { args, modeId: mapping.modeId };
+  args.push(...(options.extraArgs ?? []));
+  const trailing = adapter.trailingArgs ?? [];
+  args.push(...trailing);
+  return {
+    args,
+    ...(trailing.length === 0 ? {} : { trailingArgs: trailing }),
+    ...(mapping.modeId === undefined ? {} : { modeId: mapping.modeId }),
+  };
 }
 
 /**

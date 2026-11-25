@@ -27,6 +27,7 @@ const AGENTS = [
   "copilot",
   "ama",
   "agy",
+  "grok",
 ];
 const SURFACES = [
   "--bg",

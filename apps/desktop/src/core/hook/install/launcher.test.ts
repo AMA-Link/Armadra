@@ -245,6 +245,122 @@ describe.runIf(posixOnly)("the launcher, run by /bin/sh", () => {
  * 执行主机那份（docs/design/canvas-launcher.md §6.2）：同一个生成器，垫片委托
  * 给 `run/<cli>`，启动器里是远端路径；没有任何一份去碰 Codex 的信任。
  */
+describe("injection placement before `--` (grok)", () => {
+  const INJECTED = ["--rules", "a b 'c'", "--allow", "Bash(x *)"];
+  const before = (): LauncherSpec => ({
+    ...spec,
+    args: INJECTED,
+    placement: "before-separator",
+  });
+
+  function launch(
+    words: string[],
+    options: { canvas: boolean; spec?: LauncherSpec },
+  ): string[] {
+    write(launcherFiles(options.spec ?? before(), posix.join));
+    const out = join(root, "out.json");
+    const cli = fakeCli(join(root, "bin"), "claude", out);
+    const env = baseEnv("/usr/bin:/bin");
+    return run(
+      [join(spec.runDir, "claude"), cli, ...words],
+      options.canvas ? { ...env, [LAUNCH_GATE]: "node-1" } : env,
+      out,
+    ).seen.argv;
+  }
+
+  it.runIf(posixOnly)(
+    "inserts the injected words ahead of the first `--`, the prompt after it untouched",
+    () => {
+      expect(
+        launch(["--model", "m", "--", "--rules x", "version"], {
+          canvas: true,
+        }),
+      ).toEqual(["--model", "m", ...INJECTED, "--", "--rules x", "version"]);
+    },
+  );
+
+  it.runIf(posixOnly)(
+    "only the first `--` counts; a later one belongs to the prompt",
+    () => {
+      expect(launch(["-a", "--", "x", "--", "y"], { canvas: true })).toEqual([
+        "-a",
+        ...INJECTED,
+        "--",
+        "x",
+        "--",
+        "y",
+      ]);
+    },
+  );
+
+  it.runIf(posixOnly)(
+    "appends at the end when there is no `--`, and handles no words at all",
+    () => {
+      expect(launch(["--model", "m"], { canvas: true })).toEqual([
+        "--model",
+        "m",
+        ...INJECTED,
+      ]);
+      expect(launch([], { canvas: true })).toEqual(INJECTED);
+    },
+  );
+
+  it.runIf(posixOnly)(
+    "keeps empty and odd words as they are, outside a canvas node nothing moves",
+    () => {
+      expect(launch(["", "a b", "--", ""], { canvas: true })).toEqual([
+        "",
+        "a b",
+        ...INJECTED,
+        "--",
+        "",
+      ]);
+      expect(launch(["", "--", "p"], { canvas: false })).toEqual([
+        "",
+        "--",
+        "p",
+      ]);
+    },
+  );
+
+  it.runIf(posixOnly)(
+    "the default placement is unchanged: after everything, `--` included",
+    () => {
+      expect(
+        launch(["--", "p"], {
+          canvas: true,
+          spec: { ...spec, args: INJECTED },
+        }),
+      ).toEqual(["--", "p", ...INJECTED]);
+    },
+  );
+
+  it("applies to the environment fallback branch too", () => {
+    const text = posixLauncher({
+      ...before(),
+      fallback: { whenEnvAny: ["SAFE"], args: ["--safe"] },
+    });
+    expect(text.match(/armadra_put/g)?.length).toBeGreaterThan(8);
+    expect(text).toContain("--safe");
+  });
+
+  it("writes the plain `exec` text for the default placement (no rotation)", () => {
+    expect(posixLauncher({ ...spec, args: INJECTED })).not.toContain(
+      "armadra_put",
+    );
+    expect(posixLauncher({ ...spec, args: [] })).not.toContain("armadra_put");
+  });
+
+  it("travels with the synced copy for an execution host", () => {
+    // `remote.ts` hands the injection's placement to the same generator.
+    const files = launcherFiles(
+      { ...before(), runDir: "/r/run", shimDir: "/r/shims" },
+      posix.join,
+    );
+    expect(files.get("/r/run/claude")?.content).toContain("armadra_put");
+  });
+});
+
 describe("the environment fallback (contract §57)", () => {
   const FALLBACK = [
     "--settings",

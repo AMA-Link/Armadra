@@ -519,6 +519,64 @@ describe("what a report persists and broadcasts", () => {
   });
 });
 
+describe("/hook/grok（没有 hook 客户端的 CLI）", () => {
+  async function postGrok(it_: HookFixture, extra: object = {}) {
+    const token = it_.service.issueNodeToken(it_.nodeId);
+    return it_.postHook(
+      "grok",
+      {
+        nodeId: it_.nodeId,
+        payload: {
+          hook_event_name: "Stop",
+          session_id: "s-1",
+          hookEventName: "stop",
+        },
+        ...extra,
+      },
+      {
+        "x-armadra-hook-token": it_.bearer,
+        "x-armadra-node-token": token,
+      },
+    );
+  }
+
+  it("204，不产生状态、不发事件：不会被当成 Claude 的载荷", async () => {
+    const it_ = fixture();
+    insertSession(it_, { id: "sess-g", status: "running", agentId: "grok" });
+    const before = it_.published.length;
+    expect((await postGrok(it_)).status).toBe(204);
+    expect(it_.status()).toBeUndefined();
+    expect(it_.published.slice(before)).toEqual([]);
+  });
+
+  it("带终端绑定也不抽修订号：计数器一动不动，也没有运行关联报告", async () => {
+    const it_ = fixture();
+    const sessionId = uuidV7();
+    insertSession(it_, {
+      id: sessionId,
+      status: "running",
+      generation: 1,
+      agentId: "grok",
+    });
+    initializeContextSequence(
+      join(it_.core.directory, "context-sequences"),
+      sessionId,
+      1,
+    );
+    expect(
+      (await postGrok(it_, { terminalBinding: { sessionId, generation: 1 } }))
+        .status,
+    ).toBe(204);
+    const bytes = readFileSync(
+      join(it_.core.directory, "context-sequences", `${sessionId}-1.seq`),
+    );
+    expect(Number(bytes.readBigUInt64BE(0))).toBe(0);
+    expect(
+      it_.core.database.prepare("SELECT COUNT(*) AS n FROM run_reports").get(),
+    ).toMatchObject({ n: 0 });
+  });
+});
+
 describe("custom agents", () => {
   it("does not process a custom agent whose hooks capability is off", async () => {
     const it_ = fixture(true);

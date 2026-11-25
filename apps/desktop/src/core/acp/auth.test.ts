@@ -151,6 +151,32 @@ describe("Antigravity's terminal login", () => {
   });
 });
 
+describe("terminalAuthCommand 与必须排最后的 argv", () => {
+  it("方法自己的参数加在 trailingArgs 之前（grok 的 stdio 是子命令）", () => {
+    const command = terminalAuthCommand(
+      {
+        program: "/bin/grok",
+        args: ["agent", "--no-leader", "stdio"],
+        trailingArgs: ["stdio"],
+      },
+      { args: ["--reauth"], env: {} },
+    );
+    expect(command.args).toEqual(["agent", "--no-leader", "--reauth", "stdio"]);
+  });
+
+  it("末尾对不上（经 transport 改写过）就老样子接在最后", () => {
+    const command = terminalAuthCommand(
+      {
+        program: "ssh",
+        args: ["host", "grok agent stdio"],
+        trailingArgs: ["stdio"],
+      },
+      { args: ["--reauth"], env: {} },
+    );
+    expect(command.args).toEqual(["host", "grok agent stdio", "--reauth"]);
+  });
+});
+
 describe("authenticateOn", () => {
   it("completes an agent method through client.authenticate", async () => {
     const authenticate = vi.fn().mockResolvedValue({});

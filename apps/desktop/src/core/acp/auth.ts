@@ -61,6 +61,8 @@ export function terminalAuthCommand(
   launch: {
     readonly program: string;
     readonly args: readonly string[];
+    /** `args` 末尾必须排最后的那段（grok 的 `stdio`）；方法自己的参数加在它前面。 */
+    readonly trailingArgs?: readonly string[];
     readonly env?: NodeJS.ProcessEnv;
   },
   method: Pick<AcpAuthMethodInfo, "args" | "env">,
@@ -72,9 +74,24 @@ export function terminalAuthCommand(
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) continue;
     env[name] = value;
   }
+  const trailing = launch.trailingArgs ?? [];
+  const endsWithTrailing =
+    trailing.length > 0 &&
+    launch.args.length >= trailing.length &&
+    trailing.every(
+      (word, index) =>
+        launch.args[launch.args.length - trailing.length + index] === word,
+    );
+  const body = endsWithTrailing
+    ? launch.args.slice(0, launch.args.length - trailing.length)
+    : launch.args;
   return {
     program: launch.program,
-    args: [...launch.args, ...(method.args ?? [])],
+    args: [
+      ...body,
+      ...(method.args ?? []),
+      ...(endsWithTrailing ? trailing : []),
+    ],
     env,
   };
 }

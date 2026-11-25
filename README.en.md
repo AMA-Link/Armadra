@@ -12,7 +12,7 @@
 
 ---
 
-Armadra puts real CLI agents (Claude Code, Codex, OpenCode, Pi, Oh My Pi, GitHub Copilot) on an infinite canvas as terminal nodes, each keeping its own account, model and permission policy. Links between nodes decide what context an agent may read; messages and handoffs organise the work. Notes, editors, Git diffs, files, browsers and whiteboard objects sit on the same canvas. Everything stays on your machine; a headless server shell serves the same core when you need multiple devices or shared workspaces.
+Armadra puts real CLI agents (Claude Code, Codex, OpenCode, Pi, Oh My Pi, GitHub Copilot, Grok Build) on an infinite canvas as terminal nodes, each keeping its own account, model and permission policy. Links between nodes decide what context an agent may read; messages and handoffs organise the work. Notes, editors, Git diffs, files, browsers and whiteboard objects sit on the same canvas. Everything stays on your machine; a headless server shell serves the same core when you need multiple devices or shared workspaces.
 
 This is a condensed version of the Chinese README; the full feature list, design notes and roadmap are there.
 
@@ -20,16 +20,17 @@ This is a condensed version of the Chinese README; the full feature list, design
 
 Each CLI can be driven in two ways: **terminal mode** (the real CLI runs in a terminal node and reports state through a hook, extension or plugin) and the **ACP session view** (a chat view over the CLI's ACP adapter). "Tested" means an end-to-end scenario has been run against the real CLI and recorded; "untested" means the code was exercised only with a fake agent.
 
-| CLI            | Terminal mode                                       | ACP session view                                                                         |
-| -------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Claude Code    | tested                                              | tested (claude-agent-acp ≥ 0.85.1)                                                       |
-| Codex          | tested                                              | untested (codex-acp)                                                                     |
-| OpenCode       | injection and status tested; e2e scenario not run   | untested                                                                                 |
-| Pi             | tested                                              | session open and mode switch tested (ama's Pi bridge, Pi 1.5.0); full turn not run       |
-| Oh My Pi       | injection and status tested; e2e scenario not run   | untested                                                                                 |
-| GitHub Copilot | injection and status tested; e2e scenario not run   | untested; cannot resume a session                                                        |
-| ama            | bundled with the desktop shell                      | untested                                                                                 |
-| Antigravity    | display-only status (OSC 7501), no canvas injection | handshake and session operations tested (agy 1.5.16, floor 1.5.15); e2e scenario not run |
+| CLI            | Terminal mode                                              | ACP session view                                                                         |
+| -------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Claude Code    | tested                                                     | tested (claude-agent-acp ≥ 0.85.1)                                                       |
+| Codex          | tested                                                     | untested (codex-acp)                                                                     |
+| OpenCode       | injection and status tested; e2e scenario not run          | untested                                                                                 |
+| Pi             | tested                                                     | session open and mode switch tested (ama's Pi bridge, Pi 1.5.0); full turn not run       |
+| Oh My Pi       | injection and status tested; e2e scenario not run          | untested                                                                                 |
+| GitHub Copilot | injection and status tested; e2e scenario not run          | untested; cannot resume a session                                                        |
+| ama            | bundled with the desktop shell                             | untested                                                                                 |
+| Antigravity    | display-only status (OSC 7501), no canvas injection        | handshake and session operations tested (agy 1.5.16, floor 1.5.15); e2e scenario not run |
+| Grok Build     | launch and screen gates only; status and injection not yet | tested on 1.0.92 (`grok agent stdio`); no auto-edit in ACP                               |
 
 The ACP column follows [tools/release/compatibility.json](tools/release/compatibility.json) (`verified: null` means untested; probes record real runs there). The terminal column follows the [feature roadmap §4](docs/status/feature-roadmap.md). Custom agents can reuse the shape of any built-in CLI; see [agent collaboration](docs/guides/agent-collaboration.md).
 

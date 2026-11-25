@@ -17,7 +17,7 @@ Armadra 启动真实 CLI，保留各 CLI 的账户、模型选择、工具策略
 
 `ama` 是 Armadra 自己的协调 Agent（随包的 `@armadra/agent`），见下文「协调者与 runners」。
 
-**Antigravity（`agy`）是第一个没有画布注入的内置 CLI**（契约 §120）：它的 `--settings` 不收 hook 与 MCP，也没有单次生效的插件旗标，Armadra 不为它写任何用户文件。终端里只有 OSC 7501 的展示级状态（工作中 / 等审批 / 完成），没有会话 id 和状态来源，所以协作投递、派发与休眠续接只在 ACP 下可用。零写入的 hook（`--add-dir` 加载 `.agents/hooks.json`）已实测可行，列入后续批次（[设计](../design/agent-collaboration-channels.md)）。
+**Antigravity（`agy`）是第一个没有画布注入的内置 CLI，Grok Build（`grok`）是第二个（G1：状态源与注入在 G2）**（契约 §120）：它的 `--settings` 不收 hook 与 MCP，也没有单次生效的插件旗标，Armadra 不为它写任何用户文件。终端里只有 OSC 7501 的展示级状态（工作中 / 等审批 / 完成），没有会话 id 和状态来源，所以协作投递、派发与休眠续接只在 ACP 下可用。零写入的 hook（`--add-dir` 加载 `.agents/hooks.json`）已实测可行，列入后续批次（[设计](../design/agent-collaboration-channels.md)）。
 
 「启动提示」这一列只描述**人**在这里敲一条带提示词的启动行时会拼成什么。Agent
 新建的节点不走这一列：`canvas open-agent` 的启动行从不带提示词，第一条任务由
@@ -186,16 +186,17 @@ Armadra 的协作设计以节点身份、作用域与投递门禁为边界：默
 
 ACP 是同一个 Agent 节点的另一种驱动方式，不是第二条 Agent 通道（[ACP 会话视图](../design/acp-session-view.md)，契约 §14）。节点数据 `agent.driver: "acp"` 时 core 不开 PTY，直接起这家 CLI 的 ACP 入口；会话仍是 `terminal_sessions` 的一行（`backend_kind = 'acp'`），状态来源记为 `acp`，审批进同一张 `agent_approvals`，连线读取、`send`、`interrupt`、依赖编排与 Eco 休眠不变。
 
-| Agent       | ACP 入口                     | 支持 | 接回会话 |
-| ----------- | ---------------------------- | ---- | -------- |
-| Claude      | `claude-agent-acp`           | 官方 | `load`   |
-| Codex       | `codex-acp`                  | 官方 | `load`   |
-| OpenCode    | `opencode acp`               | 原生 | `load`   |
-| Pi          | `ama --mode acp --bridge pi` | 随包 | `load`   |
-| OMP         | `omp acp`                    | 原生 | `load`   |
-| Copilot     | `copilot --acp --stdio`      | 原生 | 不支持   |
-| ama         | `ama --mode acp`             | 原生 | `resume` |
-| Antigravity | `agy acp`                    | 原生 | `load`   |
+| Agent       | ACP 入口                       | 支持 | 接回会话 |
+| ----------- | ------------------------------ | ---- | -------- |
+| Claude      | `claude-agent-acp`             | 官方 | `load`   |
+| Codex       | `codex-acp`                    | 官方 | `load`   |
+| OpenCode    | `opencode acp`                 | 原生 | `load`   |
+| Pi          | `ama --mode acp --bridge pi`   | 随包 | `load`   |
+| OMP         | `omp acp`                      | 原生 | `load`   |
+| Copilot     | `copilot --acp --stdio`        | 原生 | 不支持   |
+| ama         | `ama --mode acp`               | 原生 | `resume` |
+| Antigravity | `agy acp`                      | 原生 | `load`   |
+| Grok Build  | `grok agent --no-leader stdio` | 原生 | `load`   |
 
 表的来源是 `core/acp/adapters.ts`；版本区间记在 `tools/release/compatibility.json`，由 C 档场景 12 真跑（`--record-compat`）填：Claude（claude-agent-acp 0.85.1）已记入；Codex、OpenCode、OMP、Copilot 等装好并登录的机器（[用户待办清单](../status/user-action-checklist.md)）。
 

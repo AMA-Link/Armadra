@@ -14,6 +14,7 @@ import {
   type AgentSettings,
   NO_CUSTOM_AGENTS,
   baseAgent,
+  nodeStateChannel,
   startsSilently,
 } from "../agent/registry";
 import { type AgentStatus, getAgentStatus } from "../agent/status";
@@ -155,6 +156,22 @@ export class TerminalDispatcher implements Dispatcher {
     if (node === undefined) return { state: "unsupported", generation: 0 };
     // 节点还在，但它现在跑的是另一个 Agent：计划冻结的那份定义已经不成立了。
     if (node.agentId !== launch.agentId) {
+      return { state: "unsupported", generation: 0 };
+    }
+    // 这个节点上这家 CLI 没有状态通道（grok 的 G1、只有 OSC 自报的 agy、远程节点上
+    // 读本机文件的通道）：回合进行中的节点没有任何上报，上面「在等人 / 在干活」
+    // 的判断全是空的——计划任务照写，正文加回车就落进正在工作的 pane。不是忙、
+    // 是不支持：这样的节点要靠 `canvas send --unverified` 之类显式自负其责。
+    const settings = this.context.settings?.() ?? NO_CUSTOM_AGENTS;
+    const known = loadSession(this.context.database, target.nodeId);
+    const remote =
+      known === undefined
+        ? false
+        : (this.context.terminals()?.remote?.(known.sessionId) ?? false);
+    if (
+      nodeStateChannel(baseAgent(settings, node.agentId), { remote }) ===
+      undefined
+    ) {
       return { state: "unsupported", generation: 0 };
     }
     const terminals = this.context.terminals();

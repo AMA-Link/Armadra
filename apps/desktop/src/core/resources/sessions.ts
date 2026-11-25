@@ -22,6 +22,7 @@ import { join } from "node:path";
 import { agentPath } from "../terminal/environment";
 import type { DatabaseSync } from "node:sqlite";
 
+import { sshHostOfNode } from "../terminal/ssh-host";
 import { remoteResources } from "./remote";
 import {
   SampleTimeout,
@@ -286,25 +287,6 @@ export function executionHostOf(
     return row === undefined ? "" : text(row, "execution_host_id");
   } catch {
     return "";
-  }
-}
-
-/** 终端节点数据里的 `ssh.hostId`：这个 SSH 终端连的是哪台主机。 */
-function sshHostOfNode(
-  database: DatabaseSync,
-  nodeId: string | null,
-): string | undefined {
-  if (nodeId === null) return undefined;
-  try {
-    const row = database
-      .prepare(
-        "SELECT json_extract(data_json, '$.ssh.hostId') AS host_id FROM nodes WHERE id = ?",
-      )
-      .get(nodeId) as Record<string, unknown> | undefined;
-    const hostId = row === undefined ? "" : text(row, "host_id");
-    return hostId === "" ? undefined : hostId;
-  } catch {
-    return undefined;
   }
 }
 

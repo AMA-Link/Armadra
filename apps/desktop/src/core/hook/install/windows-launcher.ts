@@ -63,7 +63,7 @@ export const LAUNCH_CONFIG_HEADER = "armadra-launch 1";
  * `LauncherSpec` fits.
  */
 export type LaunchConfigSpec = Pick<LauncherSpec, "agentId" | "args" | "env"> &
-  Partial<Pick<LauncherSpec, "credential" | "amaKeys">> & {
+  Partial<Pick<LauncherSpec, "credential" | "amaKeys" | "placement">> & {
     /**
      * Write `bare=ARMADRA_BARE` (zero injection, contract §113). The real
      * generator always sets it; a spec without it gives the older text.
@@ -136,6 +136,11 @@ export function launchConfig(
       throw new Error(`not an environment variable name: ${name}`);
     }
     lines.push(`env=${name}=${literal(`${name}'s value`, value)}`);
+  }
+  // 注入词的位置：缺省接在最后，不写这一行（旧的 `.launch` 与旧的程序都认得）；
+  // `before-separator` 才写，程序据此把注入词插在命令行里第一个单独的 `--` 之前。
+  if (spec.placement === "before-separator") {
+    lines.push(`place=${spec.placement}`);
   }
   for (const word of spec.args)
     lines.push(`arg=${literal("an argument", word)}`);

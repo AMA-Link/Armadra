@@ -100,15 +100,8 @@ function assembled(dataDir: string): AcpSshDeps | undefined {
   };
 }
 
-/** 节点数据里的 `ssh.hostId`；不是 SSH 节点答 `undefined`。 */
-export function sshHostOf(
-  data: Record<string, unknown> | undefined,
-): string | undefined {
-  const ssh = data?.ssh;
-  if (ssh === null || typeof ssh !== "object") return undefined;
-  const hostId = (ssh as { hostId?: unknown }).hostId;
-  return typeof hostId === "string" && hostId !== "" ? hostId : undefined;
-}
+/** 节点数据里的 `ssh.hostId`（读法在 `terminal/ssh-host.ts`）。 */
+export { sshHostOfData as sshHostOf } from "../terminal/ssh-host";
 
 /* ------------------------------- 远端命令 ------------------------------- */
 

@@ -88,6 +88,30 @@ describe("launchConfig", () => {
     expect(text).not.toMatch(/^(program|lead)=/m);
   });
 
+  it("writes `place=` only for a placement before `--`, ahead of the args", () => {
+    const placed = lines(
+      launchConfig(
+        { ...OPENCODE, args: ["--x", "--y"], placement: "before-separator" },
+        "run",
+      ),
+    ).slice(2);
+    expect(placed).toEqual([
+      `gate=${LAUNCH_GATE}`,
+      "env=OPENCODE_CONFIG_DIR=C:\\data\\integration\\opencode\\config",
+      'env=OPENCODE_CONFIG_CONTENT={"a": "b c"}',
+      "place=before-separator",
+      "arg=--x",
+      "arg=--y",
+    ]);
+    // The default leaves the text exactly as older launchers read it.
+    for (const spec of [
+      { ...OPENCODE, args: ["--x"] },
+      { ...OPENCODE, args: ["--x"], placement: "after" as const },
+    ]) {
+      expect(launchConfig(spec, "run")).not.toContain("place=");
+    }
+  });
+
   it("puts the environment before the arguments", () => {
     const all = lines(
       launchConfig({ ...OPENCODE, args: ["--x"] }, "run"),

@@ -51,6 +51,7 @@ export function probeHome(prefix = "armadra-probe-home-") {
     CLAUDE_CONFIG_DIR: join(path, ".claude"),
     CODEX_HOME: join(path, ".codex"),
     COPILOT_HOME: join(path, ".copilot"),
+    GROK_HOME: join(path, ".grok"),
     GIT_CONFIG_GLOBAL: gitconfig,
   };
   return {

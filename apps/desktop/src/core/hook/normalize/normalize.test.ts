@@ -99,6 +99,22 @@ describe("the shared event shape", () => {
     expect(normalize("custom:wrapper", "node-a", { nope: 1 })).toBeUndefined();
   });
 
+  it("grok 没有 hook 解析器：什么载荷都不产生事件，也不落进 Claude 的解析器", () => {
+    // 这些在 Claude 的解析器里都会是一条事件。
+    for (const payload of [
+      { hook_event_name: "Stop", session_id: "s-1" },
+      { hook_event_name: "UserPromptSubmit", prompt: "x" },
+      { hookEventName: "stop", sessionId: "s-1" },
+    ]) {
+      expect(normalizeAs("grok", "grok", "node-a", payload)).toBeUndefined();
+      expect(normalize("grok", "node-a", payload)).toBeUndefined();
+    }
+    // 对照：同一个载荷换成 Claude 就是事件。
+    expect(
+      normalizeAs("claude", "claude", "node-a", { hook_event_name: "Stop" }),
+    ).toBeDefined();
+  });
+
   it("parses a custom agent as its base and attributes it to itself", () => {
     // Copilot's vocabulary, not Claude's: the fallback parser would find
     // nothing here, so this only passes if the base picked the parser.

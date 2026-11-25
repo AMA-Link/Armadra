@@ -185,23 +185,24 @@ describe("the canvas integration", () => {
   });
 
   describe("a built-in CLI without injection (contract §120)", () => {
-    it("is what Antigravity answers: `none`, ACP-only canvas agents", () => {
-      const shape = state("agy", options("agy"));
-      expect(shape).toMatchObject({
-        agentId: "agy",
-        mode: "none",
-        stale: false,
-        launchArgs: [],
-        globalWrites: [],
-      });
-      expect(shape.canvasAgents.terminal).toBe("unavailable");
-      expect(shape.canvasAgents.reasons).toContain("no_injection");
-      // Nothing to write for it.
-      expect(() => install("agy", options("agy"))).toThrow(
-        /no canvas injection/,
-      );
-      expect(INJECTED_AGENTS as readonly string[]).not.toContain("agy");
-    });
+    it.each(["agy", "grok"])(
+      "is what %s answers: `none`, ACP-only canvas agents",
+      (id) => {
+        const shape = state(id, options(id));
+        expect(shape).toMatchObject({
+          agentId: id,
+          mode: "none",
+          stale: false,
+          launchArgs: [],
+          globalWrites: [],
+        });
+        expect(shape.canvasAgents.terminal).toBe("unavailable");
+        expect(shape.canvasAgents.reasons).toContain("no_injection");
+        // Nothing to write for it.
+        expect(() => install(id, options(id))).toThrow(/no canvas injection/);
+        expect(INJECTED_AGENTS as readonly string[]).not.toContain(id);
+      },
+    );
 
     it("answers the `none` shape: nothing generated, nothing stale, nothing global", () => {
       const shape = noInjectionState("opencode", options("opencode"));

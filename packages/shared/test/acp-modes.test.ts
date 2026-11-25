@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   ACP_MODE_TABLE,
   ACP_REPORTED_MODES,
+  NO_ACP_LANDING,
+  acpModeSource,
+  acpTableModes,
   AGENT_IDS,
   PERMISSION_MODES,
   acpModeCandidates,
@@ -28,7 +31,11 @@ describe("ACP_MODE_TABLE", () => {
       const definition = agentDefinition(id);
       for (const mode of PERMISSION_MODES) {
         if ((definition?.permissionFlag[mode].length ?? 0) > 0) {
-          expect(ACP_MODE_TABLE[id][mode], `${id} ${mode}`).not.toBe(null);
+          if (NO_ACP_LANDING[id]?.includes(mode)) {
+            expect(ACP_MODE_TABLE[id][mode], `${id} ${mode}`).toBe(null);
+          } else {
+            expect(ACP_MODE_TABLE[id][mode], `${id} ${mode}`).not.toBe(null);
+          }
         }
       }
       expect(ACP_MODE_TABLE[id].default, id).not.toBe(null);
@@ -67,6 +74,8 @@ describe("ACP_MODE_TABLE", () => {
       ],
       omp: ["default=default", "plan=plan"],
       copilot: [],
+      // grok：全自动是启动旗标，不能在会话里切；plan 之后回 default。
+      grok: ["default=default", "plan=plan"],
       ama: [
         "default=default",
         "auto-edit=auto-edit",
@@ -120,12 +129,28 @@ describe("ACP_MODE_TABLE", () => {
 });
 
 describe("ACP_REPORTED_MODES", () => {
-  it("has one row per built-in agent and every one reports permission modes", () => {
+  it("has one row per built-in agent; only grok ignores what it reports", () => {
     expect(Object.keys(ACP_REPORTED_MODES).sort()).toEqual(
       [...AGENT_IDS].sort(),
     );
-    const ignored = AGENT_IDS.filter((id) => !acpReportsPermissionModes(id));
-    expect(ignored).toEqual([]);
+    // grok 不返回 `modes`，目录以兼容表为准（`table`）；别家都用 agent 报的。
+    const notReported = AGENT_IDS.filter(
+      (id) => !acpReportsPermissionModes(id),
+    );
+    expect(notReported).toEqual(["grok"]);
+    expect(acpModeSource("grok")).toBe("table");
+    expect(acpModeSource("claude")).toBe("permission");
+    expect(acpModeSource("custom:x")).toBe("permission");
+  });
+
+  it("builds the table agents' catalogue from the compatibility table", () => {
+    expect(acpTableModes("grok")).toEqual([
+      { id: "default", name: "default" },
+      { id: "plan", name: "plan" },
+    ]);
+    // 没有目录要建的家（不是 `table`）也能问，答的是表里带 modeId 的那些。
+    expect(acpTableModes("copilot")).toEqual([]);
+    expect(acpTableModes("custom:x")).toEqual([]);
   });
 
   it("treats an unknown or custom agent as reporting permission modes", () => {

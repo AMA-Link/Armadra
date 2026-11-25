@@ -68,7 +68,15 @@ export const ControllerNodeDataSchema = z.discriminatedUnion("kind", [
       kind: z.literal("terminal"),
       agent: z
         .object({
-          id: z.enum(["codex", "claude", "opencode", "pi", "omp", "copilot"]),
+          id: z.enum([
+            "codex",
+            "claude",
+            "opencode",
+            "pi",
+            "omp",
+            "copilot",
+            "grok",
+          ]),
           permissionMode: z
             .enum(["default", "auto-edit", "full-auto", "plan"])
             .optional(),

@@ -180,6 +180,9 @@ export function remoteIntegrationFiles(
         shimDir: shims,
         args: injection.args,
         env: injection.env,
+        ...(injection.placement === undefined
+          ? {}
+          : { placement: injection.placement }),
       },
       posix.join,
     );

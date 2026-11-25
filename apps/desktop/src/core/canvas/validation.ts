@@ -77,6 +77,7 @@ export const BUILTIN_AGENT_IDS = [
   "copilot",
   "ama",
   "agy",
+  "grok",
 ] as const;
 
 const MAX_STICKY_CONTENT = 20_000;

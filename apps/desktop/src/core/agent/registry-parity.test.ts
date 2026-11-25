@@ -50,6 +50,7 @@ describe("the core's registry mirror agrees with @armadra/shared", () => {
       expect(profile?.resume, shared.id).toEqual(shared.resume);
       expect(profile?.exitCommand, shared.id).toBe(shared.exitCommand);
       expect(profile?.sessionIdFlag, shared.id).toBe(shared.sessionIdFlag);
+      expect(profile?.promptSeparator, shared.id).toBe(shared.promptSeparator);
     }
   });
 

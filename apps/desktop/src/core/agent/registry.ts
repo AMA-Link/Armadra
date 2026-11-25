@@ -31,6 +31,7 @@ export const AGENT_IDS = [
   "copilot",
   "ama",
   "agy",
+  "grok",
 ] as const;
 
 export type AgentId = (typeof AGENT_IDS)[number];
@@ -252,6 +253,21 @@ export const AGENT_REGISTRY: readonly AgentDefinition[] = [
     // is display-only (contract §53). The links and the canvas verbs are there
     // for the ACP-driven session (MCP); see `packages/shared/src/agents.ts`.
     capabilities: ["contextLink", "browser", "supportsModelSelection"],
+  },
+  {
+    id: "grok",
+    label: "Grok Build",
+    color: "#a1a1aa",
+    launchCmd: "grok",
+    promptMode: "argv",
+    expectedProcess: ["grok", "grok-native"],
+    // 没有 `hooks`：状态源与注入在 G2（packages/shared 同一处的说明）。
+    capabilities: [
+      "resume",
+      "contextLink",
+      "browser",
+      "supportsModelSelection",
+    ],
   },
 ];
 

@@ -93,6 +93,18 @@ export const ACP_MODE_TABLE: Readonly<Record<BuiltinAgentId, AcpModeTable>> = {
     "full-auto": { args: ["--dangerously-skip-permissions"] },
     plan: { modeId: "plan" },
   },
+  // grok 1.0.92 真账号实测：`session/set_mode` 只认 `default` / `ask` / `plan` /
+  // `agent`（agent 角色，不是权限）；`plan` 之后回 `default` 或 `agent` 都发
+  // `current_mode_update`。`acceptEdits`、`auto`、`dontAsk`、`bypassPermissions`
+  // 都是 `unknown mode id`，所以 auto-edit 在 ACP 下没有落点。全自动只能用启动旗标
+  // `--always-approve`（`_meta.yoloMode` 要等 armadra-agent 的会话 `_meta`
+  // 通道，到时再换成它，就能在会话里切）。
+  grok: {
+    default: { modeId: "default" },
+    "auto-edit": null,
+    "full-auto": { args: ["--always-approve"] },
+    plan: { modeId: "plan" },
+  },
 };
 
 /**
@@ -100,8 +112,10 @@ export const ACP_MODE_TABLE: Readonly<Record<BuiltinAgentId, AcpModeTable>> = {
  * 用；`ignore` 是这家把别的东西（如推理强度）塞在 `modes` 里，core 丢掉它，
  * 页面不画模式选择器，那一项只以配置项出现。
  */
+export type AcpReportedModes = "permission" | "ignore" | "table";
+
 export const ACP_REPORTED_MODES: Readonly<
-  Record<BuiltinAgentId, "permission" | "ignore">
+  Record<BuiltinAgentId, AcpReportedModes>
 > = {
   claude: "permission",
   codex: "permission",
@@ -111,7 +125,23 @@ export const ACP_REPORTED_MODES: Readonly<
   copilot: "permission",
   ama: "permission",
   agy: "permission",
+  // grok 的 `session/new|load|resume` 根本不返回 `modes`（1.0.92 真账号实测），
+  // 但 `session/set_mode` 认 `default` / `plan`。所以模式目录以表为准（`table`）：
+  // core 用 {@link acpTableModes} 当目录，agent 报来的（若哪个版本开始报，那是
+  // agent 角色 `default/ask/plan/agent`，不是权限）一律不用。
+  grok: "table",
 };
+
+/**
+ * 这家的模式目录从哪来：`permission` 用 agent 报来的 `modes`；`ignore` 没有模式
+ * 选择器；`table` 忽略 agent 报的，用兼容表（{@link acpTableModes}）。不认识的
+ * Agent 按 `permission`。
+ */
+export function acpModeSource(agentId: string): AcpReportedModes {
+  return (AGENT_IDS as readonly string[]).includes(agentId)
+    ? ACP_REPORTED_MODES[agentId as BuiltinAgentId]
+    : "permission";
+}
 
 /** 这家报的 `modes` 要不要当权限模式；不认识的 Agent 按权限模式。 */
 export function acpReportsPermissionModes(agentId: string): boolean {
@@ -149,6 +179,33 @@ export function acpModeCandidates(
   }
   return out;
 }
+
+/**
+ * `table` 家的模式目录：兼容表里带 `modeId` 的那些，按权限模式的顺序。形状与
+ * `session/new` 答复里的 `modes.availableModes` 一致，core 当 agent 报来的用。
+ */
+export function acpTableModes(
+  agentId: string,
+): readonly { readonly id: string; readonly name: string }[] {
+  return acpModeCandidates(agentId).map((candidate) => ({
+    id: candidate.modeId,
+    name: candidate.modeId,
+  }));
+}
+
+/**
+ * 终端有旗标、ACP 下确实没有落点的权限模式（表里显式为 `null`），逐家写明理由：
+ *   * grok：终端 `--permission-mode acceptEdits` 存在，但 ACP 的 `session/set_mode`
+ *     只认 `default` / `ask` / `plan` / `agent`（agent 角色，不是权限）——1.0.92
+ *     真账号逐个 id 实测，`acceptEdits` 报 `unknown mode id`；ACP 也没有别的入口。
+ *     界面按「这家 ACP 没有这个模式」处理，与设置页只给有对应参数的权限模式同一规矩。
+ * 测试「终端有旗标的模式在 ACP 下必须有落点」只放行这里列出的。
+ */
+export const NO_ACP_LANDING: Readonly<
+  Partial<Record<BuiltinAgentId, readonly PermissionMode[]>>
+> = {
+  grok: ["auto-edit"],
+};
 
 /** 权限模式 → 这家的 `session/set_mode` id；没有落点答 `undefined`。 */
 export function acpModeIdOf(

@@ -299,7 +299,9 @@ describe("换代、重入与槽的故障", () => {
     expect(r.domain.sources.slotCount).toBe(0);
   });
 
-  it("poke 抛错：不连累同一个 hook 的转录门铃", () => {
+  it("poke 抛错：槽与转录各一道 try，不互相连累", () => {
+    // 转录那一道：onHook 里槽抛错之后，Claude 的转录来源仍要建起来。
+    // 被叫到（活动层按事件走），所以断言门铃之后活动层里有这条事件的痕迹。
     register("reported", () => ({
       start() {},
       poke() {
@@ -310,9 +312,36 @@ describe("换代、重入与槽的故障", () => {
     insertSession(r.fixture, { id: SESSION, status: "running" });
     r.domain.sources.onSessionStart(r.fixture.nodeId, SESSION);
     const event = stateEvent(r.fixture.nodeId, "claude", WORKING);
+    event.sessionId = "cc-session";
+    const before = r.domain.sources.size;
     expect(() =>
       r.domain.sources.onHook(r.fixture.nodeId, event),
     ).not.toThrow();
+    // 转录那一道照常建了来源（没有 try 分开的话，槽抛错会让它整段被跳过）。
+    expect(r.domain.sources.size).toBe(before + 1);
+  });
+
+  it("stop 里同步上报：不会无限递归", () => {
+    let stops = 0;
+    register("reported", (context) => ({
+      start() {},
+      stop() {
+        stops++;
+        const event = stateEvent(context.nodeId, "claude", WORKING);
+        event.stateSource = "extension";
+        context.report(event);
+      },
+    }));
+    insertSession(r.fixture, { id: SESSION, status: "running" });
+    installInternalReporter({
+      ...r.fixture.context,
+      onHook: (id, event) => r.domain.sources.onHook(id, event),
+    });
+    r.domain.sources.onSessionStart(r.fixture.nodeId, SESSION);
+    r.database.prepare("UPDATE terminal_sessions SET status = 'exited'").run();
+    expect(() => r.domain.sources.reap()).not.toThrow();
+    expect(stops).toBe(1);
+    expect(r.domain.sources.slotCount).toBe(0);
   });
 
   it("按会话 id 开槽：节点上最新的 running 行不是它时不开", () => {

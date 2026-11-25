@@ -220,6 +220,46 @@ describe("launch parameters", () => {
     );
   });
 
+  it("grok：prompt 前有 `--`，且只在 argv 模式；flag-prompt 与 stdin 模式不加", () => {
+    expect(launchCommand(NO_CUSTOM, "grok", "version")).toBe(
+      "grok -- 'version'",
+    );
+    expect(
+      planLaunch(NO_CUSTOM, { agentId: "grok", prompt: "-x" }).args,
+    ).toEqual(["--", "-x"]);
+    expect(
+      planLaunch(NO_CUSTOM, {
+        agentId: "grok",
+        permissionMode: "full-auto",
+        prompt: "go",
+      }).args,
+    ).toEqual(["--always-approve", "--", "go"]);
+    // 以 grok 为 base 的自定义条目：argv 继承 `--`；改成 flag-prompt 而 grok 没有
+    // prompt 旗标时落回位置参数，不带 `--`；stdin 模式整条不上行。
+    const entry = (promptMode: string) =>
+      withCustom({
+        id: "custom:g",
+        label: "G",
+        launchCmd: "/opt/g",
+        baseAgent: "grok",
+        args: [],
+        promptMode,
+      });
+    expect(launchCommand(entry("argv"), "custom:g", "hi")).toBe(
+      "/opt/g -- 'hi'",
+    );
+    expect(launchCommand(entry("flag-prompt"), "custom:g", "hi")).toBe(
+      "/opt/g 'hi'",
+    );
+    expect(launchCommand(entry("stdin-after-start"), "custom:g", "hi")).toBe(
+      "/opt/g",
+    );
+    expect(
+      planLaunch(entry("flag-prompt"), { agentId: "custom:g", prompt: "hi" })
+        .args,
+    ).toEqual(["--prompt", "hi"]);
+  });
+
   // 设计 agent-delivery.md §8.2 E1：`custom:` 的 id 在 `PROFILES` 里没有行，
   // 从原样的 id 解析提示词形状会把每一个自定义 Agent 都丢进位置参数分支——而
   // base 是 Copilot 的那个，裸位置参数就是 `-p`：非交互，跑完就退出。

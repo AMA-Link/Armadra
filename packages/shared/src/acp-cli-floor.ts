@@ -35,6 +35,10 @@ export const ACP_CLI_FLOOR: Readonly<
   // open after `session/cancel`, and turns ending while background work ran.
   // agy has no npm package: it updates itself.
   agy: { minVersion: "1.5.15", updateCommand: "agy update" },
+  // grok：ACP 入口的行为（`_meta` 以外的 `mcpServers`、`session/load` /
+  // `resume`、`--plugin-dir`）只在 1.0.92 实测过；更旧的（stable 通道的 1.0.77）
+  // 终端能力有，ACP 没验证，宁可提示升级。
+  grok: { minVersion: "1.0.92", package: AGENT_CLI_PACKAGES.grok },
 };
 
 /** 这家 CLI 的最低版本要求；没有登记（或不是内置 Agent）答 `undefined`。 */

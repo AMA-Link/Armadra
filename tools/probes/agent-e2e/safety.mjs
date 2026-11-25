@@ -28,6 +28,11 @@ const guarded = [
   join(homedir(), ".omp/agent/config.yml"),
   join(homedir(), ".omp/agent/models.yml"),
   join(homedir(), ".copilot/config.json"),
+  // grok：用户级 hook / 配置 / 目录信任记录一个字节都不该变（画布注入只给单次进程
+  // 参数，不写 grok 的任何文件；凭据 `auth.json` 探针既不读也不碰）。
+  join(homedir(), ".grok/config.toml"),
+  join(homedir(), ".grok/trusted_folders.toml"),
+  join(homedir(), ".grok/hooks-paths"),
   // 场景 12（设计 acp-session-view §11）：Claude 用真实配置目录，这几份字节不许变。
   join(homedir(), ".claude/settings.local.json"),
   join(homedir(), ".claude/.credentials.json"),

@@ -30,6 +30,11 @@ export function normalizeAs(
     // 设计 §5.4）。`/hook/{agentId}` 的路径校验认不得 `acp`，客户端到不了这里。
     case "acp":
       return acp.normalize(nodeId, agentId, payload);
+    // grok 没有 hook 客户端：它的状态由 core 内部产生（读它自己的会话文件），
+    // `/hook/grok` 上来的任何东西都不是它的上报——不能落进下面 default 的 Claude
+    // 解析器，那会把一个不相干的 JSON 当成 Claude 的事件。
+    case "grok":
+      return undefined;
     case "codex":
       return codex.normalize(nodeId, agentId, payload);
     case "copilot":
