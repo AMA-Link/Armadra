@@ -22,6 +22,8 @@ import {
   encodeCwd,
   grokSlotProvider,
   locateEvents,
+  parseEtime,
+  psProcessTable,
   readActiveSessions,
 } from "./grok-events";
 import { installCoreStateSources } from "./index";
@@ -41,6 +43,7 @@ let timers: FakeTimers;
 let reports: AgentEvent[];
 let table: Map<number, number>;
 let names: Map<number, string>;
+let started: Map<number, number>;
 let platform: NodeJS.Platform;
 let screenText: string | undefined;
 let sessionHome: string | undefined;
@@ -49,6 +52,8 @@ let rows: {
   pid: number;
   cwd: string;
   opened_at?: string;
+  /** 微秒；缺省 1（不与任何启动时间比）。 */
+  pid_start?: number;
 }[];
 let activeRaw: string | undefined;
 let removeSources: (() => void) | undefined;
@@ -80,7 +85,7 @@ function writeActive(): void {
       JSON.stringify(
         rows.map((row) => ({
           ...row,
-          pid_start: 1,
+          pid_start: row.pid_start ?? 1,
           opened_at: row.opened_at ?? "2026-11-25T00:00:00Z",
         })),
       ),
@@ -90,7 +95,7 @@ function writeActive(): void {
 const deps = (): GrokDeps => ({
   home: (override) => override ?? home,
   readActive: readActiveSessions,
-  processTable: () => ({ parents: table, names }),
+  processTable: () => ({ parents: table, names, startedMs: started }),
   platform: () => platform,
   locate: locateEvents,
   now: () => timers.now(),
@@ -134,6 +139,7 @@ beforeEach(() => {
     [999, 1],
   ]);
   names = new Map();
+  started = new Map();
   platform = "darwin";
   screenText = undefined;
   sessionHome = undefined;
@@ -226,6 +232,78 @@ describe("按进程绑定", () => {
     platform = "darwin";
     expect(open().slot).toBeDefined();
     expect(nodeStateChannel("grok", { remote: false })).toBe("transcript");
+  });
+});
+
+describe("陈旧的行：进程不在了、pid 被复用", () => {
+  const T0 = Date.parse("2026-11-25T07:00:00Z");
+  const ready = (pidStart: number | undefined) => {
+    rows = [
+      {
+        session_id: "s",
+        pid: CHILD_PID,
+        cwd: CWD,
+        ...(pidStart === undefined ? {} : { pid_start: pidStart * 1000 }),
+      },
+    ];
+    writeActive();
+    writeEvents("s", [line("turn_started")]);
+  };
+
+  it("pid 已经不在进程表里（崩了没来得及清行）：这一行不算", () => {
+    ready(undefined);
+    table.delete(CHILD_PID);
+    const { slot } = open();
+    slot!.start();
+    expect(reports).toEqual([]);
+    slot!.stop();
+  });
+
+  it("pid 还在但启动时间对不上（被别的进程复用）：不算；对得上才算", () => {
+    ready(T0);
+    started.set(CHILD_PID, T0 + 60 * 60_000);
+    const stale = open();
+    stale.slot!.start();
+    expect(reports).toEqual([]);
+    stale.slot!.stop();
+
+    started.set(CHILD_PID, T0 + 2_000);
+    const live = open();
+    live.slot!.start();
+    expect(states()).toEqual(["working"]);
+    live.slot!.stop();
+  });
+
+  it("记录里没有 pid_start、或进程表里没有启动时间：不判，照常绑定", () => {
+    ready(undefined);
+    started.set(CHILD_PID, T0);
+    const a = open();
+    a.slot!.start();
+    expect(states()).toEqual(["working"]);
+    a.slot!.stop();
+    reports.length = 0;
+    started.clear();
+    ready(T0);
+    const b = open();
+    b.slot!.start();
+    expect(states()).toEqual(["working"]);
+    b.slot!.stop();
+  });
+
+  it("etime 的几种写法与真实进程表里的自己", () => {
+    expect(parseEtime("00:08")).toBe(8);
+    expect(parseEtime("01:02:03")).toBe(3723);
+    expect(parseEtime("2-03:04:05")).toBe(2 * 86_400 + 3 * 3_600 + 4 * 60 + 5);
+    expect(parseEtime("garbage")).toBeUndefined();
+    if (process.platform === "win32") return;
+    const real = psProcessTable(() => Date.now() + 3_600_000);
+    const mine = real?.startedMs?.get(process.pid);
+    // 精度约一秒（etime）：与 `process.uptime()` 推出来的启动时间差在几秒内。
+    expect(mine).toBeDefined();
+    const expected = Date.now() + 3_600_000 - process.uptime() * 1000;
+    expect(Math.abs((mine ?? 0) - expected)).toBeLessThan(5_000);
+    // 进程表的缓存按「现在」算：把这趟用的假时间挪走，别留给后面的用例。
+    psProcessTable(() => 0);
   });
 });
 

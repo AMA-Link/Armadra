@@ -75,6 +75,8 @@ export interface ActiveRow {
   readonly cwd: string;
   /** `opened_at`（毫秒）；没有或读不出是 0。选「当前会话」时与最近一回合的开始时间比。 */
   readonly openedAtMs: number;
+  /** `pid_start`（进程启动时间，毫秒；记录里是微秒）；没有或读不出是 0。 */
+  readonly pidStartMs: number;
 }
 
 export type ActiveRead =
@@ -88,6 +90,27 @@ export type ActiveRead =
 export interface ProcessTable {
   readonly parents: ReadonlyMap<number, number>;
   readonly names: ReadonlyMap<number, string>;
+  /** 每个进程的启动时间（毫秒，由 `etime` 推出，精度约一秒）；读不出的没有这一项。 */
+  readonly startedMs?: ReadonlyMap<number, number>;
+}
+
+/**
+ * 记录里的 `pid_start` 与进程表里这个 pid 的启动时间差超过这么多，就是 pid 被别的进程
+ * 复用了（原来的 grok 已经退出，没来得及清行）。留得很宽：只拦「差了很久」的。
+ */
+export const PID_START_TOLERANCE_MS = 10_000;
+
+/** `[[dd-]hh:]mm:ss` → 秒；读不出是 `undefined`。 */
+export function parseEtime(text: string): number | undefined {
+  const match = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)$/.exec(text.trim());
+  if (match === null) return undefined;
+  const [, days, hours, minutes, seconds] = match;
+  return (
+    Number(days ?? 0) * 86_400 +
+    Number(hours ?? 0) * 3_600 +
+    Number(minutes) * 60 +
+    Number(seconds)
+  );
 }
 
 export interface GrokDeps {
@@ -138,7 +161,13 @@ export function readActiveSessions(home: string): ActiveRead {
   if (list === undefined) return { kind: "unreadable" };
   const rows: ActiveRow[] = [];
   for (const row of list) {
-    const { session_id: sessionId, pid, cwd, opened_at: openedAt } = row;
+    const {
+      session_id: sessionId,
+      pid,
+      cwd,
+      opened_at: openedAt,
+      pid_start: pidStart,
+    } = row;
     if (
       typeof sessionId !== "string" ||
       typeof pid !== "number" ||
@@ -155,6 +184,10 @@ export function readActiveSessions(home: string): ActiveRead {
       pid,
       cwd,
       openedAtMs: Number.isFinite(opened) ? opened : 0,
+      pidStartMs:
+        typeof pidStart === "number" && pidStart > 0
+          ? Math.floor(pidStart / 1000)
+          : 0,
     });
   }
   return { kind: "rows", rows };
@@ -172,7 +205,7 @@ export function psProcessTable(
   if (cachedTable !== undefined && at - cachedTable.at < PROCESS_TABLE_TTL_MS) {
     return cachedTable.table;
   }
-  const result = spawnSync("ps", ["-A", "-o", "pid=,ppid=,comm="], {
+  const result = spawnSync("ps", ["-A", "-o", "pid=,ppid=,etime=,comm="], {
     encoding: "utf8",
     timeout: 3_000,
     maxBuffer: 16 * 1024 * 1024,
@@ -181,13 +214,17 @@ export function psProcessTable(
   if (result.status === 0 && typeof result.stdout === "string") {
     const parents = new Map<number, number>();
     const names = new Map<number, string>();
+    const startedMs = new Map<number, number>();
     for (const line of result.stdout.split("\n")) {
-      const match = /^\s*(\d+)\s+(\d+)\s+(.*?)\s*$/.exec(line);
+      const match = /^\s*(\d+)\s+(\d+)\s+(\S+)\s+(.*?)\s*$/.exec(line);
       if (match === null) continue;
-      parents.set(Number(match[1]), Number(match[2]));
-      names.set(Number(match[1]), basename(match[3] ?? ""));
+      const pid = Number(match[1]);
+      parents.set(pid, Number(match[2]));
+      names.set(pid, basename(match[4] ?? ""));
+      const elapsed = parseEtime(match[3] ?? "");
+      if (elapsed !== undefined) startedMs.set(pid, at - elapsed * 1000);
     }
-    table = { parents, names };
+    table = { parents, names, startedMs };
   }
   cachedTable = { at, table };
   return table;
@@ -602,11 +639,25 @@ class GrokSlot implements StateSlot {
   private bind(rows: readonly ActiveRow[]): ActiveRow[] {
     const root = this.context.pid();
     if (root === undefined) return [];
-    const mine = rows.filter((row) => row.pid === root);
-    const others = rows.filter((row) => row.pid !== root);
-    if (others.length === 0) return mine;
+    if (rows.length === 0) return [];
     const table = this.deps.processTable();
-    if (table === undefined) return mine;
+    // 先丢掉不是活 grok 的行：进程已经不在（崩了没来得及清行），或 pid 被别的进程
+    // 复用了（`pid_start` 与进程表里的启动时间差得很远）。进程表读不出就不判。
+    const live =
+      table === undefined
+        ? rows
+        : rows.filter((row) => {
+            if (!table.parents.has(row.pid)) return false;
+            const started = table.startedMs?.get(row.pid);
+            return (
+              started === undefined ||
+              row.pidStartMs <= 0 ||
+              Math.abs(started - row.pidStartMs) <= PID_START_TOLERANCE_MS
+            );
+          });
+    const mine = live.filter((row) => row.pid === root);
+    const others = live.filter((row) => row.pid !== root);
+    if (others.length === 0 || table === undefined) return mine;
     const parents = table.parents;
     for (const row of others) {
       let at: number | undefined = row.pid;

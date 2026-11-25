@@ -6352,6 +6352,7 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
 - **算上报**：`stateSourceIsReported("transcript")` 为真，能满足空闲门、休眠与投递的依据——数据是 CLI 自己写的本机文件，由 core 自己读，客户端无法自称。**不进运行关联报告**（`stateSourceIsRunReport` 仍只有 `hook`、`extension`）：它没有 `promptHash` 与终端绑定，所以 grok 不声明 `structuredInputAck`。
 - **`/hook/grok` 整条丢弃**：状态由 core 内部产生的 provider（`providerReportsInternally`），HTTP 上来的任何载荷都不是它的上报，`ingest` 先于绑定抽取就答 204、不产生事件。
 - **按进程绑定**：`$GROK_HOME`（缺省 `~/.grok`）下的 `active_sessions.json` 实时记 `{ session_id, pid, pid_start, cwd, opened_at }`，退出即清。行的 `pid` 是节点终端进程本身或它的后代的，才是这个节点的。`/new`、`/resume`、`/fork`、`/home` 在**同一个进程**里换会话（旧行还在），所以一个节点可以有几行：每一行的 `sessions/<cwd 的百分号编码>/<id>/events.jsonl` 都读，聚合——任一行在等审批报 `waiting`，否则任一行在回合里报 `working`，否则 `done`。不用预铸的 `-s <id>`：它只跟第一个会话。
+- **陈旧的行**：进程已经不在进程表里（崩了没来得及清行）的行不算；`pid_start`（进程启动时间，微秒，实测与 `ps` 的启动时间一致）与进程表里这个 pid 的启动时间（由 `etime` 推出，精度约一秒）差超过 10 秒的也不算（pid 被别的进程复用了）。记录里没有 `pid_start`、进程表读不出（Windows、`ps` 失败）时不判。
 - **读取**：第一次见到一行时重放文件尾（至多 2 MiB）得出现状，之后按偏移读新增的整行；未知的行类型只计数。`turn_ended.outcome` 的 `completed` → `done`；`cancelled` → `done` + `interrupted`；`error` 与任何不认识的值 → `done` + `errored`。每个新出现的行说一次 `session start`。
 - **自动放行不报 waiting**：`--allow` 规则命中时 `permission_requested` 后面几十毫秒内就跟着 `permission_resolved allow`（1.0.92 真账号实测 34 ms），所以一个审批请求开着超过 300 ms 才算 `waiting`，窗口内算 `working`。
 - **判 idle 之前补读**：`send` 在看节点状态之前先让读取槽同步读一次文件尾（`refreshNodeState`），轮询间隔的窗口里文件已经写了 `turn_started`、行里还写着 `done` 的情形不会放行投递。
