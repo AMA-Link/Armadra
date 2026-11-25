@@ -716,28 +716,45 @@ export const agyAdapter: HistoryAdapter = {
 };
 
 /**
- * 这些会话 id 里，索引库确认是**顶层**（没有父会话、深度 0）的那些。
- *
- * 不要求 `step_count > 0`：刚创建、还没写第一步的会话也算。库读不了答 `undefined`
- * （调用方要保守，不要把「读不了」当成「都不是顶层」）；库里没有的 id 不在结果里。
+ * 这些会话 id 在索引库里是什么：`top` 顶层（没有父会话、深度 0，不要求
+ * `step_count > 0`，刚创建的也算）、`child`（库里有、但不是顶层：子代理）；库里没有的
+ * id 不在结果里（可能还没写进去，调用方稍后再问）。库读不了答 `undefined`（调用方
+ * 要保守，不要把「读不了」当成「都不是顶层」）。
  */
-export function topLevelAmong(
+export function classifyConversations(
   root: string,
   ids: readonly string[],
-): Set<string> | undefined {
-  if (ids.length === 0) return new Set();
+): Map<string, "top" | "child"> | undefined {
+  if (ids.length === 0) return new Map();
   const outcome = withDatabase(root, (database) => {
-    const found = new Set<string>();
+    const found = new Map<string, "top" | "child">();
     const statement = database.prepare(
-      "SELECT conversation_id FROM conversation_summaries " +
-        `WHERE app_data_dir = '${APP_DATA_DIR}' AND conversation_id = ? ` +
-        "AND (parent_conversation_id IS NULL OR parent_conversation_id = '') " +
-        "AND COALESCE(nesting_depth, 0) = 0",
+      "SELECT parent_conversation_id AS parent, nesting_depth AS depth " +
+        "FROM conversation_summaries " +
+        `WHERE app_data_dir = '${APP_DATA_DIR}' AND conversation_id = ?`,
     );
     for (const id of ids) {
-      if (statement.get(id) !== undefined) found.add(id);
+      const row = statement.get(id) as
+        { parent: string | null; depth: number | null } | undefined;
+      if (row === undefined) continue;
+      const top =
+        (row.parent === null || row.parent === "") &&
+        Number(row.depth ?? 0) === 0;
+      found.set(id, top ? "top" : "child");
     }
     return found;
   });
   return outcome.state === "ok" ? outcome.value : undefined;
+}
+
+/** 这些 id 里索引库确认的顶层；库读不了答 `undefined`。 */
+export function topLevelAmong(
+  root: string,
+  ids: readonly string[],
+): Set<string> | undefined {
+  const kinds = classifyConversations(root, ids);
+  if (kinds === undefined) return undefined;
+  return new Set(
+    [...kinds].filter(([, kind]) => kind === "top").map(([id]) => id),
+  );
 }
