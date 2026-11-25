@@ -162,7 +162,13 @@ export class TerminalDispatcher implements Dispatcher {
     // 读本机文件的通道）：回合进行中的节点没有任何上报，上面「在等人 / 在干活」
     // 的判断全是空的——计划任务照写，正文加回车就落进正在工作的 pane。不是忙、
     // 是不支持：这样的节点要靠 `canvas send --unverified` 之类显式自负其责。
-    const settings = this.context.settings?.() ?? NO_CUSTOM_AGENTS;
+    const given = this.context.settings?.();
+    // `custom:` 条目的 base 只有设置里查得到：取不到就答「不知道」，不拿空设置去猜
+    // （空设置下它没有 base、也就没有通道，会被误判成不支持）。
+    if (given === undefined && node.agentId.startsWith("custom:")) {
+      return { state: "unknown", generation: 0 };
+    }
+    const settings = given ?? NO_CUSTOM_AGENTS;
     const known = loadSession(this.context.database, target.nodeId);
     const remote =
       known === undefined

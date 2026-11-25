@@ -276,6 +276,27 @@ describe("Agent 目标的探测", () => {
     }
   });
 
+  it("自定义条目而设置取不到：答「不知道」，不拿空设置去猜它的通道", async () => {
+    const { database, store } = openStore();
+    canvasTables(database);
+    database
+      .prepare("UPDATE nodes SET data_json = ? WHERE id = 'node-1'")
+      .run(JSON.stringify({ agent: { id: "custom:wrapper" } }));
+    const dispatcher = new TerminalDispatcher({
+      database,
+      store,
+      hostId: HOST_ID,
+      terminals: () => bridge([]),
+      clock: () => 1_700_000_000_000,
+    });
+    const target = agentTargetOf();
+    target.agentLaunch!.agentId = "custom:wrapper";
+    expect(await dispatcher.supports(target)).toEqual({
+      state: "unknown",
+      generation: 0,
+    });
+  });
+
   it("终端域还没装好时是「不知道」，不是「坏了」", async () => {
     const { database, dispatcher } = setUp({ bridged: false });
     state(database, "idle");
