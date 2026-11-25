@@ -621,6 +621,18 @@ export async function attempt(
     targetStateLabel = state;
   }
 
+  // 第二道保险，只做否决：程序自己用 OSC 7501 报了 `blocked`（停在审批上）就不投。
+  // 状态通道说「空闲」、画面门又没认出那个对话框的时候，这是最后一个能拦住
+  // 「替人答题」的地方；`blocked` 以外的任何值都不放行任何东西。
+  if (
+    state === "idle" &&
+    context.terminals?.programStatus?.(live.session.sessionId)?.state ===
+      "blocked"
+  ) {
+    state = "awaiting-approval";
+    targetStateLabel = state;
+  }
+
   if (state !== "idle") {
     const reason: QueueReason =
       state === "busy"

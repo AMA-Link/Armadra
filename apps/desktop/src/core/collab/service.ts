@@ -88,6 +88,11 @@ export interface TerminalBridge {
   /** 没有状态适配的会话，终端域对它知道的全部（§4.3 的启发式要的三样）。 */
   observed?(sessionId: string): ObservedActivity | undefined;
   /**
+   * 程序自己用 OSC 7501 报的状态（契约 §53）。只当否决用：停在 `blocked` 就不投，
+   * 没报或报别的都不放行任何东西。
+   */
+  programStatus?(sessionId: string): { readonly state: string } | undefined;
+  /**
    * 这个会话跑在远程执行主机上。状态通道按节点判（`agent/state-source.ts` 的
    * `nodeStateChannel`）：只读本机文件的通道对远程节点不成立。缺席按本机算。
    */

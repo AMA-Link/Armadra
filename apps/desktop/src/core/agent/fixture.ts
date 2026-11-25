@@ -87,6 +87,8 @@ export interface StubTerminal {
   readonly drive: Map<string, Partial<DriveTarget>>;
   /** `observed` 的答案，按会话 id。 */
   readonly activity: Map<string, ObservedActivity>;
+  /** `terminal.program` 里程序自报的状态（OSC 7501），按会话 id。 */
+  readonly programs: Map<string, { state: string }>;
   /** 跑在远程主机上的会话 id（`remote` 的答案）。 */
   readonly remote: Set<string>;
   /** 下一次 `writeSubmit` 抛这个。 */
@@ -101,6 +103,7 @@ export function stubTerminal(): StubTerminal {
     terminated: [],
     drive: new Map(),
     activity: new Map(),
+    programs: new Map(),
     remote: new Set(),
     submitError: undefined,
     capture: "",
@@ -138,6 +141,7 @@ export function stubTerminal(): StubTerminal {
         stub.submits.push({ sessionId, generation, data, driver });
       },
       observed: (sessionId) => stub.activity.get(sessionId),
+      programStatus: (sessionId) => stub.programs.get(sessionId),
       remote: (sessionId) => stub.remote.has(sessionId),
     },
   };

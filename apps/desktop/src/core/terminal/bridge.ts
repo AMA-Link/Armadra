@@ -53,6 +53,7 @@ export function terminalBridge(
     writeSubmit: (sessionId, generation, text, driver) =>
       manager.writeSubmit(sessionId, generation, text, driver),
     observed: (sessionId) => manager.observedActivity(sessionId),
+    programStatus: (sessionId) => manager.programStatus(sessionId),
     remote: (sessionId) => manager.isRemote(sessionId),
     inputRevision: (sessionId) => manager.inputRevision(sessionId),
   };

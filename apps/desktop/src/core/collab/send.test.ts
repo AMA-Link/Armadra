@@ -315,6 +315,37 @@ describe("the gate chain", () => {
   });
 });
 
+// 第二道保险：状态通道说空闲、画面门又没认出对话框时，程序自己用 OSC 7501 报的
+// `blocked` 仍然拦得住。只做否决，不做放行。
+describe("a target the program itself reports as blocked", () => {
+  it("is queued as awaiting approval even though its state channel says idle", async () => {
+    target({ state: "idle" });
+    fixture.terminal.programs.set(peerSession, { state: "blocked" });
+    const body = ok(await send());
+    expect(body).toMatchObject({
+      outcome: "queued",
+      reason: "TARGET_AWAITING_APPROVAL",
+    });
+    expect(fixture.terminal.submits).toHaveLength(0);
+    const refused = refusal(await send({ "no-queue": true }));
+    expect(refused.code).toBe("TARGET_AWAITING_APPROVAL");
+    expect(fixture.terminal.submits).toHaveLength(0);
+  });
+
+  it("does not let any other self-reported state through or hold anything back", async () => {
+    target({ state: "idle" });
+    fixture.terminal.programs.set(peerSession, { state: "working" });
+    expect(ok(await send())).toMatchObject({ outcome: "delivered" });
+    // 状态通道说在忙时，程序报 `idle` 也放不了行。
+    fixture.terminal.submits.length = 0;
+    resetSendLimits();
+    target({ state: "busy" });
+    fixture.terminal.programs.set(peerSession, { state: "idle" });
+    expect(ok(await send())).toMatchObject({ outcome: "queued" });
+    expect(fixture.terminal.submits).toHaveLength(0);
+  });
+});
+
 describe("a target stopped on a permission prompt", () => {
   /**
    * 设计 §4.5 的那条硬规矩：**任何参数组合下都不会被写入正文。** 三种组合各一

@@ -227,6 +227,28 @@ export const SCREEN_SIGNATURES: Readonly<Record<string, ScreenSignatures>> = {
       },
     ],
   },
+  // Antigravity：只有 `--unverified`（没有状态通道）时才用得到这道门。字符串取自
+  // 本机 1.5.16 二进制；没有提示符特征（首投不要求看得见提示符，只拦对话框）。
+  agy: {
+    dialogs: [
+      {
+        // 「Yes」会把目录记进用户的信任列表。
+        id: "agy.folder-trust",
+        pattern:
+          /Yes, I trust this folder|Do you trust the contents of this project\?/,
+        verified: true,
+        source: "Antigravity CLI 1.5.16 二进制字符串（2026-11-24）",
+      },
+      {
+        // 审批卡的选项行；卡出现时输入框被它顶掉。
+        id: "agy.approval",
+        pattern:
+          /Yes, and always allow|No, and always deny|Yes, grant permission for/,
+        verified: true,
+        source: "Antigravity CLI 1.5.16 二进制字符串（2026-11-24）",
+      },
+    ],
+  },
   grok: {
     dialogs: [
       {

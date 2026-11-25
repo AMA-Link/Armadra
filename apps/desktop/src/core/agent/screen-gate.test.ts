@@ -132,6 +132,20 @@ const GROK_TRUST = [
   "  No, quit  n",
 ].join("\n");
 
+const AGY_TRUST = [
+  "  Do you trust the contents of this project?",
+  "  /tmp/demo",
+  "  Yes, I trust this folder",
+  "  No, exit",
+].join("\n");
+
+const AGY_APPROVAL = [
+  "  Run command: rm -r build",
+  "  Yes, and always allow for commands that start with 'rm'",
+  "  Yes",
+  "  No, and always deny for rm",
+].join("\n");
+
 const COPILOT_TRUST = [
   " Confirm folder trust",
   " Do you trust the files in this folder?",
@@ -276,6 +290,20 @@ describe("judgeScreen", () => {
     ).toEqual({ kind: "no-prompt" });
   });
 
+  it("Antigravity：目录信任与审批卡都拦；没有提示符特征，首投不要求看得见提示符", () => {
+    for (const first of [true, false]) {
+      expect(judgeScreen(profile("agy"), AGY_TRUST, first)).toEqual({
+        kind: "dialog",
+        dialog: "agy.folder-trust",
+      });
+      expect(judgeScreen(profile("agy"), AGY_APPROVAL, first)).toEqual({
+        kind: "dialog",
+        dialog: "agy.approval",
+      });
+    }
+    expect(profile("agy").prompt).toBeUndefined();
+  });
+
   it("Grok：目录信任与审批卡都拦，首投与平常一样；答完卡、输入框回来就放行", () => {
     for (const first of [true, false]) {
       expect(judgeScreen(profile("grok"), GROK_TRUST, first)).toEqual({
@@ -399,6 +427,8 @@ const GROK_PLAN_REVIEW_FOCUSED = [
  * （安装包字符串、本机画面或官方文档），其余是编的。不跑任何真 CLI。
  */
 const DIALOG_SCREENS: Readonly<Record<string, string>> = {
+  "agy.folder-trust": AGY_TRUST,
+  "agy.approval": AGY_APPROVAL,
   "grok.folder-trust": GROK_TRUST,
   "grok.approval": GROK_APPROVAL,
   "grok.plan-review": GROK_PLAN_REVIEW,
