@@ -1,5 +1,5 @@
 import { adapterFor } from "../acp/adapters";
-import { hasCapability } from "../agent/registry";
+import { baseAgent, hasCapability } from "../agent/registry";
 import { acpSurfaceAvailable } from "../collab/control/agent-driver";
 import {
   readModel,
@@ -10,6 +10,7 @@ import { cleanTitle } from "../collab/control/board";
 import { Args, Refusal, Refused } from "../collab/refusals";
 import type { CollabContext } from "../collab/service";
 import { CoreFailure } from "../http/errors";
+import { isInjected } from "../hook/install/inject";
 import type { NewTargetSpec } from "./bundle";
 
 /**
@@ -93,6 +94,18 @@ export function validateNewTarget(
     const surface = text(raw, "surface");
     if (surface !== "terminal" && surface !== "acp") {
       throw Refusal.badRequest("target.surface 只能是 terminal 或 acp。");
+    }
+    // 没有画布注入的内置 CLI（契约 §120）：终端里没有技能、没有 MCP，读不到交接，
+    // 目标也报不出「已读」。只能开成 ACP（那里 `canvas_handoff_read` 走 MCP）。
+    if (
+      surface === "terminal" &&
+      !isInjected(baseAgent(context.settings, agentId))
+    ) {
+      throw new Refused(
+        400,
+        "target_surface_unsupported",
+        `${agentId} 的终端没有画布注入，读不到交接；请用 ACP 形态。`,
+      );
     }
     if (surface === "acp" && !acpSurfaceAvailable(context.settings, agentId)) {
       throw new Refused(
