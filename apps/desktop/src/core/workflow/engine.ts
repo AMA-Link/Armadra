@@ -123,6 +123,11 @@ export interface StartRunRequest {
   readonly startedByNodeId?: string | undefined;
 }
 
+/** 每个节点留多少条提示词、拿提示词的开头多少字去认，以及认不出时放弃的时限。 */
+const PROMPT_HISTORY = 30;
+const PROMPT_FRAGMENT = 40;
+const OWN_PROMPT_GRACE_MS = 120_000;
+
 export class WorkflowEngine {
   private readonly database: DatabaseSync;
   private readonly clock: () => number;
@@ -136,6 +141,18 @@ export class WorkflowEngine {
   private timer: NodeJS.Timeout | undefined;
   private unsubscribe: (() => void) | undefined;
   private stopped = false;
+  /**
+   * 每个节点最近的几次 hook 上报的提示词（`working` 事件带的 `lastMessage`）。
+   * 终端里先后进来的几段（上一轮的反馈、收件箱唤醒、这一步的提示词）各自一轮、
+   * 各自结束一次；引擎只认「忙过之后的第一次结束」，不分是哪一轮的，前面那轮
+   * 的结束迟到就会被当成这一步的（#1034）。所以一步的结束要等到它自己的提示词
+   * 出现过：这一步开始之后见过别的提示词、却没见过自己的，那次结束不算。没有
+   * 提示词的 CLI 认不出来，照旧；超过 {@link OWN_PROMPT_GRACE_MS} 也照旧。
+   */
+  private readonly prompts = new Map<
+    string,
+    { readonly text: string; readonly at: number }[]
+  >();
 
   constructor(private readonly options: WorkflowEngineOptions) {
     this.database = options.database;
@@ -401,6 +418,7 @@ export class WorkflowEngine {
     if (event.type === "agent.status") {
       const id = (event.status as { nodeId?: unknown }).nodeId;
       if (typeof id === "string") nodeId = id;
+      if (nodeId !== undefined) this.trackPrompt(nodeId, event.status);
     } else if (event.type === "agent.delivery") {
       nodeId = event.targetNodeId;
     } else if (event.type === "terminal.exit") {
@@ -415,6 +433,41 @@ export class WorkflowEngine {
     for (const runId of runsTouchingNode(this.database, nodeId)) {
       void this.progress(runId);
     }
+  }
+
+  private trackPrompt(
+    nodeId: string,
+    status: Readonly<Record<string, unknown>>,
+  ): void {
+    const message = status.lastMessage;
+    if (status.state !== "working" || typeof message !== "string") return;
+    const list = this.prompts.get(nodeId) ?? [];
+    if (list.at(-1)?.text !== message) {
+      list.push({ text: message, at: this.clock() });
+      if (list.length > PROMPT_HISTORY) list.shift();
+    }
+    this.prompts.set(nodeId, list);
+  }
+
+  /** 这一次结束该不该算这一步的：见 {@link prompts}。 */
+  private endBelongsToStep(step: StepRow, nodeId: string): boolean {
+    const startedAt = step.startedAt ?? 0;
+    if (this.clock() - startedAt > OWN_PROMPT_GRACE_MS) return true;
+    const since = (this.prompts.get(nodeId) ?? []).filter(
+      (entry) => entry.at >= startedAt,
+    );
+    if (since.length === 0) return true;
+    const item =
+      step.queueId === null
+        ? undefined
+        : queueItem(this.database, step.queueId);
+    const own = (item?.body ?? "")
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => line !== "");
+    if (own === undefined) return true;
+    const fragment = own.slice(0, PROMPT_FRAGMENT);
+    return since.some((entry) => entry.text.includes(fragment));
   }
 
   /** 一遍完整的对账：每次没结束的运行推一次。重启之后第一遍就是续跑。 */
@@ -719,6 +772,13 @@ export class WorkflowEngine {
       } else {
         return;
       }
+    }
+    // 前面几轮的结束迟到，不是这一步的（见 `prompts`）。
+    if (
+      (status?.state === "done" || status?.state === "error") &&
+      !this.endBelongsToStep(current, nodeId)
+    ) {
+      return;
     }
     const verdict = evaluate(
       {

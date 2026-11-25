@@ -115,6 +115,17 @@ function report(
   engine.handleEvent({ type: "agent.status", status: { nodeId, state } });
 }
 
+/** 节点开始了一轮，hook 上报里带着这一轮的提示词。 */
+function startTurn(nodeId: string, prompt: string): void {
+  report(nodeId, "working");
+  engine.handleEvent({
+    type: "agent.status",
+    status: { nodeId, state: "working", lastMessage: prompt },
+  });
+}
+
+const WAKE = "收件箱有 1 条新消息，运行 `armadra-hook canvas inbox` 查看。";
+
 /** 出队泵把排给这个节点的那条投出去了。 */
 function delivered(nodeId: string): string {
   const row = fixture.database
@@ -707,6 +718,56 @@ describe("workflow v2 injection", () => {
     expect(body).toContain("canvas_workflow_verdict");
     expect(body).not.toContain("a、b");
     expect([...body.split("\n").at(-1)!].length).toBeLessThanOrEqual(200);
+  });
+
+  it("a mailbox-wake turn that ends first is not the step's turn (#1034)", async () => {
+    const { run, lead } = await startVerifying();
+    delivered(lead);
+    await engine.progress(run.id);
+    // 唤醒的那一轮先开始、先结束；步骤的提示词排在它后面。
+    startTurn(lead, WAKE);
+    report(lead, "done");
+    await engine.progress(run.id);
+    expect(statuses(run.id).c).toBe("running");
+    // 步骤自己的那一轮结束才算数。
+    startTurn(lead, "汇总并验证\n（来源步骤的结论……）");
+    verdict(run.id, 0, true);
+    report(lead, "done");
+    await engine.progress(run.id);
+    expect(statuses(run.id).c).toBe("done");
+  });
+
+  it("a wake turn between two rounds of a collect does not settle the new round (#1034)", async () => {
+    const { run, dev, ui, lead } = await startVerifying();
+    delivered(lead);
+    await engine.progress(run.id);
+    report(lead, "working");
+    verdict(run.id, 0, false, [{ role: "dev", text: "缺测试" }]);
+    report(lead, "done");
+    await engine.progress(run.id);
+    delivered(dev);
+    await engine.progress(run.id);
+    report(dev, "working");
+    post(dev, ui, "a2", "A 的产出二");
+    report(dev, "done");
+    await engine.progress(run.id);
+    expect(statuses(run.id).c).toBe("running");
+    delivered(lead);
+    await engine.progress(run.id);
+    // 第二轮的提示词之前，收件箱唤醒那一轮先跑完。
+    startTurn(lead, WAKE);
+    report(lead, "done");
+    await engine.progress(run.id);
+    expect(statuses(run.id).c).toBe("running");
+    expect(stepOfRun(fixture.database, run.id, "c")?.reason).not.toBe(
+      "verdictMissing",
+    );
+    startTurn(lead, "汇总并验证\n（来源步骤的结论……）");
+    verdict(run.id, 1, true);
+    report(lead, "done");
+    await engine.progress(run.id);
+    expect(statuses(run.id).c).toBe("done");
+    expect(runById(fixture.database, run.id)?.status).toBe("succeeded");
   });
 
   it("sends a failed verdict back, re-gathers with new keys and only counts the new round", async () => {
