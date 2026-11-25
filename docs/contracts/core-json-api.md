@@ -6374,3 +6374,14 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
 - **历史适配器**（`history/grok.ts`，登记在 `HISTORY_ADAPTERS`）：会话索引列 `sessions/*/<id>/updates.jsonl`，标题 / cwd 来自 `summary.json`；定位先认上报的转录路径，否则按会话 id（先试 cwd 那一组，再在根下一层找）；读取把用户 / 助手文本与工具调用归一化成记录。接回终端走 `--resume <id>`（注册表里 `resume` 能力），ACP 走 `session/load`。索引读失败不清空：某个分组读不了沿用上一趟那一组；根读不了又没有上一趟、或某个分组读不了又没有上一趟时，`HistoryAdapter.listUnreadable(root)` 为真：会话索引照常写入读到的行，只跳过「清掉没见到的行」这一步。
 - **成本**：来源是 `updates.jsonl` 里每回合的 `turn_completed.usage.modelUsage`（与 `grok usage <会话 id>` 打出的 `usage.json` 同一份记录，读文件不起进程、不要登录）：`inputTokens` 含缓存读（`totalTokens = inputTokens + outputTokens`），所以记 `input` 要减去缓存读与缓存写；`reasoningTokens` 已在 `outputTokens` 里。`costUsdTicks`（10^10 tick = 1 美元，见 xAI 官方文档 https://docs.x.ai ）作为 grok 自己报的美元记入汇总，价格表不认 grok 的模型时兜底。按 `prompt_id`（UUID）去重，分叉出来的会话逐字重复前面的回合时只计一次。减掉 `cacheCreationTokens` 这一步没有真实样本验证（手头会话里恒为 0）。
 - **默认视图**：`defaultAgentView` 在偏好「会话」且 grok 的 ACP 适配器没装时，给终端驱动、会话体（`view: "session"`）；装了 ACP 走 ACP。
+
+## 125. ACP 的扩展请求：计划审批（`#1021`）
+
+不改任何线上形状、不升协议版本：ACP 规范把方法名以 `_` 开头的请求留给各家自己的扩展，grok 在 plan 模式下用 `_x.ai/exit_plan_mode`（参数 `{ sessionId, toolCallId, planContent }`）把计划交给客户端审批，请求在人答之前一直挂着。
+
+- **特征检测**：`AcpClient` 声明 `features.extRequest`（AMA-Link/armadra-agent#333，已合并、尚未发版）才传 `onExtRequest`（`clientAcceptsExtRequest()`，写法同 `clientAcceptsSessionMeta()`）。固定版本的客户端没有，不传，行为与之前逐字节相同。
+- **适配器表**：`AcpAdapter.extRequests`（方法名 → 规格，`acp/ext-requests.ts`），grok 登记 `_x.ai/exit_plan_mode`。规格有两样：请求参数 → 卡片，和「人的决定 → 应答 JSON」的映射函数 `reply`。
+- **进审批挂起表**：与 `session/request_permission` 同一张表、同一条答复路由（`POST /api/approvals/{pendingId}/answer`）。卡片是一条 `kind: "switch_mode"` 的工具调用，正文是计划原文，`toolCallId` 关联到 Agent 那边的工具调用；选项固定两个：`approve`（`allow_once`）与 `reject`（`reject_once`）。
+- **红线：绝不自动代答**。人选了 `approve` 才按批准回；人选了 `reject`、没选（`cancelled`）、对端撤回请求（`signal` 触发，卡片收起）、进程退出、会话被取消、**没有审批消费者**（无人值守，不一直挂着）一律按拒绝回。
+- **应答形状没有核对过**：目前只知道请求的形状，不知道 grok 认哪些应答字段。映射函数是适配器里孤立的一处（今天写的是 `{ approved: boolean }`，**未验证**），用假 Agent 测过「决定 → 映射 → 应答」这条管线，没有用真账号测过 grok 认不认。
+- **grok 的 ACP plan 仍然关着**（`NO_ACP_LANDING`，§124 之前的约定不变）：开启要等 (a) armadra-agent 发版、升级固定的依赖，(b) 用真账号抓批准与拒绝两种应答、核对映射。在那之前用户选不到 plan，不会得到一个被取消的回合。

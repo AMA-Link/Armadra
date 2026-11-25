@@ -27,6 +27,8 @@ import { accessSync, constants as fsConstants, statSync } from "node:fs";
 import {
   AcpClient,
   type AcpClientOptions,
+  RPC_ERRORS,
+  RpcError,
   type AcpContentBlock,
   type AcpImplementationInfo,
   type AcpPermissionOption,
@@ -39,6 +41,8 @@ import {
 
 import { STDERR_TAIL_BYTES } from "../language/limits";
 import { redactSecrets } from "../terminal/ssh/redact";
+import { type AcpExtRequestSpec, planToolCall } from "./ext-requests";
+import { clientAcceptsExtRequest } from "./mcp";
 import type {
   AcpElicitationParams,
   AcpElicitationResult,
@@ -235,6 +239,11 @@ export interface AcpSpawnOptions {
     settlement: AcpElicitationSettlement,
   ) => void;
   /**
+   * 这家会发来的、要人决定的 `_` 开头的扩展请求（适配器表的 `extRequests`）。客户端
+   * 声明了 `features.extRequest` 才会接上；没声明（固定版本还没有）不传回调，线路不变。
+   */
+  readonly extRequests?: Readonly<Record<string, AcpExtRequestSpec>>;
+  /**
    * `terminal/*` 请求（客户端有这个能力时才会有）。给了它才在 `initialize` 声明
    * `terminal: true`；旧版客户端不认，线路与之前逐字节相同。
    */
@@ -328,6 +337,23 @@ export class AcpProcess {
       onUpdate: (notification) => options.onUpdate?.(notification),
       onPermission: (params, signal) => this.hold(params, signal),
       onProtocolError: (_line, reason) => options.onProtocolError?.(reason),
+      // 旧版客户端没有 `onExtRequest`、也不声明 `features.extRequest`：不传，行为不变。
+      ...(clientAcceptsExtRequest() &&
+      options.extRequests !== undefined &&
+      Object.keys(options.extRequests).length > 0
+        ? {
+            onExtRequest: ((
+              method: string,
+              params: unknown,
+              signal: AbortSignal,
+            ) =>
+              this.holdExt(
+                method,
+                params,
+                signal,
+              )) as unknown as AcpClientOptions["onElicitation"],
+          }
+        : {}),
       // 旧版客户端不认这个键、也不声明这个能力：不传，线路与之前逐字节相同。
       ...(acpClientFeatures().elicitation
         ? {
@@ -645,6 +671,63 @@ export class AcpProcess {
     };
     return new Promise((resolve) => {
       this.pending.set(pending.id, { pending, resolve });
+      const aborted = () => this.drop(pending.id);
+      if (signal.aborted) {
+        aborted();
+        return;
+      }
+      signal.addEventListener("abort", aborted, { once: true });
+      this.options.onPermission?.(pending);
+    });
+  }
+
+  /**
+   * `_` 开头的扩展请求（计划审批）：进**同一张**审批挂起表，卡片正文是计划，选项是
+   * 批准 / 拒绝；人答 → 适配器的映射函数 → 应答 JSON。没有审批消费者、被取消、进程
+   * 退出、对端撤回都按拒绝回；从不替人批准。
+   */
+  private holdExt(
+    method: string,
+    params: unknown,
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    const spec = this.options.extRequests?.[method];
+    if (spec === undefined) {
+      return Promise.reject(
+        new RpcError(RPC_ERRORS.methodNotFound, `unknown method: ${method}`),
+      );
+    }
+    const card = spec.card(params);
+    if (card === undefined) {
+      return Promise.reject(
+        new RpcError(RPC_ERRORS.invalidParams, `bad params for ${method}`),
+      );
+    }
+    // 没有人会看到这张卡：不一直挂着，按拒绝回（不是批准）。
+    if (this.options.onPermission === undefined) {
+      return Promise.resolve(spec.reply("reject", params));
+    }
+    this.nextPermission += 1;
+    const pending: AcpPendingPermission = {
+      id: `perm-${this.pid}-${this.nextPermission}`,
+      sessionId: card.sessionId,
+      toolCall: planToolCall(card),
+      options: [
+        { optionId: "approve", name: "Approve", kind: "allow_once" },
+        { optionId: "reject", name: "Reject", kind: "reject_once" },
+      ],
+      createdAt: Date.now(),
+    };
+    return new Promise((resolve) => {
+      this.pending.set(pending.id, {
+        pending,
+        resolve: (result) => {
+          const outcome = result.outcome;
+          const approved =
+            outcome.outcome === "selected" && outcome.optionId === "approve";
+          resolve(spec.reply(approved ? "approve" : "reject", params));
+        },
+      });
       const aborted = () => this.drop(pending.id);
       if (signal.aborted) {
         aborted();

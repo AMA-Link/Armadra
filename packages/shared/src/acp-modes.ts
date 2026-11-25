@@ -208,7 +208,8 @@ export function acpTableModes(
 export const NO_ACP_LANDING: Readonly<
   Partial<Record<BuiltinAgentId, readonly PermissionMode[]>>
 > = {
-  // plan：见上面兼容表，等 Armadra#1021（`_x.ai/exit_plan_mode` 计划审批）。
+  // plan：见上面兼容表。计划审批的管线已经接上（契约 §125，`acp/ext-requests.ts`），
+  // 但应答形状没有用真账号核对（Armadra#1021），核对之后再把 plan 放回表里。
   grok: ["auto-edit", "plan"],
 };
 

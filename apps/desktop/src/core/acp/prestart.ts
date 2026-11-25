@@ -60,6 +60,9 @@ export const spawnPrestarted: PrestartSpawner = async (plan) => {
     cwd: plan.cwd,
     ...(plan.env === undefined ? {} : { env: plan.env }),
     clientInfo: ACP_CLIENT_INFO,
+    ...(plan.extRequests === undefined
+      ? {}
+      : { extRequests: plan.extRequests }),
     ...relay.callbacks,
   });
   try {
