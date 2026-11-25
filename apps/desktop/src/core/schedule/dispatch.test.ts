@@ -62,7 +62,8 @@ CREATE TABLE nodes (
 );
 CREATE TABLE terminal_sessions (
  id TEXT PRIMARY KEY, owner_node_id TEXT, generation INTEGER NOT NULL,
- status TEXT NOT NULL, created_at TEXT NOT NULL
+ status TEXT NOT NULL, created_at TEXT NOT NULL,
+ backend_kind TEXT NOT NULL DEFAULT 'tmux'
 );
 CREATE TABLE agent_status (
  node_id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, agent_id TEXT NOT NULL,
@@ -140,12 +141,23 @@ function bridge(written: Written[], live = 7): TerminalBridge {
   };
 }
 
-function setUp(options: { live?: number; bridged?: boolean } = {}) {
+function setUp(
+  options: {
+    live?: number;
+    bridged?: boolean;
+    /** 程序自报的状态（OSC 7501），整个测试里不变。 */
+    program?: { state: string };
+  } = {},
+) {
   const { database, store } = openStore();
   canvasTables(database);
   const written: Written[] = [];
-  const terminals =
+  const base =
     options.bridged === false ? undefined : bridge(written, options.live ?? 7);
+  const terminals =
+    base === undefined || options.program === undefined
+      ? base
+      : { ...base, programStatus: () => options.program };
   const dispatcher = new TerminalDispatcher({
     database,
     store,
@@ -196,6 +208,24 @@ describe("Agent 目标的探测", () => {
       state(database, value);
       expect((await dispatcher.supports(agentTargetOf())).state).toBe("busy");
     }
+  });
+
+  it("程序自己用 OSC 7501 报了 blocked 也算忙，即使状态通道说空闲；报别的不放行", async () => {
+    const blocked = setUp({ program: { state: "blocked" } });
+    state(blocked.database, "idle");
+    expect((await blocked.dispatcher.supports(agentTargetOf())).state).toBe(
+      "busy",
+    );
+    // 只做否决：程序报 idle 不能让一个在忙的节点变成就绪。
+    const idle = setUp({ program: { state: "idle" } });
+    state(idle.database, "working");
+    expect((await idle.dispatcher.supports(agentTargetOf())).state).toBe(
+      "busy",
+    );
+    state(idle.database, "idle");
+    expect((await idle.dispatcher.supports(agentTargetOf())).state).toBe(
+      "ready",
+    );
   });
 
   it("正在干活也算忙", async () => {
