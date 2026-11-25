@@ -2,6 +2,48 @@
 
 每个版本一节，按发布倒序。括号里是合入的 PR 编号（github.com/AMA-Link/Armadra，2026-10-11 前为 Owlbay/Armadra，旧编号照常跳转）。兼容范围以 `tools/release/compatibility.json` 为准，发布说明里的 `armadra-compatibility` 围栏由它渲染。桌面、服务器与手机 / 平板 App 共用一条版本线和一个标签 `vX.Y.Z`（规则见 `docs/guides/ci-release.md`「版本规则」）；有手机端改动的版本，在「手机与平板」小节里写，其余写在「桌面 / 服务器」下。2026-10-10 之前手机端曾单独编号（1.0.0、1.1.0），内容并入对应的 0.2.5、0.2.6。
 
+## 0.23.0（2026-11-24）
+
+版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.23.0。随包 `@armadra/agent` 0.23.0（模型档位、嵌套派发、工作流调度与 `/workflow`、ACP 会话 `_meta`）与平台协议包 0.23.0（没有形状变化，云端协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.23.0。本版是功能版：项目级工作流 v2（共享约定、验证与退回、文件导入导出、托管 ama 起跑）、内置 Grok Build 与 Antigravity 两个 Agent、默认画板可删除，核心库迁移到 0072。核心 JSON API 协议仍是 1.52（只增路由与事件，没有改已有形状）。
+
+Version aligned with armadra-cloud and armadra-agent (all three ship 0.23.0), with `@armadra/agent` 0.23.0 (model tiers, nested dispatch, workflow scheduler and `/workflow`, ACP session `_meta`) and platform protocol 0.23.0 (no shape changes, the cloud protocol is still 1.4); matching images `armadra-cloud` / `armadra-relay` 0.23.0. A feature release: project-level workflows v2 (shared contract, verification with send-back, file import/export, hosted ama runs), two new built-in agents (Grok Build and Antigravity), deletable default boards, and the core database moves to 0072. The core JSON API protocol is still 1.52 (routes and events added, no existing shape changed).
+
+### 桌面 / 服务器
+
+- 工作流草案 v2（#1004，Refs #996，第一批）：新增 `description`、`contract`（共享约定 `text` 与各角色的 `owns`）、角色 `tier`、collect 的 `verify`（命令与清单）和 `maxRetries`；`version` 只表示格式，v1 仍能读，写出一律是 2。模板带修订号，`PUT` 必须带 `baseVersion`，过期回 409 `template_version_stale`。共享约定与验证说明进收件箱；新动词 `workflow-verdict`（工具 `canvas_workflow_verdict`）由 collect 步骤的节点给出判定，有问题时退回点名的角色，下游已开始、次数用尽或未验证时升级成关卡由人答复。
+  Workflow draft v2 (#1004, Refs #996, batch 1): adds `description`, `contract` (shared `text` and per-role `owns`), role `tier`, collect `verify` (commands and checklist) and `maxRetries`; `version` is the format only, v1 still reads and writes are always 2. Templates carry a revision, `PUT` requires `baseVersion` and a stale one answers 409 `template_version_stale`. Contract and verification notes go to the inbox; the new `workflow-verdict` verb (tool `canvas_workflow_verdict`) lets the collect step's node rule, sends the named roles back on problems, and escalates to a gate for a person when downstream has started, retries ran out or nothing was verified.
+- 工作流文件导入导出与 owns 校验（#1013，Refs #996，第二批）：项目级 `.ama/workflows/<id>.md` 可导入为模板、从模板导出（本机与远端执行主机都可用，覆盖前确认并显示路径）；`contract.owns` 的 glob 语法与跨角色相交改用 ama 的纯函数校验；模板页签新增「导入」对话框与「导出到 .ama/workflows」菜单。随包 `@armadra/agent` 升到 0.23.0。
+  Workflow file import/export and owns validation (#1013, Refs #996, batch 2): project `.ama/workflows/<id>.md` files import as templates and export from them (local and remote execution hosts, with a confirmation and the path before overwriting); `contract.owns` globs are checked with ama's pure functions for syntax and cross-role overlap; the templates tab gains an Import dialog and an "Export to .ama/workflows" menu. Bundled `@armadra/agent` moves to 0.23.0.
+- 托管 ama 起跑项目级工作流与档位透传（#1019，Refs #996，第三批）：新动词 `workflow-run`（工具 `canvas_workflow_run`）由 core 读调用方工作空间的 `.ama/workflows` 文件，与真起跑同一套预检，通过后才写模板；托管 ama 把项目级工作流交给画布引擎起跑，用户级与配置级的出草案卡并拒绝，从不替人答关卡。`open-agent --tier` 与 runner 透传档位：ama 0.23.0 起落 `agent.tier`，claude 落别名模型，`--model` 同给时优先。迁移 0072（工作流 v2）。
+  Hosted ama runs project workflows and passes tiers through (#1019, Refs #996, batch 3): the new `workflow-run` verb (tool `canvas_workflow_run`) has core read the caller workspace's `.ama/workflows` file and run the same precheck as a real start before touching templates; hosted ama hands project workflows to the canvas engine, while user- and config-level ones get a draft card and are rejected, and it never answers gates for a person. `open-agent --tier` and the runner pass the tier through: ama from 0.23.0 gets `agent.tier`, claude gets an alias model, `--model` wins. Migration 0072 (workflow v2).
+- 内置 Grok Build（#1008，Refs #998）：第九个内置 Agent，注册表、启动（prompt 前隔 `--`，启动器新增放置位）、探测、画面门（目录信任与审批，首期只报等待、不代答）与 ACP 模式表，页面浅深两套 Agent 色；ACP 下限 1.0.92。
+  Built-in Grok Build (#1008, Refs #998): registry, launch (a `--` before the prompt, with a new launcher placement), probing, screen gates (folder trust and approval; waiting only, no auto-answers for now) and the ACP mode table, plus light and dark agent colors; ACP floor 1.0.92.
+- 内置 Antigravity（agy）（#1009，Refs #997）：注册表、`agy acp` 行（会话 id 即 ACP `sessionId`，可经 `session/load` 接回）、版本下限 1.5.15（`agy update` 指引）、品牌色与探针；集成状态为「无注入」。终端里的 agy 只显示状态，协作投递、派发与休眠续接在 ACP 下可用。
+  Built-in Antigravity (agy) (#1009, Refs #997): registry, the `agy acp` row (the conversation id is the ACP `sessionId` and reattaches through `session/load`), version floor 1.5.15 (with an `agy update` hint), brand color and probes; the integration state is "no injection". In a terminal agy only shows status; collaboration delivery, dispatch and hibernation resume work under ACP.
+- agy 历史列表（#1014，Refs #997）：会话索引新增 Antigravity 适配器，只读 `conversation_summaries.db`（复制后读，复制不了退到 `immutable`，读失败不清空索引），命令面板与侧栏搜索选中历史对话时开 ACP 节点接回；该来源没有记录内容，转录可用性答「不支持」。
+  agy history list (#1014, Refs #997): the session index gains an Antigravity adapter that reads only `conversation_summaries.db` (copy first, falling back to `immutable`; a failed read never clears the index); picking a history conversation in the command palette or sidebar search opens an ACP node that reattaches it; the source carries no entries, so transcript availability reads "unsupported".
+- 两个新 Agent 的共用前置（#1001、#1003，Refs #997、#998）：状态上报的判定与词汇表收敛到一处、core 内部上报入口、按节点判通道、状态读取槽；ACP 版本下限可以没有 npm 包；集成状态新增「无注入」形状；ACP 适配器行可带会话 `_meta`。
+  Shared groundwork for the two new agents (#1001, #1003, Refs #997, #998): the report predicate and vocabulary in one place, an internal core report entry, per-node channel decisions and a state read slot; ACP version floors may carry no npm package; a "no injection" integration state; ACP adapter rows can carry a session `_meta`.
+- 默认画板可删除（#1017，Closes #1015）：去掉「工作空间至少留一块画板」的限制，侧栏所有画板（含置顶组）都能删，删掉当前画板切到同一工作空间的下一块，没有就显示空状态与「新建画布」。
+  Default boards can be deleted (#1017, Closes #1015): the "a workspace keeps at least one board" rule is gone; every board in the sidebar (pinned ones too) can be deleted, deleting the current board switches to the next one in the workspace, and with none left the canvas shows an empty state and "New board".
+
+### 手机与平板
+
+- 本版没有手机 App 的行为改动。注意：新增的内置 Agent id（`grok`、`agy`）对旧页面是未知值，旧版手机 App 的 Agent 列表会解析失败，手机端需同步升级到 0.23.0。
+  No behaviour changes in the mobile app. Note: the new built-in agent ids (`grok`, `agy`) are unknown to old pages, so the Agent list of an older mobile app fails to parse; update the mobile app to 0.23.0 together.
+
+### 随包 Agent
+
+- `@armadra/agent` 0.23.0：模型档位（`models.tiers`、`ama --tier`、`task` 的 `tier`）、嵌套派发（`subagents.maxDepth`）、工作流调度器与 `/workflow`、`ama -p --workflow`、`workflow_save`、`alwaysAsk` 权限层、ACP 会话 `_meta`；ama 子任务的花费现在计入根会话的预算。
+  `@armadra/agent` 0.23.0: model tiers (`models.tiers`, `ama --tier`, `task` `tier`), nested dispatch (`subagents.maxDepth`), the workflow scheduler and `/workflow`, `ama -p --workflow`, `workflow_save`, the `alwaysAsk` permission layer and ACP session `_meta`; ama sub-task spend now counts toward the root session's budget.
+
+### 部署说明
+
+- 需要迁移：核心库升到 0072（新增 0072，向前自动执行）；核心 JSON API 协议仍是 1.52，云端协议（1.4）不变。
+  Migration needed: the core database moves to 0072 (0072 is new and runs forward automatically); the core JSON API protocol stays at 1.52 and the cloud protocol (1.4) is unchanged.
+- 配套镜像 `ghcr.io/ama-link/armadra-cloud:0.23.0`、`ghcr.io/ama-link/armadra-relay:0.23.0` 与协议包 0.23.0 同号（cloud 侧没有面向用户的改动；控制台页面取自本版服务器壳镜像）；推送中继镜像 `ghcr.io/ama-link/armadra-push-relay:0.23.0` 与服务器壳镜像同号。发版顺序沿用 0.22.0：先打 Armadra `v0.23.0`，等服务器壳镜像推送成功后再打 armadra-cloud `v0.23.0`。
+  Matching images `ghcr.io/ama-link/armadra-cloud:0.23.0` and `ghcr.io/ama-link/armadra-relay:0.23.0` share the number with protocol package 0.23.0 (no user-facing changes on the cloud side; console pages come from this version's server shell image); the push-relay image `ghcr.io/ama-link/armadra-push-relay:0.23.0` shares the number with the server shell image. Release order as in 0.22.0: tag Armadra `v0.23.0` first, then tag armadra-cloud `v0.23.0` once the server shell image has been pushed.
+
 ## 0.22.0（2026-11-24）
 
 版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.22.0。随包 `@armadra/agent` 0.22.0（`task_land`、worktree 任务继承未提交改动）与平台协议包 0.22.0（没有形状变化，云端协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.22.0。本版是功能版：Agent 节点四栏交付状态（含等待子任务与汇总中），核心库迁移到 0071。核心 JSON API 协议仍是 1.52（只增路由与事件，没有改已有形状）。
