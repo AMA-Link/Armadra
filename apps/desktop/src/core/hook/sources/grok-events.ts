@@ -100,6 +100,21 @@ export interface ProcessTable {
  */
 export const PID_START_TOLERANCE_MS = 10_000;
 
+/** `pid_start` 只在 2020 年到「现在 + 1 天」之间才信（单位变了、时钟跳变都落在外面）。 */
+const PID_START_FLOOR_MS = Date.UTC(2020, 0, 1);
+const PID_START_CEILING_SLACK_MS = 86_400_000;
+
+/** 记录里的 `pid_start`（微秒）→ 毫秒；不在合理范围里按「没有」（0）处理，不做判断。 */
+export function pidStartMsOf(value: unknown, nowMs = Date.now()): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return 0;
+  }
+  const ms = Math.floor(value / 1000);
+  return ms >= PID_START_FLOOR_MS && ms <= nowMs + PID_START_CEILING_SLACK_MS
+    ? ms
+    : 0;
+}
+
 /** `[[dd-]hh:]mm:ss` → 秒；读不出是 `undefined`。 */
 export function parseEtime(text: string): number | undefined {
   const match = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)$/.exec(text.trim());
@@ -184,10 +199,7 @@ export function readActiveSessions(home: string): ActiveRead {
       pid,
       cwd,
       openedAtMs: Number.isFinite(opened) ? opened : 0,
-      pidStartMs:
-        typeof pidStart === "number" && pidStart > 0
-          ? Math.floor(pidStart / 1000)
-          : 0,
+      pidStartMs: pidStartMsOf(pidStart),
     });
   }
   return { kind: "rows", rows };
@@ -641,18 +653,26 @@ class GrokSlot implements StateSlot {
     if (root === undefined) return [];
     if (rows.length === 0) return [];
     const table = this.deps.processTable();
-    // 先丢掉不是活 grok 的行：进程已经不在（崩了没来得及清行），或 pid 被别的进程
-    // 复用了（`pid_start` 与进程表里的启动时间差得很远）。进程表读不出就不判。
+    // 先丢掉不是活 grok 的行：进程已经不在（崩了没来得及清行），或 pid 被别的程序
+    // 复用了（`pid_start` 与进程表里的启动时间差得很远、而且现在的进程名不是 grok）。
+    // 进程表读不出就不判。
     const live =
       table === undefined
         ? rows
         : rows.filter((row) => {
             if (!table.parents.has(row.pid)) return false;
             const started = table.startedMs?.get(row.pid);
-            return (
+            if (
               started === undefined ||
               row.pidStartMs <= 0 ||
               Math.abs(started - row.pidStartMs) <= PID_START_TOLERANCE_MS
+            ) {
+              return true;
+            }
+            // 启动时间对不上：只有那个 pid 现在是别的程序时才丢（被复用了）。它还是
+            // grok（自更新重启、时钟或单位出了岔子）就留着，别误杀真的会话。
+            return expectedProcesses("grok").includes(
+              table.names.get(row.pid) ?? "",
             );
           });
     const mine = live.filter((row) => row.pid === root);

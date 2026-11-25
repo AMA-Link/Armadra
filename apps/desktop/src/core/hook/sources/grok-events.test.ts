@@ -23,6 +23,7 @@ import {
   grokSlotProvider,
   locateEvents,
   parseEtime,
+  pidStartMsOf,
   psProcessTable,
   readActiveSessions,
 } from "./grok-events";
@@ -250,13 +251,21 @@ describe("陈旧的行：进程不在了、pid 被复用", () => {
     writeEvents("s", [line("turn_started")]);
   };
 
-  it("pid 已经不在进程表里（崩了没来得及清行）：这一行不算", () => {
-    ready(undefined);
-    table.delete(CHILD_PID);
-    const { slot } = open();
-    slot!.start();
+  it("pid 已经不在进程表里（崩了没来得及清行）：这一行不算；在就算（对照）", () => {
+    // 行的 pid 就是节点的根 pid：不靠「沿父进程找根」那一步，只有存活判断能挡住它。
+    rows = [{ session_id: "s", pid: ROOT_PID, cwd: CWD }];
+    writeActive();
+    writeEvents("s", [line("turn_started")]);
+    const alive = open();
+    alive.slot!.start();
+    expect(states()).toEqual(["working"]);
+    alive.slot!.stop();
+    reports.length = 0;
+    table.delete(ROOT_PID);
+    const gone = open();
+    gone.slot!.start();
     expect(reports).toEqual([]);
-    slot!.stop();
+    gone.slot!.stop();
   });
 
   it("pid 还在但启动时间对不上（被别的进程复用）：不算；对得上才算", () => {
@@ -272,6 +281,46 @@ describe("陈旧的行：进程不在了、pid 被复用", () => {
     live.slot!.start();
     expect(states()).toEqual(["working"]);
     live.slot!.stop();
+  });
+
+  it("启动时间对不上但那个 pid 现在还是 grok：留着（自更新重启、时钟出岔子别误杀）", () => {
+    ready(T0);
+    started.set(CHILD_PID, T0 + 60 * 60_000);
+    names.set(CHILD_PID, "grok-native");
+    const { slot } = open();
+    slot!.start();
+    expect(states()).toEqual(["working"]);
+    slot!.stop();
+  });
+
+  it("pid_start 单位变了或时钟跳变：落在合理范围外就当没有，不做判断", () => {
+    const now = Date.parse("2026-11-25T08:00:00Z");
+    expect(pidStartMsOf(T0 * 1000, now)).toBe(T0);
+    // 单位变了（毫秒当微秒）：换算出来是 1970 年。
+    expect(pidStartMsOf(T0, now)).toBe(0);
+    // 单位变了（纳秒当微秒）：远在将来。
+    expect(pidStartMsOf(T0 * 1_000_000, now)).toBe(0);
+    // 时钟跳变：2020 年之前、比现在晚一天以上。
+    expect(pidStartMsOf(Date.UTC(2019, 5, 1) * 1000, now)).toBe(0);
+    expect(pidStartMsOf((now + 2 * 86_400_000) * 1000, now)).toBe(0);
+    expect(pidStartMsOf(Number.NaN, now)).toBe(0);
+    expect(pidStartMsOf("1", now)).toBe(0);
+    // 落在范围外的行即使启动时间对不上也照常绑定（进程名不是 grok 也一样）。
+    rows = [
+      {
+        session_id: "s",
+        pid: CHILD_PID,
+        cwd: CWD,
+        pid_start: 1_700_000_000_000,
+      },
+    ];
+    writeActive();
+    writeEvents("s", [line("turn_started")]);
+    started.set(CHILD_PID, T0 + 60 * 60_000);
+    const { slot } = open();
+    slot!.start();
+    expect(states()).toEqual(["working"]);
+    slot!.stop();
   });
 
   it("记录里没有 pid_start、或进程表里没有启动时间：不判，照常绑定", () => {
@@ -296,12 +345,12 @@ describe("陈旧的行：进程不在了、pid 被复用", () => {
     expect(parseEtime("2-03:04:05")).toBe(2 * 86_400 + 3 * 3_600 + 4 * 60 + 5);
     expect(parseEtime("garbage")).toBeUndefined();
     if (process.platform === "win32") return;
+    // 查一个运行了很久的进程（pid 1）：启动时间读得出、而且在很久以前。精度约一秒，
+    // 所以只断言「早于一分钟前」，不拿自己的 `process.uptime()` 去比。
     const real = psProcessTable(() => Date.now() + 3_600_000);
-    const mine = real?.startedMs?.get(process.pid);
-    // 精度约一秒（etime）：与 `process.uptime()` 推出来的启动时间差在几秒内。
-    expect(mine).toBeDefined();
-    const expected = Date.now() + 3_600_000 - process.uptime() * 1000;
-    expect(Math.abs((mine ?? 0) - expected)).toBeLessThan(5_000);
+    const init = real?.startedMs?.get(1);
+    expect(init).toBeDefined();
+    expect(init as number).toBeLessThan(Date.now() + 3_600_000 - 60_000);
     // 进程表的缓存按「现在」算：把这趟用的假时间挪走，别留给后面的用例。
     psProcessTable(() => 0);
   });

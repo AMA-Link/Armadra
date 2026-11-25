@@ -634,7 +634,14 @@ export function CreatePlanForm({
           <>
             {field(
               t("automation.wizard.agentNode"),
-              <Select value={agentNodeId} onValueChange={setAgentNodeId}>
+              <Select
+                value={agentNodeId}
+                onValueChange={setAgentNodeId}
+                // 通道会变（grok 读不到会话记录、节点换了主机）：打开下拉时重问一次。
+                onOpenChange={(open) => {
+                  if (open && nodeIdsKey !== "") void channels.refetch();
+                }}
+              >
                 <SelectTrigger size="sm" className="w-full">
                   <SelectValue />
                 </SelectTrigger>

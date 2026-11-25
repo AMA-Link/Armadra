@@ -59,6 +59,8 @@ interface Fixture {
       csrf?: string;
       /** 走 Cookie 会话而不是 Bearer。 */
       cookie?: boolean;
+      /** 用一张没有 `automation:read` 的凭据。 */
+      limited?: boolean;
     },
   ): Promise<Answer>;
 }
@@ -104,6 +106,22 @@ function setUp(
     hostId,
     instanceId: INSTANCE,
     origin: COOKIE_ORIGIN,
+  });
+
+  const narrow = identity.issueBootstrap({
+    hostId,
+    instanceId: INSTANCE,
+    origin: ORIGIN,
+    deviceName: "没有自动化读权限的设备",
+    scopes: allScopes().filter(
+      (value) => value.Permission !== "automation:read",
+    ),
+  });
+  const limited = identity.consumeBootstrap({
+    ticket: narrow.ticket,
+    hostId,
+    instanceId: INSTANCE,
+    origin: ORIGIN,
   });
 
   const store = new ScheduleStore(opened.database);
@@ -178,8 +196,10 @@ function setUp(
                   "x-armadra-csrf": options.csrf ?? browserSession.csrfToken,
                 }
               : {
-                  authorization: `Bearer ${credentials.accessToken}`,
-                  "x-armadra-csrf": options.csrf ?? credentials.csrfToken,
+                  authorization: `Bearer ${(options.limited ? limited : credentials).accessToken}`,
+                  "x-armadra-csrf":
+                    options.csrf ??
+                    (options.limited ? limited : credentials).csrfToken,
                 }),
         },
         body: Buffer.from(text, "utf8"),
@@ -328,6 +348,16 @@ describe("自动化的 JSON 面", () => {
     expect(answer.status).toBe(200);
     expect(answer.body).toEqual({ channels: { a: "transcript", b: null } });
     expect(asked).toEqual([{ workspaceId: "ws", nodeIds: ["a", "b"] }]);
+    // 没有 `automation:read`：403，探测函数一次都没被问。
+    const before = asked.length;
+    const denied = await fixture.call(
+      "GET",
+      "/api/automations/target-channels?workspaceId=ws&nodeIds=a",
+      undefined,
+      { limited: true },
+    );
+    expect(denied.status).toBe(403);
+    expect(asked).toHaveLength(before);
     const bare = setUp();
     const none = await bare.call(
       "GET",
@@ -341,6 +371,32 @@ describe("自动化的 JSON 面", () => {
       { anonymous: true },
     );
     expect(anonymous.status).toBe(401);
+  });
+
+  it("target-channels：换成别的工作空间查询，答复为空；一次最多问 200 个节点", async () => {
+    const asked: { workspaceId: string; nodeIds: readonly string[] }[] = [];
+    const fixture = setUp({
+      channelsOf: (workspaceId, nodeIds) => {
+        asked.push({ workspaceId, nodeIds });
+        return workspaceId === "ws"
+          ? ({ a: "hook" } as Record<string, string>)
+          : {};
+      },
+    });
+    const other = await fixture.call(
+      "GET",
+      "/api/automations/target-channels?workspaceId=elsewhere&nodeIds=a",
+    );
+    expect(other.status).toBe(200);
+    expect(other.body).toEqual({ channels: {} });
+    expect(asked.at(-1)?.workspaceId).toBe("elsewhere");
+    const many = Array.from({ length: 250 }, (_, index) => `n${index}`);
+    await fixture.call(
+      "GET",
+      `/api/automations/target-channels?workspaceId=ws&nodeIds=${many.join(",")}`,
+    );
+    expect(asked.at(-1)?.nodeIds).toHaveLength(200);
+    expect(asked.at(-1)?.nodeIds[199]).toBe("n199");
   });
 
   it("摘要对不上就是 conflict，而不是一次悄悄的激活", async () => {

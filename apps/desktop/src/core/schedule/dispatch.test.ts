@@ -301,6 +301,31 @@ describe("Agent 目标的探测", () => {
     }
   });
 
+  it("stateChannels：远程节点答 null（按节点判，不按 provider）", async () => {
+    const { database, store } = openStore();
+    canvasTables(database);
+    state(database, "idle");
+    const off = registerNodeChannelGate("claude", (facts) => !facts.remote);
+    try {
+      const terminals: TerminalBridge = {
+        ...bridge([]),
+        remote: () => true,
+      };
+      const dispatcher = new TerminalDispatcher({
+        database,
+        store,
+        hostId: HOST_ID,
+        terminals: () => terminals,
+        clock: () => 1_700_000_000_000,
+      });
+      expect(dispatcher.stateChannels("ws", ["node-1"])).toEqual({
+        "node-1": null,
+      });
+    } finally {
+      off();
+    }
+  });
+
   it("读状态之前先让节点的读取槽同步读一次（与 send 同一步）", async () => {
     const { database, dispatcher } = setUp();
     state(database, "idle");
