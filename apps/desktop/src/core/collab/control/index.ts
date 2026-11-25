@@ -19,7 +19,7 @@ import { outbox } from "./outbox";
 import { resolveTarget, send } from "./send";
 import { type Outcome, outcomeBody, raw, result } from "./outcome";
 import { wait } from "./wait";
-import { workflowPropose, workflowVerdict } from "./workflow";
+import { workflowPropose, workflowRun, workflowVerdict } from "./workflow";
 
 export { outcomeBody };
 
@@ -77,6 +77,8 @@ export const VERBS = [
   "workflow-propose",
   // 汇总角色报验证结论（#996 §2.6）。
   "workflow-verdict",
+  // 托管 ama 把项目级工作流文件交给画布引擎起跑（#996 §2.9）。
+  "workflow-run",
   // 协调者的 runner 等一个成员把任务做完（补全架构 §5.3，契约 §15.5）。
   "wait",
   // 工作项账本（契约 §90，#682）：成员的结构化报告与交回，协调者读账本。
@@ -254,6 +256,8 @@ export async function run(
       return workflowPropose(context, caller, args);
     case "workflow-verdict":
       return workflowVerdict(context, caller, args);
+    case "workflow-run":
+      return workflowRun(context, caller, args);
     case "wait":
       return wait(context, caller, args);
     case "report":

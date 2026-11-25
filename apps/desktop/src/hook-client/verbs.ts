@@ -415,6 +415,26 @@ const CANVAS: Record<ControlVerb, Row> = {
     },
     required: [],
   },
+  "workflow-run": {
+    description:
+      "Start a project workflow file (.ama/workflows/<file>.md) on this board; the core reads the file itself. Answers {runId, templateId, templateVersion, status, url}. Never answers the run's gates.",
+    properties: {
+      file: str("the workflow file id: the file name without .md"),
+      hash: str(
+        "sha256 of the file text you read; a different current hash is refused with workflow_file_changed",
+      ),
+      params: {
+        type: "object",
+        description: "workflow parameter values, name to string",
+        additionalProperties: true,
+      },
+      "run-id": str(
+        "a stable UUID for this start; a repeat with the same id answers the run already started instead of starting another (safe retry)",
+      ),
+      "dry-run": DRY_RUN,
+    },
+    required: ["file"],
+  },
   wait: {
     description:
       "Long-poll a task opened with open-agent --task-id: answers {status, since, events}; status is running, done, failed, blocked or needsInput. Never answer the member's approvals for it.",

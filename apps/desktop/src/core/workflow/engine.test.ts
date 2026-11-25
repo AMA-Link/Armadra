@@ -265,6 +265,33 @@ describe("starting a run", () => {
     });
   });
 
+  it("records the node that started a hosted run and reads it back", async () => {
+    const run = await engine.startRun({
+      template: template(),
+      params: { scopeA: "src" },
+      boardId: fixture.boardId,
+      startedByNodeId: "node-ama",
+    });
+    expect(run.startedByNodeId).toBe("node-ama");
+    expect(runById(fixture.database, run.id)?.startedByNodeId).toBe("node-ama");
+  });
+
+  it("precheck rejects like a real start and writes nothing", () => {
+    expect(() =>
+      engine.precheck({
+        template: template().template,
+        boardId: fixture.boardId,
+      }),
+    ).toThrowError(expect.objectContaining({ code: "missing_param" }));
+    expect(() =>
+      engine.precheck({
+        template: template().template,
+        params: { scopeA: "x" },
+        boardId: "no-such-board",
+      }),
+    ).toThrowError(expect.objectContaining({ code: "not_found" }));
+  });
+
   it("refuses a missing parameter and an unsupported permission mode before touching the board", async () => {
     await expect(
       engine.startRun({ template: template(), boardId: fixture.boardId }),

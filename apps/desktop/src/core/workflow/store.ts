@@ -305,6 +305,8 @@ export interface RunRow {
   readonly reason: string | null;
   readonly startedAt: number;
   readonly endedAt: number | null;
+  /** 托管运行（`workflow-run`）里发起它的节点；人在页面起的是 `null`。 */
+  readonly startedByNodeId: string | null;
 }
 
 interface RunRecord {
@@ -322,11 +324,12 @@ interface RunRecord {
   reason: string | null;
   started_at: number;
   ended_at: number | null;
+  started_by_node_id: string | null;
 }
 
 const RUN_COLUMNS =
   "id, template_id, template_version, template_json, workspace_id, board_id, frame_id, " +
-  "anchor_node_id, params_json, roles_json, status, reason, started_at, ended_at";
+  "anchor_node_id, params_json, roles_json, status, reason, started_at, ended_at, started_by_node_id";
 
 function runOf(row: RunRecord): RunRow {
   return {
@@ -344,19 +347,22 @@ function runOf(row: RunRecord): RunRow {
     reason: row.reason,
     startedAt: Number(row.started_at),
     endedAt: row.ended_at === null ? null : Number(row.ended_at),
+    startedByNodeId: row.started_by_node_id ?? null,
   };
 }
 
 /** 一次运行与它的全部步骤（全是 `pending`），同一个事务。 */
 export function insertRun(
   database: DatabaseSync,
-  run: Omit<RunRow, "status" | "reason" | "endedAt">,
+  run: Omit<RunRow, "status" | "reason" | "endedAt" | "startedByNodeId"> & {
+    readonly startedByNodeId?: string | null;
+  },
 ): RunRow {
   database.exec("BEGIN IMMEDIATE");
   try {
     database
       .prepare(
-        `INSERT INTO workflow_runs (${RUN_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', NULL, ?, NULL)`,
+        `INSERT INTO workflow_runs (${RUN_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', NULL, ?, NULL, ?)`,
       )
       .run(
         run.id,
@@ -370,6 +376,7 @@ export function insertRun(
         JSON.stringify(run.params),
         JSON.stringify(run.roles),
         run.startedAt,
+        run.startedByNodeId ?? null,
       );
     const insert = database.prepare(
       "INSERT INTO workflow_run_steps (run_id, step_id, kind, status, node_id) VALUES (?, ?, ?, 'pending', ?)",
