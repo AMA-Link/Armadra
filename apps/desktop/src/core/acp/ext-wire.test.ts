@@ -8,6 +8,7 @@ import { RPC_ERRORS, RpcError } from "@armadra/agent/acp";
 
 import { type AcpHostSession, startAcp } from "./host";
 import { type AcpExtRequestSpec, GROK_EXIT_PLAN_MODE } from "./ext-requests";
+import { pendingCardOf } from "../agent/pending-cards";
 import { CANVAS_MCP_NAME } from "./mcp";
 import { AcpMirror, mirrorPath } from "./mirror";
 import { AcpSession } from "./session";
@@ -122,6 +123,7 @@ function rig() {
             error?: { code: number };
           },
       );
+  const signals: { signal: unknown; request?: unknown }[] = [];
   const until = async (ready: () => boolean) => {
     const deadline = Date.now() + 8000;
     while (!ready()) {
@@ -137,7 +139,7 @@ function rig() {
       workspaceId: "ws",
       agentId: "grok",
       sink: {
-        signal: () => undefined,
+        signal: (signal, request) => signals.push({ signal, request }),
         publish: () => undefined,
         cancelled: () => undefined,
         transcriptPath: (_id, mirror) => mirror,
@@ -163,7 +165,7 @@ function rig() {
       ]);
     return { session, host, prompt };
   }
-  return { logged, until, open };
+  return { logged, until, open, signals };
 }
 
 const plan = (extra: Record<string, unknown> = {}) => ({
@@ -239,6 +241,44 @@ describe("扩展请求经真实 AcpClient 的线路", () => {
     expect(r.logged()[0]?.result).toBeUndefined();
   });
 
+  it("计划卡挂起时：审批记录的请求里有 core 写的 card，状态帧的 pendingCard 查得到；结算后撤掉", async () => {
+    const r = rig();
+    const { session, prompt } = await r.open({
+      "_x.ai/exit_plan_mode": verified(),
+    });
+    const turn = prompt({ requests: [plan()] });
+    await r.until(() => session.pending().length === 1);
+    const pendingId = session.pending()[0]!.pendingId;
+    expect(pendingCardOf(pendingId)).toBe("plan");
+    const permission = r.signals.find(
+      (entry) => (entry.signal as { signal?: string }).signal === "permission",
+    );
+    expect(permission?.request).toMatchObject({
+      protocol: "acp",
+      card: "plan",
+    });
+    session.answer(pendingId, "reject");
+    await turn;
+    expect(pendingCardOf(pendingId)).toBeUndefined();
+  });
+
+  it("会话 cancel：卡片收起，请求回 -32800", async () => {
+    const r = rig();
+    const { session, prompt } = await r.open({
+      "_x.ai/exit_plan_mode": verified(),
+    });
+    const turn = prompt({ requests: [plan()] });
+    await r.until(() => session.pending().length === 1);
+    await session.cancel();
+    await turn;
+    expect(session.pending()).toEqual([]);
+    expect(r.logged()).toEqual([
+      expect.objectContaining({
+        error: expect.objectContaining({ code: -32800 }),
+      }),
+    ]);
+  });
+
   it("对端撤回请求（$/cancel_request）：卡片收起，请求回 -32800", async () => {
     const r = rig();
     const { session, prompt } = await r.open({
@@ -310,6 +350,27 @@ describe("会话层：计划卡不被自家工具的免审批代答", () => {
     session.answer(session.pending()[0]!.pendingId, "reject");
     await turn;
     expect(r.logged()[0]?.error?.code).toBe(-32800);
+  });
+
+  it("规格标题为空（卡片没有任何身份信息）、同 id 的自家工具调用：靠 origin 守卫仍然挂卡，没有被代答", async () => {
+    const r = rig();
+    const untitled: AcpExtRequestSpec = {
+      ...verified(),
+      card: (given) => {
+        const card = GROK_EXIT_PLAN_MODE.card(given);
+        return card === undefined ? undefined : { ...card, title: "" };
+      },
+    };
+    const { session, prompt } = await r.open({
+      "_x.ai/exit_plan_mode": untitled,
+    });
+    const turn = prompt({ update: ownTool, requests: [plan()] });
+    await r.until(() => session.pending().length === 1);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(session.pending()).toHaveLength(1);
+    expect(r.logged()).toEqual([]);
+    session.answer(session.pending()[0]!.pendingId, "reject");
+    await turn;
   });
 
   it("对照：同样先到自家工具的 tool_call，普通 session/request_permission 照旧被放行", async () => {

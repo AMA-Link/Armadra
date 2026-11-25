@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { isAwaitingHuman as awaitingHuman } from "@armadra/shared";
 
 import { rfc3339 } from "../workspaces/support";
+import { pendingCardOf } from "./pending-cards";
 
 /**
  * The `agent_status` table: the reduced per-node agent state and its read
@@ -31,6 +32,8 @@ export interface AgentStatus {
   readonly unread: boolean;
   readonly sessionId?: string;
   readonly pendingId?: string;
+  /** 挂起的审批的卡片种类（内存里的 `agent/pending-cards.ts`）：`plan` = 计划审批。 */
+  readonly pendingCard?: string;
   readonly verified: boolean;
   readonly restored: boolean;
   readonly updatedAt: string;
@@ -86,6 +89,7 @@ function statusOf(row: StatusRow): AgentStatus {
     unread: row.unread !== 0,
     ...optional("sessionId", row.session_id),
     ...optional("pendingId", row.pending_id),
+    ...optional("pendingCard", pendingCardOf(row.pending_id) ?? null),
     verified: row.verified !== 0,
     restored: row.restored !== 0,
     updatedAt: row.updated_at,
