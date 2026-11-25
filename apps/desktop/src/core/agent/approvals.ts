@@ -672,6 +672,8 @@ async function typeIntoPty(
   const generation = context.terminals.generation(session.sessionId);
   if (generation === undefined) return false;
   const keys = answerKeys(baseAgent(context.settings, agentId), decision);
+  // 空串 = 这家 CLI 没有可以盲发的答复键：不写，答「没答成」。
+  if (keys === "") return false;
   try {
     await context.terminals.write(session.sessionId, generation, keys);
     return true;
@@ -699,6 +701,11 @@ export function answerKeys(agentId: string, decision: string): string {
       // starts on "Allow once": Enter takes it, and Escape is the list's own
       // reject binding. `y` / `n` are not bound to anything there.
       return allow ? "\r" : "\u001b";
+    case "grok":
+      // 审批卡是编号会跳号的菜单（`3 (●) Yes, proceed`、`4 (○) No, reject`），默认
+      // 焦点还随用户的 `[ui] default_selected_permission` 变；盲发 `y\r` 会把
+      // 字符打进输入框。首期只报 waiting、不代答（G5 先读画面再答）：不发键。
+      return "";
     case "codex":
     case "pi":
     case "omp":

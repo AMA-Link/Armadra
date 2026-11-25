@@ -161,6 +161,22 @@ describe("answering a permission request", () => {
     expect(readFileSync(join(directory, "p-1.answer"), "utf8")).toBe("allow");
   });
 
+  it("does not type a blind answer into a grok node's approval card", async () => {
+    fixture.session(nodeId, "grok");
+    fixture.database
+      .prepare(
+        "UPDATE nodes SET data_json = json_set(data_json, '$.agent.id', 'grok') WHERE id = ?",
+      )
+      .run(nodeId);
+    const before = fixture.terminal.writes.length;
+    const { route } = await answerApproval(fixture.collab, "p-1", {
+      decision: "allow",
+    });
+    // 记录照常落（先记后通知），但没有键可发：路由是 none，终端一字未写。
+    expect(route).toBe("none");
+    expect(fixture.terminal.writes).toHaveLength(before);
+  });
+
   it("falls back to the keys a human would press", async () => {
     fixture.session(nodeId, "claude");
     const { route } = await answerApproval(fixture.collab, "p-1", {
@@ -173,12 +189,15 @@ describe("answering a permission request", () => {
 });
 
 describe("the answer keys", () => {
-  it("covers every CLI in the registry and never answers nothing", () => {
+  it("covers every CLI in the registry, and answers nothing only where a blind key would be wrong", () => {
     expect(answerKeys("claude", "allow")).toBe("1\r");
     expect(answerKeys("claude", "deny")).toBe("3\r");
     // OpenCode's prompt is a selection list on "Allow once": Enter / Escape.
     expect(answerKeys("opencode", "allow")).toBe("\r");
     expect(answerKeys("opencode", "deny")).toBe("\u001b");
+    // grok：编号会跳号、默认焦点可配置，盲发键会把字符打进输入框——不发。
+    expect(answerKeys("grok", "allow")).toBe("");
+    expect(answerKeys("grok", "deny")).toBe("");
     for (const agent of ["codex", "pi", "omp", "copilot"]) {
       expect(answerKeys(agent, "allow")).toBe("y\r");
       expect(answerKeys(agent, "deny")).toBe("n\r");
