@@ -191,6 +191,10 @@ export function ingest(
     provider = baseAgent(owner.agentId);
   }
 
+  // 没有 hook 通道的 CLI（grok：状态由 core 内部读它的会话文件）：整条丢掉，先于
+  // 下面的绑定——抽修订号会推进会话的计数器，一个不该来的上报不能耗它。
+  if (!hasCapability(agentId, "hooks")) return ACCEPTED;
+
   const posted = readBinding(request.terminalBinding);
   if (posted === "invalid") return ACCEPTED;
   let binding: TerminalBinding | undefined;
@@ -215,7 +219,6 @@ export function ingest(
   }
 
   const payload = request.payload ?? null;
-  if (!hasCapability(agentId, "hooks")) return ACCEPTED;
 
   // A canvas runner's round ended (contract §15.5): not a state of this node,
   // so it skips the reducer. Only ama's adapter sends it, with a verified node
