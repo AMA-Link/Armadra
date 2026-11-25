@@ -179,12 +179,12 @@ export class AgySessionResolver {
       state.last = undefined;
     }
     const grew = size !== state.size;
-    state.size = size;
     if (!grew && !state.unresolved && state.last !== undefined) {
       return state.last;
     }
     if (size > state.offset) {
       const chunk = deps.readLogFrom(state.logPath, state.offset);
+      // 读不出来就不记大小：下一次还要再读，不能把没读到的当成读过了。
       if (chunk === undefined) return undefined;
       const end = chunk.lastIndexOf(0x0a);
       if (end >= 0) {
@@ -202,6 +202,7 @@ export class AgySessionResolver {
           state.active.splice(0, state.active.length - 64);
       }
     }
+    state.size = size;
     const chosen = this.choose(state);
     state.last =
       chosen === undefined
@@ -241,7 +242,15 @@ export class AgySessionResolver {
       }
     }
     for (const id of candidates) {
-      if (state.top.has(id)) return id;
+      if (state.top.has(id)) {
+        // 选中的顶层前面（更近）还排着库里没有的 id：`/new` 之后新会话晚进索引库，
+        // 日志不再变化也要再问，否则会一直停在旧会话。
+        const ahead = candidates.slice(0, candidates.indexOf(id));
+        state.unresolved = ahead.some(
+          (other) => !state.child.has(other) && !state.top.has(other),
+        );
+        return id;
+      }
     }
     // 没有确认的顶层：还有库里没有的 id，稍后再问。
     state.unresolved = candidates.some((id) => !state.child.has(id));

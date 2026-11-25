@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -15,8 +16,9 @@ import {
 const A = "aaaaaaaa-0000-4000-8000-000000000001";
 const B = "bbbbbbbb-0000-4000-8000-000000000002";
 const C = "cccccccc-0000-4000-8000-000000000003";
-const STATE = "/h/.gemini/antigravity-cli";
-const LOG = `${STATE}/log/cli-20261125_021351.log`;
+/** 路径一律用 join 拼：Windows 上分隔符不是 `/`。 */
+const STATE = join("/h", ".gemini", "antigravity-cli");
+const LOG = join(STATE, "log", "cli-20261125_021351.log");
 
 const created = (id: string) =>
   `I1125 02:13:51.634988     262 server.go:1269] Created conversation ${id} (backend=BACKEND_TYPE_UNSPECIFIED)`;
@@ -127,7 +129,14 @@ describe("AgySessionResolver", () => {
     r.log.text = created(A) + "\n";
     expect(await r.resolver.resolve(7)).toEqual({
       sessionId: A,
-      transcriptPath: `${STATE}/brain/${A}/.system_generated/logs/transcript.jsonl`,
+      transcriptPath: join(
+        STATE,
+        "brain",
+        A,
+        ".system_generated",
+        "logs",
+        "transcript.jsonl",
+      ),
       logPath: LOG,
     });
   });
@@ -227,6 +236,22 @@ describe("AgySessionResolver", () => {
     expect(r.calls.classify ?? 0).toBe(classifyBefore);
   });
 
+  it("after /new, a session that reaches the index late is picked up even though the log no longer changes", async () => {
+    const r = rig();
+    r.index.set(A, "top");
+    r.log.text =
+      [created(A), sending(A), created(B), sending(B)].join("\n") + "\n";
+    // B 是新会话，索引库里还没有：当前先停在 A。
+    expect((await r.resolver.resolve(7))?.sessionId).toBe(A);
+    // 库里的数据晚到，日志一个字节都没长：下一次问就换成 B。
+    r.index.set(B, "top");
+    expect((await r.resolver.resolve(7))?.sessionId).toBe(B);
+    // 换过去之后稳态：不再查库。
+    r.calls.classify = 0;
+    expect((await r.resolver.resolve(7))?.sessionId).toBe(B);
+    expect(r.calls.classify).toBe(0);
+  });
+
   it("a half-written last line is read next time, not lost", async () => {
     const r = rig();
     r.index.set(A, "top");
@@ -251,9 +276,9 @@ describe("AgySessionResolver", () => {
     const r = rig();
     r.index.set(A, "top");
     r.log.text = created(A) + "\n";
-    r.held.value = ["/elsewhere/antigravity-cli/log/cli-1.log"];
+    r.held.value = [join("/elsewhere", "antigravity-cli", "log", "cli-1.log")];
     expect(await r.resolver.resolve(7)).toBeUndefined();
-    r.held.value = [LOG, `${STATE}/log/cli-2.log`];
+    r.held.value = [LOG, join(STATE, "log", "cli-2.log")];
     expect(await r.resolver.resolve(7)).toBeUndefined();
   });
 

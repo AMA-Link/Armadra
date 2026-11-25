@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -16,6 +17,10 @@ import { ADAPTERS } from "./index";
  */
 
 const lines = fixtureLines("agy/transcript.jsonl");
+
+/** 路径一律用 join 拼：Windows 上分隔符不是 `/`。 */
+const HOME_STATE = join("/home", "me", ".gemini", "antigravity-cli");
+const STATE = join("/h", ".gemini", "antigravity-cli");
 
 describe("agy transcript → timeline", () => {
   const { items, head } = convertAll(agyTranscript, lines);
@@ -112,14 +117,21 @@ describe("agy helpers", () => {
       logSize: () => undefined,
       readLogFrom: () => undefined,
       classify: () => undefined,
-      stateDir: () => "/home/me/.gemini/antigravity-cli",
+      stateDir: () => HOME_STATE,
       exists: () => false,
     });
     expect(
       adapter.locate({ agentId: "agy", transcriptPath: "/x/t.jsonl" }),
     ).toBe("/x/t.jsonl");
     expect(adapter.locate({ agentId: "agy", sessionId: "abc" })).toBe(
-      "/home/me/.gemini/antigravity-cli/brain/abc/.system_generated/logs/transcript.jsonl",
+      join(
+        HOME_STATE,
+        "brain",
+        "abc",
+        ".system_generated",
+        "logs",
+        "transcript.jsonl",
+      ),
     );
     expect(adapter.locate({ agentId: "agy" })).toBeUndefined();
   });
@@ -129,14 +141,14 @@ describe("agy helpers", () => {
     const adapter = agyTranscriptWith({
       platform: () => "darwin",
       agyPids: () => [1],
-      heldLogs: async () => ["/h/.gemini/antigravity-cli/log/cli-1.log"],
+      heldLogs: async () => [join(STATE, "log", "cli-1.log")],
       logSize: () => 100,
       readLogFrom: () =>
         Buffer.from(
           `I1125 02:13:51.634988     262 server.go:1269] Created conversation ${id} (backend=X)\n`,
         ),
       classify: (ids) => new Map(ids.map((one) => [one, "top" as const])),
-      stateDir: () => "/h/.gemini/antigravity-cli",
+      stateDir: () => STATE,
       exists: () => true,
     });
     expect(
