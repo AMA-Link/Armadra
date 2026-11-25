@@ -612,6 +612,12 @@ const WORKFLOW_MIGRATION = new URL(
   import.meta.url,
 );
 
+/** 模板表的 `file_ref` 列（契约 §119.6）在 v2 迁移里。 */
+const WORKFLOW_V2_MIGRATION = new URL(
+  "../db/migrations/0072_workflow_v2.sql",
+  import.meta.url,
+);
+
 const TEMPLATE_BODY: WorkflowDraft = {
   version: 1,
   title: "定时审查",
@@ -636,6 +642,7 @@ const TEMPLATE_BODY: WorkflowDraft = {
 function workflowSetUp() {
   const setup = setUp();
   setup.database.exec(readFileSync(WORKFLOW_MIGRATION, "utf8"));
+  setup.database.exec(readFileSync(WORKFLOW_V2_MIGRATION, "utf8"));
   const template = insertTemplate(setup.database, {
     id: "tpl-1",
     name: "定时审查",

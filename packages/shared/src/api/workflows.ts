@@ -289,6 +289,8 @@ export const workflowTemplateSchema = z.object({
   name: z.string(),
   version: z.number().int().min(1),
   createdFromDraft: z.string().nullable(),
+  /** 来自哪份项目级工作流文件；旧服务器不带。 */
+  fileRef: z.string().nullable().optional(),
   template: workflowDraftSchema,
   createdAt: z.string(),
   updatedAt: z.string(),

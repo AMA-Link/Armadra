@@ -52,6 +52,16 @@ export function workflowOperations(service: WorkflowService) {
     const run = service.run(id);
     return { run: runJson(run, service.steps(id)) };
   };
+  /** 指向这个模板、仍冻结在旧版本上的计划（契约 §15.6）。 */
+  const frozenOf = (templateId: string) =>
+    (workflowScheduleBridge()?.frozen(templateId) ?? []).map((item) => ({
+      scheduleId: item.scheduleId,
+      workspaceId: item.workspaceId,
+      templateVersion: item.templateVersion,
+      reason: item.reason,
+      missingParams: item.missingParams,
+      unknownParams: item.unknownParams,
+    }));
   return {
     /* --------------------------------- 草案 -------------------------------- */
     drafts: (filter: { boardId?: unknown; status?: unknown }) => ({
@@ -106,16 +116,7 @@ export function workflowOperations(service: WorkflowService) {
         }),
       );
       // 冻结在旧版本上的计划（契约 §15.6）：页面据此提示「更新到最新版本」。
-      const frozenSchedules = (
-        workflowScheduleBridge()?.frozen(templateId) ?? []
-      ).map((item) => ({
-        scheduleId: item.scheduleId,
-        workspaceId: item.workspaceId,
-        templateVersion: item.templateVersion,
-        reason: item.reason,
-        missingParams: item.missingParams,
-        unknownParams: item.unknownParams,
-      }));
+      const frozenSchedules = frozenOf(templateId);
       return { template, frozenSchedules };
     },
     upgradeSchedules: async (
@@ -147,6 +148,25 @@ export function workflowOperations(service: WorkflowService) {
     deleteTemplate: (templateId: string) => {
       service.deleteTemplate(templateId);
     },
+    files: async (workspaceId: unknown) => ({
+      files: await service.files(optional(workspaceId)),
+    }),
+    importFile: async (body: { workspaceId?: unknown; id?: unknown }) => {
+      const { template, change } = await service.importFile(
+        body.workspaceId,
+        body.id,
+      );
+      // 导入改了正文（`updated`）与 `PUT` 同样列出冻结的计划（契约 §121.2）。
+      return {
+        template: templateJson(template),
+        change,
+        frozenSchedules: change === "updated" ? frozenOf(template.id) : [],
+      };
+    },
+    exportTemplate: (
+      templateId: string,
+      body: { workspaceId?: unknown; id?: unknown; overwrite?: unknown },
+    ) => service.exportTemplate(templateId, body),
 
     /* --------------------------------- 运行 -------------------------------- */
     runs: (filter: {
@@ -355,6 +375,18 @@ export function installWorkflowRoutes(
       ),
     deleteTemplate: ({ templateId }: { templateId: string }) =>
       ops.deleteTemplate(templateId),
+    files: ({ workspaceId }: { workspaceId: string }) => ops.files(workspaceId),
+    importFile: (input: { workspaceId: string; id: string }) =>
+      ops.importFile(input),
+    exportTemplate: ({
+      templateId,
+      ...body
+    }: {
+      templateId: string;
+      workspaceId: string;
+      id?: string;
+      overwrite?: boolean;
+    }) => ops.exportTemplate(templateId, body),
     runs: (input: { templateId?: string; boardId?: string; limit?: unknown }) =>
       ops.runs(input),
     startRun: (input: {
@@ -440,6 +472,21 @@ export function installWorkflowRoutes(
           request.query.get("workspaceId") ?? "",
           jsonBody(request).scheduleIds,
         ),
+      ),
+  );
+  route("GET", `${BASE}/files`, async (_match, request) =>
+    ok(await ops.files(query(request, "workspaceId"))),
+  );
+  route("POST", `${BASE}/files/import`, async (_match, request) => {
+    const answer = await ops.importFile(jsonBody(request));
+    return ok(answer, answer.change === "created" ? 201 : 200);
+  });
+  route(
+    "POST",
+    `${BASE}/templates/{templateId}/export`,
+    async (match, request) =>
+      ok(
+        await ops.exportTemplate(param(match, "templateId"), jsonBody(request)),
       ),
   );
   route("DELETE", `${BASE}/templates/{templateId}`, (match) => {

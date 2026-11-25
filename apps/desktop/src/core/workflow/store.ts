@@ -148,6 +148,8 @@ export interface TemplateRow {
   readonly version: number;
   readonly template: WorkflowDraft;
   readonly createdFromDraft: string | null;
+  /** 来自哪份项目级工作流文件：`<工作空间 id>/<文件 id>`（契约 §121）；人建的为空。 */
+  readonly fileRef: string | null;
   readonly createdAt: number;
   readonly updatedAt: number;
 }
@@ -158,12 +160,13 @@ interface TemplateRecord {
   version: number;
   template_json: string;
   created_from_draft: string | null;
+  file_ref: string | null;
   created_at: number;
   updated_at: number;
 }
 
 const TEMPLATE_COLUMNS =
-  "id, name, version, template_json, created_from_draft, created_at, updated_at";
+  "id, name, version, template_json, created_from_draft, file_ref, created_at, updated_at";
 
 function templateOf(row: TemplateRecord): TemplateRow {
   return {
@@ -172,6 +175,7 @@ function templateOf(row: TemplateRecord): TemplateRow {
     version: Number(row.version),
     template: parse(row.template_json, {} as WorkflowDraft),
     createdFromDraft: row.created_from_draft,
+    fileRef: row.file_ref ?? null,
     createdAt: Number(row.created_at),
     updatedAt: Number(row.updated_at),
   };
@@ -179,11 +183,13 @@ function templateOf(row: TemplateRecord): TemplateRow {
 
 export function insertTemplate(
   database: DatabaseSync,
-  template: Omit<TemplateRow, "updatedAt" | "version">,
+  template: Omit<TemplateRow, "updatedAt" | "version" | "fileRef"> & {
+    readonly fileRef?: string | null;
+  },
 ): TemplateRow {
   database
     .prepare(
-      `INSERT INTO workflow_templates (${TEMPLATE_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO workflow_templates (${TEMPLATE_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       template.id,
@@ -191,6 +197,7 @@ export function insertTemplate(
       1,
       JSON.stringify(template.template),
       template.createdFromDraft,
+      template.fileRef ?? null,
       template.createdAt,
       template.createdAt,
     );
@@ -205,6 +212,41 @@ export function templateById(
     .prepare(`SELECT ${TEMPLATE_COLUMNS} FROM workflow_templates WHERE id = ?`)
     .get(id) as TemplateRecord | undefined;
   return row === undefined ? undefined : templateOf(row);
+}
+
+export function templateByFileRef(
+  database: DatabaseSync,
+  fileRef: string,
+): TemplateRow | undefined {
+  const row = database
+    .prepare(
+      `SELECT ${TEMPLATE_COLUMNS} FROM workflow_templates WHERE file_ref = ?`,
+    )
+    .get(fileRef) as TemplateRecord | undefined;
+  return row === undefined ? undefined : templateOf(row);
+}
+
+/** 把模板指向一份文件；别的模板占着同一个引用时让给它（一份文件只对一个模板）。 */
+export function pointTemplateAtFile(
+  database: DatabaseSync,
+  id: string,
+  fileRef: string,
+): void {
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    database
+      .prepare(
+        "UPDATE workflow_templates SET file_ref = NULL WHERE file_ref = ? AND id <> ?",
+      )
+      .run(fileRef, id);
+    database
+      .prepare("UPDATE workflow_templates SET file_ref = ? WHERE id = ?")
+      .run(fileRef, id);
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 export function listTemplates(database: DatabaseSync): TemplateRow[] {

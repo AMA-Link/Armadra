@@ -144,6 +144,10 @@ const CONFIRM = /^\/api\/control\/confirm\/([^/]+)$/;
 const LAUNCH_GATE = /^\/api\/agents\/launch-(slot|result)$/;
 /** 工作流（契约 §15.2–§15.3）：路径里没有工作空间，按草案 / 运行 / 画板查。 */
 const WORKFLOW_TEMPLATES = /^\/api\/workflows\/templates(\/[^/]+)?$/;
+/** 项目级工作流文件（契约 §121）：列表按体 / 查询串里的工作空间。 */
+const WORKFLOW_FILES = /^\/api\/workflows\/files$/;
+const WORKFLOW_FILE_IMPORT = /^\/api\/workflows\/files\/import$/;
+const WORKFLOW_TEMPLATE_EXPORT = /^\/api\/workflows\/templates\/[^/]+\/export$/;
 const WORKFLOW_DRAFTS = /^\/api\/workflows\/drafts$/;
 const WORKFLOW_DRAFT =
   /^\/api\/workflows\/drafts\/([^/]+)(\/(confirm|discard))?$/;
@@ -251,6 +255,26 @@ export function createRouteGuard(options: RouteAccessOptions): RouteGuard {
   ): RouteVerdict | undefined => {
     if (!path.startsWith("/api/workflows/")) return undefined;
     const reading = method === "GET" || method === "HEAD";
+    // 列表是看那个工作空间；导入改共用的模板库，与新建模板同档（成员不行）；
+    // 导出读模板、写那个工作空间的文件：要在任意画布上能起 Agent，且对该工作空间
+    // 有 `files:write`。
+    if (WORKFLOW_FILES.test(path) && reading) {
+      return onWorkspace(
+        subject,
+        "canvas:read",
+        request.query.get("workspaceId") ?? "",
+      );
+    }
+    if (WORKFLOW_FILE_IMPORT.test(path)) return DENY;
+    if (WORKFLOW_TEMPLATE_EXPORT.test(path) && !reading) {
+      return grantedSomewhere(subject, "agent:launch")
+        ? onWorkspace(
+            subject,
+            "files:write",
+            bodyString(request, "workspaceId"),
+          )
+        : DENY;
+    }
     if (WORKFLOW_TEMPLATES.test(path)) {
       return reading && grantedSomewhere(subject, "agent:launch")
         ? ALLOW

@@ -3,6 +3,18 @@ import type { WorkItemStage } from "@armadra/shared";
 import { validAgentId, type AgentSettings } from "../agent/registry";
 import type { CollabContext } from "../collab/service";
 import { DomainError, uuidV7 } from "../workspaces/support";
+import { getWorkspace } from "../workspaces/table";
+import {
+  type FileChange,
+  type WorkflowFileEntry,
+  checkFileId,
+  exportFileId,
+  fileRef,
+  listWorkflowFiles,
+  readWorkflowFile,
+  upsertFileTemplate,
+  writeWorkflowFile,
+} from "./files";
 import { DeliveryRefused, deliverPrompt } from "./dispatch";
 import { parseDraft } from "./draft";
 import type { WorkflowEngine } from "./engine";
@@ -18,6 +30,7 @@ import {
   listDrafts,
   listRuns,
   listTemplates,
+  pointTemplateAtFile,
   runById,
   settleDraft,
   stepsOf,
@@ -281,6 +294,59 @@ export class WorkflowService {
       );
     }
     return this.template(id);
+  }
+
+  /* ------------------------ `.ama/workflows` 文件（契约 §121） ------------------------ */
+
+  private workspaceOf(raw: unknown) {
+    if (typeof raw !== "string" || raw === "") {
+      throw new DomainError(400, "bad_request", "workspaceId 不能缺。");
+    }
+    return getWorkspace(this.database, raw);
+  }
+
+  files(workspaceId: unknown): Promise<WorkflowFileEntry[]> {
+    return listWorkflowFiles(this.workspaceOf(workspaceId), this.database);
+  }
+
+  /** 导入：新建答 `created`，正文不同 `updated`（修订号 +1），相同 `unchanged`。 */
+  async importFile(
+    workspaceId: unknown,
+    id: unknown,
+  ): Promise<{ template: TemplateRow; change: FileChange }> {
+    const workspace = this.workspaceOf(workspaceId);
+    const fileId = checkFileId(id);
+    const { draft } = await readWorkflowFile(workspace, fileId);
+    return upsertFileTemplate(
+      this.database,
+      fileRef(workspace.id, fileId),
+      draft,
+      this.clock(),
+    );
+  }
+
+  async exportTemplate(
+    templateId: string,
+    body: {
+      readonly workspaceId?: unknown;
+      readonly id?: unknown;
+      readonly overwrite?: unknown;
+    },
+  ): Promise<{ path: string; id: string }> {
+    const workspace = this.workspaceOf(body.workspaceId);
+    const template = this.template(templateId);
+    const id =
+      body.id === undefined || body.id === null || body.id === ""
+        ? exportFileId(this.database, workspace.id, template)
+        : checkFileId(body.id);
+    const { path } = await writeWorkflowFile(
+      workspace,
+      id,
+      template.template,
+      body.overwrite === true,
+    );
+    pointTemplateAtFile(this.database, template.id, fileRef(workspace.id, id));
+    return { path, id };
   }
 
   deleteTemplate(id: string): void {
@@ -751,6 +817,7 @@ export function templateJson(row: TemplateRow): Record<string, unknown> {
     name: row.name,
     version: row.version,
     createdFromDraft: row.createdFromDraft,
+    fileRef: row.fileRef,
     template: row.template,
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),

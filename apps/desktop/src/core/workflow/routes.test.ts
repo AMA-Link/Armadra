@@ -7,7 +7,7 @@ import { resetInboxWake } from "../collab/wake";
 import type { CoreRequest } from "../http/router";
 import { routeScope } from "../http/route-scopes";
 import { WorkflowEngine } from "./engine";
-import { setWorkflowDomain } from "./registry";
+import { setWorkflowDomain, setWorkflowScheduleBridge } from "./registry";
 import { nodeCreator } from "../identity/creators";
 import { runAs } from "../identity/gate";
 import { scope } from "../identity/scopes";
@@ -16,7 +16,7 @@ import { workflowDispatcher } from "./test-dispatch";
 import { WorkflowService } from "./service";
 import type { ForgeService } from "../forge/service";
 import { getSource, insertCandidate, recordVerdict } from "./intake";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { finishTask, recordTaskStart } from "./task-runs";
 import { recordReport } from "./work-items";
@@ -912,5 +912,266 @@ describe("协调者的来源与候选（契约 §104.7）", () => {
     expect(routeScope("POST", "/api/workflows/intake/c/review")).toMatchObject({
       permission: "agent:launch",
     });
+  });
+});
+
+describe(".ama/workflows 的导入与导出（契约 §121）", () => {
+  const FILE = (title: string, agent = "codex") => `---
+version: 2
+title: ${title}
+roles:
+  - id: a
+    agentId: ${agent}
+steps:
+  - id: s
+    kind: prompt
+    role: a
+    prompt: x
+---
+`;
+  const put = (name: string, text: string) => {
+    mkdirSync(join(fixture.directory, ".ama", "workflows"), {
+      recursive: true,
+    });
+    writeFileSync(join(fixture.directory, ".ama", "workflows", name), text);
+  };
+  const at = () => fixture.workspaceId;
+
+  it("列表：目录不在是空数组，缺工作空间 400，未知 404", async () => {
+    const empty = await call("GET", `/api/workflows/files?workspaceId=${at()}`);
+    expect(empty).toMatchObject({ status: 200, body: { files: [] } });
+    expect((await call("GET", "/api/workflows/files")).status).toBe(400);
+    expect(
+      (await call("GET", "/api/workflows/files?workspaceId=nope")).status,
+    ).toBe(404);
+  });
+
+  it("导入：新建 201，正文变了 200 并修订号 +1，没变 200 原样", async () => {
+    put("flow.md", FILE("第一版"));
+    const body = { workspaceId: at(), id: "flow" };
+    const created = await call("POST", "/api/workflows/files/import", body);
+    expect(created.status).toBe(201);
+    expect(created.body).toMatchObject({
+      change: "created",
+      template: {
+        name: "第一版",
+        version: 1,
+        fileRef: `${at()}/flow`,
+      },
+    });
+    const same = await call("POST", "/api/workflows/files/import", body);
+    expect(same.status).toBe(200);
+    expect(same.body).toMatchObject({
+      change: "unchanged",
+      template: { version: 1 },
+    });
+    put("flow.md", FILE("第二版"));
+    const updated = await call("POST", "/api/workflows/files/import", body);
+    expect(updated.status).toBe(200);
+    expect(updated.body).toMatchObject({
+      change: "updated",
+      template: { version: 2, name: "第二版" },
+    });
+    expect(
+      (await call("GET", "/api/workflows/templates")).body.templates,
+    ).toHaveLength(1);
+    const listed = await call(
+      "GET",
+      `/api/workflows/files?workspaceId=${at()}`,
+    );
+    expect(listed.body.files).toMatchObject([
+      { id: "flow", valid: true, title: "第二版" },
+    ]);
+  });
+
+  it("导入：acp:* 与不合格的文件 400 invalid_draft，没有 404，坏参数 400", async () => {
+    put("acp.md", FILE("x", "acp:other"));
+    const refused = await call("POST", "/api/workflows/files/import", {
+      workspaceId: at(),
+      id: "acp",
+    });
+    expect(refused.status).toBe(400);
+    expect(refused.body).toMatchObject({ code: "invalid_draft" });
+    expect(
+      (
+        await call("POST", "/api/workflows/files/import", {
+          workspaceId: at(),
+          id: "ghost",
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await call("POST", "/api/workflows/files/import", {
+          workspaceId: at(),
+          id: "../x",
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (await call("POST", "/api/workflows/files/import", { id: "a" })).status,
+    ).toBe(400);
+    expect(
+      (await call("GET", "/api/workflows/templates")).body.templates,
+    ).toEqual([]);
+  });
+
+  async function created(name: string): Promise<string> {
+    const answer = await call("POST", "/api/workflows/templates", {
+      name,
+      template: DRAFT,
+    });
+    return (answer.body.template as { id: string }).id;
+  }
+
+  it("导出：缺省 id 取名字的短横线形式；写成功后 fileRef 指向它", async () => {
+    const id = await created("Two Reviewers");
+    const out = await call("POST", `/api/workflows/templates/${id}/export`, {
+      workspaceId: at(),
+    });
+    expect(out).toMatchObject({
+      status: 200,
+      body: { path: ".ama/workflows/two-reviewers.md", id: "two-reviewers" },
+    });
+    expect(
+      existsSync(
+        join(fixture.directory, ".ama", "workflows", "two-reviewers.md"),
+      ),
+    ).toBe(true);
+    const template = await call("GET", `/api/workflows/templates/${id}`);
+    expect(template.body.template).toMatchObject({
+      fileRef: `${at()}/two-reviewers`,
+    });
+    // 再导出沿用 fileRef 里的 id，已存在 409，overwrite 覆盖。
+    const again = await call("POST", `/api/workflows/templates/${id}/export`, {
+      workspaceId: at(),
+    });
+    expect(again.status).toBe(409);
+    expect(again.body).toMatchObject({ code: "workflow_file_exists" });
+    const over = await call("POST", `/api/workflows/templates/${id}/export`, {
+      workspaceId: at(),
+      overwrite: true,
+    });
+    expect(over.status).toBe(200);
+  });
+
+  it("导出：一份文件只属于一个模板；中文名回落到 workflow-<id 前 8 位>；未知模板 404", async () => {
+    const one = await created("A");
+    const two = await created("双人审查");
+    const body = { workspaceId: at(), id: "shared" };
+    await call("POST", `/api/workflows/templates/${one}/export`, body);
+    await call("POST", `/api/workflows/templates/${two}/export`, {
+      ...body,
+      overwrite: true,
+    });
+    const rows = (await call("GET", "/api/workflows/templates")).body
+      .templates as { id: string; fileRef: string | null }[];
+    expect(rows.find((row) => row.id === one)?.fileRef).toBeNull();
+    expect(rows.find((row) => row.id === two)?.fileRef).toBe(`${at()}/shared`);
+    const third = await created("三个人");
+    const out = await call("POST", `/api/workflows/templates/${third}/export`, {
+      workspaceId: at(),
+    });
+    expect(out.body.id).toBe(`workflow-${third.slice(0, 8)}`);
+    expect(
+      (
+        await call("POST", "/api/workflows/templates/none/export", {
+          workspaceId: at(),
+        })
+      ).status,
+    ).toBe(404);
+  });
+
+  it("导出：默认 id 的文件属于别的模板时补 -<模板 id 前 8 位>，不抢文件", async () => {
+    const one = await created("Review");
+    const two = await created("Review");
+    const first = await call("POST", `/api/workflows/templates/${one}/export`, {
+      workspaceId: at(),
+    });
+    expect(first.body.id).toBe("review");
+    const second = await call(
+      "POST",
+      `/api/workflows/templates/${two}/export`,
+      {
+        workspaceId: at(),
+      },
+    );
+    expect(second.status).toBe(200);
+    expect(second.body.id).toBe(`review-${two.slice(0, 8)}`);
+    const rows = (await call("GET", "/api/workflows/templates")).body
+      .templates as { id: string; fileRef: string | null }[];
+    expect(rows.find((row) => row.id === one)?.fileRef).toBe(`${at()}/review`);
+  });
+
+  it("导入 updated 带 frozenSchedules（与 PUT 同形），其余为空", async () => {
+    setWorkflowScheduleBridge({
+      frozen: () => [
+        {
+          scheduleId: "sch-1",
+          workspaceId: "ws-1",
+          templateVersion: 1,
+          reason: "compatible",
+          missingParams: [],
+          unknownParams: [],
+        },
+      ],
+    } as never);
+    try {
+      put("flow.md", FILE("第一版"));
+      const body = { workspaceId: at(), id: "flow" };
+      const created1 = await call("POST", "/api/workflows/files/import", body);
+      expect(created1.body.frozenSchedules).toEqual([]);
+      put("flow.md", FILE("第二版"));
+      const updated = await call("POST", "/api/workflows/files/import", body);
+      expect(updated.body).toMatchObject({
+        change: "updated",
+        frozenSchedules: [
+          {
+            scheduleId: "sch-1",
+            workspaceId: "ws-1",
+            templateVersion: 1,
+            reason: "compatible",
+            missingParams: [],
+            unknownParams: [],
+          },
+        ],
+      });
+      const same = await call("POST", "/api/workflows/files/import", body);
+      expect(same.body).toMatchObject({
+        change: "unchanged",
+        frozenSchedules: [],
+      });
+    } finally {
+      setWorkflowScheduleBridge(undefined);
+    }
+  });
+
+  it("导出再导入：同一个模板，内容不变", async () => {
+    const id = await created("往返");
+    await call("POST", `/api/workflows/templates/${id}/export`, {
+      workspaceId: at(),
+      id: "round",
+    });
+    const back = await call("POST", "/api/workflows/files/import", {
+      workspaceId: at(),
+      id: "round",
+    });
+    expect(back.status).toBe(200);
+    expect(back.body).toMatchObject({
+      change: "unchanged",
+      template: { id },
+    });
+  });
+
+  it("路由表：列表与导入读 canvas:read / 写 agent:launch，导出写 files:write", () => {
+    expect(routeScope("GET", "/api/workflows/files")?.permission).toBe(
+      "canvas:read",
+    );
+    expect(routeScope("POST", "/api/workflows/files/import")?.permission).toBe(
+      "agent:launch",
+    );
+    expect(
+      routeScope("POST", "/api/workflows/templates/x/export")?.permission,
+    ).toBe("files:write");
   });
 });
