@@ -1,9 +1,12 @@
 import {
   existsSync,
+  utimesSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,6 +24,8 @@ import {
   candidates,
   cwdOf,
   forceOpenModeForTest,
+  forgetLastGoodForTest,
+  forgetSweepForTest,
   isoOf,
   locate,
   parse,
@@ -28,11 +33,17 @@ import {
   readEntries,
   roots,
   sessionIdOf,
+  setCopyHooksForTest,
   setMaxCopyBytesForTest,
   setWarningLog,
 } from "./agy";
 import { availabilityOf } from "./availability";
-import { HISTORY_ADAPTERS, historyAdapter, locateHistory } from "./registry";
+import {
+  HISTORY_ADAPTERS,
+  historyAdapter,
+  locateHistory,
+  locateReadableHistory,
+} from "./registry";
 
 /**
  * Antigravity 的会话索引适配器（#997 批 2）。库是测试自己建的：**结构**取自真机
@@ -64,6 +75,7 @@ let previousLog: ReturnType<typeof setWarningLog>;
 let previousHome: string | undefined;
 
 beforeEach(() => {
+  forgetLastGoodForTest();
   directory = mkdtempSync(join(tmpdir(), "armadra-agy-history-"));
   home = join(directory, "home");
   mkdirSync(join(home, ".gemini", "antigravity-cli"), { recursive: true });
@@ -83,6 +95,8 @@ beforeEach(() => {
 
 afterEach(() => {
   forceOpenModeForTest();
+  setCopyHooksForTest();
+  forgetLastGoodForTest();
   setWarningLog(previousLog);
   if (previousHome === undefined) delete process.env.HOME;
   else process.env.HOME = previousHome;
@@ -405,3 +419,216 @@ describe("没有记录可读", () => {
     expect(existsSync(dbPath)).toBe(false);
   });
 });
+
+describe("读失败不清空索引", () => {
+  function tornSetup(): DatabaseSync {
+    const writer = createDatabase([{ id: "c-old", title: "旧会话" }]);
+    writer.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    seed(writer, [{ id: "c-wal", title: "只在 WAL 里" }]);
+    return writer;
+  }
+
+  it("复制主库与 WAL 之间 agy 做了检查点：发现副本撕裂，重试，读到完整的一份", () => {
+    const writer = tornSetup();
+    try {
+      const attempts: number[] = [];
+      setCopyHooksForTest({
+        betweenCopies: (attempt) => {
+          attempts.push(attempt);
+          // 第一次复制中途：检查点把 WAL 清空，再写一行（salt 与大小都变了）。
+          if (attempt === 1) {
+            writer.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+            seed(writer, [{ id: "c-late", title: "复制期间写的" }]);
+          }
+        },
+      });
+      expect(
+        candidates(dbPath)
+          .map((c) => c.path)
+          .sort(),
+      ).toEqual(["agy:c-late", "agy:c-old", "agy:c-wal"]);
+      expect(attempts).toEqual([1, 2]);
+    } finally {
+      writer.close();
+    }
+  });
+
+  it("两次复制之间 WAL 被检查点删掉也算撕裂，重试", () => {
+    const writer = tornSetup();
+    try {
+      setCopyHooksForTest({
+        betweenCopies: (attempt) => {
+          if (attempt === 1) {
+            writer.close();
+            // 关库会检查点并删掉 `-wal`。
+          }
+        },
+      });
+      const found = candidates(dbPath).map((c) => c.path);
+      expect(found.sort()).toEqual(["agy:c-old", "agy:c-wal"]);
+    } finally {
+      try {
+        writer.close();
+      } catch {
+        // 已经关了。
+      }
+    }
+  });
+
+  it("每一次都撕裂：退到 immutable，仍然不是空列表", () => {
+    const writer = tornSetup();
+    try {
+      let n = 0;
+      setCopyHooksForTest({
+        betweenCopies: () => {
+          n += 1;
+          seed(writer, [{ id: `c-torn-${n}`, title: "一直在写" }]);
+        },
+      });
+      const found = candidates(dbPath);
+      expect(found.length).toBeGreaterThan(0);
+      expect(found.map((c) => c.path)).toContain("agy:c-old");
+    } finally {
+      writer.close();
+    }
+  });
+
+  it("副本读出来是坏页（malformed）：换一份新副本重读", () => {
+    createDatabase(MIXED).close();
+    let copies = 0;
+    setCopyHooksForTest({
+      afterCopy: (copy) => {
+        copies += 1;
+        // 第一份副本被截断：打开或查询时 malformed。
+        if (copies === 1) writeFileSync(copy, readFileSyncHead(copy, 1500));
+      },
+    });
+    expect(candidates(dbPath)).toHaveLength(3);
+    expect(copies).toBeGreaterThanOrEqual(2);
+  });
+
+  it("这一趟读不了就回上一趟读成功的，索引行不被清掉；库没了才清", () => {
+    createDatabase(MIXED).close();
+    const opened = openDatabase({
+      file: join(directory, "canvas.db"),
+      migrationsDir: migrationsDir(),
+    });
+    try {
+      const index = opened.database;
+      expect(refresh(index, [["agy", dbPath]])).toMatchObject({ indexed: 3 });
+      // 库被写坏了（不是 SQLite）：读不了，不是「没有会话」。
+      writeFileSync(dbPath, "this is not a database");
+      writeFileSync(`${dbPath}-wal`, "");
+      expect(candidates(dbPath).map((c) => c.path)).toEqual([
+        "agy:c-new",
+        "agy:c-preview",
+        "agy:c-old",
+      ]);
+      expect(refresh(index, [["agy", dbPath]])).toMatchObject({
+        removed: 0,
+        total: 3,
+      });
+      expect(listConversations(index, undefined, 10)).toHaveLength(3);
+      // 库没了：确实没有，清掉。
+      rmSync(dbPath);
+      rmSync(`${dbPath}-wal`, { force: true });
+      expect(refresh(index, [["agy", dbPath]])).toMatchObject({
+        removed: 3,
+        total: 0,
+      });
+    } finally {
+      opened.close();
+    }
+  });
+
+  it("从没读成功过、又读不了：是空，不抛", () => {
+    writeFileSync(dbPath, "this is not a database");
+    expect(candidates(dbPath)).toEqual([]);
+  });
+
+  it("列不认得（升级后改了表）：清掉，不留着旧的", () => {
+    createDatabase(MIXED).close();
+    expect(candidates(dbPath)).toHaveLength(3);
+    rmSync(dbPath);
+    rmSync(`${dbPath}-wal`, { force: true });
+    const database = new DatabaseSync(dbPath);
+    database.exec("CREATE TABLE conversation_summaries (conversation_id text)");
+    database.close();
+    expect(candidates(dbPath)).toEqual([]);
+  });
+});
+
+describe("兜底与清理", () => {
+  it("immutable 兜底给一次 warning，说清可能读不到最近几行", () => {
+    createDatabase(MIXED).close();
+    forceOpenModeForTest("immutable");
+    candidates(dbPath);
+    candidates(dbPath);
+    const notes = warnings as {
+      fields?: { reason?: string; detail?: string };
+    }[];
+    const immutable = notes.filter((w) => w.fields?.reason === "immutable");
+    expect(immutable).toHaveLength(1);
+    expect(immutable[0]?.fields?.detail).toContain("最近几行");
+  });
+
+  it("复制上限按主库加 -wal 的总和算：WAL 大就退到 immutable", () => {
+    const writer = createDatabase([{ id: "c-old", title: "旧会话" }]);
+    // 表结构落进主库，之后的行留在 WAL 里。
+    writer.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+    seed(writer, [{ id: "c-wal", title: "只在 WAL 里" }]);
+    try {
+      const mainSize = statSync(dbPath).size;
+      setMaxCopyBytesForTest(mainSize + 1);
+      // 主库本身没超，但加上 WAL 超了。
+      expect(statSync(`${dbPath}-wal`).size).toBeGreaterThan(1);
+      expect(probe(dbPath)).toEqual({ state: "ok", mode: "immutable" });
+    } finally {
+      setMaxCopyBytesForTest();
+      writer.close();
+    }
+  });
+
+  it("首次使用时清掉超过几分钟的残留副本目录，新的不动", () => {
+    createDatabase(MIXED).close();
+    const stale = mkdtempSync(join(tmpdir(), "armadra-agy-"));
+    const fresh = mkdtempSync(join(tmpdir(), "armadra-agy-"));
+    const old = new Date(Date.now() - 30 * 60_000);
+    utimesSync(stale, old, old);
+    forgetSweepForTest();
+    try {
+      probe(dbPath);
+      expect(existsSync(stale)).toBe(false);
+      expect(existsSync(fresh)).toBe(true);
+    } finally {
+      rmSync(stale, { recursive: true, force: true });
+      rmSync(fresh, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("给读内容的读者的定位", () => {
+  it("只有索引、没有记录的来源答 undefined；读标题的入口仍答 key", () => {
+    const hint = { agentId: "agy", sessionId: "abc" };
+    expect(locateHistory(hint)).toMatchObject({ key: "agy:abc" });
+    expect(locateReadableHistory(hint)).toBeUndefined();
+    // CLI 报来了一个真文件：照旧认。
+    const file = join(directory, "reported.jsonl");
+    writeFileSync(file, "");
+    expect(
+      locateReadableHistory({ ...hint, transcriptPath: file }),
+    ).toMatchObject({ path: file });
+  });
+
+  it("有记录可读的来源不受影响", () => {
+    const hint = { agentId: "opencode", sessionId: "ses_1" };
+    expect(locateReadableHistory(hint)).toEqual(locateHistory(hint));
+    expect(locateReadableHistory({ agentId: "claude" })).toEqual(
+      locateHistory({ agentId: "claude" }),
+    );
+  });
+});
+
+function readFileSyncHead(path: string, bytes: number): Buffer {
+  return readFileSync(path).subarray(0, bytes);
+}
