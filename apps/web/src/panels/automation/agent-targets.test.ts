@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   agentTargets,
   definitionLacksChannel,
+  withChannels,
   lacksStateChannel,
 } from "./agent-targets";
 
@@ -61,5 +62,21 @@ describe("计划任务的目标", () => {
       ["a", true],
       ["b", true],
     ]);
+  });
+
+  it("core 按节点答 null 的置灰，答了来源名的、没答的保持原样", () => {
+    const options = agentTargets([
+      terminal("a", "claude"),
+      terminal("b", "codex"),
+      terminal("c", "claude"),
+    ]);
+    const merged = withChannels(options, { a: null, b: "hook" });
+    expect(merged.map((o) => [o.nodeId, o.noStateChannel])).toEqual([
+      ["a", true],
+      ["b", false],
+      ["c", false],
+    ]);
+    // 还没答（undefined）：原样。
+    expect(withChannels(options, undefined)).toEqual(options);
   });
 });

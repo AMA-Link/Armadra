@@ -538,6 +538,13 @@ const listSessionsSchema: z.ZodType<ListCommandSessionsResponse> = z.object({
   hasMore: flag,
 });
 
+/** 节点 id → 状态通道来源名；`null` = 按节点判下来没有（契约 §4.1）。 */
+export type TargetChannels = Record<string, string | null>;
+
+const targetChannelsSchema: z.ZodType<{ channels: TargetChannels }> = z.object({
+  channels: z.record(z.string(), z.string().nullable()),
+});
+
 const payloadSchema = z.object({
   planId: text,
   payload: text,
@@ -813,6 +820,17 @@ export class AutomationApi {
       }),
       listSessionsSchema,
     );
+  }
+
+  /** 这些节点此刻有没有状态通道（计划向导置灰用）；最多 200 个，多的被丢掉。 */
+  async targetChannels(nodeIds: readonly string[]): Promise<TargetChannels> {
+    const ids = nodeIds.filter((id) => scopedId.test(id)).slice(0, 200);
+    if (ids.length === 0) return {};
+    const answer = await this.#call(
+      this.#path("/target-channels", { nodeIds: ids.join(",") }),
+      targetChannelsSchema,
+    );
+    return answer.channels;
   }
 
   /* --------------------------------------------------------- 计划 */

@@ -30,6 +30,9 @@ export const automationKeys = {
     [...srcPrefix(), "automation", "runs", workspaceId, planId] as const,
   sessions: (workspaceId: string) =>
     [...srcPrefix(), "automation", "sessions", workspaceId] as const,
+  /** 这些节点此刻有没有状态通道（向导置灰）；键里带节点 id，节点变了重问。 */
+  channels: (workspaceId: string, nodeIds: string) =>
+    [...srcPrefix(), "automation", "channels", workspaceId, nodeIds] as const,
   /** The stored stdin / prompt, read back only when a plan is being edited. */
   payload: (workspaceId: string, planId: string) =>
     [...srcPrefix(), "automation", "payload", workspaceId, planId] as const,
