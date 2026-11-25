@@ -23,6 +23,8 @@
  * （在 `summary.json`，经会话索引取）。
  */
 
+import { basename } from "node:path";
+
 import {
   type TimelineToolContent,
   type TimelineToolKind,
@@ -30,6 +32,7 @@ import {
   toolInputSummary,
 } from "@armadra/shared";
 
+import { UPDATES_FILE, recordId, recordMs } from "../../history/grok";
 import { locateHistory } from "../../history/registry";
 import type { SessionHint } from "../../history/types";
 import {
@@ -41,7 +44,6 @@ import {
   str,
   terminalContent,
   textContent,
-  timeOf,
 } from "./convert-util";
 import type { TimelineSink } from "./sink";
 import type { TranscriptAdapter } from "./types";
@@ -229,37 +231,49 @@ function convert(value: unknown, sink: TimelineSink): void {
   if (record === undefined || params === undefined || update === undefined) {
     return;
   }
-  const micros =
-    typeof record.timestamp_us === "number" ? record.timestamp_us : 0;
-  const at =
-    micros > 0 ? Math.floor(micros / 1000) : timeOf(undefined, Date.now());
-  const stamp = micros > 0 ? String(micros) : String(at);
+  // 时间与 id 优先用行里 `_meta` 自带的（老版本的会话没有 `timestamp_us`）。
+  const at = recordMs(record) ?? Date.now();
+  const stamp = recordId(record);
+  const session = str(params.sessionId) ?? "";
+  const prefix = `gk:${session}:`;
   switch (update.sessionUpdate) {
     case "user_message_chunk": {
       const text = (textOf(update.content) ?? "").trim();
       if (text === "") return;
       const index = obj(update._meta)?.promptIndex;
-      const session = str(params.sessionId) ?? "";
-      sink.beginTurn(
-        `gk:${session}:${typeof index === "number" ? index : stamp}`,
-        at,
-        { text },
-      );
+      const turnId = `${prefix}${typeof index === "number" ? index : stamp}`;
+      const previous = sink.latestTurn();
+      const isNew = sink.item(`turn:${turnId}`) === undefined;
+      const created = sink.beginTurn(turnId, at, { text });
+      // 换了会话（`/new`、`/resume`）：在新会话的第一个回合里插一条分隔。
+      if (
+        isNew &&
+        previous !== undefined &&
+        previous.turnId !== turnId &&
+        !previous.turnId.startsWith(prefix)
+      ) {
+        sink.notice(created, `n:switch:${turnId}`, at, "info", {
+          name: session.slice(0, 8),
+        });
+      }
       return;
     }
     case "agent_message_chunk": {
       const text = textOf(update.content) ?? "";
       if (text.trim() === "") return;
-      sink.assistant(sink.turnForContent(at, `gk:${stamp}`), `a:${stamp}`, at, [
-        { type: "text", text },
-      ]);
+      sink.assistant(
+        sink.turnForContent(at, `${prefix}${stamp}`),
+        `a:${stamp}`,
+        at,
+        [{ type: "text", text }],
+      );
       return;
     }
     case "agent_thought_chunk": {
       const text = textOf(update.content) ?? "";
       if (text.trim() === "") return;
       sink.thought(
-        sink.turnForContent(at, `gk:${stamp}`),
+        sink.turnForContent(at, `${prefix}${stamp}`),
         `th:${stamp}`,
         at,
         text,
@@ -267,12 +281,15 @@ function convert(value: unknown, sink: TimelineSink): void {
       return;
     }
     case "tool_call":
-      startTool(sink, update, at, sink.turnForContent(at, `gk:${stamp}`));
+      startTool(sink, update, at, sink.turnForContent(at, `${prefix}${stamp}`));
       return;
     case "tool_call_update":
       updateTool(sink, update, at);
       return;
     case "turn_completed": {
+      // 只合自己这个会话的回合：另一个会话的行不能把这边打开的回合收掉。
+      const open = sink.openTurn();
+      if (open !== undefined && !open.turnId.startsWith(prefix)) return;
       const stop = stopReasonOf(update.stop_reason);
       sink.endTurn(at, stop === undefined ? {} : { stopReason: stop });
       return;
@@ -284,7 +301,13 @@ function convert(value: unknown, sink: TimelineSink): void {
 
 export const grokTranscript: TranscriptAdapter = {
   agentId: "grok",
-  locate: (hint: SessionHint) => locateHistory(hint)?.path,
+  // 只认 `updates.jsonl`：别的文件名（hook 报来的任何路径）不是这家的对话记录。
+  locate: (hint: SessionHint) => {
+    const path = locateHistory(hint)?.path;
+    return path !== undefined && basename(path) === UPDATES_FILE
+      ? path
+      : undefined;
+  },
   convert,
   toolKind: grokToolKind,
 };

@@ -18,6 +18,9 @@ import {
   grokAdapter,
   locate,
   parse,
+  recordId,
+  recordMs,
+  safeId,
   readEntries,
   roots,
   unreadable,
@@ -339,7 +342,7 @@ describe("Grok 成本", () => {
     });
     // 同一个回合重复（分叉出来的会话逐字重复前面的行）只计一次。
     writeSession("fork", {
-      lines: turnLines(SID, "p-0", 50_000_000),
+      lines: turnLines("fork", "p-0", 50_000_000),
     });
     const scan = await new ScanState().scan([["grok", roots()[0] as string]]);
     const summary = summarize(scan, BUILT_IN_PRICES, Date.now());
@@ -397,5 +400,34 @@ describe("Grok 成本", () => {
       source?.absorb(state, value, context);
     }
     expect(state.buckets.size).toBe(0);
+  });
+});
+
+describe("Grok 行的时间与 id", () => {
+  it("时间：_meta.agentTimestampMs，然后 timestamp_us，然后 timestamp 秒", () => {
+    expect(
+      recordMs({
+        params: { _meta: { agentTimestampMs: 5 } },
+        timestamp_us: 9e6,
+      }),
+    ).toBe(5);
+    expect(recordMs({ timestamp_us: 7_000_000, timestamp: 1 })).toBe(7000);
+    expect(recordMs({ timestamp: 3 })).toBe(3000);
+    expect(recordMs({})).toBeUndefined();
+  });
+
+  it("id：_meta.eventId，然后 timestamp_us，然后内容摘要（同一行永远同一个）", () => {
+    expect(recordId({ params: { _meta: { eventId: "s-4" } } })).toBe("s-4");
+    expect(recordId({ timestamp_us: 12 })).toBe("12");
+    const old = { timestamp: 3, params: { update: { sessionUpdate: "x" } } };
+    expect(recordId(old)).toMatch(/^[0-9a-f]{16}$/);
+    expect(recordId(old)).toBe(recordId(structuredClone(old)));
+  });
+
+  it("会话 id 要拼进路径：空、点、带分隔符的都不要", () => {
+    for (const bad of [undefined, "", ".", "..", "a/b", "a\\b"]) {
+      expect(safeId(bad)).toBe(false);
+    }
+    expect(safeId(SID)).toBe(true);
   });
 });

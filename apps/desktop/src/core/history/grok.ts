@@ -1,4 +1,5 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { basename, dirname, join } from "node:path";
 
 import {
@@ -48,14 +49,14 @@ import type {
  * 时回上一趟读成功的；从没成功过则 {@link unreadable} 为真，索引这一趟不对账。
  */
 
-const UPDATES_FILE = "updates.jsonl";
+export const UPDATES_FILE = "updates.jsonl";
 const SUMMARY_FILE = "summary.json";
 /** `summary.json` 实测不到 2 KB；留足余量，超过的当读不出。 */
 const SUMMARY_MAX_BYTES = 256 * 1024;
 const HEAD_BYTES = 256 * 1024;
 const HEAD_LINES = 200;
 const UNNAMED_TOOL = "未命名工具";
-/** xAI 的费用计量：1 美元 = 10^10 个 tick。 */
+/** xAI 的费用计量：1 美元 = 10^10 个 tick（见 https://docs.x.ai 的 `cost_in_usd_ticks`）。 */
 const TICKS_PER_USD = 1e10;
 
 /** `<GROK_HOME>/sessions`；没有家目录也没有 `GROK_HOME` 时一个都没有。 */
@@ -196,7 +197,8 @@ export function parse(path: string): Parsed | undefined {
 
 /* ---------------------------------- 定位 ---------------------------------- */
 
-function safeId(id: string | undefined): id is string {
+/** 会话 id 要拼进路径：空、`.`、`..`、带路径分隔符的都不要。 */
+export function safeId(id: string | undefined): id is string {
   return (
     id !== undefined &&
     id !== "" &&
@@ -237,6 +239,44 @@ function located(path: string): Located {
   return { key: path, path, origin: `Grok 会话记录 ${path}` };
 }
 
+/* ---------------------------------- 行信息 --------------------------------- */
+
+/**
+ * 一行的时间（毫秒）：`params._meta.agentTimestampMs`，没有再退回 `timestamp_us`，
+ * 再退回 `timestamp`（秒）。老版本的会话（2026-11-07 及更早）没有 `timestamp_us`；
+ * 读不出来是 `undefined`，由调用方决定怎么办。
+ */
+export function recordMs(line: Record<string, unknown>): number | undefined {
+  const meta = asRecord(asRecord(line.params)?._meta);
+  const agent = meta?.agentTimestampMs;
+  if (typeof agent === "number" && agent > 0) return agent;
+  if (typeof line.timestamp_us === "number" && line.timestamp_us > 0) {
+    return Math.floor(line.timestamp_us / 1000);
+  }
+  if (typeof line.timestamp === "number" && line.timestamp > 0) {
+    return line.timestamp * 1000;
+  }
+  return undefined;
+}
+
+/**
+ * 一行的稳定 id：`params._meta.eventId`（grok 自己给的，每个会话内唯一），没有再用
+ * `timestamp_us`，再没有就取行内容的摘要。整段重读得到同一个 id，写入是幂等的。
+ */
+export function recordId(line: Record<string, unknown>): string {
+  const meta = asRecord(asRecord(line.params)?._meta);
+  if (typeof meta?.eventId === "string" && meta.eventId !== "") {
+    return meta.eventId;
+  }
+  if (typeof line.timestamp_us === "number" && line.timestamp_us > 0) {
+    return String(line.timestamp_us);
+  }
+  return createHash("sha1")
+    .update(JSON.stringify(line.params ?? line))
+    .digest("hex")
+    .slice(0, 16);
+}
+
 /* ---------------------------------- 读取 ---------------------------------- */
 
 function entryFrom(
@@ -252,9 +292,8 @@ function entryFrom(
   const line = asRecord(value);
   const update = asRecord(asRecord(line?.params)?.update);
   if (line === undefined || update === undefined) return undefined;
-  const micros = typeof line.timestamp_us === "number" ? line.timestamp_us : 0;
-  const stamp =
-    micros > 0 ? { at: new Date(Math.floor(micros / 1000)).toISOString() } : {};
+  const ms = recordMs(line);
+  const stamp = ms === undefined ? {} : { at: new Date(ms).toISOString() };
   const content = asRecord(update.content);
   const body =
     content?.type === "text" && typeof content.text === "string"
@@ -341,10 +380,13 @@ export function readEntries(
  * 每回合一条 `_x.ai/session/update` 的 `turn_completed`，`usage.modelUsage` 按模型
  * 分开：`inputTokens` **含**缓存读（`totalTokens` = `inputTokens + outputTokens`，
  * 实测），所以记 `input` 要减掉缓存读与缓存写；`reasoningTokens` 已在
- * `outputTokens` 里。`costUsdTicks` 是 grok 自己算的费用（10^10 tick = 1 美元），
+ * `outputTokens` 里。`costUsdTicks` 是 grok 自己算的费用（10^10 tick = 1 美元，xAI 官方文档 https://docs.x.ai），
  * 价格表不认 grok 的模型时汇总拿它兜底。`grok usage <会话 id>` 打出来的就是同一份
  * 记录（`usage.json`），所以不另走命令：读文件不起进程、不要登录。按
- * `<会话 id>:<prompt_id>` 去重（分叉出来的会话会逐字重复前面的回合）。
+ * `prompt_id` 去重（分叉出来的会话会逐字重复前面的回合）。
+ *
+ * 未验证：减掉 `cacheCreationTokens` 这一步没有真实样本——手头的会话里它恒为 0，
+ * 是照 `inputTokens` 含缓存读的口径推的。
  */
 const costSource: AgentCostSource = {
   agentId: "grok",
@@ -362,22 +404,18 @@ const costSource: AgentCostSource = {
       typeof update.prompt_id === "string" && update.prompt_id !== ""
         ? update.prompt_id
         : undefined;
-    const session =
-      typeof params?.sessionId === "string" ? params.sessionId : "";
+    // `prompt_id` 是 UUID，分叉出来的会话逐字重复前面的回合时带的是同一个，所以键里
+    // 不放会话 id。
     if (
       duplicate(
         context,
-        promptId === undefined ? undefined : `grok:${session}:${promptId}`,
+        promptId === undefined ? undefined : `grok:${promptId}`,
       )
     ) {
       return;
     }
-    const micros =
-      typeof line?.timestamp_us === "number" ? line.timestamp_us : 0;
-    const timestamp =
-      micros > 0
-        ? new Date(Math.floor(micros / 1000)).toISOString()
-        : undefined;
+    const ms = line === undefined ? undefined : recordMs(line);
+    const timestamp = ms === undefined ? undefined : new Date(ms).toISOString();
     const perModel = asRecord(usage.modelUsage);
     const entries: [string, Record<string, unknown>][] = [];
     if (perModel !== undefined) {

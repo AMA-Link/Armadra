@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -32,18 +32,42 @@ describe("grok transcript → timeline", () => {
     expect(ADAPTERS.grok).toBe(grokTranscript);
   });
 
+  it("a second session: a divider notice, ids from _meta.eventId, no stray close", () => {
+    const turns = items.filter((item) => item.kind === "turn");
+    expect(turns).toHaveLength(3);
+    const second = turns[2];
+    expect(second?.kind === "turn" && second.stopReason).toBe("end_turn");
+    // 另一个会话的 turn_completed 夹在中间，没有把这边的回合收掉：它的收尾在最后一行。
+    expect(second?.kind === "turn" && second.endedAt).toBe(1795584104000);
+    const notice = items.find((item) => item.kind === "notice");
+    expect(notice).toMatchObject({
+      code: "info",
+      params: { name: "00000000" },
+    });
+    expect(items.map((item) => item.id)).toContain(
+      "a:00000000-0000-7000-8000-00000000g002-6",
+    );
+    // 没有 timestamp_us 与 _meta 的老行：id 取内容摘要、时间取 timestamp 秒。
+    const old = items.find(
+      (item) =>
+        item.kind === "assistant" &&
+        JSON.stringify(item.parts).includes("Old-shape"),
+    );
+    expect(old?.id).toMatch(/^a:[0-9a-f]{16}$/);
+    expect(old?.at).toBe(1795584103000);
+  });
+
   it("turns prompts into turns, closes them on turn_completed", () => {
     const users = items.filter((item) => item.kind === "user");
     expect(users.map((u) => (u.kind === "user" ? u.text : ""))).toEqual([
       "Add a greeting file and run it",
       "Now stop",
+      "Second session question",
     ]);
     const turns = items.filter((item) => item.kind === "turn");
-    expect(turns).toHaveLength(2);
-    expect(turns.map((t) => (t.kind === "turn" ? t.stopReason : ""))).toEqual([
-      "end_turn",
-      "cancelled",
-    ]);
+    expect(
+      turns.slice(0, 2).map((t) => (t.kind === "turn" ? t.stopReason : "")),
+    ).toEqual(["end_turn", "cancelled"]);
   });
 
   it("skips machinery: hooks, mode updates, unknown updates and foreign rows", () => {
@@ -61,7 +85,7 @@ describe("grok transcript → timeline", () => {
       items
         .filter((item) => item.kind === "assistant")
         .map((item) => JSON.stringify(item.parts)),
-    ).toHaveLength(3);
+    ).toHaveLength(5);
   });
 
   it("maps a command into a terminal block with output and exit code", () => {
@@ -131,7 +155,8 @@ describe("grok transcript through the source manager", () => {
   });
 
   const file = (id: string, from: number, to: number) => {
-    const path = join(dir, `${id}-updates.jsonl`);
+    mkdirSync(join(dir, id), { recursive: true });
+    const path = join(dir, id, "updates.jsonl");
     writeFileSync(path, lines.slice(from, to).join("\n") + "\n");
     return path;
   };
@@ -154,10 +179,42 @@ describe("grok transcript through the source manager", () => {
     expect(ids().some((id) => id.startsWith("turn:gk:"))).toBe(true);
     // `/new`：新会话的文件换了路径，来源重新定位，旧会话的条目留着。
     const before = ids();
-    start(file("two", 17, 22));
+    start(file("two", 22, 27));
     timers.advance(400);
     expect(ids().length).toBeGreaterThan(before.length);
     for (const id of before) expect(ids()).toContain(id);
+  });
+
+  it("ignores a reported path that is not an updates.jsonl", () => {
+    insertSession(r.fixture, {
+      id: SESSION,
+      status: "running",
+      agentId: "grok",
+    });
+    const stray = join(dir, "events.jsonl");
+    writeFileSync(stray, lines.slice(0, 8).join("\n") + "\n");
+    start(stray);
+    timers.advance(400);
+    expect(ids()).toEqual([]);
+  });
+
+  it("follows a session whose file appears after the report", () => {
+    insertSession(r.fixture, {
+      id: SESSION,
+      status: "running",
+      agentId: "grok",
+    });
+    start(file("one", 0, 8));
+    timers.advance(200);
+    // `updates.jsonl` 比 `events.jsonl` 晚一百多毫秒才建：路径先报、文件后到。
+    const later = join(dir, "two", "updates.jsonl");
+    start(later);
+    timers.advance(300);
+    expect(ids().some((id) => id.includes("g002"))).toBe(false);
+    mkdirSync(join(dir, "two"), { recursive: true });
+    writeFileSync(later, lines.slice(22, 27).join("\n") + "\n");
+    timers.advance(1_500);
+    expect(ids().some((id) => id.includes("g002"))).toBe(true);
   });
 
   it("does not attach to an ACP-driven session: the ACP driver writes its own timeline", () => {

@@ -252,6 +252,80 @@
         }
       ],
       "streaming": false
+    },
+    {
+      "id": "turn:gk:00000000-0000-7000-8000-00000000g002:0",
+      "turn": 3,
+      "ord": 0,
+      "rev": 26,
+      "source": "transcript",
+      "at": 1795584100250,
+      "gen": 0,
+      "kind": "turn",
+      "turnId": "gk:00000000-0000-7000-8000-00000000g002:0",
+      "startedAt": 1795584100250,
+      "endedAt": 1795584104000,
+      "stopReason": "end_turn",
+      "permissionWaitMs": 0
+    },
+    {
+      "id": "u:gk:00000000-0000-7000-8000-00000000g002:0",
+      "turn": 3,
+      "ord": 1,
+      "rev": 22,
+      "source": "transcript",
+      "at": 1795584100250,
+      "gen": 0,
+      "kind": "user",
+      "text": "Second session question"
+    },
+    {
+      "id": "n:switch:gk:00000000-0000-7000-8000-00000000g002:0",
+      "turn": 3,
+      "ord": 2,
+      "rev": 23,
+      "source": "transcript",
+      "at": 1795584100250,
+      "gen": 0,
+      "kind": "notice",
+      "code": "info",
+      "params": {
+        "name": "00000000"
+      }
+    },
+    {
+      "id": "a:00000000-0000-7000-8000-00000000g002-6",
+      "turn": 3,
+      "ord": 3,
+      "rev": 24,
+      "source": "transcript",
+      "at": 1795584101500,
+      "gen": 0,
+      "kind": "assistant",
+      "parts": [
+        {
+          "type": "text",
+          "text": "Answer in the second session."
+        }
+      ],
+      "streaming": false
+    },
+    {
+      "id": "a:ece3f7888ecf5914",
+      "turn": 3,
+      "ord": 4,
+      "rev": 25,
+      "source": "transcript",
+      "at": 1795584103000,
+      "gen": 0,
+      "kind": "assistant",
+      "parts": [
+        {
+          "type": "text",
+          "text": "Old-shape row without microseconds."
+        }
+      ],
+      "streaming": false
     }
   ]
 }
