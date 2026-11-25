@@ -52,6 +52,8 @@ import {
   FAKE_CLIENT_SCRIPT,
   INJECTED_ARGS,
   INJECTED_ENV,
+  SEPARATOR_CASES,
+  probeSeparatorConfig,
   PROBE_TOKEN,
   Recorder,
   TEARDOWN_CHECKS,
@@ -451,12 +453,22 @@ async function runFull(options, result, record, out) {
         probeLaunchConfig({ client: clientCmd }),
       );
     }
+    // 第二份启动器：`place=before-separator`，没有凭据。
+    const separatorLauncher = join(probeDir, "run", "probe-sep.exe");
+    if (launcherReady) {
+      copyFileSync(launchExe, separatorLauncher);
+      writeFileSync(
+        join(probeDir, "run", "probe-sep.launch"),
+        probeSeparatorConfig(),
+      );
+    }
     const launcherRuns = {};
     if (!launcherReady || sessions.length === 0) {
       const reason = launcherReady
         ? "没有起来的终端"
         : "包里没有 armadra-launch.exe";
       record.skip("launcher.dialects", reason);
+      record.skip("launcher.separator", reason);
       record.skip("launcher.credential", reason);
     } else {
       for (const session of sessions) {
@@ -538,6 +550,54 @@ async function runFull(options, result, record, out) {
           }
         }
         return { ok, detail: verdicts };
+      });
+      // 合并门（grok G2）：`place=before-separator` 在三种 shell 里真跑。
+      await record.check("launcher.separator", async () => {
+        const verdicts = {};
+        for (const session of sessions) {
+          const { dialect } = session;
+          for (const testCase of SEPARATOR_CASES) {
+            const outFile = join(
+              probeDir,
+              `${dialect}-sep-${testCase.name}.json`,
+            );
+            const lines = [
+              setEnvLine(dialect, "ARMADRA_NODE_ID", "acceptance"),
+              launchLine(dialect, separatorLauncher, [
+                process.execPath,
+                echo,
+                outFile,
+                ...testCase.caller,
+              ]),
+            ].map((line) => `${line}\r`);
+            await app.terminal(session.id, lines, null, 5_000);
+            let seen;
+            try {
+              await waitFor(
+                `${dialect} 的 separator 用例 ${testCase.name}`,
+                () => existsSync(outFile),
+                { timeout: 30_000 },
+              );
+              seen = JSON.parse(readFileSync(outFile, "utf8"));
+            } catch (error) {
+              seen = { error: error.message };
+            }
+            verdicts[`${dialect}-${testCase.name}`] = {
+              ok:
+                JSON.stringify(seen.argv) ===
+                  JSON.stringify(testCase.expected) &&
+                seen.env === INJECTED_ENV[1],
+              argv: seen.argv ?? null,
+              expected: testCase.expected,
+              error: seen.error,
+            };
+          }
+        }
+        const values = Object.values(verdicts);
+        return {
+          ok: values.length > 0 && values.every((verdict) => verdict.ok),
+          detail: verdicts,
+        };
       });
       await record.check("launcher.credential", async () => {
         const tokens = Object.fromEntries(

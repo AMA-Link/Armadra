@@ -43,6 +43,10 @@ export const CHECKS = [
     "launcher.dialects",
     "armadra-launch.exe 在三种 shell 里：参数原样、注入在后、门关时不注入",
   ],
+  [
+    "launcher.separator",
+    "armadra-launch.exe 的 place=before-separator（grok 的 `--` 在 prompt 前）：注入词插在第一个单独的 `--` 之前；没有 `--` 接在最后；引号里的 `--` 不算；`--` 之后的 prompt 原样（G2 的合并门）",
+  ],
   ["launcher.credential", "armadra-launch.exe 兑换节点凭据：变量只进 CLI 进程"],
   ["credentials.status", "GET /api/credentials：DPAPI 后端且可用"],
   ["gateway.loopback", "Gateway 开在回环上能握 TLS，关掉后停止监听"],
@@ -554,6 +558,51 @@ export function probeLaunchConfig({ client }) {
     "",
   ].join("\r\n");
 }
+
+/**
+ * `place=before-separator` 的启动器配置（没有凭据）：grok 的启动行是
+ * `grok <旗标> -- <prompt>`，注入词必须在 `--` 之前，否则就成了 prompt 的一部分。
+ */
+export function probeSeparatorConfig() {
+  return [
+    "armadra-launch 1",
+    "# windows-acceptance probe: place=before-separator",
+    "gate=ARMADRA_NODE_ID",
+    `env=${INJECTED_ENV[0]}=${INJECTED_ENV[1]}`,
+    "place=before-separator",
+    ...INJECTED_ARGS.map((word) => `arg=${word}`),
+    "",
+  ].join("\r\n");
+}
+
+/**
+ * 每个用例：调用者给的词（`launchLine` 按各 shell 的规矩引起来）与启动器应当交给
+ * 程序的 argv。值里没有 `"`、`%`。
+ */
+export const SEPARATOR_CASES = [
+  {
+    name: "before",
+    caller: [...CALLER_VALUES, "--", "the prompt here"],
+    expected: [...CALLER_VALUES, ...INJECTED_ARGS, "--", "the prompt here"],
+  },
+  {
+    name: "none",
+    caller: [...CALLER_VALUES],
+    expected: [...CALLER_VALUES, ...INJECTED_ARGS],
+  },
+  {
+    name: "quoted",
+    // 引号里的 `--` 是一个词的一部分，不是分隔符：注入词接在最后。
+    caller: [...CALLER_VALUES, "a -- b"],
+    expected: [...CALLER_VALUES, "a -- b", ...INJECTED_ARGS],
+  },
+  {
+    name: "prompt-looks-like-flag",
+    // `--` 之后的东西（连同长得像旗标的）原样，不被注入词挤动。
+    caller: ["--", "--prompt-flag", "-- x"],
+    expected: [...INJECTED_ARGS, "--", "--prompt-flag", "-- x"],
+  },
+];
 
 /* ------------------------------ app & install ---------------------------- */
 
