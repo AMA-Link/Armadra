@@ -6,6 +6,7 @@ import { uuidV7 } from "../workspaces/support";
 import { type HookFixture, hookFixture, insertSession } from "./fixture";
 import { BLOCKED, DONE, WAITING, WORKING, stateEvent } from "./normalize/event";
 import { cardNoticeOf, setCardNotice } from "../agent/pending-cards";
+import { sessionEvent } from "./normalize/event";
 import {
   installInternalReporter,
   internalReporter,
@@ -346,6 +347,24 @@ describe("终端卡的头部提示（cardNotice，契约 §127）", () => {
     send(it_, WORKING);
     expect(cardNoticeOf(it_.nodeId)).toBeUndefined();
     expect(frames(it_).at(-1)?.status).not.toHaveProperty("cardNotice");
+  });
+
+  it("会话开始 / 结束（grok 退出）也撤掉头部提示，不管是哪一种", () => {
+    for (const notice of ["unverified_version", "unconfirmed"] as const) {
+      for (const phase of ["start", "end"] as const) {
+        const it_ = fixture();
+        send(it_, WORKING);
+        setCardNotice(it_.nodeId, notice);
+        const event = sessionEvent(it_.nodeId, "claude", phase);
+        event.stateSource = "acp";
+        reportInternal(it_.context, {
+          nodeId: it_.nodeId,
+          agentId: "claude",
+          event,
+        });
+        expect(cardNoticeOf(it_.nodeId)).toBeUndefined();
+      }
+    }
   });
 
   it("键没被看到生效的提示留过 working，到 done 才撤", () => {

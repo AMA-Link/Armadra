@@ -1,3 +1,4 @@
+import { clearCardNotice } from "../agent/pending-cards";
 import type { DatabaseSync } from "node:sqlite";
 
 /**
@@ -54,6 +55,9 @@ export function forgetNodes(
   nodeIds: readonly string[],
 ): void {
   if (nodeIds.length === 0) return;
+  // The in-memory header line about a terminal card (contract §127) goes with
+  // the node; nothing else would ever clear it.
+  for (const nodeId of nodeIds) clearCardNotice(nodeId);
   // Ids are bound, never interpolated: they come from the database here, but
   // building SQL out of them would make the day they come from a request a
   // silent injection rather than a type error.

@@ -475,7 +475,9 @@ export function apply(
   // while the turn waits; a keys-not-confirmed notice lasts to the turn's end.
   if (event.cardNotice !== undefined) {
     setCardNotice(event.nodeId, event.cardNotice);
-  } else if (next.state === "done") {
+  } else if (event.kind === "session" || next.state === "done") {
+    // A session start or end (grok exiting included) ends whatever was said about
+    // the card on it.
     clearCardNotice(event.nodeId);
   } else if (next.state !== "waiting" && next.state !== "blocked") {
     const shown = cardNoticeOf(event.nodeId);
