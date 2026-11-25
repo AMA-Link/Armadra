@@ -105,6 +105,7 @@ async function harness(): Promise<Harness> {
   // Pi 与 OMP 共用这个覆盖（没有 profile 时）。
   process.env.PI_CODING_AGENT_DIR = join(dataDir, "pi");
   process.env.COPILOT_HOME = join(dataDir, "copilot");
+  process.env.GROK_HOME = join(dataDir, "grok");
   // OpenCode 的库在 XDG_DATA_HOME 下：指到空目录，成本汇总不读开发机的库。
   process.env.XDG_DATA_HOME = join(dataDir, "xdg");
 
@@ -154,6 +155,7 @@ async function harness(): Promise<Harness> {
       delete process.env.CODEX_HOME;
       delete process.env.PI_CODING_AGENT_DIR;
       delete process.env.COPILOT_HOME;
+      delete process.env.GROK_HOME;
       delete process.env.XDG_DATA_HOME;
     },
   };
