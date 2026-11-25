@@ -297,7 +297,9 @@ internal static class ArmadraLaunch
             foreach (string word in config.Args) words.Append(' ').Append(ArgQuote(word));
             int separator = config.Place == "before-separator" ? FindSeparator(body.ToString()) : -1;
             if (separator < 0) body.Append(words.ToString());
-            else body.Insert(separator - 1 < 0 ? 0 : separator - 1, words.ToString());
+            // 命令行的第一个词是程序，`--` 不可能在行首；它前面那个空白字符就是插入点
+            // （`words` 自带前导空格，插在空白之前正好是「…前一个词 注入词 --」）。
+            else body.Insert(separator - 1, words.ToString());
         }
 
         string application = resolved;
