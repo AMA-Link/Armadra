@@ -140,6 +140,8 @@ export interface TerminalFacts {
   remote(sessionId: string): boolean;
   env?(sessionId: string, name: string): string | undefined;
   screen?(sessionId: string): Promise<string | undefined>;
+  /** 终端卡可以代答吗（`agent/grok-answer.ts` 的门）。 */
+  answerCards?(sessionId: string, nodeId: string): Promise<boolean>;
 }
 
 export interface SourceManagerOptions {
@@ -482,6 +484,8 @@ export class SourceManager {
       remote: () => this.facts?.remote(row.id) ?? false,
       env: (name) => this.facts?.env?.(row.id, name),
       screen: () => this.facts?.screen?.(row.id) ?? Promise.resolve(undefined),
+      answerCards: () =>
+        this.facts?.answerCards?.(row.id, nodeId) ?? Promise.resolve(false),
       report: (event, options) => {
         const report = internalReporter();
         if (report === undefined) return false;

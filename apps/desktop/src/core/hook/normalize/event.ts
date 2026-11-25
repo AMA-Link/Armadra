@@ -124,6 +124,18 @@ export interface AgentEvent {
    */
   closesPrompt?: boolean;
   /**
+   * The approval record this report's `pendingId` named is over: the person
+   * answered on the terminal (`allow` / `deny`) or the turn ended with nobody
+   * answering (`cancelled`). Only a state slot that reads the CLI's own files
+   * says it; ingest closes the record if it is still open.
+   *
+   * Never serialized, for the same reason as `silent`.
+   */
+  settlesApproval?: {
+    readonly pendingId: string;
+    readonly answer: "allow" | "deny" | "cancelled";
+  };
+  /**
    * A model request failed and the CLI may still retry it. Copilot reports
    * every such failure as recoverable and sends no `agentStop` once it gives
    * up, so only continued silence can say the turn is over.
@@ -140,6 +152,7 @@ const UNSERIALIZED = new Set([
   "questionClosed",
   "keepsVerdict",
   "closesPrompt",
+  "settlesApproval",
   "modelError",
   "toolName",
   "toolSummary",

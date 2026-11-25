@@ -14,6 +14,7 @@ import {
   findNodeOwner,
   getAgentStatus,
   insertApproval,
+  settleApproval,
   stateSourceFor,
   upsertAgentStatus,
 } from "./store";
@@ -483,6 +484,32 @@ export function apply(
       });
     } catch (error) {
       context.log.warn("could not record the pending approval", { error });
+    }
+  }
+
+  if (event.settlesApproval !== undefined) {
+    const settled = settleApproval(
+      context.database,
+      event.settlesApproval.pendingId,
+      event.settlesApproval.answer,
+      now.toISOString(),
+    );
+    if (settled !== undefined) {
+      context.bus.emit("workspace.event", {
+        workspaceId,
+        event: {
+          type: "agent.approval",
+          nodeId: event.nodeId,
+          pendingId: settled.id,
+          request: {
+            ...settled,
+            resolved: true,
+            decision: event.settlesApproval.answer,
+            answer: event.settlesApproval.answer,
+            route: "none",
+          },
+        },
+      });
     }
   }
 

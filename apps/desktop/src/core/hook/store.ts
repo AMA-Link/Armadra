@@ -453,6 +453,28 @@ export function insertApproval(
   return written;
 }
 
+/**
+ * Closes an approval nobody answered through Armadra: the person pressed the
+ * key on the terminal, or the turn ended. `false` when it was already answered
+ * (the usual case after an answer from the canvas) or does not exist.
+ */
+export function settleApproval(
+  database: DatabaseSync,
+  pendingId: string,
+  answer: "allow" | "deny" | "cancelled",
+  now: string = new Date().toISOString(),
+): AgentApproval | undefined {
+  const changed = database
+    .prepare(
+      "UPDATE agent_approvals SET answer = ?, answered_by = ?, answered_at = ?, revision = revision + 1 " +
+        "WHERE id = ? AND answer IS NULL",
+    )
+    .run(answer, answer === "cancelled" ? "core" : "terminal", now, pendingId);
+  return Number(changed.changes) === 0
+    ? undefined
+    : getApproval(database, pendingId);
+}
+
 /** Why an answer could not be recorded, in the shape the routes report. */
 export type AnswerRefusal = "bad_request" | "not_found" | "conflict";
 
