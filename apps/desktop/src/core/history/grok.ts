@@ -56,7 +56,7 @@ const SUMMARY_MAX_BYTES = 256 * 1024;
 const HEAD_BYTES = 256 * 1024;
 const HEAD_LINES = 200;
 const UNNAMED_TOOL = "未命名工具";
-/** xAI 的费用计量：1 美元 = 10^10 个 tick（见 https://docs.x.ai 的 `cost_in_usd_ticks`）。 */
+/** xAI 的费用计量：1 美元 = 10^10 个 tick（见 docs.x.ai 的 `cost_in_usd_ticks`）。 */
 const TICKS_PER_USD = 1e10;
 
 /** `<GROK_HOME>/sessions`；没有家目录也没有 `GROK_HOME` 时一个都没有。 */
@@ -386,7 +386,7 @@ export function readEntries(
  * 每回合一条 `_x.ai/session/update` 的 `turn_completed`，`usage.modelUsage` 按模型
  * 分开：`inputTokens` **含**缓存读（`totalTokens` = `inputTokens + outputTokens`，
  * 实测），所以记 `input` 要减掉缓存读与缓存写；`reasoningTokens` 已在
- * `outputTokens` 里。`costUsdTicks` 是 grok 自己算的费用（10^10 tick = 1 美元，xAI 官方文档 https://docs.x.ai），
+ * `outputTokens` 里。`costUsdTicks` 是 grok 自己算的费用（10^10 tick = 1 美元，xAI 官方文档 docs.x.ai），
  * 价格表不认 grok 的模型时汇总拿它兜底。`grok usage <会话 id>` 打出来的就是同一份
  * 记录（`usage.json`），所以不另走命令：读文件不起进程、不要登录。按
  * `prompt_id` 去重（分叉出来的会话会逐字重复前面的回合）。
