@@ -708,7 +708,7 @@ G5-25 追加：`GET /api/usage` 与 `POST /api/usage/refresh` 里 Claude 那一�
 | `version`   | 可选：本进程最近一次对这家起会话或探测时 `initialize` 报的 `agentInfo.version`。列表从不为它起进程，没有就缺席；`installed: false` 时也缺席                                         |
 | `resume`    | 跨进程接回用哪个方法：`load`（`session/load`，回放）/ `resume`（`session/resume`，不回放）/ `none`（只能新开，Copilot；这样的会话不休眠）                                           |
 
-- 七家的表：`claude` 官方 `load`、`codex` 官方 `load`、`opencode` 原生 `load`、`pi` 随包 `load`、`omp` 原生 `load`、`copilot` 原生 `none`、`ama` 原生 `resume`。`resume` 是偏好：起会话时按 Agent 在 `initialize` 声明的能力协商，偏好的方法不支持就用另一个，两个都不支持就新开并如实告诉页面没有接上。
+- 八家的表：`claude` 官方 `load`、`codex` 官方 `load`、`opencode` 原生 `load`、`pi` 随包 `load`、`omp` 原生 `load`、`copilot` 原生 `none`、`ama` 原生 `resume`、`agy` 原生 `load`（ACP `sessionId` 就是 CLI 会话 id；接回后模式回到 `default`，要重设）。`resume` 是偏好：起会话时按 Agent 在 `initialize` 声明的能力协商，偏好的方法不支持就用另一个，两个都不支持就新开并如实告诉页面没有接上。
 - 权限模式在 ACP 下的落点（`session/set_mode` 的模式 id 或启动 argv）不在行上；没有落点的模式（OpenCode 的 `auto-edit` / `full-auto`，Pi 除 `default` 外的三个）不出现在会话视图里，以它起会话答 `acp_mode_unsupported`。`plan` 在 Agent 不提供对应模式 id 时拒绝启动（`acp_mode_unavailable`），不以可写模式起。
 - 起会话失败的错误码（G2-1 的路由原样答出，形状 `{ code, message }`）：`acp_not_installed`、`acp_spawn_failed`、`acp_exited`、`acp_initialize_failed`、`acp_initialize_timeout`、`acp_protocol_version`、`acp_auth_required`（Agent 要先在 CLI 里登录）、`acp_session_failed`、`acp_mode_unsupported`、`acp_mode_unavailable`；自 1.24 起还有 `acp_session_timeout`（504，§51）；CLI 本体低于适配器要求的最低版本时答 `acp_cli_outdated`（409），`details` 为 `{ agentId, installed, minimum, package?, updateCommand? }`（有 npm 包的家带 `package`；没有 npm 包的 CLI 带它自己的升级命令 `updateCommand`，页面据此写「请运行 …」而不是「请安装 …」），起适配器进程之前就答，不再等 `session/new` 超时（各家下限在 `@armadra/shared` 的 `ACP_CLI_FLOOR`，目前只登记 pi，下限 1.1.0；问不出版本不拦）。适配器在 `session/new` 答复里报的 `modes` 不是权限模式时（`ACP_REPORTED_MODES` 为 `ignore`；目前没有哪家是）core 丢掉，`modes` 为 `null`。ama 的 pi 桥在 `session/new` 里答 `error.data.code` 时，core 原样作为错误码答出（409，`details` 只留字符串字段：`installed`、`minimum`、`package`，外加 `agentId: "pi"`）：`pi_outdated`（Pi 低于下限）、`pi_missing`（找不到 `pi`）、`pi_no_model`（Pi 里没有可用模型）。消息里不带适配器的 stderr。会话的工作目录（节点的 `cwd`，没有就是工作空间根）在本机不存在或不是目录时，起适配器之前答 `acp_cwd_missing`（409，`details` 为 `{ cwd }`，#984），不再落到 `acp_spawn_failed`；`acp_spawn_failed` 的消息带上原因（`not found`、`not found on PATH`、`not executable`）。
 - 实跑验证过的版本区间记在 `tools/release/compatibility.json` 的 `acp` 键（`{ protocolVersion: 1, adapters: { <id>: { program, verified: null | { min, max? } } } }`），不进发布说明的兼容围栏；`program` 与适配器表由测试对齐。
@@ -6207,7 +6207,7 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
 
 ## 120. 没有画布注入的内置 CLI：`agents.integration` 的 `mode: "none"`（`#997` `#998`）
 
-只增取值，不升版本号；对现有七家行为不变，本节先于首个没有注入的内置 CLI 落地。内置 CLI 不一定都有画布注入：有的 CLI 没有单次生效的 hook / 技能通道（不写用户配置就注入不进去），Armadra 不为它写任何文件。这样的 CLI 在 `GET /api/agents/{agentId}/integration`（与 `agents.integration`）上答一个固定形状，而不是 `400`：
+只增取值，不升版本号；首个答 `none` 的内置 CLI 是 Antigravity（`agy`，#997）。内置 CLI 不一定都有画布注入：有的 CLI 没有单次生效的 hook / 技能通道（不写用户配置就注入不进去），Armadra 不为它写任何文件。这样的 CLI 在 `GET /api/agents/{agentId}/integration`（与 `agents.integration`）上答一个固定形状，而不是 `400`：
 
 ```json
 {
@@ -6234,4 +6234,4 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
 - `POST …/integration/install` 与 `…/uninstall` 对这样的 CLI 仍答 `400 bad_request`（没有东西可生成）；`…/repair` 沿用「没有 hook 安装器」的 `400`。页面据 `mode` 不发这三个动作：设置页的「Hook 与技能」一行显示「无注入」，没有「重新生成」，主表不把它算成「待更新」。
 - `BARE_LAUNCH_AGENT_IDS`（节点的「零注入启动」开关，§113）只含有注入的 CLI：没有注入就没有可关的东西，页面不给它这个开关，`settings` 里它的 `bareLaunch` 键同样不接受。
 - 启动时的注入预生成（`prepareAtStartup`）只走注入名单，不再自带一份写死的 id 表。
-- **为什么不升协议版本**：`mode` 在共享层是严格的 `z.enum`（`INJECTION_MODES`），**旧客户端收到 `"none"` 会让整条集成状态解析失败**。本节现在不升 `PROTOCOL_MINOR`，是因为还没有任何一家内置 CLI 会答 `none`——所有现有七家都在注入名单里，旧客户端见不到这个取值。首个答 `none` 的内置 CLI 落地（agy 批 1）时，必须在那个 PR 里决定是否升 minor、旧页面对未知 `mode` 怎么退化，并改写这一条。
+- **为什么不升协议版本（agy 落地时的决定，2026-11-24）**：`mode` 在共享层是严格的 `z.enum`（`INJECTION_MODES`），旧客户端收到 `"none"` 会让这一条集成状态解析失败；但 agy 这个内置 id 对旧页面本来就是未知值（`agentIdSchema` 按 `AGENT_IDS` 校验，旧页面读到 agy 的节点或列表行已经会失败），升级页面是前提，`"none"` 没有增加新的破坏面；而协议 minor 只按 `min(页面, core)` 协商，不会让旧页面不去读这一条。旧页面读不到 agy 的集成状态时，设置页的集成行为空（`integration` 为 `null`，页面本来就容忍），其余不受影响。所以 `PROTOCOL_MINOR` 不升（仍是 52）。`mode` 以后再多取值时同样要在那个 PR 里决定。
