@@ -11,7 +11,7 @@ import type { Board, WorkspaceSummary } from "@armadra/shared";
 import { useCanvasStore } from "../store/canvas-store";
 import { runtimeApi } from "../api/client";
 import { sk } from "../sources/scope";
-import { useT } from "../app/preferences-store";
+import { usePreferencesStore, useT } from "../app/preferences-store";
 import { nextBoardName } from "./board-tree";
 
 export function useBoardMutations(workspaceId: string) {
@@ -31,6 +31,7 @@ export function useBoardMutations(workspaceId: string) {
   /**
    * 删哪块都行，最后一块也一样（#1015）。删的是当前画布就先切到同一工作空间的
    * 下一块，免得画布对着一个不存在的 id；没有下一块就留空，画布区显示空状态。
+   * 置顶过的顺手取消，免得偏好里留着一个不存在的 id。
    */
   const remove = useMutation({
     mutationFn: (id: string) => runtimeApi.deleteBoard(workspaceId, id),
@@ -40,6 +41,7 @@ export function useBoardMutations(workspaceId: string) {
         const next = state.boards.find((board) => board.id !== id);
         state.selectBoard(next?.id ?? null);
       }
+      usePreferencesStore.getState().setBoardPinned(id, false);
       refresh();
     },
     onError: (cause: Error) => toast.error(cause.message),

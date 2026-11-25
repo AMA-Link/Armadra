@@ -367,6 +367,10 @@ describe("WorkspaceTree", () => {
     await waitFor(() =>
       expect(deleteBoard).toHaveBeenCalledWith(workspace.id, SECOND),
     );
+    // 删掉的板不再留在置顶里
+    await waitFor(() =>
+      expect(usePreferencesStore.getState().pinnedBoardKeys).toEqual([]),
+    );
   });
 
   it("删除走确认对话框", async () => {
