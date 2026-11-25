@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { RotateCw, X } from "lucide-react";
+import * as React from "react";
+import { FileDown, RotateCw, X } from "lucide-react";
 
 import { useT } from "@/app/preferences-store";
 import { useAccess } from "@/app/use-access";
@@ -7,6 +8,7 @@ import { WorkPanelSheet } from "@/panels/WorkPanelSheet";
 import { TABS_CONTENT_FOCUS } from "@/panels/tabs-focus";
 import { useCanvasStore } from "@/store/canvas-store";
 import { Alert, AlertTitle } from "@/ui/alert";
+import { Button } from "@/ui/button";
 import { Loadable } from "@/loading/Loadable";
 import { IconButton } from "@/ui/icon-button";
 import { ScrollArea } from "@/ui/scroll-area";
@@ -15,6 +17,7 @@ import { Skeleton } from "@/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui/tabs";
 import { workflowErrorKey, workflowsApi } from "./api";
 import { GateDialog } from "./GateDialog";
+import { ImportWorkflowDialog } from "./ImportWorkflowDialog";
 import { RunCompare } from "./RunCompare";
 import { RunPanel } from "./RunPanel";
 import { StartRunDialog, TemplateLibrary } from "./TemplateLibrary";
@@ -35,6 +38,8 @@ export function WorkflowPanel() {
   // 成员访问工作流路由一律 403（契约 §15）：不发请求，只说没有权限。
   const member = useAccess().member;
   const open = mode === "drawer" && !member;
+  const workspaceId = useCanvasStore((state) => state.workspace?.id ?? null);
+  const [importing, setImporting] = React.useState(false);
 
   const templates = useQuery({
     queryKey: workflowKeys.templates(),
@@ -63,6 +68,18 @@ export function WorkflowPanel() {
             {t("workflow.title")}
           </SheetTitle>
           <div className="flex-1" />
+          {view.tab === "templates" ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={member || workspaceId === null}
+              data-slot="workflow-import"
+              onClick={() => setImporting(true)}
+            >
+              <FileDown />
+              {t("workflow.import")}
+            </Button>
+          ) : null}
           <IconButton
             label={t("workflow.reload")}
             onClick={() =>
@@ -157,6 +174,11 @@ export function WorkflowPanel() {
       <TemplateEditor
         template={templateOf(view.editing)}
         onClose={() => view.edit(null)}
+      />
+      <ImportWorkflowDialog
+        open={importing}
+        workspaceId={workspaceId}
+        onClose={() => setImporting(false)}
       />
       <GateDialog />
       <RunCompare

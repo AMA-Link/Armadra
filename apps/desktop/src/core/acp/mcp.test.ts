@@ -144,7 +144,7 @@ function recordingClient() {
 describe("session _meta", () => {
   const META = { antigravity: { systemPrompt: { append: "rules" } } };
 
-  it("is detected from AcpClient.features.sessionMeta, and the pinned client has none", () => {
+  it("is detected from AcpClient.features.sessionMeta, and the pinned client declares it", () => {
     expect(clientAcceptsSessionMeta({ features: { sessionMeta: true } })).toBe(
       true,
     );
@@ -152,8 +152,8 @@ describe("session _meta", () => {
     expect(clientAcceptsSessionMeta({ features: { sessionMeta: 1 } })).toBe(
       false,
     );
-    // The client this build ships: no declaration, so no `_meta` on the wire.
-    expect(clientAcceptsSessionMeta()).toBe(false);
+    // The client this build ships (`@armadra/agent` ≥ 0.23.0) declares it.
+    expect(clientAcceptsSessionMeta()).toBe(true);
   });
 
   it("goes as `meta` in the third argument when the client takes it", async () => {
@@ -287,7 +287,7 @@ describe("startAcp with mcpServers", () => {
     expect(session.mcpInjected).toBe(true);
   });
 
-  it("says the _meta stayed behind when the client cannot send it", async () => {
+  it("sends the _meta through the pinned client", async () => {
     const session = await startAcp({
       program: process.execPath,
       args: [fakeAcpAgentPath()],
@@ -296,7 +296,7 @@ describe("startAcp with mcpServers", () => {
     });
     sessions.push(session);
     expect(session.sessionId).toMatch(/^fake-/);
-    expect(session.metaInjected).toBe(false);
+    expect(session.metaInjected).toBe(true);
   });
 
   it("leaves metaInjected out when no _meta was asked for", async () => {

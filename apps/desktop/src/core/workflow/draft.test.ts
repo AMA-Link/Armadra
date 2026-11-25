@@ -268,12 +268,32 @@ describe("v2 fields", () => {
     refuse((draft) => {
       draft.contract = { owns: { lead: ["x".repeat(201)] } };
     });
-    // glob 语法与跨角色冲突此时不查。
     const draft = v2();
     draft.contract = {
-      owns: { reviewerA: ["src/a/**"], reviewerB: ["src/**/x.ts"] },
+      owns: { reviewerA: ["src/a/**"], reviewerB: ["lib/**/x.ts"] },
     };
     expect(() => parseDraft(draft, RULES)).not.toThrow();
+  });
+
+  it("checks owns glob syntax and cross-role overlap with ama's functions", () => {
+    const owns = (value: Record<string, string[]>) => {
+      const draft = v2();
+      draft.contract = { owns: value };
+      return () => parseDraft(draft, RULES);
+    };
+    expect(owns({ reviewerA: ["../outside"] })).toThrow(/不是合法的 glob/);
+    expect(owns({ reviewerA: ["/abs"] })).toThrow(/reviewerA/);
+    expect(
+      owns({ reviewerA: ["src/a/**"], reviewerB: ["src/**/x.ts"] }),
+    ).toThrow(
+      "contract.owns 里 `reviewerA` 的 `src/a/**` 与 `reviewerB` 的 `src/**/x.ts` 可能指向同一个文件。",
+    );
+    // 同一角色自己的几条可以相交；不规整、不改写。
+    const own = v2();
+    own.contract = { owns: { reviewerA: ["src/", "src/**"] } };
+    expect(parseDraft(own, RULES).contract?.owns).toEqual({
+      reviewerA: ["src/", "src/**"],
+    });
   });
 
   it("checks description length", () => {

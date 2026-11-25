@@ -412,6 +412,40 @@ describe("契约 §23：创建者 = 触发者与工作流", () => {
     ).toBe("owner");
   });
 
+  it("项目级工作流文件：列表按工作空间看画布，导入只有 owner，导出要那个工作空间的文件写（契约 §121）", () => {
+    const { decide } = harness();
+    expect(
+      row(decide, "GET", "/api/workflows/files", undefined, {
+        workspaceId: "w1",
+      }),
+    ).toBe("owner,driver,operator,editor,viewer");
+    expect(
+      row(decide, "GET", "/api/workflows/files", undefined, {
+        workspaceId: "w9",
+      }),
+    ).toBe("owner");
+    expect(row(decide, "GET", "/api/workflows/files")).toBe("owner");
+    expect(
+      row(decide, "POST", "/api/workflows/files/import", {
+        workspaceId: "w1",
+        id: "a",
+      }),
+    ).toBe("owner");
+    expect(
+      row(decide, "POST", "/api/workflows/templates/x1/export", {
+        workspaceId: "w1",
+      }),
+    ).toBe("owner,driver,operator");
+    expect(
+      row(decide, "POST", "/api/workflows/templates/x1/export", {
+        workspaceId: "w9",
+      }),
+    ).toBe("owner");
+    expect(row(decide, "POST", "/api/workflows/templates/x1/export")).toBe(
+      "owner",
+    );
+  });
+
   it("分派抽屉：任务列表按画板看画布，重试是 operator（契约 §15.7）", () => {
     const { decide } = harness();
     expect(

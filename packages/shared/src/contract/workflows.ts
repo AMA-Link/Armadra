@@ -58,9 +58,21 @@ const templateWire = z.object({
   name: z.string(),
   version: z.number().int(),
   createdFromDraft: z.string().nullable(),
+  /** 来自哪份项目级工作流文件（`<工作空间 id>/<文件 id>`）；人建的为空，旧服务器不带。 */
+  fileRef: z.string().nullable().optional(),
   template: jsonObjectSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
+});
+
+/** 项目级 `.ama/workflows` 里的一份文件（契约 §121）。 */
+const workflowFileEntry = z.object({
+  id: z.string(),
+  path: z.string(),
+  title: z.string().nullable(),
+  valid: z.boolean(),
+  error: z.string().nullable(),
+  templateId: z.string().nullable(),
 });
 
 export const workflows = {
@@ -220,6 +232,60 @@ export const workflows = {
         ...base,
         scope: "agent:launch",
         legacy: { method: "DELETE", path: TEMPLATE, successStatus: 204 },
+      }),
+    ),
+
+  /* ----------------------- 项目级工作流文件（§121） ----------------------- */
+  /** 工作空间 `.ama/workflows` 里的文件；目录不存在答空数组。 */
+  files: oc
+    .input(z.object({ workspaceId: z.string().min(1) }))
+    .output(z.object({ files: z.array(workflowFileEntry) }))
+    .errors(errors.pick("bad_request", "forbidden", "not_found"))
+    .meta(
+      meta({
+        ...base,
+        since: "1.58",
+        scope: "canvas:read",
+        legacy: { method: "GET", path: "/api/workflows/files" },
+      }),
+    ),
+  /** 导入一份文件成模板；旧路径新建答 201、其余 200，procedure 恒为 200，`change` 说明结果。 */
+  importFile: oc
+    .input(z.object({ workspaceId: z.string().min(1), id: z.string().min(1) }))
+    .output(
+      z.object({
+        template: templateWire,
+        change: z.enum(["created", "updated", "unchanged"]),
+        /** `updated` 时与 `updateTemplate` 同形：冻结在旧版本上的计划；其余为空。 */
+        frozenSchedules: z.array(workflowFrozenScheduleSchema),
+      }),
+    )
+    .errors(errors.pick("bad_request", "forbidden", "not_found"))
+    .meta(
+      meta({
+        ...base,
+        since: "1.58",
+        scope: "agent:launch",
+        legacy: { method: "POST", path: "/api/workflows/files/import" },
+      }),
+    ),
+  /** 把模板导出成文件；已存在且没 `overwrite` 答 409 `workflow_file_exists`。 */
+  exportTemplate: oc
+    .input(
+      templateRef.extend({
+        workspaceId: z.string().min(1),
+        id: z.string().optional(),
+        overwrite: z.boolean().optional(),
+      }),
+    )
+    .output(z.object({ path: z.string(), id: z.string() }))
+    .errors(errors.pick("bad_request", "forbidden", "not_found", "conflict"))
+    .meta(
+      meta({
+        ...base,
+        since: "1.58",
+        scope: "files:write",
+        legacy: { method: "POST", path: `${TEMPLATE}/export` },
       }),
     ),
 

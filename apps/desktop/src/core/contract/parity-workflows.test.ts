@@ -43,12 +43,9 @@ import { type JsonValue, canonicalJson } from "./message";
  * 自己的对象，比较前把每次都会变的字段换成占位；失败的码、状态与原话相等
  * （procedure 多一个 `requestId`）。
  *
- * 单独一节写**拒绝路径**（投递门）：服务器壳上的成员经旧路径与 procedure 被同一道
- * 路由门拦下——只读的人确认不了草案、起不了跑、答不了关卡，也重试不了任务；模板
- * 的写只有 owner；别的画布上的人读不到这块画布的草案、运行与任务，拿别的画布的
- * 画板起跑也被拒（不跨工作空间）。被拒时状态一个字节都没变（草案仍待确认、运行仍
- * 在跑、任务仍是失败）。**关卡答复是 operator（`agent:launch`），不是替 Agent
- * 代答的 `approval:answer`**，契约与路由表两处一致。
+ * 另有**拒绝路径**一节（投递门）：成员经旧路径与 procedure 被同一道路由门拦下，
+ * 被拒时状态一个字节都没变；模板的写只有 owner，不跨工作空间。**关卡答复是
+ * operator（`agent:launch`），不是替 Agent 代答的 `approval:answer`**，两处一致。
  */
 
 let f: AgentFixture;
@@ -1446,7 +1443,7 @@ describe("契约与 core 的两张表（workflows、coordinator）", () => {
       entry.name.startsWith("coordinator."),
   );
 
-  it("15 + 8 条都在契约里，每条都有旧路径", () => {
+  it("18 + 8 条都在契约里，每条都有旧路径", () => {
     expect(entries.map((entry) => entry.name).sort()).toEqual(
       [
         "workflows.answerGate",
@@ -1457,6 +1454,9 @@ describe("契约与 core 的两张表（workflows、coordinator）", () => {
         "workflows.discardDraft",
         "workflows.draft",
         "workflows.drafts",
+        "workflows.exportTemplate",
+        "workflows.files",
+        "workflows.importFile",
         "workflows.run",
         "workflows.runs",
         "workflows.startRun",

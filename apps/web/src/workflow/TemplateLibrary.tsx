@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/ui/toast";
 import {
   CalendarClock,
+  FileUp,
   MoreHorizontal,
   Pencil,
   Play,
@@ -19,6 +20,7 @@ import {
   ResponsiveAlertDialogAction,
   ResponsiveAlertDialogCancel,
   ResponsiveAlertDialogContent,
+  ResponsiveAlertDialogDescription,
   ResponsiveAlertDialogFooter,
   ResponsiveAlertDialogHeader,
   ResponsiveAlertDialogTitle,
@@ -49,7 +51,12 @@ import { Field, FieldError, FieldGroup, FieldLabel } from "@/ui/field";
 import { IconButton } from "@/ui/icon-button";
 import { Input } from "@/ui/input";
 import { Textarea } from "@/ui/textarea";
-import { workflowErrorKey, workflowsApi } from "./api";
+import {
+  existingFilePath,
+  isFileExists,
+  workflowErrorKey,
+  workflowsApi,
+} from "./api";
 import {
   defaultParams,
   filledParams,
@@ -84,6 +91,34 @@ export function TemplateLibrary({
     null,
   );
   const client = useQueryClient();
+  const workspaceId = useCanvasStore((state) => state.workspace?.id ?? null);
+  // 导出时文件已经在了：问过人再覆盖。
+  const [overwriting, setOverwriting] = React.useState<{
+    template: WorkflowTemplateJson;
+    path: string | null;
+  } | null>(null);
+  const exportFile = useMutation({
+    mutationFn: (input: {
+      template: WorkflowTemplateJson;
+      overwrite: boolean;
+    }) =>
+      workflowsApi.exportTemplate(input.template.id, {
+        workspaceId: workspaceId!,
+        overwrite: input.overwrite,
+      }),
+    onSuccess: (answer) => {
+      toast.success(t("workflow.export.done", { path: answer.path }));
+      void client.invalidateQueries({ queryKey: workflowKeys.all });
+    },
+    onError: (error, input) => {
+      if (isFileExists(error)) {
+        setOverwriting({
+          template: input.template,
+          path: existingFilePath(error),
+        });
+      } else toast.error(t(workflowErrorKey(error)));
+    },
+  });
   const remove = useMutation({
     mutationFn: (id: string) => workflowsApi.deleteTemplate(id),
     onSuccess: () => client.invalidateQueries({ queryKey: workflowKeys.all }),
@@ -190,6 +225,15 @@ export function TemplateLibrary({
                       {t("workflow.schedule")}
                     </DropdownMenuItem>
                     <DropdownMenuItem
+                      disabled={workspaceId === null}
+                      onSelect={() =>
+                        exportFile.mutate({ template, overwrite: false })
+                      }
+                    >
+                      <FileUp />
+                      {t("workflow.export")}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
                       variant="destructive"
                       onSelect={() => setDeleting(template)}
                     >
@@ -227,6 +271,48 @@ export function TemplateLibrary({
               }}
             >
               {t("workflow.delete")}
+            </ResponsiveAlertDialogAction>
+          </ResponsiveAlertDialogFooter>
+        </ResponsiveAlertDialogContent>
+      </ResponsiveAlertDialog>
+      <ResponsiveAlertDialog
+        open={overwriting !== null}
+        onOpenChange={(open) => {
+          if (!open) setOverwriting(null);
+        }}
+      >
+        <ResponsiveAlertDialogContent
+          {...(overwriting?.path ? {} : { "aria-describedby": undefined })}
+        >
+          <ResponsiveAlertDialogHeader>
+            <ResponsiveAlertDialogTitle>
+              {t("workflow.export.overwrite.title")}
+            </ResponsiveAlertDialogTitle>
+            {overwriting?.path ? (
+              <ResponsiveAlertDialogDescription className="font-mono break-all">
+                {t("workflow.export.overwrite.target", {
+                  path: overwriting.path,
+                })}
+              </ResponsiveAlertDialogDescription>
+            ) : null}
+          </ResponsiveAlertDialogHeader>
+          <ResponsiveAlertDialogFooter>
+            <ResponsiveAlertDialogCancel>
+              {t("workflow.cancel")}
+            </ResponsiveAlertDialogCancel>
+            <ResponsiveAlertDialogAction
+              variant="destructive-solid"
+              onClick={() => {
+                if (overwriting) {
+                  exportFile.mutate({
+                    template: overwriting.template,
+                    overwrite: true,
+                  });
+                }
+                setOverwriting(null);
+              }}
+            >
+              {t("workflow.export.overwrite")}
             </ResponsiveAlertDialogAction>
           </ResponsiveAlertDialogFooter>
         </ResponsiveAlertDialogContent>

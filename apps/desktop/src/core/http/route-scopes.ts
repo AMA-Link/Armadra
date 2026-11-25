@@ -305,6 +305,13 @@ export const ROUTE_SCOPE_RULES: readonly RouteScopeRule[] = [
     read: "canvas:read",
     write: "canvas:read",
   },
+  // 导出模板到工作空间的 `.ama/workflows`（契约 §121）：读模板，写那个工作空间的
+  // 文件，要 `files:write`；导入与列表落在下面的通用一档。
+  {
+    pattern: /^\/api\/workflows\/templates\/[^/]+\/export$/,
+    read: "canvas:read",
+    write: "files:write",
+  },
   {
     pattern: /^\/api\/workflows/,
     read: "canvas:read",
