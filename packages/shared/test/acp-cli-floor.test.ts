@@ -7,6 +7,7 @@ import {
   acpCliFloor,
   acpCliOutdated,
   floorHint,
+  parseCliVersion,
 } from "../src/index";
 
 /** 适配器对 CLI 本体的最低版本表（#710）。 */
@@ -47,6 +48,27 @@ describe("ACP_CLI_FLOOR", () => {
     });
     expect(acpCliOutdated("agy", "1.5.16")).toBeUndefined();
     expect(AGENT_CLI_PACKAGES).not.toHaveProperty("agy");
+  });
+
+  it("pins grok at 1.0.92, where its ACP entry was measured, on its npm package", () => {
+    expect(acpCliFloor("grok")).toEqual({
+      minVersion: "1.0.92",
+      package: "@xai-official/grok",
+    });
+    // `grok --version` 的整行：版本在前，后面的提交哈希与通道不能被读成版本。
+    expect(parseCliVersion("grok 1.0.92 (b06756fd6256) [alpha]")).toBe(
+      "1.0.92",
+    );
+    expect(parseCliVersion("grok 1.0.77 (50ca579fa996) [stable]")).toBe(
+      "1.0.77",
+    );
+    expect(acpCliOutdated("grok", "1.0.77")).toMatchObject({
+      installed: "1.0.77",
+      minimum: "1.0.92",
+      package: "@xai-official/grok",
+    });
+    expect(acpCliOutdated("grok", "1.0.92")).toBeUndefined();
+    expect(acpCliOutdated("grok", "1.1.0")).toBeUndefined();
   });
 
   it("has no floor for agents that were not measured", () => {
