@@ -36,12 +36,15 @@ export function SessionPane({
   item,
   onBack,
   clearOfCluster,
+  clearOfToggle = false,
 }: {
   item: AgentSessionItem;
   /** 手机布局：回到列表。 */
   onBack?: (() => void) | undefined;
   /** 桌面：右上工具簇压在头部右端，让开它。 */
   clearOfCluster: boolean;
+  /** 手机：左上角浮着侧栏开关，头部让开它。 */
+  clearOfToggle?: boolean;
 }) {
   const t = useT();
   const workspaceId = useCanvasStore((state) => state.workspace?.id ?? "");
@@ -70,7 +73,8 @@ export function SessionPane({
     >
       <header
         className={cn(
-          "flex h-12 shrink-0 items-center gap-2 border-b pl-3",
+          "flex h-12 shrink-0 items-center gap-2 border-b",
+          clearOfToggle ? "pl-12" : "pl-3",
           clearOfCluster ? "pr-16" : "pr-3",
         )}
       >
