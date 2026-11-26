@@ -3,11 +3,10 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { ContextLink } from "@armadra/shared";
 
 /**
- * 链接文档的推送（§5.6 / §21，内容引用那一半是 §2.5 / F29）。
+ * 白板内容链接的推送（§2.5 / F29；节点链接由 core 编译，Armadra#1062 S1）。
  *
  * `useContentLinks` 在这里换成一份可写的假值：它自己的导出 / 缓存 / 重试
- * 由 `content-links.test.ts` 覆盖，这个文件只关心「白板引用怎么并进节点
- * 文档、什么时候重推」。B5 之前它恒返回空表，所以引用那条路一项都没测到。
+ * 由 `content-links.test.ts` 覆盖，这个文件只关心「推什么、什么时候重推」。
  */
 const content: { current: Record<string, ContextLink[]> } = { current: {} };
 vi.mock("./content-links", () => ({
@@ -17,7 +16,7 @@ vi.mock("./content-links", () => ({
 import { toast } from "@/ui/toast";
 import { runtimeApi } from "@/api/client";
 import { useCanvasStore } from "@/store/canvas-store";
-import { usePublishContextLinks } from "./context-links";
+import { usePublishContentLinks } from "./context-links";
 
 function shapeLink(
   id: string,
@@ -66,10 +65,10 @@ afterEach(() => {
 
 it("retries failed publication without waiting for a document edit", async () => {
   const put = vi
-    .spyOn(runtimeApi, "putContextLinks")
+    .spyOn(runtimeApi, "putContentLinks")
     .mockRejectedValueOnce(new Error("offline"))
     .mockResolvedValue({} as never);
-  const { unmount } = renderHook(() => usePublishContextLinks());
+  const { unmount } = renderHook(() => usePublishContentLinks());
   await act(async () => {
     await vi.advanceTimersByTimeAsync(450);
   });
@@ -84,7 +83,7 @@ it("retries failed publication without waiting for a document edit", async () =>
 it("serializes requests so a slow previous PUT cannot overwrite a newer reference", async () => {
   let finish!: (value: never) => void;
   const put = vi
-    .spyOn(runtimeApi, "putContextLinks")
+    .spyOn(runtimeApi, "putContentLinks")
     .mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -92,11 +91,13 @@ it("serializes requests so a slow previous PUT cannot overwrite a newer referenc
         }),
     )
     .mockResolvedValue({} as never);
-  const { unmount } = renderHook(() => usePublishContextLinks());
+  content.current = { agent: [shapeLink("r1", "pending")] };
+  const { rerender, unmount } = renderHook(() => usePublishContentLinks());
   await act(async () => {
     await vi.advanceTimersByTimeAsync(450);
   });
-  act(() => useCanvasStore.setState({ document: document("Newest") }));
+  content.current = { agent: [shapeLink("r1", "ready")] };
+  act(() => rerender());
   await act(async () => {
     await vi.advanceTimersByTimeAsync(450);
   });
@@ -108,9 +109,25 @@ it("serializes requests so a slow previous PUT cannot overwrite a newer referenc
     await vi.advanceTimersByTimeAsync(450);
   });
   expect(put).toHaveBeenCalledTimes(2);
-  expect(put.mock.calls[1]?.[2]).toEqual([
-    { id: "note", title: "Newest", kind: "sticky", role: "peer" },
-  ]);
+  expect(put.mock.calls[1]?.[2]).toEqual([shapeLink("r1", "ready")]);
+  unmount();
+});
+
+it("连线与节点标题变了不推：节点链接由 core 按连线编译", async () => {
+  const put = vi
+    .spyOn(runtimeApi, "putContentLinks")
+    .mockResolvedValue({} as never);
+  const { unmount } = renderHook(() => usePublishContentLinks());
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(450);
+  });
+  expect(put).toHaveBeenCalledTimes(1);
+  expect(put.mock.calls[0]?.[2]).toEqual([]);
+  act(() => useCanvasStore.setState({ document: document("Renamed") }));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(450);
+  });
+  expect(put).toHaveBeenCalledTimes(1);
   unmount();
 });
 
@@ -118,9 +135,9 @@ it("bounded retry can be explicitly restarted, and unmount stops further request
   const error = vi.spyOn(toast, "error");
   const dismiss = vi.spyOn(toast, "dismiss");
   const put = vi
-    .spyOn(runtimeApi, "putContextLinks")
+    .spyOn(runtimeApi, "putContentLinks")
     .mockRejectedValue(new Error("offline"));
-  const { unmount } = renderHook(() => usePublishContextLinks());
+  const { unmount } = renderHook(() => usePublishContentLinks());
   await act(async () => {
     await vi.advanceTimersByTimeAsync(30000);
   });
@@ -147,26 +164,23 @@ it("bounded retry can be explicitly restarted, and unmount stops further request
   expect(put).toHaveBeenCalledTimes(5);
 });
 
-it("白板引用与节点对端并进同一份文档，准备中的也推", async () => {
+it("只推白板引用，准备中的也推", async () => {
   const put = vi
-    .spyOn(runtimeApi, "putContextLinks")
+    .spyOn(runtimeApi, "putContentLinks")
     .mockResolvedValue({} as never);
   content.current = { agent: [shapeLink("r1", "pending")] };
-  const { unmount } = renderHook(() => usePublishContextLinks());
+  const { unmount } = renderHook(() => usePublishContentLinks());
   await act(async () => {
     await vi.advanceTimersByTimeAsync(450);
   });
   expect(put).toHaveBeenCalledTimes(1);
-  expect(put.mock.calls[0]?.[2]).toEqual([
-    { id: "note", title: "Original", kind: "sticky", role: "peer" },
-    shapeLink("r1", "pending"),
-  ]);
+  expect(put.mock.calls[0]?.[2]).toEqual([shapeLink("r1", "pending")]);
   unmount();
 });
 
 it("同一个对象的两条引用去重，只推一条", async () => {
   const put = vi
-    .spyOn(runtimeApi, "putContextLinks")
+    .spyOn(runtimeApi, "putContentLinks")
     .mockResolvedValue({} as never);
   // 两行引用，不同的引用 id 却指着同一个白板对象（远端合并可以造出这种
   // 局面）。文档里只该出现一条，否则 Agent 会把同一块内容读两遍。
@@ -174,7 +188,7 @@ it("同一个对象的两条引用去重，只推一条", async () => {
   const second = shapeLink("r2", "ready");
   second.content!.sourceShapeId = first.content!.sourceShapeId;
   content.current = { agent: [first, second] };
-  const { unmount } = renderHook(() => usePublishContextLinks());
+  const { unmount } = renderHook(() => usePublishContentLinks());
   await act(async () => {
     await vi.advanceTimersByTimeAsync(450);
   });
@@ -185,10 +199,10 @@ it("同一个对象的两条引用去重，只推一条", async () => {
 
 it("引用从 pending 变成 ready 会重推一次", async () => {
   const put = vi
-    .spyOn(runtimeApi, "putContextLinks")
+    .spyOn(runtimeApi, "putContentLinks")
     .mockResolvedValue({} as never);
   content.current = { agent: [shapeLink("r1", "pending")] };
-  const { rerender, unmount } = renderHook(() => usePublishContextLinks());
+  const { rerender, unmount } = renderHook(() => usePublishContentLinks());
   await act(async () => {
     await vi.advanceTimersByTimeAsync(450);
   });
@@ -202,7 +216,7 @@ it("引用从 pending 变成 ready 会重推一次", async () => {
     await vi.advanceTimersByTimeAsync(450);
   });
   expect(put).toHaveBeenCalledTimes(2);
-  expect((put.mock.calls[1]?.[2] as ContextLink[])[1]?.content).toMatchObject({
+  expect((put.mock.calls[1]?.[2] as ContextLink[])[0]?.content).toMatchObject({
     status: "ready",
     pngPath: ".armadra/exports/r1.png",
   });
@@ -211,10 +225,10 @@ it("引用从 pending 变成 ready 会重推一次", async () => {
 
 it("引用整条消失时推一份不含它的文档", async () => {
   const put = vi
-    .spyOn(runtimeApi, "putContextLinks")
+    .spyOn(runtimeApi, "putContentLinks")
     .mockResolvedValue({} as never);
   content.current = { agent: [shapeLink("r1", "ready")] };
-  const { rerender, unmount } = renderHook(() => usePublishContextLinks());
+  const { rerender, unmount } = renderHook(() => usePublishContentLinks());
   await act(async () => {
     await vi.advanceTimersByTimeAsync(450);
   });
@@ -224,8 +238,6 @@ it("引用整条消失时推一份不含它的文档", async () => {
     await vi.advanceTimersByTimeAsync(450);
   });
   expect(put).toHaveBeenCalledTimes(2);
-  expect(put.mock.calls[1]?.[2]).toEqual([
-    { id: "note", title: "Original", kind: "sticky", role: "peer" },
-  ]);
+  expect(put.mock.calls[1]?.[2]).toEqual([]);
   unmount();
 });

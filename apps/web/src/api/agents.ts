@@ -276,13 +276,14 @@ export const agentsApiFor = (rpc: (source?: Source) => ArmadraClient) => ({
       await rpc().agents.answerApproval({ pendingId, decision }),
     ),
 
-  putContextLinks: async (
+  /** 一个终端节点的白板内容链接；节点链接由 core 按连线编译。 */
+  putContentLinks: async (
     workspaceId: string,
     nodeId: string,
     links: ContextLink[],
   ) =>
     contextLinksResponseSchema.parse(
-      await rpc().agents.putContextLinks({
+      await rpc().agents.putContentLinks({
         workspaceId,
         nodeId,
         ...contextLinksRequestSchema.parse({ links }),
