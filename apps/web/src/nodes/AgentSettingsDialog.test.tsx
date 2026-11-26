@@ -5,6 +5,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from "@testing-library/react";
 import type { CanvasNode } from "@armadra/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -70,9 +71,14 @@ afterEach(() => {
 describe("Agent 设置", () => {
   it("缺省读出来是：提示、从不能投、转录可读", () => {
     open({ id: "codex" });
-    expect(
-      screen.getByRole("radio", { name: "提示" }).getAttribute("data-state"),
-    ).toBe("on");
+    for (const name of ["收件箱唤醒", "下级完成"]) {
+      const group = screen.getByRole("radiogroup", { name });
+      expect(
+        within(group)
+          .getByRole("radio", { name: "提示" })
+          .getAttribute("data-state"),
+      ).toBe("on");
+    }
     expect(
       screen
         .getByRole("switch", { name: "允许从向我投递" })
@@ -98,6 +104,13 @@ describe("Agent 设置", () => {
       acceptSubDelivery: true,
       inboxWake: "deliver",
     });
+  });
+
+  it("改下级完成写 childDone（Armadra#1062 S6）", () => {
+    open({ id: "codex" });
+    const group = screen.getByRole("radiogroup", { name: "下级完成" });
+    fireEvent.click(within(group).getByRole("radio", { name: "投摘要" }));
+    expect(written()).toEqual({ id: "codex", childDone: "deliver" });
   });
 
   it("允许从向我投递是一个开关，开了写 true", () => {

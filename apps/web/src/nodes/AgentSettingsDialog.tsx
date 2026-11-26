@@ -19,8 +19,10 @@
  */
 import * as React from "react";
 import {
+  CHILD_DONE_MODES,
   INBOX_WAKE_MODES,
   type CanvasNode,
+  type ChildDone,
   type InboxWake,
 } from "@armadra/shared";
 
@@ -38,6 +40,9 @@ import { Switch } from "@/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/ui/toggle-group";
 import { useCanvasStore } from "@/store/canvas-store";
 import { onAgentSettingsRequest } from "./agent-settings";
+
+/** 与 core 的 `DEFAULT_CHILD_DONE` 同值（`core/collab/child-done.ts`）。 */
+const DEFAULT_CHILD_DONE: ChildDone = "notify";
 
 /** 与 core 的 `DEFAULT_INBOX_WAKE` 同值（`core/collab/wake.ts`）。 */
 const DEFAULT_INBOX_WAKE: InboxWake = "notify";
@@ -64,6 +69,7 @@ export function AgentSettingsDialog() {
   };
 
   const wake = agent?.inboxWake ?? DEFAULT_INBOX_WAKE;
+  const childDone = agent?.childDone ?? DEFAULT_CHILD_DONE;
   const coordinator = agent !== undefined && agentSupportsCoordinator(agent.id);
   // 进程活着就有状态行（`terminal.exit` 时删掉）：这时改角色不会生效。
   const status = useAgentStatus(nodeId ?? "");
@@ -112,6 +118,32 @@ export function AgentSettingsDialog() {
               {INBOX_WAKE_MODES.map((mode) => (
                 <ToggleGroupItem key={mode} value={mode}>
                   {t(`agentSettings.inboxWake.${mode}`)}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </div>
+
+          <div className="flex flex-col gap-(--space-group)">
+            <span className="text-meta text-muted-foreground">
+              {t("agentSettings.childDone")}
+            </span>
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              size="sm"
+              value={childDone}
+              aria-label={t("agentSettings.childDone")}
+              disabled={bare}
+              onValueChange={(next) => {
+                if (!(CHILD_DONE_MODES as readonly string[]).includes(next)) {
+                  return;
+                }
+                patch({ childDone: next as ChildDone });
+              }}
+            >
+              {CHILD_DONE_MODES.map((mode) => (
+                <ToggleGroupItem key={mode} value={mode}>
+                  {t(`agentSettings.childDone.${mode}`)}
                 </ToggleGroupItem>
               ))}
             </ToggleGroup>
