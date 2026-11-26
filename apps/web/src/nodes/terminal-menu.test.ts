@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { CanvasNode } from "@armadra/shared";
 import type { NodeMenuItemsFactory } from "@/canvas/menus/node-menu";
+import { useSessionPage } from "@/session-page/store";
 
 const registration = vi.hoisted(() => ({
   factory: null as NodeMenuItemsFactory | null,
@@ -12,7 +13,10 @@ vi.mock("@/canvas/menus/node-menu", () => ({
   },
 }));
 vi.mock("@/store/canvas-store", () => ({
-  useCanvasStore: { getState: () => ({ updateNodeData: vi.fn() }) },
+  useCanvasStore: {
+    getState: () => ({ updateNodeData: vi.fn() }),
+    subscribe: () => () => undefined,
+  },
 }));
 vi.mock("@/meta/annotations", () => ({ openNodeAnnotation: vi.fn() }));
 vi.mock("./terminal-registry", () => ({ terminalHandle: () => null }));
@@ -183,5 +187,28 @@ describe("spawn", () => {
     expect(
       entries({ kind: "terminal" }).some((item) => item.id === "agent.spawn"),
     ).toBe(false);
+  });
+});
+
+describe("session page entry", () => {
+  it("Agent 节点有「在会话页打开」，普通终端没有；点了带着节点打开会话页", () => {
+    const entries = (data: Record<string, unknown>) =>
+      registration.factory!({
+        node: { id: "n1", type: "terminal", data } as CanvasNode,
+        targetIds: ["n1"],
+      });
+    expect(
+      entries({ kind: "terminal" }).some((item) => item.id === "session.open"),
+    ).toBe(false);
+    const item = entries({ kind: "terminal", agent: { id: "claude" } }).find(
+      (entry) => entry.id === "session.open",
+    );
+    expect(item).toBeDefined();
+    item!.run();
+    expect(useSessionPage.getState()).toMatchObject({
+      open: true,
+      selectedNodeId: "n1",
+    });
+    useSessionPage.setState({ open: false, selectedNodeId: null });
   });
 });

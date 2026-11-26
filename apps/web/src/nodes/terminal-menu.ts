@@ -17,6 +17,7 @@ import {
   type NodeMenuItem,
 } from "@/canvas/menus/node-menu";
 import { useCanvasStore } from "@/store/canvas-store";
+import { useSessionPage } from "@/session-page/store";
 import {
   agentRegistry,
   customAgentFor,
@@ -63,6 +64,13 @@ export function registerTerminalNodeMenu(): () => void {
     const current: PermissionMode = agent.permissionMode ?? "default";
     const items: NodeMenuItem[] = [
       labels,
+      // 会话页（Armadra#1062）：在那里看完整的对话并直接回答。
+      {
+        id: "session.open",
+        label: t("sessionPage.openInPage"),
+        icon: MessagesSquare,
+        run: () => useSessionPage.getState().show(node.id),
+      },
       // 只读的历史面板：它不发起交接，所以和「交接到…」是两个入口。
       {
         id: "handoff.history",
