@@ -6492,3 +6492,13 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
 | `agents.unpinSession` | call | `{ workspaceId: string, nodeId: string }`                  | `{ fromBoardId: string, toBoardId: string, nodeIds: string[] }` | `bad_request`、`forbidden`、`not_found`、`conflict` | `canvas:write` | 1.62 | —      |
 
 <!-- rpc:end -->
+
+### 129.4 子会话完成回流（`#1062` S6）
+
+不升协议版本：投递队列多一种 `origin: "child-done"`，节点数据 `agent` 多一个可选字段 `childDone`（`off` | `notify` | `deliver`，缺省 `notify`），在**上级**节点上设。
+
+- **触发**：一个节点报 `done`（一轮做完），并且它的链接文档里有 `role: "main"` 的上级。对每个上级往队里塞一条回流；上级 `childDone` 为 `off`、上级是这个下级在跑的任务的协调者（`workflow_task_runs.status = 'running'`，它有 `wait` 与账本）时不塞。
+- **同一条路**：与收件箱唤醒共用 `agent_send_queue`、门链、容量与限速，不开快车道；上级忙就排着，空下来才投。幂等键 `child-done:<下级>:<下级状态的 updatedAt>`，同一轮只回流一次。
+- **正文**：`notify` 一句「下级「X」做完了一轮」加 `context summary --node <id>` 的读法；`deliver` 是下级的摘要（至多约 2000 字），读不到转录时退回 `notify`。信封署名 `Armadra 下级回流`。
+- **授权**：连线照查；「下级不能投给上级」（`UPWARD_SEND_REFUSED`）对它不适用——这是应用替下级说的一句通知，不是下级往上级终端里打字。
+- **来源链为空、跳数为 0**（与唤醒相同）：接上下级的链的话，上级回头再给下级派活会被当成环（`LOOP_DETECTED`）。上级与下级之间的你来我往由模型决定，每一步仍受同一对节点的最小间隔与每轮扇出限制。

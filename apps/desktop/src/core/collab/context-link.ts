@@ -45,6 +45,7 @@ import {
 } from "../history/registry";
 import type { EntryRange, Located } from "../history/types";
 import { digestEntries, renderSummary } from "./transcript-summary";
+import { handleForNode } from "../canvas/handles";
 import {
   MAX_TAIL_BYTES,
   type TranscriptRecord,
@@ -1014,6 +1015,19 @@ function readSummary(
       origin: found.located.origin,
     },
     digestEntries(range.entries),
+  );
+}
+
+/**
+ * 一个节点的摘要，给不走 `context summary` 动词的读者（子会话完成回流的
+ * `deliver` 档，Armadra#1062 S6）。读不到转录时抛出，由调用方退回提示。
+ */
+export function nodeSummary(context: CollabContext, target: NodeRef): string {
+  const handle = handleForNode(context.database, target.id);
+  return readSummary(
+    context,
+    target,
+    handle === undefined ? new Map() : new Map([[target.id, handle]]),
   );
 }
 

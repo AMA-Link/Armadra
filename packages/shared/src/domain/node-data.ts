@@ -112,6 +112,11 @@ export const INBOX_WAKE_MODES = ["off", "notify", "deliver"] as const;
 
 export type InboxWake = (typeof INBOX_WAKE_MODES)[number];
 
+/** What a supervisor hears when one of its subs finishes a turn (Armadra#1062 S6). */
+export const CHILD_DONE_MODES = ["off", "notify", "deliver"] as const;
+
+export type ChildDone = (typeof CHILD_DONE_MODES)[number];
+
 export const terminalAgentSchema = z.object({
   id: agentIdSchema,
   accountId: z.string().max(120).optional(),
@@ -143,6 +148,12 @@ export const terminalAgentSchema = z.object({
    * earliest unread message itself. Absent means the core's default.
    */
   inboxWake: z.enum(INBOX_WAKE_MODES).optional(),
+  /**
+   * When a sub of this node finishes a turn: nothing, a one-line notice, or
+   * the sub's summary (Armadra#1062 S6). Absent means the core's default
+   * (`notify`).
+   */
+  childDone: z.enum(CHILD_DONE_MODES).optional(),
   /**
    * Whether a sub may type into this node's terminal (migration 0024).
    * Off by default: a link that says "I supervise you" is not a request for

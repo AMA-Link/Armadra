@@ -1,3 +1,4 @@
+import { CHILD_DONE_MODES } from "@armadra/shared";
 import {
   badRequest,
   isHexColor,
@@ -59,6 +60,8 @@ export const PERMISSION_MODES = [
  * import 画布域。
  */
 export const INBOX_WAKE_MODES = ["off", "notify", "deliver"] as const;
+/** 下级完成回流的三档（Armadra#1062 S6），唯一来源是 `@armadra/shared`。 */
+export { CHILD_DONE_MODES };
 export const DIFF_SCOPES = ["worktree", "staged"] as const;
 export const AUTOMATION_SCHEDULE_KINDS = [
   "once",
@@ -374,6 +377,10 @@ function validAgentBlock(agent: unknown): boolean {
   const validWake = isAbsentOr(agent, "inboxWake", (value) =>
     (INBOX_WAKE_MODES as readonly string[]).includes(value as string),
   );
+  // 下级完成回流的三档（Armadra#1062 S6），与收件箱唤醒同一条理由。
+  const validChildDone = isAbsentOr(agent, "childDone", (value) =>
+    (CHILD_DONE_MODES as readonly string[]).includes(value as string),
+  );
   // 「允许从向我投递」（迁移 0024）。默认关，所以缺席与 `false` 是同一件事。
   const validUpward = isAbsentOr(
     agent,
@@ -382,6 +389,7 @@ function validAgentBlock(agent: unknown): boolean {
   );
   return (
     validId &&
+    validChildDone &&
     validPermission &&
     validPending &&
     validAccount &&
