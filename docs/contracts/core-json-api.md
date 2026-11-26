@@ -6439,3 +6439,24 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
 - **每个带连线的节点都有文档**：终端用它授权 `context` 读取与 `canvas` 动词；core 内部以别的节点身份发出的投递（工作流的起点便签）出队时也按它授权。没有令牌的节点不能自己调用动词，所以这不放开任何入口。白板内容链接只并进终端的文档；`browser` 的被动旁听只看终端文档里的 `kind: "browser"` 链接。
 - **通知**：文档变了的节点在事务提交后各发一次内部的链接变更通知（浏览器旁听用它）；控制器事务由调用方提交后通知。
 - **结果**：画板不开着时，经控制动词、控制器或工作流加的边立即成为授权；`link`、`open-agent`、`team`、`open-browser` 不再单独写链接文档。缺 `role` 的推送「保留旧值」那条规矩随之取消：节点链接只有 core 一个写者。
+
+## 129. 会话板与会话页的会话（`#1062` S2）
+
+协议只增：迁移 `0074_board_kind` 给 `boards` 加 `kind`（`canvas` | `sessions`），新增 procedure `agents.startSession`（1.60 起）。
+
+- **会话板**：每个工作空间至多一块 `kind = 'sessions'` 的板（部分唯一索引），在第一次 `startSession` 时由 core 建。它是一块普通的板：载入、保存、实时、链接文档（§128）、节点上的状态与审批都照常；但不出现在 `boards.list` 与工作空间的画板摘要里，`boards.update` / `boards.delete` 对它答 404，新建画板的排序也不算它。
+- **会话就是节点**：会话板上的 Agent 终端节点，没有新表、没有第二套语义。坐标由 core 按网格给，没有意义。
+
+### 129.1 新建会话
+
+- `startSession` 在会话板上建一个 Agent 节点（标题缺省取预设名），记下触发者，再交给依赖编排起进程：一条没有边的启动行，终端驱动与 ACP 驱动都由终端域的 `spawnForNode` 起，与工作流起角色节点同一条路，不需要页面挂载。`driver` 缺省按设置 `agents.defaultDriver`，规则与 `open-agent` 相同（`newNodeView`）。
+- 第一条提示由会话页在会话起来之后按现有路径发（ACP 的 prompt、终端的输入），这里不带任务。
+- 拒绝：Agent 不认识 400；被设置关掉 403 `agent_disabled`；工作空间不在 404。
+
+<!-- rpc:begin contract=§129.1 -->
+
+| procedure             | kind | input                                                                                                    | output                                               | errors                                  | scope             | 自   | 原路径 |
+| --------------------- | ---- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------- | ----------------- | ---- | ------ |
+| `agents.startSession` | call | `{ workspaceId: string, agentId: string, driver?: "terminal" \| "acp", model?: string, title?: string }` | `{ nodeId: string, boardId: string, title: string }` | `bad_request`、`forbidden`、`not_found` | `terminal:create` | 1.60 | —      |
+
+<!-- rpc:end -->
