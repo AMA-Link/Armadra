@@ -769,6 +769,13 @@ describe("投递记录、排队、谁读过我、连线", () => {
     }
   });
 
+  it("sessionBoard：没建过答 null，不因此建", async () => {
+    const other = await createWorkspace("agents-empty", core.directory);
+    expect(
+      (await procedure("agents.sessionBoard", { workspaceId: other })).body,
+    ).toEqual({ boardId: null });
+  });
+
   it("startSession：会话板上建 Agent 节点；不认识的 Agent 400、工作空间不存在 404（§129.1）", async () => {
     const ok = await procedure("agents.startSession", {
       workspaceId,
@@ -778,6 +785,9 @@ describe("投递记录、排队、谁读过我、连线", () => {
     expect(ok.status).toBe(200);
     const started = ok.body as { nodeId: string; boardId: string };
     expect(isSessionBoard(core.database, started.boardId)).toBe(true);
+    expect(
+      (await procedure("agents.sessionBoard", { workspaceId })).body,
+    ).toEqual({ boardId: started.boardId });
     expect(started.boardId).not.toBe(boardId);
     expect(
       (await procedure("agents.startSession", { workspaceId, agentId: "nope" }))
@@ -1281,9 +1291,10 @@ describe("契约与 core 的两张表（agents）", () => {
     "agents.adapterInstall",
     "agents.installAdapter",
     "agents.startSession",
+    "agents.sessionBoard",
   ]);
 
-  it("29 条都在契约里，除 §39.7 与 §129.1 外每条都有旧路径", () => {
+  it("30 条都在契约里，除 §39.7 与 §129.1 外每条都有旧路径", () => {
     expect(entries.map((entry) => entry.name).sort()).toEqual(
       [
         "acceptHandoff",
@@ -1310,6 +1321,7 @@ describe("契约与 core 的两张表（agents）", () => {
         "prepareHandoff",
         "putContentLinks",
         "repairIntegration",
+        "sessionBoard",
         "setAmaCredential",
         "startSession",
         "suggestTitle",
