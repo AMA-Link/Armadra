@@ -819,12 +819,16 @@ function parseNode(value: unknown): CanvasNode {
 
 function parseEdge(value: unknown): CanvasEdge {
   const source = object(value, "edge");
+  // `role` 缺席 = 「没有意见」，`writeDocument` 保留库里的；带了就照收，取值由
+  // `validateDocument` 校验（#1065：以前这里不读它，主从被存成对等）。
+  const role = optionalString(source, "role");
   return {
     id: text(source, "id"),
     boardId: text(source, "boardId"),
     source: text(source, "source"),
     target: text(source, "target"),
     kind: optionalString(source, "kind") ?? "link",
+    ...(role === undefined ? {} : { role }),
     createdAt: text(source, "createdAt"),
     updatedAt: text(source, "updatedAt"),
   };
