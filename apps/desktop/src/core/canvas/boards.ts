@@ -6,6 +6,13 @@ import { badRequest, notFound, rfc3339, uuidV7 } from "../workspaces/support";
  * The `boards` table: listing, naming, creating, reordering and deleting the
  * boards of one workspace.
  *
+ * A board is a canvas (`kind = 'canvas'`) or the workspace's sessions board
+ * (`kind = 'sessions'`, migration 0074, Armadra#1062 S2): the home of agent
+ * sessions opened from the session page rather than on a canvas. It is a
+ * board like any other for loading, saving and link documents, but it is not
+ * listed, renamed, reordered or deleted through the board API, and there is at
+ * most one per workspace, created on first use ({@link ensureSessionBoard}).
+ *
  * A port of the pre-merge implementation. `whiteboard_json` is read and
  * written but never parsed — the core only ever knows its length (see
  * `validation.ts`), which is what lets a client change the snapshot format
@@ -87,10 +94,71 @@ export function listBoards(
   getWorkspace(database, workspaceId);
   const rows = database
     .prepare(
-      `${SELECT_BOARD} WHERE workspace_id = ? ORDER BY sort_order, created_at`,
+      `${SELECT_BOARD} WHERE workspace_id = ? AND kind = 'canvas' ORDER BY sort_order, created_at`,
     )
     .all(workspaceId) as unknown as BoardRow[];
   return rows.map(fromRow);
+}
+
+/** `boards.kind` of the workspace's sessions board. */
+export const SESSIONS_BOARD_KIND = "sessions";
+
+/** Is this board a workspace's sessions board? Unknown ids answer `false`. */
+export function isSessionBoard(
+  database: DatabaseSync,
+  boardId: string,
+): boolean {
+  const row = database
+    .prepare("SELECT kind FROM boards WHERE id = ?")
+    .get(boardId) as { kind: string } | undefined;
+  return row?.kind === SESSIONS_BOARD_KIND;
+}
+
+/** The workspace's sessions board, if it has been created. */
+export function sessionBoardOf(
+  database: DatabaseSync,
+  workspaceId: string,
+): Board | undefined {
+  const row = database
+    .prepare(`${SELECT_BOARD} WHERE workspace_id = ? AND kind = 'sessions'`)
+    .get(workspaceId) as BoardRow | undefined;
+  return row === undefined ? undefined : fromRow(row);
+}
+
+/**
+ * The workspace's sessions board, created on first use. The partial unique
+ * index keeps it to one per workspace even if two callers race.
+ */
+export function ensureSessionBoard(
+  database: DatabaseSync,
+  workspaceId: string,
+): Board {
+  getWorkspace(database, workspaceId);
+  const existing = sessionBoardOf(database, workspaceId);
+  if (existing !== undefined) return existing;
+  const now = rfc3339();
+  database
+    .prepare(
+      "INSERT OR IGNORE INTO boards (id, workspace_id, name, sort_order, viewport_json, kind, created_at, updated_at) " +
+        "VALUES (?, ?, 'Sessions', 0, ?, 'sessions', ?, ?)",
+    )
+    .run(uuidV7(), workspaceId, JSON.stringify(DEFAULT_VIEWPORT), now, now);
+  const created = sessionBoardOf(database, workspaceId);
+  if (created === undefined) throw notFound("Board was not found");
+  return created;
+}
+
+/** The board API answers the sessions board as if it did not exist. */
+function getCanvasBoard(
+  database: DatabaseSync,
+  workspaceId: string,
+  boardId: string,
+): Board {
+  const board = getBoard(database, workspaceId, boardId);
+  if (isSessionBoard(database, board.id)) {
+    throw notFound("Board was not found");
+  }
+  return board;
 }
 
 export function getBoard(
@@ -124,7 +192,7 @@ export function createBoard(
   const now = rfc3339();
   const next = database
     .prepare(
-      "SELECT COALESCE(MAX(sort_order) + 1, 0) AS next FROM boards WHERE workspace_id = ?",
+      "SELECT COALESCE(MAX(sort_order) + 1, 0) AS next FROM boards WHERE workspace_id = ? AND kind = 'canvas'",
     )
     .get(workspaceId) as { next: number };
   database
@@ -153,7 +221,7 @@ export function updateBoard(
     readonly sortOrder?: number | undefined;
   },
 ): Board {
-  const current = getBoard(database, workspaceId, boardId);
+  const current = getCanvasBoard(database, workspaceId, boardId);
   const name =
     patch.name === undefined ? current.name : validateBoardName(patch.name);
   let sortOrder = current.sortOrder;
@@ -184,7 +252,7 @@ export function deleteBoard(
   workspaceId: string,
   boardId: string,
 ): void {
-  getBoard(database, workspaceId, boardId);
+  getCanvasBoard(database, workspaceId, boardId);
   database
     .prepare("DELETE FROM boards WHERE id = ? AND workspace_id = ?")
     .run(boardId, workspaceId);
