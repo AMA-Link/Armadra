@@ -126,7 +126,7 @@ describe("groupTree / filterTree", () => {
     const items = buildSessionItems(
       [canvas],
       [
-        row("lead", { state: "idle" }),
+        row("lead", { state: "done" }),
         row("worker", { state: "waiting", pendingId: "p1" }),
       ],
       [],
