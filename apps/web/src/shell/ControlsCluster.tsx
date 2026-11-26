@@ -5,12 +5,14 @@ import {
   GitBranch,
   GitPullRequest,
   ListTree,
+  MessagesSquare,
   Share2,
   Shrink,
   SlidersHorizontal,
 } from "lucide-react";
 import type { CommandId } from "../keybindings";
 import { useCanvasStore } from "../store/canvas-store";
+import { useSessionPage } from "../session-page/store";
 import { useT } from "../app/preferences-store";
 import { CanvasPreferencesMenu } from "../canvas/menus/CanvasPreferencesMenu";
 import { openShare } from "../canvas/share/share-store";
@@ -71,6 +73,8 @@ export function ControlsCluster() {
   const drawer = compact ? null : openRightDrawer(panels);
   const workspace = useCanvasStore((state) => state.workspace);
   const canShare = useCanShareCurrent();
+  const sessionsOpen = useSessionPage((state) => state.open);
+  const toggleSessions = useSessionPage((state) => state.toggle);
 
   return (
     <>
@@ -106,6 +110,15 @@ export function ControlsCluster() {
           }
         >
           <ListTree />
+        </ClusterButton>
+
+        <ClusterButton
+          label={t("sessionPage.title")}
+          command="app.sessions"
+          active={sessionsOpen}
+          onClick={toggleSessions}
+        >
+          <MessagesSquare />
         </ClusterButton>
 
         <ClusterButton

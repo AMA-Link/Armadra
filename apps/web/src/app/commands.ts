@@ -6,6 +6,7 @@ import { currentViewportCenter } from "../canvas/placement";
 import { COMMAND_BY_ID, type CommandId } from "../keybindings";
 import { usePreferencesStore, useT } from "./preferences-store";
 import { useCanvasStore } from "../store/canvas-store";
+import { useSessionPage } from "../session-page/store";
 import { useEnabledAgents } from "./use-agents";
 import { openQuickOpen } from "../panels/quick-open-seed";
 import { openTerminalFind, terminalNodeOf } from "../nodes/terminal-registry";
@@ -92,6 +93,9 @@ export function useCommandDispatch(): CommandDispatch {
             "delivery",
             panels.delivery === "closed" ? "drawer" : "closed",
           );
+          return;
+        case "app.sessions":
+          useSessionPage.getState().toggle();
           return;
         case "app.quickOpen":
           setPanel("quickOpen", !panels.quickOpen);

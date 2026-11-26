@@ -159,6 +159,15 @@ export const COMMANDS = [
     allowInTerminal: false,
     allowWhileTyping: false,
   },
+  // 会话页没有默认键位：入口是右上工具簇与命令面板。
+  {
+    id: "app.sessions",
+    labelKey: "cmd.app.sessions",
+    scope: "app",
+    defaultKeys: both(null),
+    allowInTerminal: true,
+    allowWhileTyping: true,
+  },
   // 问题面板同样没有默认键位：入口是编辑器状态栏上的诊断计数与命令面板，
   // 剩下的 ⌘⇧ 组合都被终端里的东西用着。
   {

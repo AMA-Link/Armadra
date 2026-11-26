@@ -43,6 +43,7 @@ import { useControlNotices } from "./use-control-notices";
 import { useSourceSwitchCacheReset } from "./use-sources-bootstrap";
 import { useCanvasPreferences } from "./use-canvas-preferences";
 import { SharedSessionHost } from "../shared-session/SharedSessionHost";
+import { SessionPageHost } from "../session-page/SessionPageHost";
 
 function createQueryClient() {
   return new QueryClient({
@@ -158,6 +159,8 @@ function AppShell() {
         <Banners />
         {/* 被分享会话的只读查看页（契约 §79）：盖住画布那一块。 */}
         <SharedSessionHost />
+        {/* 会话页（Armadra#1062）：盖住画布，工具簇仍在它上面。 */}
+        <SessionPageHost />
       </main>
       {/* 手机布局的两块：底部导航与单节点焦点页。两者都在 <768px 才渲染，
           桌面上是 null，不占位也不订阅任何东西（客户端平台设计）。 */}
