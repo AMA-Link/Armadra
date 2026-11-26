@@ -119,6 +119,23 @@ export const agentsApiFor = (rpc: (source?: Source) => ArmadraClient) => ({
     contextReadsResponseSchema.parse(
       await rpc().agents.contextReads({ nodeId }, options(signal)),
     ),
+  /**
+   * 会话页新开一个 Agent 会话（契约 §129.1）：core 在会话板上建节点并自己起
+   * 进程。答节点 id、会话板 id 与标题。
+   */
+  startSession: async (request: {
+    workspaceId: string;
+    agentId: string;
+    driver?: "terminal" | "acp";
+    model?: string;
+    title?: string;
+  }): Promise<{ nodeId: string; boardId: string; title: string }> =>
+    rpc().agents.startSession(request),
+  /** 这个工作空间的会话板 id；还没建过是 `null`。 */
+  sessionBoard: async (
+    workspaceId: string,
+  ): Promise<{ boardId: string | null }> =>
+    rpc().agents.sessionBoard({ workspaceId }),
   /** 人拒收一条还排着的。已经在投的那条收不回来，答 `cancelled:false`。 */
   cancelDelivery: async (workspaceId: string, deliveryId: string) =>
     deliveryCancelResponseSchema.parse(
