@@ -29,3 +29,4 @@ export * from "./agent-driver.js";
 export * from "./agent-bare-launch.js";
 export * from "./source-core-outdated.js";
 export * from "./cloud-issuer.js";
+export * from "./link-documents.js";
