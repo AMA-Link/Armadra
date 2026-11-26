@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { toast } from "@/ui/toast";
 import {
   act,
   cleanup,
@@ -24,8 +25,14 @@ const api = vi.hoisted(() => ({
   sessionBoard: vi.fn(),
   startSession: vi.fn(),
   pasteTerminal: vi.fn(),
+  pinSession: vi.fn(),
+  unpinSession: vi.fn(),
 }));
-vi.mock("@/api/client", () => ({ runtimeApi: api }));
+vi.mock("@/api/client", () => ({
+  runtimeApi: api,
+  errorCode: (error: unknown) =>
+    (error as { code?: string } | null)?.code ?? undefined,
+}));
 
 const rows = vi.hoisted(() => ({ current: [] as SessionRow[] }));
 vi.mock("@/agent/sessions", async (importOriginal) => ({
@@ -116,6 +123,16 @@ beforeEach(() => {
   );
   api.startSession.mockReset();
   api.pasteTerminal.mockReset().mockResolvedValue(undefined);
+  api.pinSession.mockReset().mockResolvedValue({
+    fromBoardId: "b2",
+    toBoardId: "b1",
+    nodeIds: ["term"],
+  });
+  api.unpinSession.mockReset().mockResolvedValue({
+    fromBoardId: "b1",
+    toBoardId: "b2",
+    nodeIds: ["canvas-acp"],
+  });
 });
 afterEach(() => {
   cleanup();
@@ -174,6 +191,36 @@ describe("SessionPage", () => {
       expect(api.pasteTerminal).toHaveBeenCalledWith(SID, "继续", true),
     );
     await waitFor(() => expect((input as HTMLTextAreaElement).value).toBe(""));
+  });
+
+  it("会话板上的会话钉到所选画板；画布上的会话可以收回", async () => {
+    mount();
+    fireEvent.click(await screen.findByText("Shell agent"));
+    const pin = await screen.findByRole("button", { name: "钉到画布" });
+    fireEvent.pointerDown(pin, { button: 0, ctrlKey: false });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Main" }));
+    await waitFor(() =>
+      expect(api.pinSession).toHaveBeenCalledWith("w1", "term", "b1"),
+    );
+
+    fireEvent.click(await screen.findByText("Planner"));
+    expect(screen.queryByRole("button", { name: "钉到画布" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "收回到会话页" }));
+    await waitFor(() =>
+      expect(api.unpinSession).toHaveBeenCalledWith("w1", "canvas-acp"),
+    );
+  });
+
+  it("收回失败：连着非会话节点有专门的提示", async () => {
+    api.unpinSession.mockRejectedValue({ code: "session_has_other_links" });
+    const error = vi.spyOn(toast, "error");
+    mount();
+    fireEvent.click(await screen.findByText("Planner"));
+    fireEvent.click(screen.getByRole("button", { name: "收回到会话页" }));
+    await waitFor(() =>
+      expect(error).toHaveBeenCalledWith("这组会话连着别的节点，先断开那条线"),
+    );
+    error.mockRestore();
   });
 
   it("新建会话：按所选 Agent 与驱动调用 startSession，并立即选中、先画出来", async () => {

@@ -131,6 +131,19 @@ export const agentsApiFor = (rpc: (source?: Source) => ArmadraClient) => ({
     title?: string;
   }): Promise<{ nodeId: string; boardId: string; title: string }> =>
     rpc().agents.startSession(request),
+  /** 会话板上的会话连同它那一组钉到一块画板（契约 §129.3）。 */
+  pinSession: async (
+    workspaceId: string,
+    nodeId: string,
+    boardId: string,
+  ): Promise<{ fromBoardId: string; toBoardId: string; nodeIds: string[] }> =>
+    rpc().agents.pinSession({ workspaceId, nodeId, boardId }),
+  /** 画布上的会话连同它那一组收回会话板。 */
+  unpinSession: async (
+    workspaceId: string,
+    nodeId: string,
+  ): Promise<{ fromBoardId: string; toBoardId: string; nodeIds: string[] }> =>
+    rpc().agents.unpinSession({ workspaceId, nodeId }),
   /** 这个工作空间的会话板 id；还没建过是 `null`。 */
   sessionBoard: async (
     workspaceId: string,

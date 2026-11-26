@@ -25,6 +25,11 @@ export const sessionPage: MessageModule = {
     "sessionPage.name": "标题",
     "sessionPage.create": "创建",
     "sessionPage.cancel": "取消",
+    "sessionPage.pin": "钉到画布",
+    "sessionPage.unpin": "收回到会话页",
+    "sessionPage.loading": "加载中",
+    "sessionPage.moveFailed": "移动会话失败",
+    "sessionPage.hasOtherLinks": "这组会话连着别的节点，先断开那条线",
   },
   en: {
     "sessionPage.title": "Sessions",
@@ -49,5 +54,11 @@ export const sessionPage: MessageModule = {
     "sessionPage.name": "Title",
     "sessionPage.create": "Create",
     "sessionPage.cancel": "Cancel",
+    "sessionPage.pin": "Pin to a canvas",
+    "sessionPage.unpin": "Move back to sessions",
+    "sessionPage.loading": "Loading",
+    "sessionPage.moveFailed": "Could not move the session",
+    "sessionPage.hasOtherLinks":
+      "These sessions are linked to other nodes; remove that link first",
   },
 };
