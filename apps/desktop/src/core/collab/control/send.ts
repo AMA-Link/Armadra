@@ -1,4 +1,5 @@
 import { runDeliveryBridge } from "../../runs/registry";
+import { CHILD_DONE_SENDER } from "../child-done";
 import { expectedProcesses, paneRunsAgent } from "../../agent/launch";
 import {
   baseAgent,
@@ -751,11 +752,14 @@ export async function attempt(
   // 收件箱唤醒没有第二个节点在发话：那一条是应用自己说的，署名就该是应用，而
   // 不是把目标自己的名字写在 `from:` 上冒充一次对话（§5、§2.4）。
   const wake = item.origin === "mailbox-wake";
+  const childDone = item.origin === "child-done";
   const sourceName = wake
     ? WAKE_SENDER
-    : item.sourceKind === "controller"
-      ? "Armadra controller"
-      : displayName(source, item.sourceNodeId!);
+    : childDone
+      ? CHILD_DONE_SENDER
+      : item.sourceKind === "controller"
+        ? "Armadra controller"
+        : displayName(source, item.sourceNodeId!);
   const envelope = buildEnvelope({
     ...(item.sourceKind === "controller"
       ? {
@@ -767,7 +771,7 @@ export async function attempt(
         }
       : { sourceNodeId: item.sourceNodeId! }),
     sourceName,
-    trail: wake ? WAKE_VIA : renderTrail(context, item.trail),
+    trail: wake || childDone ? WAKE_VIA : renderTrail(context, item.trail),
     body: item.body,
   });
   const traceId = nonce(16);
@@ -982,7 +986,10 @@ function authorize(
   context: CollabContext,
   source: NodeRef,
   target: NodeRef,
-  options: { readonly requireLink?: boolean } = {},
+  options: {
+    readonly requireLink?: boolean;
+    readonly allowUpward?: boolean;
+  } = {},
 ): void {
   // 收件箱唤醒是节点对自己说话（§5）：连线编译的是**节点之间**那条边的授权，
   // 而这里没有第二个节点。其余每一条照跑——能力位关掉的节点仍然不该被写入。
@@ -1005,7 +1012,11 @@ function authorize(
   const link = getContextLinks(context.database, source.id).links.find(
     (entry) => entry.id === target.id,
   );
-  if ((link?.role ?? "peer") === "main" && !acceptsFromSubs(target)) {
+  if (
+    (link?.role ?? "peer") === "main" &&
+    options.allowUpward !== true &&
+    !acceptsFromSubs(target)
+  ) {
     throw refuse(
       "UPWARD_SEND_REFUSED",
       `「${target.title}」是你的主，下级不能把文字打进上级的终端；用 canvas post 留一条消息，由对方自己决定什么时候读。`,
@@ -1076,6 +1087,9 @@ async function gate(
         item.origin === "mailbox-wake" &&
         item.sourceNodeId === item.targetNodeId
       ),
+      // 回流是应用替下级说的「做完了」，不是下级往上级终端里打字：连线照查，
+      // 向上那条规矩不适用（Armadra#1062 S6）。
+      allowUpward: item.origin === "child-done",
     });
   }
   return observe(context, target);

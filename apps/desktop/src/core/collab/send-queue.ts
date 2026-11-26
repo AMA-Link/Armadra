@@ -22,7 +22,13 @@ export const SEND_QUEUE_TTL_SECONDS = 300;
 export const SEND_QUEUE_MAX_PER_TARGET = 16;
 
 /** 三条入口，一条队列（§4.6、§5 第 1 条）。 */
-export type QueueOrigin = "send" | "mailbox-wake" | "first-task" | "run-task";
+export type QueueOrigin =
+  | "send"
+  | "mailbox-wake"
+  | "first-task"
+  | "run-task"
+  // 子会话完成回流（Armadra#1062 S6，`child-done.ts`）。
+  | "child-done";
 
 export type QueueState =
   "queued" | "delivering" | "done" | "cancelled" | "expired";

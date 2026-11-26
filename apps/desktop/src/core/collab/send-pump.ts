@@ -1,4 +1,5 @@
 import { baseAgent, startsSilently } from "../agent/registry";
+import { noteChildDone } from "./child-done";
 import { currentDriverStatus } from "../terminal/manager-status";
 import { stateSourceIsReported } from "../agent/target-state";
 import { attempt } from "./control/send";
@@ -77,6 +78,17 @@ export class SendPump {
   noteStatus(nodeId: string, state: string | undefined): void {
     if (nodeId === "") return;
     sendLimits().noteSourceState(nodeId, state);
+    // 下级做完一轮：往上级的队里塞一条回流，再推上级一下（Armadra#1062 S6）。
+    const context = this.context();
+    if (context !== undefined) {
+      try {
+        for (const mainId of noteChildDone(context, nodeId, state).queued) {
+          this.noteQueued(mainId);
+        }
+      } catch (error) {
+        this.onError(error);
+      }
+    }
     // 一轮结束：协调者卡片的退避清零，马上再试（契约 §93.2）。
     if (state !== undefined && state !== "working") this.cards.reset(nodeId);
     // 这条事件若是一个刚接回来的 CLI 的开场，这一代往往还不够老，试一次会排
