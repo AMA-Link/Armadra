@@ -36,7 +36,14 @@ import {
   flagsOf,
   type BrowserFlagSpec,
 } from "../core/browser/verb-spec.js";
+import {
+  BOARD_KIND_ENV,
+  SESSION_BOARD_HIDDEN_VERBS,
+  hiddenOnSessionBoard,
+} from "../core/collab/control/session-board-verbs.js";
 import type { JsonValue } from "./json.js";
+
+export { BOARD_KIND_ENV, SESSION_BOARD_HIDDEN_VERBS };
 
 export type ContextVerb = (typeof CONTEXT_VERB_LIST)[number];
 
@@ -628,6 +635,19 @@ export const VERB_TOOLS: readonly VerbTool[] = [
   ...fromRows("context", CONTEXT),
   ...browserTools(),
 ];
+
+/** 这块板上该列的工具（`kind` 缺省或不是 `sessions` 就是全部）。 */
+export function toolsForBoardKind(
+  kind: string | undefined,
+  tools: readonly VerbTool[] = VERB_TOOLS,
+): readonly VerbTool[] {
+  if (kind !== "sessions") return tools;
+  return tools.filter(
+    (tool) =>
+      tool.group !== "browser" &&
+      !(tool.group === "canvas" && hiddenOnSessionBoard(tool.verb)),
+  );
+}
 
 export function toolByName(name: string): VerbTool | undefined {
   return VERB_TOOLS.find((tool) => tool.name === name);

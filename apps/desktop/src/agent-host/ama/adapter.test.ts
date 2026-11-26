@@ -266,6 +266,14 @@ describe("the armadra resources (host-api 1.2)", () => {
 });
 
 describe("the tool table", () => {
+  it("leaves the canvas-only tools out on a sessions board (Armadra#1062 S4)", () => {
+    const names = canvasTools(undefined, "sessions").map((tool) => tool.name);
+    expect(names).not.toContain("canvas_sticky");
+    expect(names).not.toContain("canvas_open_browser");
+    expect(names.some((name) => name.startsWith("browser_"))).toBe(false);
+    expect(names).toContain("canvas_open_agent");
+  });
+
   it("is the verb table: every runtime verb, nothing else", () => {
     const names = canvasTools().map((tool) => tool.name);
     const expected = [

@@ -16,9 +16,7 @@ import {
 } from "./backend";
 import { remoteDomain } from "../remote";
 import { DirectBackend } from "./direct";
-import { nodeRole } from "../canvas/context-links";
-import { handleForNode } from "../canvas/handles";
-import { agentEnvironment, setHookClient } from "./environment";
+import { nodeAgentEnvironment, setHookClient } from "./environment";
 import {
   agentLauncherBinary,
   launcherClientBinary,
@@ -400,12 +398,11 @@ export function install(
       });
     }
     return [
-      ...agentEnvironment(
+      ...nodeAgentEnvironment(
+        context.db.database,
         nodeId,
         agentId,
         context.dataDir,
-        handleForNode(context.db.database, nodeId),
-        nodeRole(context.db.database, nodeId),
       ),
       // Contract §5.5: the one variable that switches the hook client from
       // "report and exit" to "wait for the canvas' answer".

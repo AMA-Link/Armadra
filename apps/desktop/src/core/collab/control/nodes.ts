@@ -88,6 +88,7 @@ import {
 import { type Outcome, result } from "./outcome";
 import { checkBody, refuse as sendRefusal } from "./send";
 import { launchRoleNode } from "../../workflow/dispatch";
+import { isSessionBoard } from "../../canvas/boards";
 import {
   type TaskRun,
   type WorkItemOrigin,
@@ -510,7 +511,14 @@ async function openAgentHeld(
   // runner 起的成员由 core 起终端、敲启动行（与工作流的角色节点同一条路），
   // 页面开不开都一样；有依赖时依赖服务本来就会起它。`--resume` 也走这一条：
   // 页面自己敲的是一条新开的启动行，接不回那段会话。
-  if ((taskKey !== undefined || resume !== undefined) && waits === undefined) {
+  // 会话板上也由 core 起：那块板不会在画布上打开，没有页面去挂载它
+  // （Armadra#1062 S4）。
+  if (
+    (taskKey !== undefined ||
+      resume !== undefined ||
+      isSessionBoard(context.database, document.board.id)) &&
+    waits === undefined
+  ) {
     launchRoleNode(
       context.database,
       {
@@ -1083,6 +1091,7 @@ async function teamHeld(
 
   // 依赖在所有节点都存好之后才写：上游是团里的成员时，它得先是画布上的
   // Agent 节点才过得了校验。
+  const onSessionBoard = isSessionBoard(context.database, document.board.id);
   const rows = created.map((node, index) => {
     const role = roster[index] as TeamRole;
     const waits = waitsOf(index);
@@ -1127,7 +1136,10 @@ async function teamHeld(
     // 带 `resume=` 的成员由 core 起：页面敲的是新开的行，接不回那段会话。
     // 有依赖时依赖服务本来就会起它。
     const resume = resumes[index];
-    if (resume !== undefined && dependencies === undefined) {
+    if (
+      (resume !== undefined || onSessionBoard) &&
+      dependencies === undefined
+    ) {
       launchRoleNode(
         context.database,
         {

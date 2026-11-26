@@ -4,6 +4,8 @@ import { HELP, PROTOCOL, runMailbox } from "../mailbox";
 import { Args, Refusal, Refused, asRefused } from "../refusals";
 import type { CollabContext, HandoffReadOptions } from "../service";
 import { CoreFailure } from "../../http/errors";
+import { isSessionBoard } from "../../canvas/boards";
+import { hiddenOnSessionBoard } from "./session-board-verbs";
 import { openBrowser } from "./browser-node";
 import { cancel } from "./cancel";
 import { close } from "./close";
@@ -170,6 +172,13 @@ export function createControlDispatcher(
   };
 }
 
+/** 调用者在会话板上吗（没有库或板的调用者——单测里的空上下文——不算）。 */
+function onSessionBoard(context: CollabContext, caller: Caller): boolean {
+  const boardId = caller.node.boardId as string | undefined;
+  if (context.database === undefined || boardId === undefined) return false;
+  return isSessionBoard(context.database, boardId);
+}
+
 /** One control verb. Throws {@link Refused} or {@link Refusal} on refusal. */
 export async function run(
   context: CollabContext,
@@ -198,19 +207,32 @@ export async function run(
       `\`${verb}\` 需要本运行时签发的节点令牌；这个终端没有，已拒绝。`,
     );
   }
+  // 会话板上的会话没有画布（Armadra#1062 S4）：只对画布有意义的动词当场拒绝。
+  if (hiddenOnSessionBoard(verb) && onSessionBoard(context, caller)) {
+    throw new Refused(
+      400,
+      "VERB_NOT_ON_SESSION_BOARD",
+      `这个会话不在画布上，\`${verb}\` 不可用；要用它，先把会话钉到画布上。`,
+    );
+  }
   switch (verb) {
-    case "help":
+    case "help": {
+      // 会话板上只列能用的（Armadra#1062 S4）。
+      const usable = onSessionBoard(context, caller)
+        ? VERBS.filter((entry) => !hiddenOnSessionBoard(entry))
+        : VERBS;
       // Derived from the registry above rather than restated: a verb added to
       // `VERBS` without a line in the help text would be invisible, and a line
       // left behind after a verb was removed would be a lie.
-      return result(`${HELP}\n可用画布动词：${VERBS.join(" / ")}`, {
+      return result(`${HELP}\n可用画布动词：${usable.join(" / ")}`, {
         protocol: PROTOCOL,
-        verbs: VERBS,
+        verbs: usable,
         // 这台机器上 `open-agent --agent` 认的 id：内置的与设置里的自定义
         // Agent，去掉用户在设置里关掉的（契约 §97）。ama 的适配器据此为每一个
         // 注册一个 runner（契约 §15.5）。
         agents: availableAgentIds(context.settings),
       });
+    }
     case "handoff-read":
       return handoffRead(context, caller, args);
     case "post":

@@ -22,6 +22,7 @@ import type {
 import {
   type JsonSchema,
   VERB_TOOLS,
+  toolsForBoardKind,
   type VerbTool,
 } from "../../hook-client/verbs.js";
 import { verbClass, verbReadsOnly } from "../../hook-client/verb-class.js";
@@ -126,9 +127,17 @@ export function toolDefinition(
   };
 }
 
-/** Every verb as a tool, in the table's order (canvas, context, browser). */
-export function canvasTools(call: Caller = callVerb): ToolDefinition[] {
-  return VERB_TOOLS.map((tool) => toolDefinition(tool, call));
+/**
+ * Every verb as a tool, in the table's order (canvas, context, browser) —
+ * minus the canvas-only ones on a sessions board (Armadra#1062 S4).
+ */
+export function canvasTools(
+  call: Caller = callVerb,
+  boardKind?: string,
+): ToolDefinition[] {
+  return toolsForBoardKind(boardKind, VERB_TOOLS).map((tool) =>
+    toolDefinition(tool, call),
+  );
 }
 
 /**
@@ -176,13 +185,14 @@ export function capWaitInput(input: unknown): unknown {
 export function registerTools(
   api: Pick<HostApi, "tools">,
   call: Caller = callVerb,
+  boardKind?: string,
 ): string[] {
   const capped: Caller = (tool, input) =>
     tool.group === "canvas" && tool.verb === "wait" && isCoordinator(api)
       ? call(tool, capWaitInput(input))
       : call(tool, input);
   const names: string[] = [];
-  for (const tool of canvasTools(capped)) {
+  for (const tool of canvasTools(capped, boardKind)) {
     api.tools.register(tool);
     names.push(tool.name);
   }

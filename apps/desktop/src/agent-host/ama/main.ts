@@ -52,7 +52,7 @@ export function create(api: HostApi): HostAdapter | undefined {
   // words only change once both tools are really hidden: a `disable` that
   // fails leaves the tools in place and the note naming them.
   const registered = registerResources(api);
-  registerTools(api);
+  registerTools(api, undefined, api.env.ARMADRA_BOARD_KIND);
   const resources = registered && hideReplacedTools(api);
   addInstructions(api, { resources });
   const unsubscribe = subscribeEvents(api);
