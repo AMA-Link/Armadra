@@ -1200,20 +1200,24 @@ async function scenario(ctx) {
           terminalNode(sourceId, "远端来源", 0, { ssh: { hostId: HOST_ID } }),
           terminalNode(targetId, "本机目标", 600, {}),
         ],
-        edges: current.edges,
+        // 连线文档由 core 按这条边在保存时编译（Armadra#1062 S1）。
+        edges: [
+          ...current.edges,
+          {
+            id: randomUUID(),
+            boardId: boards[0].id,
+            source: sourceId,
+            target: targetId,
+            kind: "link",
+            role: "peer",
+            createdAt: stamp,
+            updatedAt: stamp,
+          },
+        ],
         viewport: current.board.viewport ?? { x: 0, y: 0, zoom: 1 },
         whiteboard: current.whiteboard ?? "",
       },
     });
-    for (const [from, to, title] of [
-      [sourceId, targetId, "本机目标"],
-      [targetId, sourceId, "远端来源"],
-    ]) {
-      await api(`/api/workspaces/${workspace.id}/context-links/${from}`, {
-        method: "PUT",
-        body: { links: [{ id: to, title, kind: "terminal" }] },
-      });
-    }
     const source = (
       await api("/api/terminals", {
         method: "POST",

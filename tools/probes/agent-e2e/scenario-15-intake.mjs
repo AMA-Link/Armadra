@@ -661,13 +661,6 @@ export default async function run() {
         String(auto.source.rulesHash).length === 16,
       auto.source,
     );
-    // 页面把画布上的边物化成每个节点的连线文档；探针替页面写一份（human → lead）。
-    await api(`/api/workspaces/${workspace.id}/context-links/${human.id}`, {
-      method: "PUT",
-      body: {
-        links: [{ id: lead.id, title: "lead", kind: "node", role: "peer" }],
-      },
-    });
     const wake = await controlAs(data, human.id, "post", {
       to: lead.id,
       key: "dispatch-1",
