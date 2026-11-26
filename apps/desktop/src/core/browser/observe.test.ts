@@ -1,9 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  onContextLinksChanged,
-  putContextLinks,
-} from "../canvas/context-links";
+import { onContextLinksChanged } from "../canvas/context-links";
+import { unlinkNodes } from "../canvas/links.fixture";
 import { type BrowserFixture, browserFixture } from "./fixture";
 import { BrowserObservation, linkedBrowserNodes } from "./observe";
 
@@ -36,7 +34,7 @@ describe("linkedBrowserNodes", () => {
   });
 
   it("drops a link when the terminal's document no longer names it", () => {
-    putContextLinks(fixture.database, fixture.workspaceId, fixture.agentId, []);
+    unlinkNodes(fixture.database, fixture.agentId, fixture.nodeId);
     expect(linkedBrowserNodes(fixture.database)).toEqual([]);
   });
 
@@ -73,7 +71,8 @@ describe("BrowserObservation", () => {
     expect(pushed).toHaveLength(3);
 
     // The last link goes: an empty set, which is what makes the shell detach.
-    putContextLinks(fixture.database, fixture.workspaceId, fixture.agentId, []);
+    unlinkNodes(fixture.database, fixture.agentId, fixture.nodeId);
+    unlinkNodes(fixture.database, fixture.agentId, other);
     vi.advanceTimersByTime(60);
     expect(pushed.at(-1)).toEqual([]);
     off();

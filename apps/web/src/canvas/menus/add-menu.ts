@@ -521,7 +521,7 @@ export function spawnPosition(
  * 「派生」：建一个 Agent 节点、从父连一条 `supervises` 边，一步完成、撤销一次
  * 全回（ui-wave2 §6.2）。`anchor` 给了就以它为中心（拖线到空白处松手的落点），
  * 否则按布局方向放（{@link spawnPosition}）。父在分组里时新节点进同一组。
- * 链接文档由 `usePublishContextLinks` 跟着边推送，core 的投递授权随之成立。
+ * 链接文档由 core 在写板时按这条边编译（Armadra#1062），投递授权随之成立。
  */
 export function spawnSubordinate(
   agent: AgentInfo,

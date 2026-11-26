@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setTerminalBridge, sendPump } from ".";
-import { putContextLinks } from "../canvas/context-links";
+import { linkNodes } from "../canvas/links.fixture";
 import { enqueue } from "../collab/send-queue";
 import { freeLease } from "../drive/lease";
 import { stubTerminal } from "./fixture";
@@ -91,9 +91,7 @@ describe("the restart time agent/index.ts hands the pump", () => {
     };
     const source = node("Source", null);
     const target = node("Target", agentId);
-    putContextLinks(database, workspaceId, source, [
-      { id: target, title: "Target", kind: "terminal" },
-    ]);
+    linkNodes(database, source, target);
     const sessionId = uuidV7();
     database
       .prepare(

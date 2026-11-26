@@ -48,7 +48,7 @@ export interface HandoffTarget {
 /**
  * 可选目标 = 画布上与来源**直接连线**、且自身是 Agent 终端的节点。
  *
- * 这里和 `canvas/context-links.buildLinkDocuments` 用同一条判据（无向边、两头
+ * 这里和 core 编译链接文档的 `@armadra/shared` `buildNodeLinks` 用同一条判据（无向边、两头
  * 都算），因为 Runtime 的授权依据正是那份链接文档：界面上能选的目标必须是
  * Runtime 也认的目标，否则用户填完一整张表才在 `prepare` 时被拒。
  */

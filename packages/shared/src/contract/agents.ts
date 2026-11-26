@@ -585,10 +585,11 @@ export const agents = {
       }),
     ),
   /**
-   * 写一个节点的连线文档（上下文按连线读取的那份授权）。至多 64 条；节点 id、
-   * 标题与类型的长度、角色与白板引用的检查在域里。
+   * 写一个节点连线文档里的白板内容链接（`kind: "shape"`）。节点链接由 core 在
+   * 写板时按连线编译（Armadra#1062 S1），这里只收内容链接，合并后至多 64 条；
+   * 每项必须是 `shape`、不带 `role`，标题长度与白板引用的检查在域里。
    */
-  putContextLinks: oc
+  putContentLinks: oc
     .input(
       workspaceRef.extend({
         nodeId: z.string(),
@@ -600,11 +601,12 @@ export const agents = {
     .meta(
       meta({
         ...DELIVERY,
+        since: "1.59",
         scope: "canvas:write",
         workspaceKey: "workspaceId",
         legacy: {
           method: "PUT",
-          path: "/api/workspaces/{workspaceId}/context-links/{nodeId}",
+          path: "/api/workspaces/{workspaceId}/content-links/{nodeId}",
         },
       }),
     ),

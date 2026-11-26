@@ -6,7 +6,10 @@ import type { DatabaseSync } from "node:sqlite";
 import { EventBus } from "../bus";
 import type { WorkspaceEvent } from "../bus";
 import { createBoard } from "../canvas/boards";
-import { putContextLinks } from "../canvas/context-links";
+import {
+  compileBoardLinks,
+  notifyContextLinksChanged,
+} from "../canvas/context-links";
 import type { OpenedDatabase } from "../db/open";
 import { openFreshDatabase } from "../db/fresh.fixture";
 import { CoreServer } from "../http/server";
@@ -347,18 +350,6 @@ export function agentFixture(): AgentFixture {
       return id;
     },
     link: (left, right) => {
-      const titleOf = (id: string): { title: string; type: string } =>
-        database
-          .prepare("SELECT title, type FROM nodes WHERE id = ?")
-          .get(id) as { title: string; type: string };
-      const a = titleOf(left);
-      const b = titleOf(right);
-      putContextLinks(database, workspace.id, left, [
-        { id: right, title: b.title, kind: b.type },
-      ]);
-      putContextLinks(database, workspace.id, right, [
-        { id: left, title: a.title, kind: a.type },
-      ]);
       const now = rfc3339();
       database
         .prepare(
@@ -366,6 +357,9 @@ export function agentFixture(): AgentFixture {
             "VALUES (?, ?, ?, ?, 'link', ?, ?)",
         )
         .run(uuidV7(), board.id, left, right, now, now);
+      for (const id of compileBoardLinks(database, board.id)) {
+        notifyContextLinksChanged(workspace.id, id);
+      }
     },
     // `rename --handle` 走的是板文档的保存；这里直接写，理由与 `link` 一样：
     // 要测的是读到名字之后的行为，不是再走一遍写名字那条路。表与副本一起写，

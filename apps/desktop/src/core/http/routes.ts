@@ -652,7 +652,7 @@ export const ROUTES: readonly RouteEntry[] = [
     implemented: true,
   },
   {
-    path: "/api/workspaces/{workspaceId}/context-links/{nodeId}",
+    path: "/api/workspaces/{workspaceId}/content-links/{nodeId}",
     methods: ["PUT"],
     surface: "runtime",
     implemented: true,

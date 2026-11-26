@@ -15,7 +15,7 @@ import { useCanvasStore } from "@/store/canvas-store";
 import { useCanvasReadOnly } from "@/store/canvas/presence";
 import { setCanvasLocked, useCanvasLocked } from "../canvas-lock";
 import { useCreatedNodeReveal } from "../created-node";
-import { usePublishContextLinks } from "../context-links";
+import { usePublishContentLinks } from "../context-links";
 import { useOsDrop, usePasteToCanvas } from "../dnd/os-drop";
 import { registerEscapeToSelect } from "../escape-to-select";
 import {
@@ -105,7 +105,7 @@ function BoardWorkspaceInner() {
   useBoardViewportSync(board);
   useBoardAutosave();
   usePasteToCanvas();
-  usePublishContextLinks();
+  usePublishContentLinks();
   useCreatedNodeReveal();
   const { onDragOver, onDrop } = useOsDrop();
 

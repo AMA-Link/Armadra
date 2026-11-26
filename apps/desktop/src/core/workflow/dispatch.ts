@@ -1,9 +1,4 @@
 import type { DatabaseSync } from "node:sqlite";
-import {
-  type ContextLink,
-  getContextLinks,
-  putContextLinks,
-} from "../canvas/context-links";
 import type {
   BoardDocument,
   CanvasEdge,
@@ -29,8 +24,8 @@ import { DomainError, rfc3339, uuidV7 } from "../workspaces/support";
  *
  *   * **建**：一次运行在画布上的样子——一个 Frame，里面一张起点便签、每个角色
  *     一个 Agent 终端节点；便签向每个角色连一条主从线（`supervises`），草案的
- *     `links` 照原样连在角色之间。节点与边经 `saveBoard` 写，链接文档同呼吸
- *     （`collab/control/nodes.ts` 的同一条规矩）。
+ *     `links` 照原样连在角色之间。节点与边经 `saveBoard` 写，链接文档由它在
+ *     同一事务里按边重算（Armadra#1062 S1）。
  *   * **起**：每个角色节点交给依赖编排的启动路径（一条没有边的启动行），由它
  *     在 core 里起终端、敲启动行——页面开不开都一样。
  *   * **投**：一条提示词就是投递队列里的一条排队项，发起方是起点便签。门链、
@@ -124,7 +119,6 @@ export async function layoutRun(
         edges: built.edges,
         viewport: document.board.viewport,
       });
-      writeLinks(collab.database, workspaceId, built);
       collab.publish(workspaceId, {
         type: "board.changed",
         boardId: saved.board.id,
@@ -156,8 +150,6 @@ interface Built {
   readonly nodes: CanvasNode[];
   readonly edges: CanvasEdge[];
   readonly layout: RunLayout;
-  /** 每个节点的链接文档要加的条目。 */
-  readonly links: { owner: string; link: ContextLink }[];
 }
 
 function build(
@@ -259,32 +251,8 @@ function build(
     updatedAt: now,
   });
   const edges: CanvasEdge[] = [...document.edges];
-  const links: { owner: string; link: ContextLink }[] = [];
-  const titleOf = new Map<string, CanvasNode>(
-    [anchor, ...roleNodes].map((node) => [node.id, node]),
-  );
   const join = (from: string, to: string, role: "peer" | "supervises") => {
     edges.push(edge(from, to, role));
-    const a = titleOf.get(from) as CanvasNode;
-    const b = titleOf.get(to) as CanvasNode;
-    links.push({
-      owner: from,
-      link: {
-        id: to,
-        title: b.title,
-        kind: b.type,
-        role: role === "supervises" ? "sub" : "peer",
-      },
-    });
-    links.push({
-      owner: to,
-      link: {
-        id: from,
-        title: a.title,
-        kind: a.type,
-        role: role === "supervises" ? "main" : "peer",
-      },
-    });
   };
   for (const node of roleNodes) join(anchor.id, node.id, "supervises");
   for (const link of request.links) {
@@ -297,31 +265,7 @@ function build(
     nodes: [...document.nodes, frame, anchor, ...roleNodes],
     edges,
     layout: { frameId: frame.id, anchorNodeId: anchor.id, roles },
-    links,
   };
-}
-
-function writeLinks(
-  database: DatabaseSync,
-  workspaceId: string,
-  built: Built,
-): void {
-  const byOwner = new Map<string, ContextLink[]>();
-  for (const { owner, link } of built.links) {
-    const list = byOwner.get(owner) ?? [];
-    list.push(link);
-    byOwner.set(owner, list);
-  }
-  for (const [owner, added] of byOwner) {
-    const existing = getContextLinks(database, owner).links;
-    const merged = [
-      ...existing.filter(
-        (entry) => !added.some((link) => link.id === entry.id),
-      ),
-      ...added,
-    ];
-    putContextLinks(database, workspaceId, owner, merged);
-  }
 }
 
 function pseudoCaller(workspaceId: string, boardId: string): Caller {

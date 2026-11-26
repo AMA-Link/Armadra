@@ -1,9 +1,3 @@
-import {
-  type ContextLink,
-  type LinkRole,
-  getContextLinks,
-  putContextLinks,
-} from "../../canvas/context-links";
 import { EDGE_ROLES } from "../../canvas/validation";
 import type { CanvasEdge, CanvasNode } from "../../canvas/document-types";
 import {
@@ -17,14 +11,7 @@ import { rfc3339, uuidV7 } from "../../workspaces/support";
 import type { Caller } from "../nodes";
 import { type Args, Refusal } from "../refusals";
 import type { CollabContext } from "../service";
-import {
-  NODE_PALETTE,
-  asRefusal,
-  cleanTitle,
-  load,
-  resolveOnBoard,
-  save,
-} from "./board";
+import { NODE_PALETTE, cleanTitle, load, resolveOnBoard, save } from "./board";
 import { type Outcome, result } from "./outcome";
 
 /**
@@ -106,17 +93,7 @@ export function link(
     noteHandle(caller, entry.id, entry.previous, entry.handle);
   }
 
-  // 两份链接文档是互补的两个视角：主那一侧记 `sub`，从那一侧记 `main`。
-  addLink(context, caller, from.id, to.id, to.title, to.type, forward(role));
-  addLink(
-    context,
-    caller,
-    to.id,
-    from.id,
-    from.title,
-    from.type,
-    backward(role),
-  );
+  // 两端的链接文档已在 `save` 的同一事务里按这条边重算（Armadra#1062 S1）。
   return result(
     `已连接「${from.title}」↔「${to.title}」（${roleWord(role, from.title, to.title)}），两边都能读对方的上下文了。` +
       (names.length === 0
@@ -136,16 +113,6 @@ function readRole(args: Args): string | undefined {
     );
   }
   return wanted;
-}
-
-/** 边的角色 → `from` 那一侧的链接文档里记什么。 */
-function forward(role: string): LinkRole {
-  return role === "supervises" ? "sub" : "peer";
-}
-
-/** 边的角色 → `to` 那一侧记什么。同一条边，互补的视角。 */
-function backward(role: string): LinkRole {
-  return role === "supervises" ? "main" : "peer";
 }
 
 function roleWord(role: string, fromTitle: string, toTitle: string): string {
@@ -198,46 +165,6 @@ function applyHandles(
       updatedAt: rfc3339(),
     };
   });
-}
-
-export function addLink(
-  context: CollabContext,
-  caller: Caller,
-  owner: string,
-  other: string,
-  title: string,
-  kind: string,
-  role: LinkRole = "peer",
-): void {
-  const links = getContextLinks(context.database, owner).links;
-  const already = links.find((entry) => entry.id === other);
-  // 已经连着的那一条：只有角色变了才重写。`link` 对一条已有的边是幂等的，而
-  // 「顺手把角色改回默认」不是幂等，是一次没人要求的降级。
-  if (already !== undefined) {
-    if ((already.role ?? "peer") === role) return;
-    const updated: ContextLink[] = links.map((entry) =>
-      entry.id === other ? { ...entry, role } : entry,
-    );
-    try {
-      putContextLinks(
-        context.database,
-        caller.node.workspaceId,
-        owner,
-        updated,
-      );
-    } catch (error) {
-      throw asRefusal(error);
-    }
-    return;
-  }
-  // `link` always joins two nodes; only the canvas mints shape links, which is
-  // why this one carries no content.
-  const next: ContextLink[] = [...links, { id: other, title, kind, role }];
-  try {
-    putContextLinks(context.database, caller.node.workspaceId, owner, next);
-  } catch (error) {
-    throw asRefusal(error);
-  }
 }
 
 /**

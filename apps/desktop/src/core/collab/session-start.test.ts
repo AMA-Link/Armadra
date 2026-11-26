@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type AgentFixture, agentFixture, callerFor } from "../agent/fixture";
 import { sessionStartIdle } from "../agent/target-state";
-import { putContextLinks } from "../canvas/context-links";
 import { freeLease } from "../drive/lease";
 import { listDeliveries } from "./deliveries";
 import { controlDispatcher, type ControlOutcome } from "./control";
@@ -59,9 +58,7 @@ function opened(
 function claudeNode(): { id: string; sessionId: string } {
   const id = fixture.agentNode("claude", "claude");
   const sessionId = fixture.session(id, "claude");
-  putContextLinks(fixture.database, fixture.workspaceId, me, [
-    { id, title: "claude", kind: "terminal" },
-  ]);
+  fixture.link(me, id);
   fixture.terminal.drive.set(id, {
     nodeId: id,
     sessionId,

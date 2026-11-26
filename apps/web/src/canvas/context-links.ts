@@ -1,33 +1,29 @@
 import * as React from "react";
 import { toast } from "@/ui/toast";
 import { t } from "@/app/preferences-store";
-import type { BoardDocument, ContextLink } from "@armadra/shared";
+import {
+  mergeLinkDocument,
+  sameLinkDocument,
+  type BoardDocument,
+  type ContextLink,
+} from "@armadra/shared";
 
 import { runtimeApi } from "@/api/client";
 import { useCanvasStore } from "@/store/canvas-store";
-import {
-  MAX_LINKS,
-  useContentLinks,
-  type ContentLinkMap,
-} from "./content-links";
+import { useContentLinks, type ContentLinkMap } from "./content-links";
 
 /**
- * 把画布上的连线推给 Runtime（§5.6 / §21）。
+ * 把白板内容链接推给 Runtime（§6.3，Armadra#1062 S1）。
  *
- * `POST /context-link/*` 的授权依据不是「画布上有没有这条边」，而是 Runtime
- * 里每个节点自己的链接文档。文档由画布维护：边一变就重推受影响的节点，
- * 于是「Agent 能读谁」永远等于用户屏幕上看到的那张图。
+ * 链接文档的**节点**那一半由 core 在每次写板时按连线编译，画布不再推；这里
+ * 只推白板对象那一半（`kind: "shape"`）——它带着只有页面画得出的 PNG。core
+ * 把两半并成一份，节点链接在前。
  *
- * 只有终端节点会去调那个接口，所以只推终端节点的文档；文档里的**对端**
- * 则是任意类型（§21「任意互连」），带上 `kind`，Runtime 按它决定读到的是
- * 转录、文件内容、目录列表还是一张 PNG 的路径。
- *
- * 对端不一定是节点：白板上的图形连到节点时也算一条链接（`kind: "shape"`，
- * §6.3）。那部分由 `canvas/content-links.ts` 从 editor 里收集——白板 shape 不在
- * `BoardDocument` 里，纯函数看不到它们——再在这里并进同一份文档。
+ * 只有终端节点有文档；没有内容链接的终端也推一次空数组，图形被摘掉时 Runtime
+ * 那边的旧内容链接才会清掉。
  */
 
-/** 一次改动后等这么久再推：连着拖几条线只推最后一次。 */
+/** 一次改动后等这么久再推：连着改几笔只推最后一次。 */
 export const PUBLISH_DELAY_MS = 400;
 
 export interface LinkDocuments {
@@ -35,57 +31,22 @@ export interface LinkDocuments {
 }
 
 /**
- * 每个终端节点 → 它连到的所有节点（无向，两头都算）+ 它的内容链接。
- * 节点链接带 `role`：对方相对本节点是 `main` / `sub` / `peer`（派发边的主那
- * 一侧看见 `sub`，从那一侧看见 `main`）。
+ * 每个终端节点 → 它的内容链接（按来源对象去重，截到 64 条）。
  *
- * `content` 是白板图形那一半（`useContentLinks()` 的结果），省略时就是纯节点
- * 文档——`buildLinkDocuments` 的老调用方与单测不受影响。
+ * `content` 是 `useContentLinks()` 的结果；白板对象不在 `BoardDocument` 里，
+ * 所以由它收集后传进来。
  */
-export function buildLinkDocuments(
-  document: BoardDocument,
+export function buildContentDocuments(
+  document: Pick<BoardDocument, "nodes">,
   content: ContentLinkMap = {},
 ): LinkDocuments {
-  const byId = new Map(document.nodes.map((node) => [node.id, node]));
   const documents: LinkDocuments = {};
   for (const node of document.nodes) {
-    if (node.type === "terminal") documents[node.id] = [];
-  }
-  for (const edge of document.edges) {
-    const supervises = edge.role === "supervises";
-    for (const [owner, other, role] of [
-      [edge.source, edge.target, supervises ? "sub" : "peer"],
-      [edge.target, edge.source, supervises ? "main" : "peer"],
-    ] as const) {
-      const links = documents[owner];
-      const peer = byId.get(other);
-      if (!links || !peer) continue;
-      if (links.some((link) => link.id === peer.id)) continue;
-      // 每项都带 role：缺省在 core 那边读作「保留旧值」，界面改了主从而不带
-      // role，投递授权就停在旧方向上。
-      links.push({ id: peer.id, title: peer.title, kind: peer.type, role });
-    }
-  }
-  for (const [nodeId, shapes] of Object.entries(content)) {
-    const links = documents[nodeId];
-    if (!links) continue;
-    for (const link of shapes) {
-      if (
-        links.some(
-          (existing) =>
-            existing.id === link.id ||
-            (existing.kind === "shape" &&
-              link.content?.sourceShapeId &&
-              existing.content?.sourceShapeId === link.content.sourceShapeId),
-        )
-      )
-        continue;
-      links.push(link);
-    }
-  }
-  // Runtime 的 `links` 最多 64 条；超了整份文档会被 400 掉，宁可少推几条。
-  for (const [nodeId, links] of Object.entries(documents)) {
-    if (links.length > MAX_LINKS) documents[nodeId] = links.slice(0, MAX_LINKS);
+    if (node.type !== "terminal") continue;
+    documents[node.id] = mergeLinkDocument<ContextLink>(
+      [],
+      content[node.id] ?? [],
+    );
   }
   return documents;
 }
@@ -95,27 +56,12 @@ export function sameLinks(
   a: readonly ContextLink[] | undefined,
   b: readonly ContextLink[],
 ): boolean {
-  if (!a || a.length !== b.length) return false;
-  return a.every((link, index) => {
-    const other = b[index];
-    return (
-      other !== undefined &&
-      link.id === other.id &&
-      link.title === other.title &&
-      link.kind === other.kind &&
-      link.role === other.role &&
-      // 内容链接的正文 / PNG 路径变了也要重推（`kind: "shape"`，§6.3）。
-      JSON.stringify(link.content ?? null) ===
-        JSON.stringify(other.content ?? null)
-    );
-  });
+  return sameLinkDocument(a, b);
 }
 
 /**
- * 与上次推送比对，返回这次需要重推的节点。
- *
- * 被删掉的终端节点也要推一次空文档：它可能只是被删了边，Runtime 那边
- * 的旧文档不清掉就还能读。节点整个不在了则不推——它的文档没人会用。
+ * 与上次推送比对，返回这次需要重推的节点。节点整个不在了则不推——它的文档
+ * 随节点一起由 core 删掉。
  */
 export function changedDocuments(
   previous: LinkDocuments,
@@ -128,31 +74,28 @@ export function changedDocuments(
   return changed;
 }
 
-/** 画布挂一次；文档变化时增量推送。 */
-export function usePublishContextLinks(): void {
+/** 画布挂一次；内容链接变化时增量推送。 */
+export function usePublishContentLinks(): void {
   const workspaceId = useCanvasStore((state) => state.workspace?.id);
   const board = useCanvasStore((state) => state.document?.board.id);
   const content = useContentLinks();
   const latest = React.useRef<LinkDocuments>({});
   const kick = React.useRef<(() => void) | null>(null);
 
-  // 节点与连线**不走 React 订阅**：这个 hook 住在画布根组件里，订 `nodes` 等于
-  // 每次节点数据变动（一次会话状态跳动、一步拖动）都让整块画布重渲，而这里只需要
-  // 在变动时重算一份链接文档。
+  // 节点**不走 React 订阅**：这个 hook 住在画布根组件里，订 `nodes` 等于每次
+  // 节点数据变动（一次会话状态跳动、一步拖动）都让整块画布重渲，而这里只需要
+  // 在终端节点增删时重算一份文档。
   React.useEffect(() => {
     let nodes: unknown;
-    let edges: unknown;
     const refresh = () => {
       const document = useCanvasStore.getState().document;
       nodes = document?.nodes;
-      edges = document?.edges;
-      latest.current = document ? buildLinkDocuments(document, content) : {};
+      latest.current = document ? buildContentDocuments(document, content) : {};
       kick.current?.();
     };
     refresh();
     return useCanvasStore.subscribe((state) => {
-      if (state.document?.nodes === nodes && state.document?.edges === edges)
-        return;
+      if (state.document?.nodes === nodes) return;
       refresh();
     });
   }, [content, board, workspaceId]);
@@ -181,7 +124,7 @@ export function usePublishContextLinks(): void {
         for (const nodeId of changedDocuments(published, wanted)) {
           const links = wanted[nodeId] ?? [];
           try {
-            await runtimeApi.putContextLinks(workspaceId, nodeId, links);
+            await runtimeApi.putContentLinks(workspaceId, nodeId, links);
             if (disposed) return;
             // Record only confirmed writes. One request at a time prevents an
             // old slow PUT from overwriting a newer link document.

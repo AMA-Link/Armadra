@@ -283,7 +283,7 @@ export default async function run() {
     );
     const edges = [];
     for (const [title] of specs.slice(0, 5))
-      for (const target of ["tgt-codex", "tgt-claude"])
+      for (const target of ["tgt-codex", "tgt-claude", "tgt-acp"])
         edges.push({
           id: randomUUID(),
           boardId: board.id,
@@ -305,31 +305,7 @@ export default async function run() {
       },
     });
 
-    // 页面把画布上的边物化成每个节点的连线文档；探针替页面写（来源 ↔ 目标，双向）。
-    const sourceTitles = specs.slice(0, 5).map(([title]) => title);
-    const targetTitles = ["tgt-codex", "tgt-claude", "tgt-acp"];
-    const linkDocument = (ids) =>
-      api(`/api/workspaces/${workspace.id}/context-links/${ids.node.id}`, {
-        method: "PUT",
-        body: {
-          links: ids.peers.map((peer) => ({
-            id: peer.id,
-            title: peer.title,
-            kind: "node",
-            role: "peer",
-          })),
-        },
-      });
-    for (const title of sourceTitles)
-      await linkDocument({
-        node: nodes[title],
-        peers: targetTitles.map((target) => nodes[target]),
-      });
-    for (const title of targetTitles)
-      await linkDocument({
-        node: nodes[title],
-        peers: sourceTitles.map((source) => nodes[source]),
-      });
+    // 来源 ↔ 目标的连线文档由 core 按上面的边在保存时编译（Armadra#1062 S1）。
 
     const database = new DatabaseSync(join(data, "canvas.db"), {
       readOnly: true,

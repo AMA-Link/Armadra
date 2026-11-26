@@ -2,11 +2,6 @@ import { ControllerGraphSchema, CONTROLLER_LIMITS } from "@armadra/shared";
 import type { DatabaseSync } from "node:sqlite";
 import { loadBoard, saveBoardInTransaction } from "../canvas/documents";
 import { validateDocument } from "../canvas/validation";
-import {
-  getContextLinks,
-  putContextLinks,
-  type ContextLink,
-} from "../canvas/context-links";
 import type { CanvasNode } from "../canvas/document-types";
 import { newNode, placement } from "../collab/control/board";
 import { getWorkspace } from "../workspaces/table";
@@ -195,7 +190,7 @@ export function writeGraph(
   prepared: ReturnType<typeof prepareGraph>,
 ) {
   const { document, original, graph } = prepared;
-  const saved = saveBoardInTransaction(
+  const { document: saved, linksChanged } = saveBoardInTransaction(
     database,
     actor.workspaceId,
     document.board.id,
@@ -210,46 +205,9 @@ export function writeGraph(
     database
       .prepare("INSERT INTO controller_objects VALUES (?, ?, ?)")
       .run(id, actor.controllerId, actor.workspaceId);
-  const notified: string[] = [];
-  for (const node of saved.nodes) {
-    const previous = new Set(
-      original.edges.flatMap((e) =>
-        e.source === node.id
-          ? [e.target]
-          : e.target === node.id
-            ? [e.source]
-            : [],
-      ),
-    );
-    const peers = saved.edges.filter(
-      (e) => e.source === node.id || e.target === node.id,
-    );
-    if (!previous.size && !peers.length) continue;
-    const current: ContextLink[] = getContextLinks(
-      database,
-      node.id,
-    ).links.filter((link) => !previous.has(link.id));
-    for (const edge of peers) {
-      const id = edge.source === node.id ? edge.target : edge.source;
-      const other = saved.nodes.find((n) => n.id === id)!;
-      const link: ContextLink = {
-        id,
-        title: other.title,
-        kind: other.type,
-        role:
-          edge.role === "supervises"
-            ? edge.source === node.id
-              ? "sub"
-              : "main"
-            : "peer",
-      };
-      const index = current.findIndex((link) => link.id === id);
-      if (index >= 0) current[index] = link;
-      else current.push(link);
-    }
-    putContextLinks(database, actor.workspaceId, node.id, current, false);
-    notified.push(node.id);
-  }
+  // 链接文档已由 `saveBoardInTransaction` 按存下的边重算（Armadra#1062 S1）；
+  // 事务提交后由 service 通知。
+  const notified = linksChanged;
   database
     .prepare(
       "INSERT INTO controller_events (controller_id, workspace_id, actor_kind, command, target_id, created_at) VALUES (?, ?, 'controller', 'graph.apply', ?, ?)",

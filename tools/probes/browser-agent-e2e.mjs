@@ -268,13 +268,7 @@ async function seedBoard(api, project, startUrl) {
       whiteboard: "",
     },
   });
-  // 连线文档是画布推给 core 的那一份；这里直接写，与页面推的形状相同。
-  await api(`/api/workspaces/${workspace.id}/context-links/${agent.id}`, {
-    method: "PUT",
-    body: {
-      links: [{ id: browser.id, title: browser.title, kind: "browser" }],
-    },
-  });
+  // 连线文档由 core 按这条边在保存时编译（Armadra#1062 S1）。
   return { workspace, board, agent, browser, stranger };
 }
 

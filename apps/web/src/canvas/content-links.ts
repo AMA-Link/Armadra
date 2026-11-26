@@ -349,7 +349,7 @@ export interface ContentDescriptor {
  *
  * 指向已经删掉的对象的引用行在这里被跳过（`whiteboard.removeItems` 会连引用
  * 一起删，但远端灌进来的文档可能还带着）；节点是否存在由
- * `context-links.buildLinkDocuments` 把关——它只往终端节点的文档里塞。
+ * `context-links.buildContentDocuments` 把关——它只往终端节点的文档里塞。
  */
 export function collectContentLinks(
   whiteboard: WhiteboardDoc,
@@ -418,7 +418,7 @@ function sourceContent(
  *
  * 订阅的是 `canvas-store.whiteboard`：引用行、对象内容、对象尺寸任一变化
  * 都会重新排一次导出。`document` 不订阅——节点标题变了不影响这份内容，
- * 而节点被删掉时 `buildLinkDocuments` 自然就不会给它建文档。
+ * 而节点被删掉时 `buildContentDocuments` 自然就不会给它建文档。
  */
 export function useContentLinks(): ContentLinkMap {
   const workspaceId = useCanvasStore((state) => state.workspace?.id);

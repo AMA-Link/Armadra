@@ -224,42 +224,60 @@ describe("the board routes", () => {
     expect(left.body).toEqual([]);
   });
 
-  it("stores a node's context-link document and bounds it", async () => {
+  it("stores a node's content links and bounds them", async () => {
     const nodeId = uuidV7();
-    const uri = `/api/workspaces/${workspaceId}/context-links/${nodeId}`;
+    const uri = `/api/workspaces/${workspaceId}/content-links/${nodeId}`;
     const stored = await core.call("PUT", uri, {
-      links: [{ id: uuidV7(), title: "Claude", kind: "node" }],
+      links: [{ id: uuidV7(), title: "架构图", kind: "shape" }],
     });
     expect(stored.status).toBe(200);
     expect(stored.body).toMatchObject({ nodeId });
     expect((stored.body as { links: unknown[] }).links).toHaveLength(1);
 
-    // An empty document is how the canvas says "this node links nothing".
+    // An empty document is how the canvas says "this node has no content links".
     const emptied = await core.call("PUT", uri, { links: [] });
     expect((emptied.body as { links: unknown[] }).links).toHaveLength(0);
+
+    // Node links follow the board's edges and are never pushed (Armadra#1062).
+    const nodeLink = await core.call("PUT", uri, {
+      links: [{ id: uuidV7(), title: "Claude", kind: "terminal" }],
+    });
+    expect(nodeLink.status).toBe(400);
+    const withRole = await core.call("PUT", uri, {
+      links: [{ id: uuidV7(), title: "x", kind: "shape", role: "main" }],
+    });
+    expect(withRole.status).toBe(400);
 
     const tooMany = await core.call("PUT", uri, {
       links: Array.from({ length: 65 }, () => ({
         id: uuidV7(),
         title: "x",
-        kind: "node",
+        kind: "shape",
       })),
     });
     expect(tooMany.status).toBe(400);
 
     const notAUuid = await core.call(
       "PUT",
-      `/api/workspaces/${workspaceId}/context-links/not-a-uuid`,
+      `/api/workspaces/${workspaceId}/content-links/not-a-uuid`,
       { links: [] },
     );
     expect(notAUuid.status).toBe(400);
 
     const unknownWorkspace = await core.call(
       "PUT",
-      `/api/workspaces/${uuidV7()}/context-links/${nodeId}`,
+      `/api/workspaces/${uuidV7()}/content-links/${nodeId}`,
       { links: [] },
     );
     expect(unknownWorkspace.status).toBe(404);
+
+    // The old path is gone.
+    const old = await core.call(
+      "PUT",
+      `/api/workspaces/${workspaceId}/context-links/${nodeId}`,
+      { links: [] },
+    );
+    expect(old.status).toBe(404);
   });
 
   describe("presence and the edit lease (contract §9)", () => {

@@ -14,7 +14,7 @@ vi.mock("../nodes/registry", () => ({
 }));
 
 import {
-  buildLinkDocuments,
+  buildContentDocuments,
   changedDocuments,
   sameLinks,
 } from "./context-links";
@@ -59,94 +59,6 @@ function document(
   };
 }
 
-describe("buildLinkDocuments", () => {
-  it("每个终端节点都拿到它连着的所有节点，含非便签类型", () => {
-    const documents = buildLinkDocuments(
-      document([
-        { source: "note", target: "claude" },
-        { source: "claude", target: "sketch" },
-        { source: "claude", target: "codex" },
-      ]),
-    );
-    expect(documents.claude?.map((link) => [link.id, link.kind])).toEqual([
-      ["note", "sticky"],
-      ["sketch", "browser"],
-      ["codex", "terminal"],
-    ]);
-    // 无向：从终端拖出去的边，对端也要能读回来。
-    expect(documents.codex).toEqual([
-      { id: "claude", title: "Claude", kind: "terminal", role: "peer" },
-    ]);
-  });
-
-  it("只给终端节点建文档（只有它们会去调那个接口）", () => {
-    const documents = buildLinkDocuments(
-      document([{ source: "note", target: "sketch" }]),
-    );
-    expect(Object.keys(documents).sort()).toEqual(["claude", "codex"]);
-    expect(documents.claude).toEqual([]);
-  });
-
-  it("同一对节点连两次也只记一条", () => {
-    const documents = buildLinkDocuments(
-      document([
-        { source: "note", target: "claude" },
-        { source: "claude", target: "note" },
-      ]),
-    );
-    expect(documents.claude).toHaveLength(1);
-  });
-});
-
-describe("buildLinkDocuments · 主从", () => {
-  it("派发边：主那一侧看见 sub，从那一侧看见 main", () => {
-    const documents = buildLinkDocuments(
-      document([{ source: "claude", target: "codex", role: "supervises" }]),
-    );
-    expect(documents.claude).toEqual([
-      { id: "codex", title: "Codex", kind: "terminal", role: "sub" },
-    ]);
-    expect(documents.codex).toEqual([
-      { id: "claude", title: "Claude", kind: "terminal", role: "main" },
-    ]);
-  });
-
-  it("对等边与缺省 role 都推 peer", () => {
-    const documents = buildLinkDocuments(
-      document([
-        { source: "claude", target: "codex", role: "peer" },
-        { source: "note", target: "claude" },
-      ]),
-    );
-    expect(documents.claude?.map((link) => link.role)).toEqual([
-      "peer",
-      "peer",
-    ]);
-    expect(documents.codex?.[0]?.role).toBe("peer");
-  });
-
-  it("改主从（掉头或设为对等）后文档变了，需要重推", () => {
-    const before = buildLinkDocuments(
-      document([{ source: "claude", target: "codex", role: "supervises" }]),
-    );
-    const reversed = buildLinkDocuments(
-      document([{ source: "codex", target: "claude", role: "supervises" }]),
-    );
-    const flattened = buildLinkDocuments(
-      document([{ source: "claude", target: "codex", role: "peer" }]),
-    );
-    expect(changedDocuments(before, reversed).sort()).toEqual([
-      "claude",
-      "codex",
-    ]);
-    expect(changedDocuments(before, flattened).sort()).toEqual([
-      "claude",
-      "codex",
-    ]);
-    expect(changedDocuments(before, before)).toEqual([]);
-  });
-});
-
 describe("changedDocuments", () => {
   it("只推变了的节点", () => {
     const previous = {
@@ -165,45 +77,10 @@ describe("changedDocuments", () => {
 });
 
 /**
- * 全链路：用户拉出来的连线 → `edges` 行 → 终端的链接文档。
- *
- * React Flow 时代连线就是 `edges` 表里的一行（`onConnect` → `store.addEdge`），
- * 没有中间形态，所以这里直接用一条边。
+ * 页面只推内容链接（白板图形，`kind: "shape"`，§6.3）；节点链接由 core 按连线
+ * 编译（Armadra#1062 S1，判据的单测在 `@armadra/shared` 的 link-documents）。
  */
-describe("连线 → edges → 链接文档", () => {
-  const TERM = "019ff7d1-0d12-7421-833d-2c5e8d64ed11";
-  const NOTE = "019ff7d1-0d12-7421-833d-2c5e8d64ed12";
-  const EDGE = "019ff7d1-0d12-7421-833d-2c5e8d64ed13";
-
-  it("一条边推成一份链接文档，方向按「谁读谁」而不是拖的方向", () => {
-    const board: BoardDocument = {
-      board: {} as BoardDocument["board"],
-      nodes: [node(TERM, "terminal", "Claude"), node(NOTE, "sticky", "结论")],
-      edges: [
-        {
-          id: EDGE,
-          boardId: "board",
-          source: NOTE,
-          target: TERM,
-          kind: "link",
-          createdAt: stamp,
-          updatedAt: stamp,
-        },
-      ],
-    };
-    expect(buildLinkDocuments(board)[TERM]).toEqual([
-      { id: NOTE, title: "结论", kind: "sticky", role: "peer" },
-    ]);
-  });
-});
-
-/**
- * 内容链接（白板图形，`kind: "shape"`）并进终端的链接文档（§6.3）。
- *
- * 白板对象不在 `BoardDocument` 里（它们在 `whiteboard.items` 里），所以这一半
- * 由 `useContentLinks()` 收集后作为第二个参数传进来。
- */
-describe("buildLinkDocuments · 内容链接", () => {
+describe("buildContentDocuments", () => {
   const SHAPE = "019ff7d1-0d12-7421-833d-2c5e8d64edaa";
   const shapeLink = {
     id: SHAPE,
@@ -212,21 +89,18 @@ describe("buildLinkDocuments · 内容链接", () => {
     content: { text: "入口在 main.rs", pngPath: ".armadra/exports/x.png" },
   };
 
-  it("终端拿到节点链接 + 内容链接", () => {
-    const documents = buildLinkDocuments(
+  it("终端只拿到内容链接，连线不进页面推的文档", () => {
+    const documents = buildContentDocuments(
       document([{ source: "note", target: "claude" }]),
       { claude: [shapeLink] },
     );
-    expect(documents.claude).toEqual([
-      { id: "note", title: "结论", kind: "sticky", role: "peer" },
-      shapeLink,
-    ]);
+    expect(documents.claude).toEqual([shapeLink]);
     // 没有内容链接的终端不受影响。
     expect(documents.codex).toEqual([]);
   });
 
   it("不是终端的节点即使连了图形也没有文档", () => {
-    const documents = buildLinkDocuments(document([]), {
+    const documents = buildContentDocuments(document([]), {
       note: [shapeLink],
       claude: [shapeLink],
     });
@@ -234,13 +108,13 @@ describe("buildLinkDocuments · 内容链接", () => {
     expect(documents.claude).toEqual([shapeLink]);
   });
 
-  it("超过 64 条时截断（Runtime 会 400 掉整份文档）", () => {
+  it("超过 64 条时截断（Runtime 会 400 掉整份请求）", () => {
     const many = Array.from({ length: 80 }, (_, index) => ({
       ...shapeLink,
       id: `${SHAPE.slice(0, -2)}${index.toString(16).padStart(2, "0")}`,
     }));
     expect(
-      buildLinkDocuments(document([]), { claude: many }).claude,
+      buildContentDocuments(document([]), { claude: many }).claude,
     ).toHaveLength(64);
   });
 
@@ -258,7 +132,7 @@ describe("buildLinkDocuments · 内容链接", () => {
 });
 
 it("deduplicates native references by source object, not only by arrow UUID", () => {
-  const documents = buildLinkDocuments(document([]), {
+  const documents = buildContentDocuments(document([]), {
     claude: [
       {
         id: "first",

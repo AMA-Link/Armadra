@@ -5,7 +5,10 @@ import { fileURLToPath } from "node:url";
 import type { DatabaseSync } from "node:sqlite";
 import type { WorkspaceEvent } from "../bus";
 import { createBoard } from "../canvas/boards";
-import { getContextLinks, putContextLinks } from "../canvas/context-links";
+import {
+  compileBoardLinks,
+  notifyContextLinksChanged,
+} from "../canvas/context-links";
 import type { OpenedDatabase } from "../db/open";
 import { openFreshDatabase } from "../db/fresh.fixture";
 import { createLog } from "../platform";
@@ -172,26 +175,19 @@ export function browserFixture(
       state.now = value;
     },
     node: insertNode,
-    // Appending rather than replacing: the canvas pushes a whole document
-    // when an edge changes, but a test that draws two edges means two links,
-    // and a fixture that dropped the first would be testing itself.
+    // An edge, as the canvas would save one; the link documents follow it
+    // (`compileBoardLinks`, Armadra#1062 S1). Two edges mean two links.
     link: (left, right) => {
-      const titleOf = (id: string): { title: string; type: string } =>
-        database
-          .prepare("SELECT title, type FROM nodes WHERE id = ?")
-          .get(id) as { title: string; type: string };
-      const join = (owner: string, other: string): void => {
-        const info = titleOf(other);
-        const existing = getContextLinks(database, owner).links.filter(
-          (link) => link.id !== other,
-        );
-        putContextLinks(database, workspace.id, owner, [
-          ...existing,
-          { id: other, title: info.title, kind: info.type },
-        ]);
-      };
-      join(left, right);
-      join(right, left);
+      const now = rfc3339();
+      database
+        .prepare(
+          "INSERT INTO edges (id, board_id, source_node_id, target_node_id, kind, created_at, updated_at) " +
+            "VALUES (?, ?, ?, ?, 'link', ?, ?)",
+        )
+        .run(uuidV7(), board.id, left, right, now, now);
+      for (const id of compileBoardLinks(database, board.id)) {
+        notifyContextLinksChanged(workspace.id, id);
+      }
     },
     close: () => {
       opened.close();

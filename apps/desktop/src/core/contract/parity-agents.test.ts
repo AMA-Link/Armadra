@@ -768,16 +768,15 @@ describe("投递记录、排队、谁读过我、连线", () => {
     }
   });
 
-  it("putContextLinks：写连线；节点 id 不合法 400、工作空间不存在 404、超过 64 条 400", async () => {
+  it("putContentLinks：写内容链接；节点链接与带 role 的 400、节点 id 不合法 400、工作空间不存在 404、超过 64 条 400", async () => {
     const node = agentNode("Linked");
-    const other = agentNode("Other");
-    const links = [{ id: other, title: "Other", kind: "terminal" }];
+    const links = [{ id: uuidV7(), title: "Sketch", kind: "shape" }];
     const path = (ws: string, id: string) =>
-      `/api/workspaces/${ws}/context-links/${id}`;
+      `/api/workspaces/${ws}/content-links/${id}`;
     const answers = [
       await table("PUT", path(workspaceId, node), { links }),
       await legacy("PUT", path(workspaceId, node), { links }),
-      await procedure("agents.putContextLinks", {
+      await procedure("agents.putContentLinks", {
         workspaceId,
         nodeId: node,
         links,
@@ -795,8 +794,21 @@ describe("投递记录、排队、谁读过我、连线", () => {
         Array.from({ length: 65 }, () => ({
           id: uuidV7(),
           title: "x",
-          kind: "terminal",
+          kind: "shape",
         })),
+        400,
+      ],
+      // 节点链接跟着画布的边走，页面不再推（Armadra#1062）。
+      [
+        workspaceId,
+        node,
+        [{ id: uuidV7(), title: "Other", kind: "terminal" }],
+        400,
+      ],
+      [
+        workspaceId,
+        node,
+        [{ id: uuidV7(), title: "Sketch", kind: "shape", role: "main" }],
         400,
       ],
     ];
@@ -804,7 +816,7 @@ describe("投递记录、排队、谁读过我、连线", () => {
       const refused = [
         await table("PUT", path(ws, id), { links: body }),
         await legacy("PUT", path(ws, id), { links: body }),
-        await procedure("agents.putContextLinks", {
+        await procedure("agents.putContentLinks", {
           workspaceId: ws,
           nodeId: id,
           links: body,
@@ -1107,9 +1119,9 @@ describe("投递门：成员经旧路径与 procedure 被同一道路由门拦�
       ],
       [
         "PUT",
-        `/api/workspaces/${workspaceId}/context-links/${node}`,
+        `/api/workspaces/${workspaceId}/content-links/${node}`,
         { links: [] },
-        "agents.putContextLinks",
+        "agents.putContentLinks",
         { workspaceId, nodeId: node, links: [] },
       ],
     ];
@@ -1133,9 +1145,9 @@ describe("投递门：成员经旧路径与 procedure 被同一道路由门拦�
     const [write] = await both(
       "viewer",
       "PUT",
-      `/api/workspaces/${workspaceId}/context-links/${node}`,
+      `/api/workspaces/${workspaceId}/content-links/${node}`,
       { links: [] },
-      "agents.putContextLinks",
+      "agents.putContentLinks",
       { workspaceId, nodeId: node, links: [] },
     );
     expect(write.status).toBe(403);
@@ -1212,9 +1224,9 @@ describe("入参形状错：procedure 与旧路径由契约先答 bad_request", 
       ],
       [
         "PUT",
-        `/api/workspaces/${workspaceId}/context-links/${node}`,
+        `/api/workspaces/${workspaceId}/content-links/${node}`,
         { links: "nope" },
-        "agents.putContextLinks",
+        "agents.putContentLinks",
         { workspaceId, nodeId: node, links: "nope" },
       ],
     ];
@@ -1267,7 +1279,7 @@ describe("契约与 core 的两张表（agents）", () => {
         "markRead",
         "models",
         "prepareHandoff",
-        "putContextLinks",
+        "putContentLinks",
         "repairIntegration",
         "setAmaCredential",
         "suggestTitle",
