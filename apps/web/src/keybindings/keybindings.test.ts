@@ -64,6 +64,7 @@ describe("命令表", () => {
         "app.projectSearch",
         "app.quickOpen",
         "app.sidebar",
+        "app.sessions",
         "app.settings",
         "app.sourceControl",
         "canvas.closeNode",

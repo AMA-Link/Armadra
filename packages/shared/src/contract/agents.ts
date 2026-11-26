@@ -693,6 +693,20 @@ export const agents = {
       }),
     ),
 
+  /** 这个工作空间的会话板 id；还没建过答 `null`（不会因此建）。 */
+  sessionBoard: oc
+    .input(workspaceRef)
+    .output(z.object({ boardId: z.string().nullable() }))
+    .errors(errors.pick("forbidden", "not_found"))
+    .meta(
+      meta({
+        since: "1.61",
+        contract: "§129.1",
+        scope: "canvas:read",
+        workspaceKey: "workspaceId",
+      }),
+    ),
+
   /* ------------------------------ §39.8 对话交接 ------------------------------ */
 
   /**

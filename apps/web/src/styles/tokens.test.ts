@@ -78,6 +78,7 @@ const Z_SCALE: Array<[string, number]> = [
   ["--z-canvas-overlay", 8],
   ["--z-sessions", 12],
   ["--z-dock", 20],
+  ["--z-session-page", 22],
   ["--z-cluster", 26],
   ["--z-banners", 27],
   ["--z-shared-session", 28],

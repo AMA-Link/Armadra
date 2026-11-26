@@ -79,6 +79,52 @@ describe("the board routes", () => {
     expect(missing.status).toBe(400);
   });
 
+  it("keeps an edge's role saved over REST, and refuses an unknown one (#1065)", async () => {
+    const loaded = await core.call("GET", documentUri);
+    const document = loaded.body as { board: { updatedAt: string } };
+    const now = new Date().toISOString().replace("Z", "+00:00");
+    const terminal = (title: string) => ({
+      id: uuidV7(),
+      boardId,
+      type: "terminal",
+      title,
+      position: { x: 0, y: 0 },
+      data: { kind: "terminal" },
+      createdAt: now,
+      updatedAt: now,
+    });
+    const main = terminal("Main");
+    const sub = terminal("Sub");
+    const edge = (role: string) => ({
+      id: uuidV7(),
+      boardId,
+      source: main.id,
+      target: sub.id,
+      kind: "link",
+      role,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const refused = await core.call("PUT", documentUri, {
+      expectedUpdatedAt: document.board.updatedAt,
+      nodes: [main, sub],
+      edges: [edge("boss")],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    });
+    expect(refused.status).toBe(400);
+    const saved = await core.call("PUT", documentUri, {
+      expectedUpdatedAt: document.board.updatedAt,
+      nodes: [main, sub],
+      edges: [edge("supervises")],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    });
+    expect(saved.status).toBe(200);
+    const again = (await core.call("GET", documentUri)).body as {
+      edges: { role?: string }[];
+    };
+    expect(again.edges.map((entry) => entry.role)).toEqual(["supervises"]);
+  });
+
   it("follows the v3 contract for the document pair", async () => {
     const loaded = await core.call("GET", documentUri);
     expect(loaded.status).toBe(200);

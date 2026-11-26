@@ -1,5 +1,7 @@
 import type { CoreServer } from "../http/server";
 import { type StartSessionRequest, startPageSession } from "./page-sessions";
+import { sessionBoardOf } from "../canvas/boards";
+import { getWorkspace } from "../workspaces/table";
 import { answerConfirm } from "../collab/control";
 import { cancelQueued, listDeliveries, listQueued } from "../collab/deliveries";
 import { nowSeconds, type CollabContext } from "../collab/service";
@@ -166,6 +168,12 @@ export function installRoutes(deps: AgentRouteDeps): void {
   registerProcedures(server, "agents", {
     startSession: (request: StartSessionRequest) =>
       startPageSession(collab, request, nowSeconds(collab)),
+    sessionBoard: ({ workspaceId }: { workspaceId: string }) => {
+      getWorkspace(collab.database, workspaceId);
+      return {
+        boardId: sessionBoardOf(collab.database, workspaceId)?.id ?? null,
+      };
+    },
   } as unknown as DomainHandlers<"agents">);
 
   /*

@@ -67,7 +67,7 @@ import { GithubReferenceBadge } from "@/panels/github/GithubReferenceBadge";
 import { NodeShell, type NodeShellProps } from "./NodeShell";
 import { NodeStatusPopover } from "./NodeStatusPopover";
 import type { NodeBodyProps } from "./registry";
-import { answerApproval } from "./runtime-extras";
+import { answerHeaderApproval } from "@/approval/header-answer";
 import { headerApprovalOf } from "@/acp/plan-card";
 import {
   TERMINAL_NODE_ATTRIBUTE,
@@ -314,34 +314,8 @@ export function TerminalNode({ id, node, selected, collapsed }: NodeBodyProps) {
     !cardPending
       ? {
           pendingId,
-          onAnswer: (decision: "allow" | "deny") => {
-            // 先收起按钮：Runtime 的下一条 `agent.status` 未必立刻到，
-            // 让用户对着一个已经答过的请求再点一次是最糟的。
-            const statusKey = useAgentStatusStore
-              .getState()
-              .resolveApproval(pendingId);
-            // 没答上就把头部按钮放回去并说一声（回合还卡在这条审批上），与审批卡
-            // 自己的 `answerPermission` 一个做法。
-            answerApproval(workspaceId ?? "", pendingId, decision).then(
-              (delivery) => {
-                // 终端卡上的键没被看到生效（契约 §127）：回合可能还停在卡上，
-                // 说出来，让人去终端看一眼。
-                if (delivery !== undefined && delivery !== "confirmed") {
-                  toast.error(t(`acp.permission.delivery.${delivery}`), {
-                    duration: 12_000,
-                  });
-                }
-              },
-              () => {
-                if (statusKey !== undefined) {
-                  useAgentStatusStore
-                    .getState()
-                    .reopenApproval(statusKey, pendingId);
-                }
-                toast.error(t("acp.permission.failed"));
-              },
-            );
-          },
+          onAnswer: (decision: "allow" | "deny") =>
+            answerHeaderApproval(workspaceId ?? "", pendingId, decision, t),
         }
       : undefined;
   const answerQuestion = React.useCallback(() => {
