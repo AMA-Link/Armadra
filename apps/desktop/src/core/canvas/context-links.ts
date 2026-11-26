@@ -83,7 +83,7 @@ function writeDocumentRow(
 }
 
 /**
- * Recompiles the node half of every terminal node's document on one board
+ * Recompiles the node half of every node's document on one board
  * from the stored `nodes` and `edges`, keeping each document's content links.
  * Writes only the documents that changed and returns their node ids; the
  * caller notifies once its transaction has committed.
@@ -124,7 +124,7 @@ export function compileBoardLinks(
       contentLinksOf(stored.links),
     );
     if (exists !== undefined && sameLinkDocument(stored.links, next)) continue;
-    // A terminal with no links and no stored row needs no row: the reader
+    // A node with no links and no stored row needs no row: the reader
     // answers an empty document either way.
     if (exists === undefined && next.length === 0) continue;
     writeDocumentRow(database, board.workspace_id, nodeId, next);

@@ -17,7 +17,7 @@ const node = (id: string, type = "terminal", title = id) => ({
 });
 
 describe("buildNodeLinks", () => {
-  it("只给终端节点建文档，无向两头都记", () => {
+  it("每个节点都有文档，无向两头都记", () => {
     const docs = buildNodeLinks(
       [node("a"), node("b"), node("s", "sticky")],
       [
@@ -25,7 +25,10 @@ describe("buildNodeLinks", () => {
         { source: "a", target: "s" },
       ],
     );
-    expect(Object.keys(docs).sort()).toEqual(["a", "b"]);
+    expect(Object.keys(docs).sort()).toEqual(["a", "b", "s"]);
+    expect(docs.s).toEqual([
+      { id: "a", title: "a", kind: "terminal", role: "peer" },
+    ]);
     expect(docs.a).toEqual([
       { id: "b", title: "b", kind: "terminal", role: "peer" },
       { id: "s", title: "s", kind: "sticky", role: "peer" },

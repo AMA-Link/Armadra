@@ -238,11 +238,13 @@ describe("starting a run", () => {
           edge.role === "supervises",
       ),
     ).toBe(true);
-    // 链接文档由 core 随这次保存按边重算：只有终端有文档，起点便签没有；
-    // 每个角色节点把便签读作自己的主。
+    // 链接文档由 core 随这次保存按边重算：起点便签把每个角色读作自己的从
+    // （它是投递的发起方，出队时按它的文档授权）；每个角色把便签读作主。
     expect(
-      getContextLinks(fixture.database, run.anchorNodeId as string).links,
-    ).toEqual([]);
+      getContextLinks(fixture.database, run.anchorNodeId as string)
+        .links.map((link) => link.role)
+        .sort(),
+    ).toEqual(Object.values(run.roles).map(() => "sub"));
     for (const role of Object.values(run.roles)) {
       expect(
         getContextLinks(fixture.database, role).links.find(

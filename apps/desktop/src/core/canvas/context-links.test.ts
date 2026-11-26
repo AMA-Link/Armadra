@@ -101,18 +101,26 @@ describe("compiled link documents", () => {
     expect(links(b.id)[0]?.title).toBe("New name");
   });
 
-  it("writes no document for a node that is not a terminal", () => {
+  it("compiles a document for a linked node that is not a terminal", () => {
     const a = terminal("A");
     const note = stickyNode(board.id);
     save([a, note], [linkEdge(board.id, a.id, note.id)]);
-    // The terminal reads the sticky; the sticky has nothing to read from.
     expect(links(a.id)[0]).toMatchObject({ id: note.id, kind: "sticky" });
+    // A workflow's anchor sticky sends as itself, so it needs its own document.
+    expect(links(note.id)).toEqual([
+      { id: a.id, title: "A", kind: "terminal", role: "peer" },
+    ]);
+  });
+
+  it("writes no row for a node with no links that never had one", () => {
+    const a = terminal("A");
+    const note = stickyNode(board.id);
+    save([a, note], []);
     expect(
       core.database
         .prepare("SELECT 1 FROM context_links WHERE node_id = ?")
         .get(note.id),
     ).toBeUndefined();
-    expect(links(note.id)).toEqual([]);
   });
 
   it("keeps content links through a later save", () => {

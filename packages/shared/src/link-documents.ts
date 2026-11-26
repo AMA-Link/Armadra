@@ -6,8 +6,9 @@
  * 页面不再推节点链接；白板对象的内容链接（`kind: "shape"`）带着页面才画得出的
  * PNG，仍由页面推送，core 用 {@link mergeLinkDocument} 把两半并成一份。
  *
- * 只有终端节点有文档：`POST /context-link/*` 与 `canvas` 动词只有终端会调；
- * 文档里的对端是任意类型，`kind` 就是对端的节点类型。
+ * 每个节点都编一份（`kind` 是对端的节点类型）：终端用它授权 `context` 读取与
+ * `canvas` 动词；core 内部以别的节点身份发出的投递（工作流的起点便签）也按它
+ * 授权，出队时重跑。白板内容链接只并进终端的文档（页面只给终端推）。
  */
 
 /** 一份链接文档最多几条（core 的校验与页面的截断同一个数）。 */
@@ -54,7 +55,7 @@ function clampTitle(title: string): string {
 }
 
 /**
- * 每个终端节点 → 它经连线连到的节点（无向，两头都算）。
+ * 每个节点 → 它经连线连到的节点（无向，两头都算）。
  *
  * 角色是对端相对本节点的位置：`supervises` 边的 source 一侧看见 `sub`，target
  * 一侧看见 `main`；其余是 `peer`。同一对节点有多条边时取第一条（按传入顺序）。
@@ -66,9 +67,7 @@ export function buildNodeLinks(
 ): Record<string, NodeLink[]> {
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const documents: Record<string, NodeLink[]> = {};
-  for (const node of nodes) {
-    if (node.type === "terminal") documents[node.id] = [];
-  }
+  for (const node of nodes) documents[node.id] = [];
   for (const edge of edges) {
     const supervises = edge.role === "supervises";
     const ends: readonly (readonly [string, string, LinkRole])[] = [
