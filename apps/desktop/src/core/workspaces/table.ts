@@ -369,7 +369,7 @@ export function listWorkspaces(
     .prepare(
       "SELECT b.workspace_id AS workspace_id, b.id AS id, b.name AS name, " +
         "(SELECT COUNT(*) FROM nodes n WHERE n.board_id = b.id) AS node_count " +
-        "FROM boards b ORDER BY b.sort_order, b.created_at",
+        "FROM boards b WHERE b.kind = 'canvas' ORDER BY b.sort_order, b.created_at",
     )
     .all() as unknown as {
     workspace_id: string;
