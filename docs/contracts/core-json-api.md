@@ -6450,6 +6450,7 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
 ### 129.1 新建会话
 
 - `startSession` 在会话板上建一个 Agent 节点（标题缺省取预设名），记下触发者，再交给依赖编排起进程：一条没有边的启动行，终端驱动与 ACP 驱动都由终端域的 `spawnForNode` 起，与工作流起角色节点同一条路，不需要页面挂载。`driver` 缺省按设置 `agents.defaultDriver`，规则与 `open-agent` 相同（`newNodeView`）。
+- `sessionBoard` 答这个工作空间的会话板 id，还没建过答 `null`，不会因此建（1.61 起）；会话页用它载入会话板的文档。
 - 第一条提示由会话页在会话起来之后按现有路径发（ACP 的 prompt、终端的输入），这里不带任务。
 - 拒绝：Agent 不认识 400；被设置关掉 403 `agent_disabled`；工作空间不在 404。
 
@@ -6458,5 +6459,6 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
 | procedure             | kind | input                                                                                                    | output                                               | errors                                  | scope             | 自   | 原路径 |
 | --------------------- | ---- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | --------------------------------------- | ----------------- | ---- | ------ |
 | `agents.startSession` | call | `{ workspaceId: string, agentId: string, driver?: "terminal" \| "acp", model?: string, title?: string }` | `{ nodeId: string, boardId: string, title: string }` | `bad_request`、`forbidden`、`not_found` | `terminal:create` | 1.60 | —      |
+| `agents.sessionBoard` | call | `{ workspaceId: string }`                                                                                | `{ boardId: string \| null }`                        | `forbidden`、`not_found`                | `canvas:read`     | 1.61 | —      |
 
 <!-- rpc:end -->
