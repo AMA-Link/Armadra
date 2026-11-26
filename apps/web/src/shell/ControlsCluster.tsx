@@ -76,6 +76,9 @@ export function ControlsCluster() {
   const sessionsOpen = useSessionPage((state) => state.open);
   const toggleSessions = useSessionPage((state) => state.toggle);
 
+  // 手机上会话页铺满、底部导航能回画布：簇压在页面上只会挡住列表（#1062 S7）。
+  if (compact && sessionsOpen) return null;
+
   return (
     <>
       <div

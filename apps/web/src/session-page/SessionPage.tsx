@@ -21,6 +21,9 @@ import { useWorkspaceAgentSessions } from "./use-agent-sessions";
 export default function SessionPage() {
   const t = useT();
   const compact = useCompactLayout();
+  const sidebarDocked =
+    useCanvasStore((state) => state.panels.sidebar) === "open";
+  const clearOfToggle = compact || !sidebarDocked;
   const workspaceId = useCanvasStore((state) => state.workspace?.id ?? null);
   const { tree, items, loading, refresh } =
     useWorkspaceAgentSessions(workspaceId);
@@ -38,7 +41,11 @@ export default function SessionPage() {
     <section
       data-slot="session-page"
       aria-label={t("sessionPage.title")}
-      className="absolute inset-0 z-[var(--z-session-page)] flex bg-background"
+      className={cn(
+        "absolute inset-0 z-[var(--z-session-page)] flex bg-background",
+        // 手机：底部导航压在页面上，内容停在它上面（Armadra#1062 S7）。
+        compact && "pb-[calc(var(--mobile-nav-h)+var(--safe-bottom))]",
+      )}
     >
       {showList && (
         <aside
@@ -47,7 +54,13 @@ export default function SessionPage() {
             compact ? "w-full" : "w-(--sidebar-w) shrink-0 border-r",
           )}
         >
-          <header className="flex h-12 shrink-0 items-center gap-2 border-b pr-2 pl-3">
+          <header
+            className={cn(
+              "flex h-12 shrink-0 items-center gap-2 border-b pr-2",
+              // 侧栏不停靠时左上角浮着它的开关，标题让开它。
+              clearOfToggle ? "pl-12" : "pl-3",
+            )}
+          >
             <h1 className="min-w-0 flex-1 truncate font-medium">
               {t("sessionPage.title")}
             </h1>
@@ -80,6 +93,7 @@ export default function SessionPage() {
               item={selected}
               onBack={compact ? () => select(null) : undefined}
               clearOfCluster={!compact}
+              clearOfToggle={compact}
             />
           ) : (
             <EmptyState
