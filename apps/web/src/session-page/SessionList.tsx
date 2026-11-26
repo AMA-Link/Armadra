@@ -1,4 +1,5 @@
 import * as React from "react";
+import { displayName } from "@/sidebar/display-name";
 import { Plus } from "lucide-react";
 
 import { agentLabel, agentMark } from "@/agent/launch";
@@ -159,7 +160,7 @@ function SessionTreeRow({
           <StatusDot tone={status.tone} size={8} label={status.label} />
         </span>
         <span className="truncate pl-7 text-left text-caption font-normal text-muted-foreground">
-          {item.boardName}
+          {displayName(item.boardName, t)}
         </span>
       </Button>
       {node.children.map((child) => (
