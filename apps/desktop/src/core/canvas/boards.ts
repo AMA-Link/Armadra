@@ -114,6 +114,19 @@ export function isSessionBoard(
   return row?.kind === SESSIONS_BOARD_KIND;
 }
 
+/** The kind of the board a node is on; `undefined` for an unknown node. */
+export function boardKindOfNode(
+  database: DatabaseSync,
+  nodeId: string,
+): string | undefined {
+  const row = database
+    .prepare(
+      "SELECT b.kind AS kind FROM nodes n JOIN boards b ON b.id = n.board_id WHERE n.id = ?",
+    )
+    .get(nodeId) as { kind: string } | undefined;
+  return row?.kind;
+}
+
 /** The workspace's sessions board, if it has been created. */
 export function sessionBoardOf(
   database: DatabaseSync,

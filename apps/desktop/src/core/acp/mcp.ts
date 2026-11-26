@@ -46,6 +46,8 @@ export interface CanvasMcpInput {
   readonly dataDir: string;
   readonly nodeName?: string;
   readonly nodeRole?: string;
+  /** 节点所在板的种类；只有会话板会注入（Armadra#1062 S4）。 */
+  readonly boardKind?: string;
   /** 会话行的 id 与代次：`canvas_ack` / `canvas_handoff_read` 的绑定。 */
   readonly session?: { readonly id: string; readonly generation: number };
   /** `armadra-hook` 的路径；缺省读 `hookClient()`。 */
@@ -67,6 +69,7 @@ export function canvasMcpServer(
     input.dataDir,
     input.nodeName,
     input.nodeRole,
+    input.boardKind,
   ).map(([name, value]) => ({ name, value }));
   if (input.session !== undefined) {
     env.push(

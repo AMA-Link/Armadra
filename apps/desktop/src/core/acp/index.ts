@@ -24,6 +24,7 @@
  */
 
 import { resolve } from "node:path";
+import { boardKindOfNode } from "../canvas/boards";
 
 import { type AgentRole, defaultAgentRole } from "@armadra/shared";
 
@@ -798,6 +799,10 @@ class AcpRuntime {
               ...(() => {
                 const role = nodeRole(database, nodeId);
                 return role === undefined ? {} : { nodeRole: role };
+              })(),
+              ...(() => {
+                const kind = boardKindOfNode(database, nodeId);
+                return kind === undefined ? {} : { boardKind: kind };
               })(),
               ...(rowId === ""
                 ? {}

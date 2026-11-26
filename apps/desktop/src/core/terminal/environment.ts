@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
+import { BOARD_KIND_ENV } from "../collab/control/session-board-verbs";
 import { delimiter, join } from "node:path";
 import { hookEndpointFile } from "../paths";
 
@@ -319,6 +320,7 @@ export function agentEnvironment(
   dataDir: string,
   nodeName?: string | undefined,
   nodeRole?: string | undefined,
+  boardKind?: string | undefined,
 ): EnvPairs {
   return [
     ["ARMADRA_NODE_ID", nodeId],
@@ -329,6 +331,10 @@ export function agentEnvironment(
     ...(nodeRole === undefined || nodeRole === ""
       ? []
       : ([["ARMADRA_NODE_ROLE", nodeRole]] as EnvPairs)),
+    // 会话板上的节点（Armadra#1062 S4）：客户端据此不列只对画布有意义的工具。
+    ...(boardKind === "sessions"
+      ? ([[BOARD_KIND_ENV, boardKind]] as EnvPairs)
+      : []),
     ["ARMADRA_ENDPOINT_FILE", hookEndpointFile(dataDir)],
     ["ARMADRA_CANVAS_CONTROL", "1"],
   ];

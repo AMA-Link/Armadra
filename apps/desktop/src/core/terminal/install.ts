@@ -1,4 +1,5 @@
 import { join, resolve } from "node:path";
+import { boardKindOfNode } from "../canvas/boards";
 import type { SessionActivity } from "@armadra/shared";
 import { CoreFailure } from "../http/errors";
 import { type DomainHandlers, registerProcedures } from "../http/rpc";
@@ -406,6 +407,7 @@ export function install(
         context.dataDir,
         handleForNode(context.db.database, nodeId),
         nodeRole(context.db.database, nodeId),
+        boardKindOfNode(context.db.database, nodeId),
       ),
       // Contract §5.5: the one variable that switches the hook client from
       // "report and exit" to "wait for the canvas' answer".
