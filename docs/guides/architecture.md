@@ -470,17 +470,17 @@ SQLite 的迁移只有一个目录——`apps/desktop/src/core/db/migrations/`�
 连续序列，字节由根 `migrations.lock` 守住（R7d 把原先分散在两处的来源合成一处）。
 基础表由 `0001_initial.sql` 创建；`0002_agent_mailbox.sql` 增量添加消息箱：
 
-| 表                                    | 内容                                                |
-| ------------------------------------- | --------------------------------------------------- |
-| `workspaces` / `boards`               | 工作空间与看板，`boards.whiteboard_json` 存白板快照 |
-| `nodes` / `edges`                     | 节点与入库的上下文链接                              |
-| `terminal_sessions` / `terminal_logs` | 终端会话与回放日志                                  |
-| `agent_status`                        | 每个 Agent 节点的当前状态（hook reduce 的结果）     |
-| `agent_approvals`                     | 权限请求与答复                                      |
-| `agent_mailbox`                       | 持久化拉取消息箱（幂等发送、确认、过期）            |
-| `context_links`                       | 供 Agent 查询的链接视图                             |
-| `hook_installs`                       | 每个 CLI 的 hook 安装记录                           |
-| `conversations`                       | 会话索引（provider + session id → 标题）            |
+| 表                                    | 内容                                                                                         |
+| ------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `workspaces` / `boards`               | 工作空间与看板，`boards.whiteboard_json` 存白板快照                                          |
+| `nodes` / `edges`                     | 节点与入库的上下文链接                                                                       |
+| `terminal_sessions` / `terminal_logs` | 终端会话与回放日志                                                                           |
+| `agent_status`                        | 每个 Agent 节点的当前状态（hook reduce 的结果）                                              |
+| `agent_approvals`                     | 权限请求与答复                                                                               |
+| `agent_mailbox`                       | 持久化拉取消息箱（幂等发送、确认、过期）                                                     |
+| `context_links`                       | 供 Agent 查询的链接视图：节点链接由 core 写板时按连线编译，白板内容链接由页面推（契约 §128） |
+| `hook_installs`                       | 每个 CLI 的 hook 安装记录                                                                    |
+| `conversations`                       | 会话索引（provider + session id → 标题）                                                     |
 
 0003–0029（补全之前）：
 

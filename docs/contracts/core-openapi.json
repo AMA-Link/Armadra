@@ -1,7 +1,7 @@
 {
   "info": {
     "title": "Armadra core",
-    "version": "1.58",
+    "version": "1.59",
     "description": "契约 procedure 的入参与出参（docs/contracts/core-json-api.md §34）。线上是 `POST /api/rpc/<域>/<动词>`，体按 `{ json }` 编码，下列 schema 是 `json` 那一格；失败一律是 `CoreError`。由 tools/contract/generate.mjs 生成，不要手改。"
   },
   "openapi": "3.1.1",
@@ -29371,9 +29371,9 @@
         }
       }
     },
-    "/api/rpc/agents/putContextLinks": {
+    "/api/rpc/agents/putContentLinks": {
       "post": {
-        "operationId": "agents.putContextLinks",
+        "operationId": "agents.putContentLinks",
         "requestBody": {
           "required": true,
           "content": {
@@ -29812,11 +29812,11 @@
         "x-armadra": {
           "contract": "§39.4",
           "scope": "canvas:write",
-          "since": "1.9",
+          "since": "1.59",
           "workspaceKey": "workspaceId",
           "legacy": {
             "method": "PUT",
-            "path": "/api/workspaces/{workspaceId}/context-links/{nodeId}"
+            "path": "/api/workspaces/{workspaceId}/content-links/{nodeId}"
           }
         }
       }
