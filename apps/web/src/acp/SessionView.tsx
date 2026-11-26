@@ -1,9 +1,11 @@
 import { scoped } from "../sources/scope";
+import { writeOffCanvas } from "@/canvas/off-canvas-writer";
 import * as React from "react";
 import { toast } from "@/ui/toast";
 import {
   sessionDisplay,
   type AcpStartPhase,
+  type CanvasNode,
   type SessionActivity,
   type TerminalNodeData,
   type TimelineApprovalItem,
@@ -167,6 +169,22 @@ function useAcpSession(
           { sessionId: session.id, lastExitCode: null },
           { history: "ignore" },
         );
+        // 会话页上不在当前画布的会话（#1071）：`updateNodeData` 找不到它，写到
+        // 它所在的板上。
+        if (!store.document?.nodes.some((node) => node.id === nodeId)) {
+          writeOffCanvas(
+            nodeId,
+            (current) =>
+              ({
+                ...current,
+                data: {
+                  ...current.data,
+                  sessionId: session.id,
+                  lastExitCode: null,
+                },
+              }) as CanvasNode,
+          );
+        }
       })
       .catch((error: unknown) => {
         trace("create:error", {

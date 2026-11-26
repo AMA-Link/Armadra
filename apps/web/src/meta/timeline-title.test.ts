@@ -5,6 +5,7 @@ import { usePreferencesStore } from "@/app/preferences-store";
 import { useCanvasStore } from "@/store/canvas-store";
 import { forgetAutoTitle, isAutoTitled } from "./auto-title";
 import { applyTimelineTitle } from "./timeline-title";
+import { setOffCanvasWriter } from "@/canvas/off-canvas-writer";
 
 const NODE_ID = "11111111-2222-4333-8444-555555555555";
 
@@ -94,5 +95,32 @@ describe("timeline head title as node name", () => {
     seed("Claude Code", "sticky");
     expect(applyTimelineTitle(NODE_ID, "修复导出")).toBe(false);
     expect(updateNode).not.toHaveBeenCalled();
+  });
+});
+
+describe("a node that is not on the open canvas (#1071)", () => {
+  it("hands the rename to the off-canvas writer with the same rules", () => {
+    useCanvasStore.setState({ document: { nodes: [], edges: [] } } as never);
+    const off = {
+      id: NODE_ID,
+      type: "terminal",
+      title: "Claude Code",
+      data: { kind: "terminal", agent: { id: "claude" } },
+    } as unknown as CanvasNode;
+    const seen: (CanvasNode | null)[] = [];
+    const undo = setOffCanvasWriter((nodeId, mutate) => {
+      expect(nodeId).toBe(NODE_ID);
+      seen.push(mutate(off));
+      return true;
+    });
+    try {
+      expect(applyTimelineTitle(NODE_ID, "修复导出")).toBe(true);
+      expect(seen[0]?.title).toBe("修复导出");
+      expect(updateNode).not.toHaveBeenCalled();
+    } finally {
+      undo();
+    }
+    // 没有写者：什么都不做。
+    expect(applyTimelineTitle(NODE_ID, "再改一次")).toBe(false);
   });
 });

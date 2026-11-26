@@ -1,4 +1,6 @@
 import * as React from "react";
+import type { CanvasNode } from "@armadra/shared";
+import { writeOffCanvas } from "@/canvas/off-canvas-writer";
 import {
   permissionModeOfAcpMode,
   type AcpModeState,
@@ -106,7 +108,22 @@ export function useAcpPickers({
     (patch: Partial<TerminalAgent>) => {
       const canvas = useCanvasStore.getState();
       const node = canvas.document?.nodes.find((n) => n.id === nodeId);
-      if (node?.data.kind !== "terminal" || !node.data.agent) return;
+      if (node === undefined) {
+        // 会话页上不在当前画布的会话（#1071）。
+        writeOffCanvas(nodeId, (current) =>
+          current.data.kind === "terminal" && current.data.agent
+            ? ({
+                ...current,
+                data: {
+                  ...current.data,
+                  agent: { ...current.data.agent, ...patch },
+                },
+              } as CanvasNode)
+            : null,
+        );
+        return;
+      }
+      if (node.data.kind !== "terminal" || !node.data.agent) return;
       canvas.updateNodeData(
         nodeId,
         { agent: { ...node.data.agent, ...patch } },
