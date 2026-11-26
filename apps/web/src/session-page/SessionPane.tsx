@@ -1,4 +1,5 @@
 import * as React from "react";
+import { displayName } from "@/sidebar/display-name";
 import { ArrowLeft, Crosshair, Pin, PinOff } from "lucide-react";
 
 import { SessionSkeleton } from "@/acp/SessionSkeleton";
@@ -268,7 +269,7 @@ function PinToBoard({
                   .catch((error: unknown) => moveFailed(t, error));
               }}
             >
-              {board.name}
+              {displayName(board.name, t)}
             </DropdownMenuItem>
           ))
         )}

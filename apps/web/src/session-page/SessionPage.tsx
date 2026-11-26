@@ -7,7 +7,9 @@ import { useCanvasStore } from "@/store/canvas-store";
 import { cn } from "@/lib/cn";
 import { IconButton } from "@/ui/icon-button";
 import { EmptyState } from "@/ui/state";
+import { setOffCanvasWriter } from "@/canvas/off-canvas-writer";
 import { flatten } from "./model";
+import { writeNodeOnBoard } from "./off-canvas-writer";
 import { NewSessionDialog } from "./NewSessionDialog";
 import { SessionList } from "./SessionList";
 import { SessionPane } from "./SessionPane";
@@ -31,6 +33,24 @@ export default function SessionPage() {
   const select = useSessionPage((state) => state.select);
   const close = useSessionPage((state) => state.close);
   const [creating, setCreating] = React.useState(false);
+
+  // 会话视图的写回（会话 id、模式 / 模型、自动标题）对不在当前画布的会话也要
+  // 落到它所在的板上（#1071）。
+  const boardOf = React.useRef(new Map<string, string>());
+  boardOf.current = new Map(items.map((item) => [item.nodeId, item.boardId]));
+  React.useEffect(() => {
+    if (workspaceId === null) return;
+    return setOffCanvasWriter((nodeId, mutate) => {
+      const boardId = boardOf.current.get(nodeId);
+      if (boardId === undefined) return false;
+      void writeNodeOnBoard(workspaceId, boardId, nodeId, mutate).catch(
+        (error: unknown) => {
+          console.warn("session page write-back failed", error);
+        },
+      );
+      return true;
+    });
+  }, [workspaceId]);
 
   const selected = items.find((item) => item.nodeId === selectedNodeId);
   const ordered = React.useMemo(() => flatten(tree), [tree]);

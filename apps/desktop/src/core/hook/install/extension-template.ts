@@ -1,5 +1,9 @@
 import { verbClass } from "../../../hook-client/verb-class";
-import { VERB_TOOLS, type VerbTool } from "../../../hook-client/verbs";
+import {
+  VERB_TOOLS,
+  type VerbTool,
+  toolsForBoardKind,
+} from "../../../hook-client/verbs";
 import { HOOK_CLIENT_REVISION } from "./events";
 
 /**
@@ -81,6 +85,12 @@ export interface ExtensionTool {
   readonly parameters: unknown;
   /** omp's approval tier: `read`, `write` or `exec`. */
   readonly approval: "read" | "write" | "exec";
+  /**
+   * Left out when this node is on a sessions board (`ARMADRA_BOARD_KIND`,
+   * Armadra#1071): the file is written once per install, so the check runs
+   * when the extension loads, not here.
+   */
+  readonly sessionsHidden?: true;
 }
 
 /**
@@ -92,6 +102,9 @@ export interface ExtensionTool {
 export function ompExtensionTools(
   tools: readonly VerbTool[] = VERB_TOOLS,
 ): ExtensionTool[] {
+  const onSessions = new Set(
+    toolsForBoardKind("sessions", tools).map((tool) => tool.name),
+  );
   return tools.map((tool) => {
     const klass = verbClass(tool);
     return {
@@ -100,6 +113,7 @@ export function ompExtensionTools(
       description: tool.description,
       parameters: tool.inputSchema,
       approval: klass === "execute" ? "exec" : klass,
+      ...(onSessions.has(tool.name) ? {} : { sessionsHidden: true as const }),
     };
   });
 }
@@ -590,7 +604,9 @@ function armadraRunTool(name, params, signal) {
 
 function armadraRegisterTools(pi) {
   if (typeof pi.registerTool !== "function") return;
+  const onSessionsBoard = armadraEnv("ARMADRA_BOARD_KIND") === "sessions";
   for (const tool of ARMADRA_TOOLS) {
+    if (onSessionsBoard && tool.sessionsHidden === true) continue;
     try {
       pi.registerTool({
         name: tool.name,

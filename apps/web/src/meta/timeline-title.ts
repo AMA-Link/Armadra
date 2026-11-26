@@ -1,4 +1,5 @@
 import * as React from "react";
+import { writeOffCanvas } from "@/canvas/off-canvas-writer";
 
 import { usePreferencesStore } from "@/app/preferences-store";
 import { useCanvasStore } from "@/store/canvas-store";
@@ -24,7 +25,16 @@ export function applyTimelineTitle(
   if (title === "") return false;
   const store = useCanvasStore.getState();
   const node = store.document?.nodes.find((item) => item.id === nodeId);
-  if (!node || node.type !== "terminal") return false;
+  if (node === undefined) {
+    // 会话页上不在当前画布的会话（#1071）：同样的规则，写到它所在的板上。
+    const next = title.slice(0, 160);
+    return writeOffCanvas(nodeId, (current) => {
+      if (current.type !== "terminal" || !canAutoTitle(current)) return null;
+      rememberAutoTitle(nodeId, next);
+      return current.title.trim() === next ? null : { ...current, title: next };
+    });
+  }
+  if (node.type !== "terminal") return false;
   if (!canAutoTitle(node)) return false;
   const next = title.slice(0, 160);
   if (node.title.trim() === next) {
