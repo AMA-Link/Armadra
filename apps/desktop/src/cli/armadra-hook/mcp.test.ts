@@ -26,6 +26,7 @@ import {
   fetchAgentIds,
   handleLine,
   serve,
+  toolsListResult,
 } from "./mcp.js";
 
 /* --------------------------------- harness -------------------------------- */
@@ -219,6 +220,17 @@ describe("initialize", () => {
 });
 
 describe("tools/list", () => {
+  it("leaves the canvas-only tools out on a sessions board (Armadra#1062 S4)", () => {
+    const names = toolsListResult("sessions").tools.map((tool) => tool.name);
+    expect(names).not.toContain("canvas_sticky");
+    expect(names).not.toContain("canvas_rename");
+    expect(names.some((name) => String(name).startsWith("browser_"))).toBe(
+      false,
+    );
+    expect(names).toContain("canvas_send");
+    expect(toolsListResult(undefined).tools).toHaveLength(VERB_TOOLS.length);
+  });
+
   it("is the verb table, verb for verb with the runtime's lists", async () => {
     const { tools } = await result(request(2, "tools/list"));
     expect(tools.map((t: { name: string }) => t.name)).toEqual(

@@ -9,7 +9,8 @@
  *
  *   * `initialize` answers the server info, the `tools` capability and the
  *     board's rules as `instructions` (`collab/skill.ts::mcpInstructions`);
- *   * `tools/list` is `hook-client/verbs.ts::VERB_TOOLS`, unfiltered;
+ *   * `tools/list` is `hook-client/verbs.ts::VERB_TOOLS`, minus the canvas-only
+ *     tools on a sessions board (`toolsForBoardKind`);
  *   * `tools/call` is one `POST <tool.path>` with the body and headers
  *     `armadra-hook canvas|context|browser` would have sent — same node token,
  *     same session binding for the tools that need one — so the runtime
@@ -38,7 +39,8 @@ import { isSuccess, postJsonRequest } from "../../hook-client/http.js";
 import type { JsonValue } from "../../hook-client/json.js";
 import { headersFor, loadSession, send } from "../../hook-client/session.js";
 import {
-  VERB_TOOLS,
+  BOARD_KIND_ENV,
+  toolsForBoardKind,
   type VerbTool,
   toWireArgs,
   toolByName,
@@ -153,10 +155,15 @@ export const fetchAgentIds: AgentLister = async () => {
   }
 };
 
-/** `tools/list`: the whole table, no pagination. */
-export function toolsListResult(): { tools: Record<string, unknown>[] } {
+/**
+ * `tools/list`: the whole table, no pagination — minus the canvas-only tools
+ * on a sessions board (`ARMADRA_BOARD_KIND`, Armadra#1062 S4).
+ */
+export function toolsListResult(
+  boardKind: string | undefined = process.env[BOARD_KIND_ENV],
+): { tools: Record<string, unknown>[] } {
   return {
-    tools: VERB_TOOLS.map((tool) => ({
+    tools: toolsForBoardKind(boardKind).map((tool) => ({
       name: tool.name,
       description: tool.description,
       inputSchema: tool.inputSchema,

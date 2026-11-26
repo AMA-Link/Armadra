@@ -21,7 +21,14 @@ import {
   USAGE,
 } from "../cli/armadra-hook/usage.js";
 import type { HookResponse } from "./http.js";
-import { ENUMS, VERB_TOOLS, toWireArgs, toolByName } from "./verbs.js";
+import {
+  ENUMS,
+  SESSION_BOARD_HIDDEN_VERBS,
+  VERB_TOOLS,
+  toWireArgs,
+  toolByName,
+  toolsForBoardKind,
+} from "./verbs.js";
 
 const verbsOf = (group: string): string[] =>
   VERB_TOOLS.filter((tool) => tool.group === group).map((tool) => tool.verb);
@@ -196,11 +203,30 @@ describe("the shared client", () => {
               "../core/browser/verb-spec.js",
               "../core/private-pipe/handshake.js",
               "../core/private-pipe/labels.js",
+              "../core/collab/control/session-board-verbs.js",
             ],
             file,
           ).toContain(specifier);
         }
       }
     }
+  });
+});
+
+describe("toolsForBoardKind (Armadra#1062 S4)", () => {
+  it("lists everything off a sessions board", () => {
+    expect(toolsForBoardKind(undefined)).toBe(VERB_TOOLS);
+    expect(toolsForBoardKind("canvas")).toBe(VERB_TOOLS);
+  });
+
+  it("drops the canvas-only verbs and every browser verb on a sessions board", () => {
+    const names = toolsForBoardKind("sessions").map((tool) => tool.name);
+    for (const verb of SESSION_BOARD_HIDDEN_VERBS) {
+      expect(names).not.toContain(`canvas_${verb.replace(/-/g, "_")}`);
+    }
+    expect(names.some((name) => name.startsWith("browser_"))).toBe(false);
+    expect(names).toContain("canvas_open_agent");
+    expect(names).toContain("canvas_send");
+    expect(names).toContain("context_summary");
   });
 });
