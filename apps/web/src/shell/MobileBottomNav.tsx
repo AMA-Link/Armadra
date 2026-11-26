@@ -3,6 +3,7 @@ import {
   FolderTree,
   GitBranch,
   Layers,
+  MessagesSquare,
   Settings,
 } from "lucide-react";
 
@@ -12,13 +13,14 @@ import { useCanvasStore, type PanelState } from "../store/canvas-store";
 import { cn } from "@/lib/cn";
 import { Button } from "@/ui/button";
 import { panelHidden } from "@/lib/features";
+import { useSessionPage } from "@/session-page/store";
 
 /**
  * 手机底部导航（客户端平台设计，移动端能力矩阵）。
  *
- * 手机上没有右上角那条工具簇的位置，也没有悬停提示。五个去处：画布、文件、
- * Git、自动化、设置——每一个都是**同一批**面板，只是入口换成了拇指够得到的
- * 地方，不是另一套简化功能。
+ * 手机上没有右上角那条工具簇的位置，也没有悬停提示。六个去处：画布、会话、
+ * 文件、Git、自动化、设置——每一个都是**同一批**面板（会话是会话页，
+ * Armadra#1062 S7），只是入口换成了拇指够得到的地方，不是另一套简化功能。
  *
  * 「画布」不是一个面板，而是「把所有面板关掉」：手机上一次只看得下一样东西。
  */
@@ -27,12 +29,18 @@ type Destination = {
   id: string;
   labelKey: string;
   icon: typeof Layers;
-  /** 这个去处对应的面板；`null` 是画布本身。 */
-  panel: "explorer" | "scm" | "automation" | "settings" | null;
+  /** 这个去处对应的面板；`null` 是画布本身，`sessions` 是会话页。 */
+  panel: "explorer" | "scm" | "automation" | "settings" | "sessions" | null;
 };
 
 const DESTINATIONS: Destination[] = [
   { id: "canvas", labelKey: "mobile.nav.canvas", icon: Layers, panel: null },
+  {
+    id: "sessions",
+    labelKey: "mobile.nav.sessions",
+    icon: MessagesSquare,
+    panel: "sessions",
+  },
   {
     id: "files",
     labelKey: "mobile.nav.files",
@@ -68,6 +76,9 @@ function closeOthers(
   if (keep !== "settings" && panels.settings) setPanel("settings", false);
   if (panels.resources !== "closed") setPanel("resources", "closed");
   if (panels.usage !== "closed") setPanel("usage", "closed");
+  if (keep !== "sessions" && useSessionPage.getState().open) {
+    useSessionPage.getState().close();
+  }
 }
 
 export function MobileBottomNav() {
@@ -77,6 +88,7 @@ export function MobileBottomNav() {
   const panels = useCanvasStore((state) => state.panels);
   const setPanel = useCanvasStore((state) => state.setPanel);
   const focusNodeId = useCanvasStore((state) => state.focusNodeId);
+  const sessionsOpen = useSessionPage((state) => state.open);
   // 焦点页有自己的返回栏与按键条，底部导航让位给它。
   if (!compact || focusNodeId) return null;
   // 还没打开工作空间时其余四个去处没有对象，但**设置必须够得到**：手机是从
@@ -85,13 +97,15 @@ export function MobileBottomNav() {
 
   const active = panels.settings
     ? "settings"
-    : panels.automation !== "closed"
-      ? "automation"
-      : panels.scm !== "closed"
-        ? "git"
-        : panels.explorer !== "closed"
-          ? "files"
-          : "canvas";
+    : sessionsOpen
+      ? "sessions"
+      : panels.automation !== "closed"
+        ? "automation"
+        : panels.scm !== "closed"
+          ? "git"
+          : panels.explorer !== "closed"
+            ? "files"
+            : "canvas";
 
   return (
     <nav
@@ -132,6 +146,10 @@ export function MobileBottomNav() {
             onClick={() => {
               closeOthers(panels, setPanel, destination.panel);
               if (destination.panel === null) return;
+              if (destination.panel === "sessions") {
+                useSessionPage.getState().show();
+                return;
+              }
               if (destination.panel === "settings") setPanel("settings", true);
               // Git 是底部停靠的工具窗口（Git 工具窗口设计 §2.1）；手机上它
               // 直接铺满，四级导航在窗口里面。其余几块仍然是右侧抽屉。

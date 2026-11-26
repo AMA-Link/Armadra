@@ -52,6 +52,7 @@ vi.mock("../nodes/registry", async (importOriginal) => {
 });
 
 import { MobileBottomNav } from "./MobileBottomNav";
+import { useSessionPage } from "@/session-page/store";
 import { useNodeBodyStore } from "../nodes/node-body-mode";
 import { MobileFocusPage } from "./MobileFocusPage";
 import { canFocusOnPhone } from "./mobile-focus";
@@ -124,6 +125,27 @@ describe("the phone bottom navigation", () => {
     expect(useCanvasStore.getState().panels.explorer).toBe("closed");
   });
 
+  it("会话页是一个去处：打开它关掉面板，回画布关掉它（Armadra#1062 S7）", () => {
+    useSessionPage.setState({
+      open: false,
+      selectedNodeId: null,
+      starting: [],
+    });
+    render(<MobileBottomNav />);
+    fireEvent.click(screen.getByRole("button", { name: "Git" }));
+    fireEvent.click(screen.getByRole("button", { name: "会话" }));
+    expect(useSessionPage.getState().open).toBe(true);
+    expect(useCanvasStore.getState().panels.scm).toBe("closed");
+    expect(
+      screen.getByRole("button", { name: "会话" }).getAttribute("aria-current"),
+    ).toBe("page");
+    fireEvent.click(screen.getByRole("button", { name: "文件" }));
+    expect(useSessionPage.getState().open).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "会话" }));
+    fireEvent.click(screen.getByRole("button", { name: "画布" }));
+    expect(useSessionPage.getState().open).toBe(false);
+  });
+
   it("keeps settings reachable before a workspace is open, and nothing else", () => {
     useCanvasStore.setState({ workspace: null });
     render(<MobileBottomNav />);
@@ -132,7 +154,7 @@ describe("the phone bottom navigation", () => {
     expect(
       screen.getByRole("button", { name: "设置" }).hasAttribute("disabled"),
     ).toBe(false);
-    for (const name of ["画布", "文件", "Git", "自动化"])
+    for (const name of ["画布", "会话", "文件", "Git", "自动化"])
       expect(
         screen.getByRole("button", { name }).hasAttribute("disabled"),
       ).toBe(true);

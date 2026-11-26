@@ -3,6 +3,7 @@ import type { MessageModule } from "./index";
 export const mobile: MessageModule = {
   "zh-CN": {
     "mobile.nav.canvas": "画布",
+    "mobile.nav.sessions": "会话",
     "mobile.nav.files": "文件",
     "mobile.nav.git": "Git",
     "mobile.nav.automation": "自动化",
@@ -34,6 +35,7 @@ export const mobile: MessageModule = {
   },
   en: {
     "mobile.nav.canvas": "Canvas",
+    "mobile.nav.sessions": "Sessions",
     "mobile.nav.files": "Files",
     "mobile.nav.git": "Git",
     "mobile.nav.automation": "Automation",
