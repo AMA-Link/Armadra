@@ -1,6 +1,8 @@
 import type { CoreServer } from "../http/server";
 import { type StartSessionRequest, startPageSession } from "./page-sessions";
 import { sessionBoardOf } from "../canvas/boards";
+import { readBoard } from "../canvas/documents";
+import { type MoveResult, pinSession, unpinSession } from "../canvas/move";
 import { getWorkspace } from "../workspaces/table";
 import { answerConfirm } from "../collab/control";
 import { cancelQueued, listDeliveries, listQueued } from "../collab/deliveries";
@@ -164,10 +166,43 @@ export function installRoutes(deps: AgentRouteDeps): void {
     }) => operations.contextReads(nodeId, limit),
   } as unknown as DomainHandlers<"agents">);
 
+  // 钉到画布 / 收回之后两块板都换了版本（契约 §129.3）。
+  const moved = (workspaceId: string, result: MoveResult): MoveResult => {
+    for (const boardId of [result.fromBoardId, result.toBoardId]) {
+      collab.publish(workspaceId, {
+        type: "board.changed",
+        boardId,
+        updatedAt: readBoard(collab.database, workspaceId, boardId).board
+          .updatedAt,
+      });
+    }
+    return result;
+  };
   // 会话页的会话（契约 §129.1，Armadra#1062 S2）。
   registerProcedures(server, "agents", {
     startSession: (request: StartSessionRequest) =>
       startPageSession(collab, request, nowSeconds(collab)),
+    pinSession: ({
+      workspaceId,
+      nodeId,
+      boardId,
+    }: {
+      workspaceId: string;
+      nodeId: string;
+      boardId: string;
+    }) =>
+      moved(
+        workspaceId,
+        pinSession(collab.database, workspaceId, nodeId, boardId),
+      ),
+    unpinSession: ({
+      workspaceId,
+      nodeId,
+    }: {
+      workspaceId: string;
+      nodeId: string;
+    }) =>
+      moved(workspaceId, unpinSession(collab.database, workspaceId, nodeId)),
     sessionBoard: ({ workspaceId }: { workspaceId: string }) => {
       getWorkspace(collab.database, workspaceId);
       return {
