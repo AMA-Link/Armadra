@@ -19,7 +19,7 @@ import {
 import { recordStalled, recordTaskDone } from "./router-sources";
 import { resetSendLimits } from "./send-limits";
 import { pendingFor } from "./send-queue";
-import { putContextLinks } from "../canvas/context-links";
+import { unlinkNodes } from "../canvas/links.fixture";
 import { SendPump } from "./send-pump";
 import { resetInboxWake } from "./wake";
 
@@ -718,8 +718,7 @@ describe("follow-up honesty and routing", () => {
       .get() as { id: string };
     expect(followupsFromPrompt(context(), lead, "#s1:t1 改成蓝色")).toBe(1);
     // 连线在排队期间被删掉：出队时门链以 NOT_LINKED 拒绝。
-    putContextLinks(fixture.database, fixture.workspaceId, lead, []);
-    putContextLinks(fixture.database, fixture.workspaceId, member.id, []);
+    unlinkNodes(fixture.database, lead, member.id);
     await pump.drain(member.id);
     await pump.drain(lead);
     const failed = failedEvents();

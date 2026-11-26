@@ -36,7 +36,7 @@ import {
   listBoards,
   updateBoard,
 } from "./boards";
-import { parseContextLinks, putContextLinks } from "./context-links";
+import { parseContentLinks, putContentLinks } from "./context-links";
 import type {
   BoardDocument,
   CanvasEdge,
@@ -419,8 +419,8 @@ export function install(context: CoreContext): void {
     }),
   );
 
-  // 连线文档（上下文按连线读取的那份授权，契约 §39.4 `agents.putContextLinks`）：
-  // 旧路径与 procedure 同一份实现。
+  // 连线文档里的白板内容链接（契约 §39.4 `agents.putContentLinks`）：节点链接
+  // 由写板时编译（Armadra#1062 S1）。旧路径与 procedure 同一份实现。
   const putLinks = (
     id: string,
     nodeId: string | undefined,
@@ -431,10 +431,10 @@ export function install(context: CoreContext): void {
     // malformed request.
     getWorkspace(database, id);
     if (!isUuid(nodeId)) throw badRequest("Node id is invalid");
-    return putContextLinks(database, id, nodeId, parseContextLinks(body));
+    return putContentLinks(database, id, nodeId, parseContentLinks(body));
   };
   registerProcedures(server, "agents", {
-    putContextLinks: ({
+    putContentLinks: ({
       workspaceId: id,
       nodeId,
       links,
@@ -447,7 +447,7 @@ export function install(context: CoreContext): void {
 
   server.router.handle(
     "PUT",
-    "/api/workspaces/{workspaceId}/context-links/{nodeId}",
+    "/api/workspaces/{workspaceId}/content-links/{nodeId}",
     answered((match, request) => {
       const body = jsonObject(request.body);
       return {

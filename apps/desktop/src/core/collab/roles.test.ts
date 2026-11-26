@@ -1,11 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AgentFixture, agentFixture, callerFor } from "../agent/fixture";
-import {
-  getContextLinks,
-  nodeRole,
-  putContextLinks,
-} from "../canvas/context-links";
+import { getContextLinks, nodeRole } from "../canvas/context-links";
 import { loadBoard, saveBoard } from "../canvas/documents";
+import { linkNodes } from "../canvas/links.fixture";
 import { agentEnvironment } from "../terminal/environment";
 import { freeLease } from "../drive/lease";
 import { controlDispatcher, type ControlOutcome } from "./control";
@@ -235,38 +232,34 @@ describe("a writer that has never heard of roles", () => {
       fixture.workspaceId,
       fixture.boardId,
     );
-    // 页面每挪一次节点就重存整份文档，每动一条边就重推两份链接文档。缺字段是
-    // 「没有意见」，不是「设回对等」——否则一次无关的保存就抹平了主从。
+    // 页面每挪一次节点就重存整份文档。缺字段是「没有意见」，不是「设回对等」
+    // ——否则一次无关的保存就抹平了主从；链接文档由 core 随这次保存重编，
+    // 方向跟着边走。
     saveBoard(fixture.database, fixture.workspaceId, fixture.boardId, {
       expectedUpdatedAt: document.board.updatedAt,
       nodes: document.nodes,
       edges: document.edges.map(({ role: _role, ...rest }) => rest),
       viewport: document.board.viewport,
     });
-    putContextLinks(fixture.database, fixture.workspaceId, main, [
-      { id: sub, title: "Codex", kind: "terminal" },
-    ]);
     expect(
       loadBoard(fixture.database, fixture.workspaceId, fixture.boardId).edges[0]
         ?.role,
     ).toBe("supervises");
     expect(getContextLinks(fixture.database, main).links[0]?.role).toBe("sub");
+    expect(getContextLinks(fixture.database, sub).links[0]?.role).toBe("main");
   });
 });
 
-describe("a page that pushes roles", () => {
-  it("moves the delivery direction with the documents it pushes", async () => {
+describe("a board edge that changes direction", () => {
+  it("moves the delivery direction with the edge it is compiled from", async () => {
     ok(await run(main, "link", { from: main, to: sub, role: "supervises" }));
     const mainSession = fixture.session(main, "claude");
     live(main, mainSession);
     fixture.terminal.foreground = { command: "claude" };
-    // 用户在画布上把线掉头：页面推的两份文档里 main / sub 互换。
-    putContextLinks(fixture.database, fixture.workspaceId, main, [
-      { id: sub, title: "Codex", kind: "terminal", role: "main" },
-    ]);
-    putContextLinks(fixture.database, fixture.workspaceId, sub, [
-      { id: main, title: "Planner", kind: "terminal", role: "sub" },
-    ]);
+    // 用户在画布上把线掉头：边的 source 换成 sub，两份文档里 main / sub 随之互换。
+    linkNodes(fixture.database, sub, main, "supervises");
+    expect(getContextLinks(fixture.database, main).links[0]?.role).toBe("main");
+    expect(getContextLinks(fixture.database, sub).links[0]?.role).toBe("sub");
     const upward = await run(main, "send", { to: sub, body: "做这件事" });
     expect(upward.ok === false && upward.code).toBe("UPWARD_SEND_REFUSED");
     expect(
@@ -274,12 +267,7 @@ describe("a page that pushes roles", () => {
     ).toMatchObject({ outcome: "delivered" });
 
     // 再设回对等：两个方向都放行。
-    putContextLinks(fixture.database, fixture.workspaceId, main, [
-      { id: sub, title: "Codex", kind: "terminal", role: "peer" },
-    ]);
-    putContextLinks(fixture.database, fixture.workspaceId, sub, [
-      { id: main, title: "Planner", kind: "terminal", role: "peer" },
-    ]);
+    linkNodes(fixture.database, sub, main, "peer");
     resetSendLimits();
     fixture.terminal.foreground = { command: "codex" };
     expect(

@@ -4,7 +4,7 @@ import { createWorkspace } from "../workspaces/table";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AgentFixture, agentFixture, callerFor } from "../agent/fixture";
-import { putContextLinks } from "../canvas/context-links";
+import { putContentLinks } from "../canvas/context-links";
 import { rfc3339 } from "../workspaces/support";
 import { createComment, setCommentResolved } from "../realtime/comments-store";
 import {
@@ -95,7 +95,7 @@ describe("list", () => {
   });
 
   it("labels a whiteboard reference and reports its export state", async () => {
-    putContextLinks(fixture.database, fixture.workspaceId, me, [
+    putContentLinks(fixture.database, fixture.workspaceId, me, [
       {
         id: "018f0000-0000-7000-8000-000000000001",
         title: "Sketch",
@@ -365,7 +365,7 @@ describe("评论作为附加资料", () => {
   it("白板引用附上锚在那个对象上的未解决评论，字节记进预算", async () => {
     const item = "018f0000-0000-7000-8000-0000000000aa";
     const link = "018f0000-0000-7000-8000-0000000000bb";
-    putContextLinks(fixture.database, fixture.workspaceId, me, [
+    putContentLinks(fixture.database, fixture.workspaceId, me, [
       {
         id: link,
         title: "Sketch",
@@ -419,7 +419,7 @@ describe("评论作为附加资料", () => {
 
   it("Frame 引用附上锚在分组节点上的评论", async () => {
     const frame = "018f0000-0000-7000-8000-0000000000dd";
-    putContextLinks(fixture.database, fixture.workspaceId, me, [
+    putContentLinks(fixture.database, fixture.workspaceId, me, [
       {
         id: "018f0000-0000-7000-8000-0000000000ee",
         title: "Frame A",

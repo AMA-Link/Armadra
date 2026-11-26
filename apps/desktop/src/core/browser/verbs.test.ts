@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { putContextLinks } from "../canvas/context-links";
 import { Refusal, asRefused } from "../collab/refusals";
 import { VERBS } from "./args";
 import { createBrowserVerbs } from "./index";
@@ -116,16 +115,22 @@ describe("the three rules", () => {
     const current = browserFixture();
     fixture = current;
     // The link document and the node row are two records, and only one of
-    // them is authoritative. A document that says `browser` about a terminal
-    // is drift — the node row decides, and the verb says so rather than
-    // driving whatever it was handed.
+    // them is authoritative. Core compiles documents from node rows, so drift
+    // can only be a document written before the node changed type; the node
+    // row decides, and the verb says so rather than driving whatever it was
+    // handed.
     const peer = current.node("terminal", "Codex", {
       kind: "terminal",
       agent: { id: "codex" },
     });
-    putContextLinks(current.database, current.workspaceId, current.agentId, [
-      { id: peer, title: "Codex", kind: "browser" },
-    ]);
+    current.database
+      .prepare("UPDATE context_links SET links_json = ? WHERE node_id = ?")
+      .run(
+        JSON.stringify([
+          { id: peer, title: "Codex", kind: "browser", role: "peer" },
+        ]),
+        current.agentId,
+      );
     let thrown: unknown;
     try {
       await call(current, "read", { node: "Codex" });

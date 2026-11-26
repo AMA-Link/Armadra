@@ -12,6 +12,7 @@ import type {
   CanvasNode,
   SaveBoardRequest,
 } from "./document-types";
+import { compileBoardLinks, notifyContextLinksChanged } from "./context-links";
 import { syncHandles } from "./handles";
 import { forgetNodes } from "./orphans";
 import {
@@ -362,7 +363,7 @@ function writeDocument(
   board: Board,
   request: DocumentWrite,
   manageTransaction = true,
-): void {
+): string[] {
   const viewportJson = request.viewportJson;
   const whiteboard = request.whiteboard;
   if (manageTransaction) database.exec("BEGIN IMMEDIATE");
@@ -487,20 +488,32 @@ function writeDocument(
     // 唯一来源，`data.handle` 是它的渲染副本，两者只有这一个写入点，所以不会
     // 各自漂移。撞名在这里被拒绝——事务回滚，整次保存不落库。
     syncHandles(database, board.id, request.nodes);
-    if (manageTransaction) database.exec("COMMIT");
+    // 链接文档跟着表走（Armadra#1062 S1）：同一事务里按存下的节点与连线重算，
+    // 授权永远等于这块板此刻的图，不论有没有页面开着它。
+    const linksChanged = compileBoardLinks(database, board.id);
+    if (manageTransaction) {
+      database.exec("COMMIT");
+      for (const nodeId of linksChanged)
+        notifyContextLinksChanged(board.workspaceId, nodeId);
+    }
+    return linksChanged;
   } catch (error) {
     if (manageTransaction) database.exec("ROLLBACK");
     throw error;
   }
 }
 
-/** Controller transaction combines graph, ownership, receipt and outbox atomically. */
+/**
+ * Controller transaction combines graph, ownership, receipt and outbox
+ * atomically. The caller owns the transaction, so it also notifies the
+ * recompiled link documents (`linksChanged`) once it has committed.
+ */
 export function saveBoardInTransaction(
   database: DatabaseSync,
   workspaceId: string,
   boardId: string,
   request: SaveBoardRequest,
-): BoardDocument {
+): { readonly document: BoardDocument; readonly linksChanged: string[] } {
   const board = getBoard(database, workspaceId, boardId);
   // Yjs is authoritative for realtime boards; a SQL-only transaction cannot edit it.
   if (isRealtimeBoard(database, board.id)) throw realtimeActive();
@@ -508,7 +521,7 @@ export function saveBoardInTransaction(
   validateViewport(request.viewport);
   const whiteboard = request.whiteboard ?? board.whiteboard;
   validateWhiteboard(whiteboard);
-  writeDocument(
+  const linksChanged = writeDocument(
     database,
     board,
     {
@@ -520,7 +533,10 @@ export function saveBoardInTransaction(
     },
     false,
   );
-  return readBoard(database, workspaceId, boardId);
+  return {
+    document: readBoard(database, workspaceId, boardId),
+    linksChanged,
+  };
 }
 
 export type { BoardDocument, CanvasEdge, CanvasNode, SaveBoardRequest };

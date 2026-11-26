@@ -1,15 +1,31 @@
 import type { DatabaseSync } from "node:sqlite";
+import {
+  CONTENT_LINK_KIND,
+  MAX_CONTEXT_LINKS,
+  MAX_LINK_TITLE,
+  buildNodeLinks,
+  contentLinksOf,
+  mergeLinkDocument,
+  sameLinkDocument,
+} from "@armadra/shared";
 import { badRequest, isUuid, rfc3339 } from "../workspaces/support";
 
 /**
  * The `context_links` table: the link document a node reads its collaborators
- * from.
+ * from, and the only thing the context-link verbs authorise against.
  *
- * The canvas pushes each node's document whenever an edge changes, and the
- * context-link verbs authorise against exactly this list — which is why the
- * bounds below are enforced here rather than trusted from whatever the canvas
- * serialised. A `shape` link carries its own readable payload, is stored
- * verbatim and is later handed to an agent.
+ * Two halves, two writers (Armadra#1062 S1):
+ *
+ *  - node links are compiled here from `nodes` and `edges` on every board
+ *    write ({@link compileBoardLinks}, called by `documents.ts::writeDocument`
+ *    inside its transaction), so authorisation follows the stored graph even
+ *    when no page has the board open;
+ *  - content links (`kind: "shape"`) carry a whiteboard object's text and a
+ *    PNG only the page can rasterise, so the page still pushes those
+ *    ({@link putContentLinks}); they are stored verbatim and later handed to
+ *    an agent.
+ *
+ * Each writer keeps the other half as stored.
  */
 
 const LINK_STATUSES = ["pending", "ready", "error"] as const;
@@ -40,7 +56,7 @@ export interface ContextLink {
   readonly id: string;
   readonly title: string;
   readonly kind: string;
-  /** 缺省按 `peer` 读：0024 之前写下的每一份链接文档都没有这个字段。 */
+  /** 节点链接一定带；内容链接没有。 */
   readonly role?: LinkRole;
   readonly content?: ContextLinkContent;
 }
@@ -51,17 +67,91 @@ export interface ContextLinkDocument {
   readonly updatedAt: string;
 }
 
-export function putContextLinks(
+function writeDocumentRow(
   database: DatabaseSync,
   workspaceId: string,
   nodeId: string,
   links: readonly ContextLink[],
-  notify = true,
+): void {
+  database
+    .prepare(
+      "INSERT INTO context_links (node_id, workspace_id, links_json, updated_at) VALUES (?, ?, ?, ?) " +
+        "ON CONFLICT(node_id) DO UPDATE SET workspace_id = excluded.workspace_id, " +
+        "links_json = excluded.links_json, updated_at = excluded.updated_at",
+    )
+    .run(nodeId, workspaceId, JSON.stringify(links), rfc3339());
+}
+
+/**
+ * Recompiles the node half of every terminal node's document on one board
+ * from the stored `nodes` and `edges`, keeping each document's content links.
+ * Writes only the documents that changed and returns their node ids; the
+ * caller notifies once its transaction has committed.
+ */
+export function compileBoardLinks(
+  database: DatabaseSync,
+  boardId: string,
+): string[] {
+  const board = database
+    .prepare("SELECT workspace_id FROM boards WHERE id = ?")
+    .get(boardId) as { workspace_id: string } | undefined;
+  if (board === undefined) return [];
+  const nodes = database
+    .prepare(
+      "SELECT id, type, title FROM nodes WHERE board_id = ? ORDER BY created_at, id",
+    )
+    .all(boardId) as unknown as { id: string; type: string; title: string }[];
+  const edges = database
+    .prepare(
+      "SELECT source_node_id AS source, target_node_id AS target, role " +
+        "FROM edges WHERE board_id = ? ORDER BY created_at, id",
+    )
+    .all(boardId) as unknown as {
+    source: string;
+    target: string;
+    role: string | null;
+  }[];
+  const changed: string[] = [];
+  for (const [nodeId, nodeLinks] of Object.entries(
+    buildNodeLinks(nodes, edges),
+  )) {
+    const stored = getContextLinks(database, nodeId);
+    const exists = database
+      .prepare("SELECT 1 FROM context_links WHERE node_id = ?")
+      .get(nodeId);
+    const next = mergeLinkDocument<ContextLink>(
+      nodeLinks,
+      contentLinksOf(stored.links),
+    );
+    if (exists !== undefined && sameLinkDocument(stored.links, next)) continue;
+    // A terminal with no links and no stored row needs no row: the reader
+    // answers an empty document either way.
+    if (exists === undefined && next.length === 0) continue;
+    writeDocumentRow(database, board.workspace_id, nodeId, next);
+    changed.push(nodeId);
+  }
+  return changed;
+}
+
+/**
+ * The page's half: a node's whiteboard content links. Every link must be a
+ * content link; the stored node links are kept in front of them.
+ */
+export function putContentLinks(
+  database: DatabaseSync,
+  workspaceId: string,
+  nodeId: string,
+  links: readonly ContextLink[],
 ): ContextLinkDocument {
-  if (links.length > 64) {
+  if (links.length > MAX_CONTEXT_LINKS) {
     throw badRequest("A node cannot link more than 64 other nodes");
   }
   for (const link of links) {
+    if (link.kind !== CONTENT_LINK_KIND) {
+      throw badRequest(
+        "Only whiteboard content links are pushed; node links follow the board's edges",
+      );
+    }
     const content = link.content;
     if (content !== undefined && content !== null) {
       if (
@@ -73,17 +163,6 @@ export function putContextLinks(
       ) {
         throw badRequest("Invalid whiteboard reference metadata");
       }
-    }
-    if (!isUuid(link.id) || link.title.length > 160 || link.kind.length > 40) {
-      throw badRequest("Context link is invalid");
-    }
-    if (
-      link.role !== undefined &&
-      !(LINK_ROLES as readonly string[]).includes(link.role)
-    ) {
-      throw badRequest("Context link is invalid");
-    }
-    if (content !== undefined && content !== null) {
       if (
         (content.text !== undefined &&
           Buffer.byteLength(content.text, "utf8") > 20_000) ||
@@ -93,30 +172,21 @@ export function putContextLinks(
         throw badRequest("Context link content is too large");
       }
     }
+    if (
+      !isUuid(link.id) ||
+      link.title.length > MAX_LINK_TITLE ||
+      link.role !== undefined
+    ) {
+      throw badRequest("Context link is invalid");
+    }
   }
-  // 一条链接送上来时**没有** `role`，意思是「这一项我没有意见」，不是「把它
-  // 设回对等」。画布每次动一条边都会重推这份文档，而还不认识这个字段的写者
-  // 否则会在一次无关的重推里悄悄把主从关系抹平（与 `saveBoard` 对边上那一列
-  // 的同一条规矩）。
-  const stored = new Map(
-    getContextLinks(database, nodeId).links.map(
-      (link) => [link.id, link.role] as const,
-    ),
-  );
-  const merged = links.map((link) => {
-    if (link.role !== undefined) return link;
-    const kept = stored.get(link.id);
-    return kept === undefined ? link : { ...link, role: kept };
-  });
-  const now = rfc3339();
-  database
-    .prepare(
-      "INSERT INTO context_links (node_id, workspace_id, links_json, updated_at) VALUES (?, ?, ?, ?) " +
-        "ON CONFLICT(node_id) DO UPDATE SET workspace_id = excluded.workspace_id, " +
-        "links_json = excluded.links_json, updated_at = excluded.updated_at",
-    )
-    .run(nodeId, workspaceId, JSON.stringify(merged), now);
-  if (notify) notifyContextLinksChanged(workspaceId, nodeId);
+  const stored = getContextLinks(database, nodeId).links;
+  const nodeLinks = stored.filter((link) => link.kind !== CONTENT_LINK_KIND);
+  const next = mergeLinkDocument<ContextLink>(nodeLinks, links);
+  if (!sameLinkDocument(stored, next)) {
+    writeDocumentRow(database, workspaceId, nodeId, next);
+    notifyContextLinksChanged(workspaceId, nodeId);
+  }
   return getContextLinks(database, nodeId);
 }
 
@@ -171,7 +241,7 @@ export function getContextLinks(
 }
 
 /** The request body, with the same defaults serde applies. */
-export function parseContextLinks(
+export function parseContentLinks(
   body: Record<string, unknown>,
 ): ContextLink[] {
   const raw = body.links;

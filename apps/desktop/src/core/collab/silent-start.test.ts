@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type AgentFixture, agentFixture, callerFor } from "../agent/fixture";
-import { getContextLinks, putContextLinks } from "../canvas/context-links";
 import { freeLease } from "../drive/lease";
 import { listDeliveries } from "./deliveries";
 import { controlDispatcher, type ControlOutcome } from "./control";
@@ -48,16 +47,8 @@ function quiet(sessionId: string, sinceMs: number, pending = false): void {
 function silentNode(agentId: string): { id: string; sessionId: string } {
   const id = fixture.agentNode(agentId, agentId);
   const sessionId = fixture.session(id, agentId);
-  // 自己接一条线，而不是 `fixture.link`：那个助手是整份覆盖，第二个节点会把第
-  // 一个节点的连线抹掉，而这一批里有一条用例同时要两个目标。
-  putContextLinks(fixture.database, fixture.workspaceId, me, [
-    ...getContextLinks(fixture.database, me).links.map((link) => ({
-      id: link.id,
-      title: link.title,
-      kind: link.kind,
-    })),
-    { id, title: agentId, kind: "terminal" },
-  ]);
+  // 每个目标一条边，一块画布上可以同时连着几个。
+  fixture.link(me, id);
   fixture.terminal.drive.set(id, {
     nodeId: id,
     sessionId,

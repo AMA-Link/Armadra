@@ -4,7 +4,6 @@ import type { Caller } from "../nodes";
 import { type Args, Refusal } from "../refusals";
 import type { CollabContext } from "../service";
 import { cleanTitle, load, newNode, placement, save } from "./board";
-import { addLink } from "./edits";
 import { type Outcome, result } from "./outcome";
 
 /** The node schema's own ceiling for `data.url`. */
@@ -62,15 +61,6 @@ export function openBrowser(
       edges: [...document.edges, edge],
     },
     node,
-  );
-  addLink(context, caller, caller.node.id, node.id, node.title, node.type);
-  addLink(
-    context,
-    caller,
-    node.id,
-    caller.node.id,
-    caller.node.title,
-    "terminal",
   );
   return result(
     `已创建浏览器节点「${title}」并连了一条线过去；用 armadra-hook browser <动词> 驱动它。`,

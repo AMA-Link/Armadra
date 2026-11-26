@@ -77,7 +77,6 @@ import {
   insideFrame,
 } from "./worktree";
 import { newNodeView } from "./agent-driver";
-import { addLink } from "./edits";
 import {
   type CandidateLoad,
   candidateTaskId,
@@ -462,26 +461,7 @@ async function openAgentHeld(
     { ...document, nodes: [...document.nodes, node], edges },
     node,
   );
-  // 边与两份链接文档必须同呼吸：画布上看得见一条线，而动词仍然答「没连线」，
-  // 是这两处不同步唯一会有的样子（`edits.ts::link` 的同一条规矩）。
-  addLink(
-    context,
-    caller,
-    caller.node.id,
-    node.id,
-    node.title,
-    node.type,
-    "sub",
-  );
-  addLink(
-    context,
-    caller,
-    node.id,
-    caller.node.id,
-    caller.node.title,
-    "terminal",
-    "main",
-  );
+  // 两端的链接文档已在 `save` 的同一事务里按这条边重算（Armadra#1062 S1）。
 
   // 有依赖时第一条任务**不**现在排：队列项五分钟过期，而依赖可能等上几个小
   // 时。它跟着启动记录一起落库，由依赖服务在启动之后排进同一条队列。来源链
@@ -1097,33 +1077,9 @@ async function teamHeld(
     ...peers.map(([from, to]) => edge(nodeAt(from).id, nodeAt(to).id, "peer")),
   ];
   inheritCreator(context, caller, created);
+  // 成员与发起者、成员之间的链接文档已在 `save` 的同一事务里按这些边重算
+  // （Armadra#1062 S1）。
   save(context, caller, { ...working, edges }, created[0]);
-  for (const node of created) {
-    addLink(
-      context,
-      caller,
-      caller.node.id,
-      node.id,
-      node.title,
-      node.type,
-      "sub",
-    );
-    addLink(
-      context,
-      caller,
-      node.id,
-      caller.node.id,
-      caller.node.title,
-      "terminal",
-      "main",
-    );
-  }
-  for (const [from, to] of peers) {
-    const a = nodeAt(from);
-    const b = nodeAt(to);
-    addLink(context, caller, a.id, b.id, b.title, b.type, "peer");
-    addLink(context, caller, b.id, a.id, a.title, a.type, "peer");
-  }
 
   // 依赖在所有节点都存好之后才写：上游是团里的成员时，它得先是画布上的
   // Agent 节点才过得了校验。

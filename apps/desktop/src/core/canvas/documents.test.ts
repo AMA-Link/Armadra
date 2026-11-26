@@ -3,7 +3,7 @@ import { type Fixture, fixture } from "../workspaces/fixture";
 import { uuidV7 } from "../workspaces/support";
 import { createWorkspace } from "../workspaces/table";
 import { type Board, listBoards } from "./boards";
-import { getContextLinks, putContextLinks } from "./context-links";
+import { getContextLinks, putContentLinks } from "./context-links";
 import type { CanvasNode } from "./document-types";
 import { loadBoard, saveBoard } from "./documents";
 import { linkEdge, stickyNode } from "./nodes.fixture";
@@ -330,7 +330,7 @@ describe("board documents", () => {
   it("round-trips a shape link's own readable content", () => {
     const nodeId = uuidV7();
     const shapeId = uuidV7();
-    putContextLinks(core.database, workspaceId, nodeId, [
+    putContentLinks(core.database, workspaceId, nodeId, [
       {
         id: shapeId,
         title: "架构图",
@@ -348,7 +348,7 @@ describe("board documents", () => {
     );
 
     expect(() =>
-      putContextLinks(core.database, workspaceId, nodeId, [
+      putContentLinks(core.database, workspaceId, nodeId, [
         {
           id: shapeId,
           title: "太大",

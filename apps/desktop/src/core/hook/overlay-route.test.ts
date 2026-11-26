@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { putContextLinks } from "../canvas/context-links";
+import { getContextLinks, putContentLinks } from "../canvas/context-links";
+import { linkNodes } from "../canvas/links.fixture";
 import { rfc3339, uuidV7 } from "../workspaces/support";
 import { type HookFixture, hookFixture } from "./fixture";
 
@@ -154,21 +155,28 @@ describe("GET /node/overlay", () => {
       foreign = addNode(it_, "Foreign", board);
     }
     const shape = uuidV7();
-    putContextLinks(
-      it_.core.database,
-      it_.workspaceId,
-      it_.nodeId,
-      [
-        { id: lead, title: "Lead terminal", kind: "terminal", role: "main" },
-        { id: worker, title: "Worker", kind: "terminal", role: "sub" },
-        { id: peer, title: "Peer", kind: "terminal" },
-        { id: shape, title: "Sticky", kind: "shape" },
-        ...(foreign === undefined
-          ? []
-          : [{ id: foreign, title: "Foreign", kind: "terminal" }]),
-      ],
-      false,
-    );
+    // The document is compiled from the board's edges: the lead supervises
+    // this node, this node supervises the worker, the peer is level.
+    linkNodes(it_.core.database, lead, it_.nodeId, "supervises");
+    linkNodes(it_.core.database, it_.nodeId, worker, "supervises");
+    linkNodes(it_.core.database, it_.nodeId, peer);
+    putContentLinks(it_.core.database, it_.workspaceId, it_.nodeId, [
+      { id: shape, title: "Sticky", kind: "shape" },
+    ]);
+    if (foreign !== undefined) {
+      // An edge cannot cross boards, so a stray entry can only be drift in
+      // the stored document; the overlay must still not name it.
+      const stored = getContextLinks(it_.core.database, it_.nodeId).links;
+      it_.core.database
+        .prepare("UPDATE context_links SET links_json = ? WHERE node_id = ?")
+        .run(
+          JSON.stringify([
+            ...stored,
+            { id: foreign, title: "Foreign", kind: "terminal", role: "peer" },
+          ]),
+          it_.nodeId,
+        );
+    }
     mail(it_, lead, "k1", "SECRET-BODY-ONE");
     mail(it_, peer, "k2", "SECRET-BODY-TWO");
     mail(it_, lead, "receipt:x", "a receipt is not a message");
