@@ -6462,3 +6462,12 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
 | `agents.sessionBoard` | call | `{ workspaceId: string }`                                                                                | `{ boardId: string \| null }`                        | `forbidden`、`not_found`                | `canvas:read`     | 1.61 | —      |
 
 <!-- rpc:end -->
+
+### 129.2 会话板上的动词（`#1062` S4）
+
+不升协议版本，不改线上形状：多一个拒绝码与一个环境变量。
+
+- **拒绝**：调用者节点在会话板上时，`sticky`、`open-browser`、`open-terminal`、`color`、`rename` 答 400 `VERB_NOT_ON_SESSION_BOARD`（名单在 `core/collab/control/session-board-verbs.ts`）。其余动词照常；`link` 仍可在会话板的节点之间连线。
+- **`help`**：会话板上的 `help` 只列能用的动词（`result.verbs` 与打印的那一行同一份）。
+- **环境变量** `ARMADRA_BOARD_KIND=sessions`：只给会话板上的节点注入（终端与 ACP 进程，以及 ACP 会话里画布 MCP 服务器的环境）。`armadra-hook mcp` 的 `tools/list` 与 ama 宿主适配器据此不列上面五条与整组 `browser_*` 工具；启动时注入一次，节点之后换板不重算（钉到画布见 S5）。core 的拒绝是权威，清单只是不让模型看见用不了的工具。
+- **成员由 core 起**：在会话板上 `open-agent` / `team` 建的成员落在同一块会话板、照常连主从线，并且不带依赖也交给依赖编排起进程（一条没有边的启动行）——会话板不会在画布上打开，没有页面去挂载它。画布上的行为不变（不带依赖时由页面挂载节点起）。
