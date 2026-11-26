@@ -6471,3 +6471,24 @@ core 不执行任何命令。带 `verify` 的 `collect` 步骤，汇总角色按
 - **`help`**：会话板上的 `help` 只列能用的动词（`result.verbs` 与打印的那一行同一份）。
 - **环境变量** `ARMADRA_BOARD_KIND=sessions`：只给会话板上的节点注入（终端与 ACP 进程，以及 ACP 会话里画布 MCP 服务器的环境）。`armadra-hook mcp` 的 `tools/list` 与 ama 宿主适配器据此不列上面五条与整组 `browser_*` 工具；启动时注入一次，节点之后换板不重算（钉到画布见 S5）。core 的拒绝是权威，清单只是不让模型看见用不了的工具。
 - **成员由 core 起**：在会话板上 `open-agent` / `team` 建的成员落在同一块会话板、照常连主从线，并且不带依赖也交给依赖编排起进程（一条没有边的启动行）——会话板不会在画布上打开，没有页面去挂载它。画布上的行为不变（不带依赖时由页面挂载节点起）。
+
+### 129.3 钉到画布与收回（`#1062` S5）
+
+- `pinSession` 把会话板上的一个会话连同它那一组钉到一块画板；`unpinSession` 把画布上的一个会话连同它那一组收回会话板（没有就建）。答 `{ fromBoardId, toBoardId, nodeIds }`，两块板各发一次 `board.changed`。
+- **那一组**：从被点的节点出发、只走 Agent 终端节点之间的边得到的连通分量。分量里有边连着别的节点（便签、浏览器……）时答 400 `session_has_other_links`，边不能跨板，断开哪条由人决定。已在画布上的 `pinSession`、已在会话板上的 `unpinSession` 答 400；节点或画板不在、目标是会话板答 404。
+- **节点不删不建**：表里原地改 `nodes.board_id` 与 `edges.board_id`，会话、时间线、审批、收件箱、投递队列都不受影响。同一事务里：
+  - 位置整体平移到目标板已有内容的右边，组内相对位置不变；父节点不在组里的清掉 `parentId`；
+  - 名字（`data.handle` 与 `node_handles`）在目标板撞名时加 `-2`、`-3`……；
+  - 两块板的链接文档重编（§128）；
+  - 两块板的 `updated_at` 前推：拿着旧文档的保存答 409，不会把刚搬走的节点当成删除写回。
+- **实时板**：搬表前把两块板的活动文档先落表，搬完在同一段同步代码里把同一份改动写进文档再物化（与表一致，不再写表）。
+- 进程启动时注入的 `ARMADRA_BOARD_KIND` 不随搬家改变；能不能用画布动词以 core 当场判断为准（§129.2）。
+
+<!-- rpc:begin contract=§129.3 -->
+
+| procedure             | kind | input                                                      | output                                                          | errors                                              | scope          | 自   | 原路径 |
+| --------------------- | ---- | ---------------------------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------- | -------------- | ---- | ------ |
+| `agents.pinSession`   | call | `{ workspaceId: string, nodeId: string, boardId: string }` | `{ fromBoardId: string, toBoardId: string, nodeIds: string[] }` | `bad_request`、`forbidden`、`not_found`、`conflict` | `canvas:write` | 1.62 | —      |
+| `agents.unpinSession` | call | `{ workspaceId: string, nodeId: string }`                  | `{ fromBoardId: string, toBoardId: string, nodeIds: string[] }` | `bad_request`、`forbidden`、`not_found`、`conflict` | `canvas:write` | 1.62 | —      |
+
+<!-- rpc:end -->
