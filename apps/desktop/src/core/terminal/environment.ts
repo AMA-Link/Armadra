@@ -1,4 +1,8 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
+import type { DatabaseSync } from "node:sqlite";
+import { boardKindOfNode } from "../canvas/boards";
+import { nodeRole } from "../canvas/context-links";
+import { handleForNode } from "../canvas/handles";
 import { BOARD_KIND_ENV } from "../collab/control/session-board-verbs";
 import { delimiter, join } from "node:path";
 import { hookEndpointFile } from "../paths";
@@ -338,6 +342,26 @@ export function agentEnvironment(
     ["ARMADRA_ENDPOINT_FILE", hookEndpointFile(dataDir)],
     ["ARMADRA_CANVAS_CONTROL", "1"],
   ];
+}
+
+/**
+ * {@link agentEnvironment} for a node on the board: its name, its role and the
+ * kind of board it is on, read from the database in one place.
+ */
+export function nodeAgentEnvironment(
+  database: DatabaseSync,
+  nodeId: string,
+  agentId: string,
+  dataDir: string,
+): EnvPairs {
+  return agentEnvironment(
+    nodeId,
+    agentId,
+    dataDir,
+    handleForNode(database, nodeId),
+    nodeRole(database, nodeId),
+    boardKindOfNode(database, nodeId),
+  );
 }
 
 /**
