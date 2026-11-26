@@ -60,3 +60,20 @@ describe("omp in-process tools (contract §110)", () => {
     ).toBe(omp);
   });
 });
+
+describe("on a sessions board (Armadra#1071)", () => {
+  it("marks the canvas-only and browser tools, and the extension skips them at load", () => {
+    const tools = ompExtensionTools();
+    const hidden = tools
+      .filter((tool) => tool.sessionsHidden === true)
+      .map((tool) => tool.name);
+    expect(hidden).toContain("canvas_sticky");
+    expect(hidden).toContain("canvas_open_browser");
+    expect(hidden.some((name) => name.startsWith("browser_"))).toBe(true);
+    expect(hidden).not.toContain("canvas_send");
+    expect(hidden).not.toContain("context_summary");
+    const source = piExtensionSource("omp", "/bin/armadra-hook", [], tools);
+    expect(source).toContain('armadraEnv("ARMADRA_BOARD_KIND") === "sessions"');
+    expect(source).toContain("tool.sessionsHidden === true");
+  });
+});
