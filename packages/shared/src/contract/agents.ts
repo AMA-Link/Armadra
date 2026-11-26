@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { ADAPTER_INSTALL_STATES, ADAPTER_INSTALL_TARGETS } from "../api/acp.js";
+import { AGENT_DRIVERS } from "../domain/node-data.js";
 import { errors } from "./errors.js";
 import { jsonObjectSchema, jsonValueSchema } from "./json.js";
 import { meta, oc } from "./meta.js";
@@ -660,6 +661,35 @@ export const agents = {
         scope: "canvas:write",
         workspaceKey: "workspaceId",
         legacy: { method: "DELETE", path: `${DEPENDENCY_LIST}/{dependencyId}` },
+      }),
+    ),
+
+  /* ---------------------------- §129.1 会话页的会话 --------------------------- */
+
+  /**
+   * 新开一个不在任何画布上的 Agent 会话（Armadra#1062 S2）：在工作空间的会话板
+   * 上建一个 Agent 节点并由 core 起进程。`driver` 缺省按用户的默认视图偏好。
+   * 答节点 id 与会话板 id；Agent 不认识 400，被设置关掉 403，工作空间不在 404。
+   */
+  startSession: oc
+    .input(
+      workspaceRef.extend({
+        agentId: z.string().min(1).max(80),
+        driver: z.enum(AGENT_DRIVERS).optional(),
+        model: z.string().max(200).optional(),
+        title: z.string().max(80).optional(),
+      }),
+    )
+    .output(
+      z.object({ nodeId: z.string(), boardId: z.string(), title: z.string() }),
+    )
+    .errors(errors.pick("bad_request", "forbidden", "not_found"))
+    .meta(
+      meta({
+        since: "1.60",
+        contract: "§129.1",
+        scope: "terminal:create",
+        workspaceKey: "workspaceId",
       }),
     ),
 

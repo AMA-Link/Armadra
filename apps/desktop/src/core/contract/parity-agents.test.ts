@@ -20,6 +20,7 @@ import { createRouteGuard } from "../identity/route-access";
 import { type Scope, permits, scope } from "../identity/scopes";
 import { install as installModels } from "../models";
 import { type Fixture, fixture } from "../workspaces/fixture";
+import { isSessionBoard } from "../canvas/boards";
 import { install as installWorkspaces } from "../workspaces/routes";
 import { rfc3339, uuidV7 } from "../workspaces/support";
 import { type JsonValue, canonicalJson } from "./message";
@@ -768,6 +769,30 @@ describe("投递记录、排队、谁读过我、连线", () => {
     }
   });
 
+  it("startSession：会话板上建 Agent 节点；不认识的 Agent 400、工作空间不存在 404（§129.1）", async () => {
+    const ok = await procedure("agents.startSession", {
+      workspaceId,
+      agentId: "claude",
+      driver: "terminal",
+    });
+    expect(ok.status).toBe(200);
+    const started = ok.body as { nodeId: string; boardId: string };
+    expect(isSessionBoard(core.database, started.boardId)).toBe(true);
+    expect(started.boardId).not.toBe(boardId);
+    expect(
+      (await procedure("agents.startSession", { workspaceId, agentId: "nope" }))
+        .status,
+    ).toBe(400);
+    expect(
+      (
+        await procedure("agents.startSession", {
+          workspaceId: "019ff7d1-0d12-7421-833d-2c5e8d64edff",
+          agentId: "claude",
+        })
+      ).status,
+    ).toBe(404);
+  });
+
   it("putContentLinks：写内容链接；节点链接与带 role 的 400、节点 id 不合法 400、工作空间不存在 404、超过 64 条 400", async () => {
     const node = agentNode("Linked");
     const links = [{ id: uuidV7(), title: "Sketch", kind: "shape" }];
@@ -1252,9 +1277,13 @@ describe("契约与 core 的两张表（agents）", () => {
   );
 
   /** 只经 procedure 的（§39.7 适配器的安装）：没有旧路径。 */
-  const RPC_ONLY = new Set(["agents.adapterInstall", "agents.installAdapter"]);
+  const RPC_ONLY = new Set([
+    "agents.adapterInstall",
+    "agents.installAdapter",
+    "agents.startSession",
+  ]);
 
-  it("28 条都在契约里，除 §39.7 外每条都有旧路径", () => {
+  it("29 条都在契约里，除 §39.7 与 §129.1 外每条都有旧路径", () => {
     expect(entries.map((entry) => entry.name).sort()).toEqual(
       [
         "acceptHandoff",
@@ -1282,6 +1311,7 @@ describe("契约与 core 的两张表（agents）", () => {
         "putContentLinks",
         "repairIntegration",
         "setAmaCredential",
+        "startSession",
         "suggestTitle",
         "transcript",
         "uninstallIntegration",

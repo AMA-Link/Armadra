@@ -1,4 +1,5 @@
 import type { CoreServer } from "../http/server";
+import { type StartSessionRequest, startPageSession } from "./page-sessions";
 import { answerConfirm } from "../collab/control";
 import { cancelQueued, listDeliveries, listQueued } from "../collab/deliveries";
 import { nowSeconds, type CollabContext } from "../collab/service";
@@ -159,6 +160,12 @@ export function installRoutes(deps: AgentRouteDeps): void {
       nodeId: string;
       limit?: number | string;
     }) => operations.contextReads(nodeId, limit),
+  } as unknown as DomainHandlers<"agents">);
+
+  // 会话页的会话（契约 §129.1，Armadra#1062 S2）。
+  registerProcedures(server, "agents", {
+    startSession: (request: StartSessionRequest) =>
+      startPageSession(collab, request, nowSeconds(collab)),
   } as unknown as DomainHandlers<"agents">);
 
   /*
