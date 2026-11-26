@@ -769,8 +769,45 @@ describe("投递记录、排队、谁读过我、连线", () => {
     }
   });
 
+  it("pinSession / unpinSession：钉到画布再收回（§129.3）", async () => {
+    const started = (
+      await procedure("agents.startSession", {
+        workspaceId,
+        agentId: "claude",
+        driver: "terminal",
+      })
+    ).body as { nodeId: string; boardId: string };
+    const pinned = await procedure("agents.pinSession", {
+      workspaceId,
+      nodeId: started.nodeId,
+      boardId,
+    });
+    expect(pinned.status).toBe(200);
+    expect(pinned.body).toMatchObject({
+      fromBoardId: started.boardId,
+      toBoardId: boardId,
+      nodeIds: [started.nodeId],
+    });
+    const back = await procedure("agents.unpinSession", {
+      workspaceId,
+      nodeId: started.nodeId,
+    });
+    expect(back.body).toMatchObject({ toBoardId: started.boardId });
+    expect(
+      (
+        await procedure("agents.unpinSession", {
+          workspaceId,
+          nodeId: started.nodeId,
+        })
+      ).status,
+    ).toBe(400);
+  });
+
   it("sessionBoard：没建过答 null，不因此建", async () => {
-    const other = await createWorkspace("agents-empty", core.directory);
+    // 自己的根目录：同一个根会答回已有的工作空间（它可能已经有会话板了）。
+    const root = join(core.directory, "empty-sessions");
+    mkdirSync(root, { recursive: true });
+    const other = await createWorkspace("agents-empty", root);
     expect(
       (await procedure("agents.sessionBoard", { workspaceId: other })).body,
     ).toEqual({ boardId: null });
@@ -1292,9 +1329,11 @@ describe("契约与 core 的两张表（agents）", () => {
     "agents.installAdapter",
     "agents.startSession",
     "agents.sessionBoard",
+    "agents.pinSession",
+    "agents.unpinSession",
   ]);
 
-  it("30 条都在契约里，除 §39.7 与 §129.1 外每条都有旧路径", () => {
+  it("32 条都在契约里，除 §39.7 与 §129 外每条都有旧路径", () => {
     expect(entries.map((entry) => entry.name).sort()).toEqual(
       [
         "acceptHandoff",
@@ -1318,6 +1357,7 @@ describe("契约与 core 的两张表（agents）", () => {
         "list",
         "markRead",
         "models",
+        "pinSession",
         "prepareHandoff",
         "putContentLinks",
         "repairIntegration",
@@ -1327,6 +1367,7 @@ describe("契约与 core 的两张表（agents）", () => {
         "suggestTitle",
         "transcript",
         "uninstallIntegration",
+        "unpinSession",
       ].map((name) => `agents.${name}`),
     );
     for (const entry of entries) {

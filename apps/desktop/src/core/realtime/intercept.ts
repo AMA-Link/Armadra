@@ -43,6 +43,32 @@ export function realtimeHooks(hub: RealtimeHub): RealtimeBoardHooks {
     save(database, workspaceId, boardId, request) {
       return interceptSave(hub, database, workspaceId, boardId, request);
     },
+    prepareMove(_database, workspaceId, boardId) {
+      const live = hub.open(workspaceId, boardId, false);
+      if (live === undefined) return;
+      hub.flush(live, true);
+      hub.touch(live);
+    },
+    applyMove(database, workspaceId, boardId, before) {
+      const live = hub.open(workspaceId, boardId, false);
+      if (live === undefined) return;
+      const after = readBoard(database, workspaceId, boardId);
+      applyDelta(
+        live.doc,
+        {
+          nodes: before.nodes,
+          edges: before.edges,
+          whiteboard: before.board.whiteboard,
+        },
+        {
+          nodes: after.nodes,
+          edges: after.edges,
+          whiteboard: after.board.whiteboard,
+        },
+        CORE_ORIGIN,
+      );
+      hub.flush(live, true);
+    },
   };
 }
 

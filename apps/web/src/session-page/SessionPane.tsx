@@ -1,10 +1,10 @@
 import * as React from "react";
-import { ArrowLeft, Crosshair } from "lucide-react";
+import { ArrowLeft, Crosshair, Pin, PinOff } from "lucide-react";
 
 import { SessionSkeleton } from "@/acp/SessionSkeleton";
 import { driverOf } from "@/acp/driver";
 import { agentLabel, agentMark } from "@/agent/launch";
-import { runtimeApi } from "@/api/client";
+import { errorCode, runtimeApi } from "@/api/client";
 import { HeaderApproval } from "@/approval/ApprovalShell";
 import { useT } from "@/app/preferences-store";
 import { gotoNode } from "@/sidebar/goto-node";
@@ -13,6 +13,12 @@ import { ContextReadsBadge } from "@/nodes/ContextReadsBadge";
 import { DeliveryQueueBadge } from "@/nodes/DeliveryQueueBadge";
 import { DriveBadge } from "@/nodes/DriveBadge";
 import { cn } from "@/lib/cn";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/ui/dropdown-menu";
 import { AgentAvatar } from "@/ui/agent-avatar";
 import { Button } from "@/ui/button";
 import { IconButton } from "@/ui/icon-button";
@@ -96,10 +102,24 @@ export function SessionPane({
         <DeliveryQueueBadge nodeId={item.nodeId} workspaceId={workspaceId} />
         <ContextReadsBadge nodeId={item.nodeId} visible />
         <div className="flex-1" />
-        {!item.onSessionBoard && (
-          <IconButton label={t("sessionPage.locate")} onClick={locate}>
-            <Crosshair />
-          </IconButton>
+        {item.onSessionBoard ? (
+          <PinToBoard workspaceId={workspaceId} nodeId={item.nodeId} />
+        ) : (
+          <>
+            <IconButton
+              label={t("sessionPage.unpin")}
+              onClick={() => {
+                void runtimeApi
+                  .unpinSession(workspaceId, item.nodeId)
+                  .catch((error: unknown) => moveFailed(t, error));
+              }}
+            >
+              <PinOff />
+            </IconButton>
+            <IconButton label={t("sessionPage.locate")} onClick={locate}>
+              <Crosshair />
+            </IconButton>
+          </>
         )}
       </header>
       <div className="relative min-h-0 flex-1">
@@ -188,5 +208,67 @@ function TerminalInput({ sessionId }: { sessionId: string }) {
         {t("sessionPage.send")}
       </Button>
     </form>
+  );
+}
+
+/** 钉到画布 / 收回失败：连着非会话节点有自己的一句，其余一句通用的。 */
+function moveFailed(t: ReturnType<typeof useT>, error: unknown): void {
+  toast.error(
+    t(
+      errorCode(error) === "session_has_other_links"
+        ? "sessionPage.hasOtherLinks"
+        : "sessionPage.moveFailed",
+    ),
+  );
+}
+
+/** 会话板上的会话：选一块画板，连同它那一组钉过去（Armadra#1062 S5）。 */
+function PinToBoard({
+  workspaceId,
+  nodeId,
+}: {
+  workspaceId: string;
+  nodeId: string;
+}) {
+  const t = useT();
+  const [boards, setBoards] = React.useState<
+    readonly { id: string; name: string }[] | null
+  >(null);
+  return (
+    <DropdownMenu
+      onOpenChange={(open) => {
+        if (!open || workspaceId === "") return;
+        void runtimeApi
+          .listBoards(workspaceId)
+          .then((list) => setBoards(list))
+          .catch(() => setBoards([]));
+      }}
+    >
+      <DropdownMenuTrigger asChild>
+        <IconButton label={t("sessionPage.pin")}>
+          <Pin />
+        </IconButton>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="z-(--z-menu)">
+        {boards === null ? (
+          <DropdownMenuItem disabled>
+            {t("sessionPage.loading")}
+          </DropdownMenuItem>
+        ) : (
+          boards.map((board) => (
+            <DropdownMenuItem
+              key={board.id}
+              onSelect={() => {
+                void runtimeApi
+                  .pinSession(workspaceId, nodeId, board.id)
+                  .catch((error: unknown) => moveFailed(t, error));
+              }}
+            >
+              {board.name}
+            </DropdownMenuItem>
+          ))
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

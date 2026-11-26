@@ -257,6 +257,12 @@ const contextLinksWireSchema = loose({
   updatedAt: z.string(),
 });
 
+const moveSessionWireSchema = z.object({
+  fromBoardId: z.string(),
+  toBoardId: z.string(),
+  nodeIds: z.array(z.string()),
+});
+
 const dependencyWireSchema = z.object({
   id: z.string(),
   workspaceId: z.string(),
@@ -703,6 +709,37 @@ export const agents = {
         since: "1.61",
         contract: "§129.1",
         scope: "canvas:read",
+        workspaceKey: "workspaceId",
+      }),
+    ),
+
+  /**
+   * 会话板上的会话连同它那一组 Agent 节点钉到一块画板（Armadra#1062 S5）。
+   * 已在画布上 400；那一组连着非会话节点 400 `session_has_other_links`；板或节点
+   * 不在 404。
+   */
+  pinSession: oc
+    .input(workspaceRef.extend({ nodeId: z.string(), boardId: z.string() }))
+    .output(moveSessionWireSchema)
+    .errors(errors.pick("bad_request", "forbidden", "not_found", "conflict"))
+    .meta(
+      meta({
+        since: "1.62",
+        contract: "§129.3",
+        scope: "canvas:write",
+        workspaceKey: "workspaceId",
+      }),
+    ),
+  /** 画布上的会话连同它那一组收回会话板。已在会话板上 400。 */
+  unpinSession: oc
+    .input(workspaceRef.extend({ nodeId: z.string() }))
+    .output(moveSessionWireSchema)
+    .errors(errors.pick("bad_request", "forbidden", "not_found", "conflict"))
+    .meta(
+      meta({
+        since: "1.62",
+        contract: "§129.3",
+        scope: "canvas:write",
         workspaceKey: "workspaceId",
       }),
     ),

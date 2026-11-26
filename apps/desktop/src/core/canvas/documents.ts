@@ -95,6 +95,32 @@ export interface RealtimeBoardHooks {
     boardId: string,
     request: SaveBoardRequest,
   ): BoardDocument;
+  /**
+   * 跨板搬节点之前（Armadra#1062 S5）：实时板的文档先落表，表就是此刻的真相。
+   * 非实时板什么都不做。
+   */
+  prepareMove?(
+    database: DatabaseSync,
+    workspaceId: string,
+    boardId: string,
+  ): void;
+  /**
+   * 表里已经搬完：把同一份改动（`before` → 此刻的表）写进实时板的文档，再物化
+   * （物化与表一致，不再写表）。必须与搬表在同一段同步代码里，中间不能有物化。
+   */
+  applyMove?(
+    database: DatabaseSync,
+    workspaceId: string,
+    boardId: string,
+    before: BoardDocument,
+  ): void;
+}
+
+/** 这个库登记的实时挂点（没有实时域时是 `undefined`）。 */
+export function realtimeHooksOf(
+  database: DatabaseSync,
+): RealtimeBoardHooks | undefined {
+  return realtimeHooks.get(database);
 }
 
 const realtimeHooks = new WeakMap<DatabaseSync, RealtimeBoardHooks>();
