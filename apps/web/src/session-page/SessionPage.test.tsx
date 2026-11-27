@@ -172,6 +172,8 @@ describe("SessionPage", () => {
     const view = await screen.findByTestId("session-view");
     expect(view.dataset.node).toBe("canvas-acp");
     expect(view.dataset.readOnly).toBe("false");
+    // 工具簇是一整列：正文与头部一样让开它（#1084）。
+    expect(view.closest(".pr-16")).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "在画布上定位" }));
     expect(goto).toHaveBeenCalledWith("b1", "canvas-acp");
     expect(useSessionPage.getState().open).toBe(false);
@@ -315,6 +317,22 @@ describe("换工作空间", () => {
     expect(useSessionPage.getState()).toMatchObject({
       open: false,
       selectedNodeId: null,
+    });
+  });
+});
+
+describe("换画布（#1084）", () => {
+  it("当前画布一变就关掉页面，选中保留", async () => {
+    useCanvasStore.setState({ boardId: "b1" } as never);
+    useSessionPage.setState({ selectedNodeId: "x" });
+    mount();
+    await screen.findByText("Planner");
+    act(() => {
+      useCanvasStore.setState({ boardId: "b3" } as never);
+    });
+    expect(useSessionPage.getState()).toMatchObject({
+      open: false,
+      selectedNodeId: "x",
     });
   });
 });
