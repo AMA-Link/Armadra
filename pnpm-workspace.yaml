@@ -25,7 +25,7 @@ allowBuilds:
 
 minimumReleaseAgeExclude:
   - react-resizable-panels@4.12.4
-  - "@armadra/agent@0.24.0"
+  - "@armadra/agent@0.25.0"
 
 storeDir: .pnpm-store
 

@@ -2,6 +2,44 @@
 
 每个版本一节，按发布倒序。括号里是合入的 PR 编号（github.com/AMA-Link/Armadra，2026-10-11 前为 Owlbay/Armadra，旧编号照常跳转）。兼容范围以 `tools/release/compatibility.json` 为准，发布说明里的 `armadra-compatibility` 围栏由它渲染。桌面、服务器与手机 / 平板 App 共用一条版本线和一个标签 `vX.Y.Z`（规则见 `docs/guides/ci-release.md`「版本规则」）；有手机端改动的版本，在「手机与平板」小节里写，其余写在「桌面 / 服务器」下。2026-10-10 之前手机端曾单独编号（1.0.0、1.1.0），内容并入对应的 0.2.5、0.2.6。
 
+## 0.25.0（2026-11-27）
+
+版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.25.0。随包 `@armadra/agent` 0.25.0（与统一版本对齐，代理本身没有改动）与平台协议包 0.25.0（没有形状变化，云端协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.25.0。本版的主线是会话页：同一个 Agent 会话既能在页面里像聊天一样对话，也能钉到画布上用；下级做完一轮会回流给上级。另有投递时接回断掉的 ACP 会话、会话页一个会话只起一个适配器、Windows cmd 里带引号的 `--` 等修复。核心库迁移到 0074；核心 JSON API 只增 procedure 与取值（契约 §128、§129）。
+
+Version aligned with armadra-cloud and armadra-agent (all three ship 0.25.0), with `@armadra/agent` 0.25.0 (aligned with the unified version, no changes in the agent) and platform protocol 0.25.0 (no shape changes, the cloud protocol is still 1.4); matching images `armadra-cloud` / `armadra-relay` 0.25.0. The headline is the session page: one agent session can be talked to like a chat in a page and pinned onto the canvas, and a sub-session reports back to its main session when it finishes a turn. Fixes include reviving dead ACP sessions on delivery, one adapter per session-page session, and a quoted `--` in Windows cmd. The core database moves to 0074; the core JSON API only adds procedures and values (contract §128, §129).
+
+### 桌面 / 服务器
+
+- 会话页（#1063、#1064、#1066、#1067、#1068、#1070，Closes #1062）：右侧「会话」打开一列会话列表与对话区，新建会话可选 Agent 与驱动（ACP / 终端）；会话就是工作空间会话板（迁移 0074 的 `boards.kind = 'sessions'`）上的普通 Agent 节点，状态、审批、投递、时间线全部沿用节点那一套。主从连线让下级缩进挂在上级下面；会话可以钉到画布、再收回（原地换板，不重启进程）；会话板上画布专用的动词答 `VERB_NOT_ON_SESSION_BOARD`，工具列表随之收窄。连线文档改由 core 在写板时按连线编译（契约 §128），页面只推白板内容链接。
+  Session page (#1063, #1064, #1066, #1067, #1068, #1070, Closes #1062): "Sessions" on the right opens a session list and a conversation pane; a new session picks the agent and the driver (ACP / terminal). A session is an ordinary agent node on the workspace sessions board (`boards.kind = 'sessions'`, migration 0074), so status, approvals, delivery and the timeline all work as on the canvas. Supervising links indent a sub-session under its main session; a session can be pinned to a canvas and taken back (moved in place, no restart); canvas-only verbs on the sessions board answer `VERB_NOT_ON_SESSION_BOARD` and the tool lists narrow accordingly. Link documents are now compiled by core from the edges when a board is written (contract §128); pages push only whiteboard content links.
+- 子会话完成回流（#1069、#1074，Closes #1073）：下级报 `done` 时往上级的队里塞一条「下级做完了一轮」，按上级节点的 `agent.childDone`（`off` / `notify` / `deliver`，缺省 `notify`）决定只提示还是带摘要；与收件箱唤醒共用队列与门链，只在报过 `working` 之后的第一次 `done` 触发。
+  Child-done notices (#1069, #1074, Closes #1073): when a sub-session reports `done`, a "finished a turn" item is queued for its main session; `agent.childDone` on the main node (`off` / `notify` / `deliver`, default `notify`) chooses a hint or a summary; it shares the queue and gate chain with inbox wakes and fires only on the first `done` after a `working`.
+- 投递时接回断掉的 ACP 会话（#1076、#1078，Closes #1075、#1077）：core 重启或适配器自己退出（不是人停的、不是休眠）的 ACP 会话，收到投递时自动起下一代、这一条按「还早」排队，接回后推出队泵；同一节点一分钟最多接一次。会话接回后页面不再停在「已退出」，工作空间事件重订改为 1 秒起翻倍、30 秒封顶。
+  Dead ACP sessions are revived on delivery (#1076, #1078, Closes #1075, #1077): an ACP session that ended by a core restart or an adapter exit (not stopped by a person, not hibernated) is relaunched when something is delivered to it, the item queues as "not yet" and the pump is kicked once it is back; at most once per node per minute. The page no longer stays on "exited" after the revive, and the workspace event resubscribe backs off from 1 s to a 30 s cap.
+- 会话页一个会话只起一个适配器（#1078，Closes #1077）：依赖编排替 ACP 节点起会话与页面挂载时的 `createSession` 共用节点锁，不再同一节点两个适配器进程。
+  One adapter per session-page session (#1078, Closes #1077): dependency launches of ACP nodes share the node lock with `createSession`, so a node no longer gets two adapter processes.
+- Windows 启动器的分隔符（#1080，Closes #1079）：`armadra-launch.exe` 按 C 运行库规则逐词解码找 `--`，cmd 里带引号的 `"--"` 也是分隔符，grok 的注入词不再跑进提示词；夜间 Windows 验收 `launcher.separator` 自加入起的失败就此修复。
+  Windows launcher separator (#1080, Closes #1079): `armadra-launch.exe` decodes words with the C runtime rules to find `--`, so a quoted `"--"` in cmd is a separator too and grok's injected words no longer end up in the prompt; this fixes the nightly Windows acceptance `launcher.separator` failure present since it was added.
+- 会话页收尾（#1072，Closes #1071）：会话页里改模型、权限档、标题经离屏写回；omp 扩展在会话板上隐藏画布动词；REST 保存连线时保留 `role`（#1065）。
+  Session page follow-ups (#1072, Closes #1071): model, permission mode and title changes in the session page are written back off-canvas; the omp extension hides canvas verbs on the sessions board; REST edge saves keep `role` (#1065).
+
+### 手机与平板
+
+- 底部导航多一个「会话」入口（#1070），与画布控件互斥；会话页在窄屏下给切换按钮与底栏留出空间。没有原生 App 的改动。
+  The bottom navigation gains a "Sessions" destination (#1070), mutually exclusive with the canvas controls; the session page leaves room for the toggle and the bottom bar on narrow screens. No native app changes.
+
+### 随包 Agent
+
+- `@armadra/agent` 0.25.0：与统一版本对齐，代理本身没有改动。
+  `@armadra/agent` 0.25.0: aligned with the unified version, no changes in the agent.
+
+### 部署说明
+
+- 需要迁移：核心库升到 0074（新增 0074 `boards.kind`，向前自动执行）；云端协议（1.4）不变。
+  Migration needed: the core database moves to 0074 (0074 adds `boards.kind` and runs forward automatically); the cloud protocol (1.4) is unchanged.
+- 配套镜像 `ghcr.io/ama-link/armadra-cloud:0.25.0`、`ghcr.io/ama-link/armadra-relay:0.25.0` 与协议包 0.25.0 同号（cloud 侧没有面向用户的改动；控制台页面取自本版服务器壳镜像）；推送中继镜像 `ghcr.io/ama-link/armadra-push-relay:0.25.0` 与服务器壳镜像同号。发版顺序同 0.24.0：先打 Armadra `v0.25.0` 标签，服务器壳镜像推送完成后再打 armadra-cloud `v0.25.0`。
+  Matching images `ghcr.io/ama-link/armadra-cloud:0.25.0` and `ghcr.io/ama-link/armadra-relay:0.25.0` share the number with protocol package 0.25.0 (no user-facing changes on the cloud side; console pages come from this version's server shell image); the push-relay image `ghcr.io/ama-link/armadra-push-relay:0.25.0` shares the number with the server shell image. Release order as in 0.24.0: tag Armadra `v0.25.0` first, then tag armadra-cloud `v0.25.0` once the server shell image has been pushed.
+
 ## 0.24.0（2026-11-25）
 
 版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.24.0。随包 `@armadra/agent` 0.24.0（ACP 客户端扩展请求 `onExtRequest`）与平台协议包 0.24.0（没有形状变化，云端协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.24.0。本版以 Grok Build 与 Antigravity（agy）两个内置 Agent 的收尾为主：grok 会话文件状态源、时间线与成本、终端审批代答（缺省关）、计划审批管线，agy 终端时间线与画面门；另有 ACP 会话 `_meta`、blocked 否决的安全撤回、Agent 轮末释放驱动租约等修复。核心库迁移到 0073，核心 JSON API 协议升到 1.53（只增取值）。
