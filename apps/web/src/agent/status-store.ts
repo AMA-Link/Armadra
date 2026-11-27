@@ -235,8 +235,18 @@ export const useAgentStatusStore = create<AgentStatusState>((set, get) => ({
         const order = compareActivityRev(previous.activity.rev, activity.rev);
         if (order !== null && order >= 0) return current;
       }
+      // 活动帧只来自活的进程：补齐时记下的 `alive=false`（core 重启后会话还没
+      // 接回）在一条「起来了」的活动到来时作废，否则会话头一直写着「已退出」。
+      const { alive, ...rest } = previous;
+      const revived =
+        alive === false &&
+        activity.phase !== "exited" &&
+        activity.phase !== "sleeping";
       return {
-        statuses: { ...current.statuses, [key]: { ...previous, activity } },
+        statuses: {
+          ...current.statuses,
+          [key]: revived ? { ...rest, activity } : { ...previous, activity },
+        },
       };
     }),
 
