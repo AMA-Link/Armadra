@@ -4,6 +4,7 @@ import { useAgentStatusStore } from "../agent/status-store";
 import { scoped } from "../sources/scope";
 import {
   RESUBSCRIBE_DELAY_MS,
+  resubscribeDelay,
   type WorkspaceEventTransport,
   connectWorkspaceEvents,
   onWorkspaceAccessLost,
@@ -285,6 +286,27 @@ describe("workspace events", () => {
       [WORKSPACE, true, "local"],
     ]);
     off();
+    release();
+  });
+
+  it("一直订不上：间隔翻倍到 30 秒封顶，订上之后归零", () => {
+    expect([0, 1, 2, 3, 4, 5, 9].map(resubscribeDelay)).toEqual([
+      1_000, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000,
+    ]);
+  });
+
+  it("连续被拒时第二次要等两秒", async () => {
+    refuse = { code: "not_found" };
+    const release = connectWorkspaceEvents(WORKSPACE);
+    await settle();
+    await vi.advanceTimersByTimeAsync(RESUBSCRIBE_DELAY_MS);
+    expect(feeds).toHaveLength(1);
+    feeds[0]!.fail({ code: "unavailable" });
+    await settle();
+    await vi.advanceTimersByTimeAsync(RESUBSCRIBE_DELAY_MS);
+    expect(feeds).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(RESUBSCRIBE_DELAY_MS);
+    expect(feeds).toHaveLength(2);
     release();
   });
 
