@@ -30,7 +30,7 @@ import {
   provideAcpTerminal,
   sshHostOf,
 } from "../acp";
-import { acpSwitching } from "../acp/routes";
+import { acpSwitching, reviveAcpForDelivery } from "../acp/routes";
 import { timelineDomainOf } from "../timeline";
 import { loadNode } from "../collab/nodes";
 import { canvasEnvironment } from "../agent/canvas-launch";
@@ -969,9 +969,11 @@ export function install(
   setTerminalBridge({
     ...terminalBridge(manager, context.db.database),
     ready: () => ready.then(() => {}),
-    // 投给休眠节点的消息：先叫醒再走 `send` 的整条门链（§7.2）。不是休眠着的
-    // 节点立刻答 `false`，只多一次库查询。
+    // 投给休眠节点或断掉的 ACP 会话（§129.5，await 前同步占住）：先叫醒再走
+    // `send` 的整条门链（§7.2）。都不是的立刻答 `false`，只多一次库查询。
     wakeNode: async (nodeId) => {
+      const revived = reviveAcpForDelivery(nodeId);
+      if (revived !== undefined) return revived;
       await ready;
       if (hibernatedSession(context.db.database, nodeId) === undefined) {
         return false;
