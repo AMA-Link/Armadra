@@ -406,6 +406,19 @@ describe.runIf(windows)(
       });
     }
 
+    // 人手或别的工具在 cmd 里给每个词都加引号：`"--"` 解出来就是 `--`，照样是分隔符；
+    // `"a -- b"` 仍然不算（#1079，夜间验收 `launcher.separator` 的 cmd 写法）。
+    for (const entry of SEPARATOR_CASES) {
+      it(`cmd.exe, every word quoted: ${entry.name}`, () => {
+        const quoted = [grokLauncher, process.execPath, echo, ...entry.caller]
+          .map((word) => `"${word}"`)
+          .join(" ");
+        const result = runCmd(quoted, canvasEnv());
+        expect(result.status, result.stderr).toBe(0);
+        expect(parse(result.stdout).argv).toEqual(entry.expected);
+      });
+    }
+
     it("injects nothing outside a canvas, separator or not", () => {
       const result = runCmd(
         line("cmd", [...CALLER, "--", "the prompt here"]),
