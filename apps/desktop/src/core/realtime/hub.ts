@@ -160,6 +160,11 @@ export class RealtimeHub {
         });
     this.boards.set(boardId, live);
     this.wire(live);
+    // 0.19 之前切到实时的板没有格式号，客户端的格式闸会当成上一代格式拒绝
+    // 加入（#1082）。格式 2→3 只换了白板线格式，节点与边不变，这里补上当前
+    // 号，作为一条普通更新落库；已有号时不产生更新。以后再升格式号要带真正
+    // 的迁移，不能靠这里补。
+    if (row.realtime) stampBoardFormat(live.doc, CORE_ORIGIN);
     // 重启重放：表落后于更新流，加载完马上补一次物化。
     if (live.materializedSeq < live.seq) {
       live.dirty = true;
