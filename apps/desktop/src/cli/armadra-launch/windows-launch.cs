@@ -316,35 +316,52 @@ internal static class ArmadraLaunch
     }
 
     /// <summary>
-    /// 命令行里第一个单独的 `--` 词（不在引号里、前后是空白或行首行尾）的下标；没有答 -1。
-    /// 引号按 C 运行库的规则：`\"` 前反斜杠为奇数个时是字面引号，偶数个时反斜杠折半
-    /// 后引号切换状态。
+    /// 命令行里第一个值为 `--` 的词的起点下标；没有答 -1。
+    ///
+    /// 按 C 运行库的规则逐词解码再比较：程序读到的 argv 才是准的。`"--"`（cmd 里每个词都加
+    /// 引号的写法）解出来就是 `--`，算；`"a -- b"` 解出来是一个带 `--` 的词，不算
+    /// （#1079：以前按字符扫，引号里的 `--` 一律跳过）。规则：空白（空格、制表符）分词，
+    /// 引号里不分；`\"` 前反斜杠为奇数个时是字面引号，偶数个时反斜杠折半、引号切换状态；
+    /// 引号里的 `""` 是一个字面引号。
     /// </summary>
     private static int FindSeparator(string line)
     {
-        bool inQuote = false;
         int i = 0;
         int n = line.Length;
         while (i < n)
         {
-            char c = line[i];
-            if (c == '\\')
+            while (i < n && (line[i] == ' ' || line[i] == '\t')) i++;
+            if (i >= n) break;
+            int start = i;
+            StringBuilder value = new StringBuilder();
+            bool inQuote = false;
+            while (i < n && (inQuote || (line[i] != ' ' && line[i] != '\t')))
             {
-                int run = 0;
-                while (i < n && line[i] == '\\') { run++; i++; }
-                if (i < n && line[i] == '"')
+                char c = line[i];
+                if (c == '\\')
                 {
-                    if (run % 2 == 0) inQuote = !inQuote;
-                    i++;
+                    int run = 0;
+                    while (i < n && line[i] == '\\') { run++; i++; }
+                    if (i < n && line[i] == '"')
+                    {
+                        value.Append('\\', run / 2);
+                        // 奇数个：字面引号，吃掉；偶数个：引号留给下一轮切换状态。
+                        if (run % 2 == 1) { value.Append('"'); i++; }
+                    }
+                    else value.Append('\\', run);
+                    continue;
                 }
-                continue;
+                if (c == '"')
+                {
+                    if (inQuote && i + 1 < n && line[i + 1] == '"') { value.Append('"'); i += 2; continue; }
+                    inQuote = !inQuote;
+                    i++;
+                    continue;
+                }
+                value.Append(c);
+                i++;
             }
-            if (c == '"') { inQuote = !inQuote; i++; continue; }
-            if (!inQuote && c == '-' && i + 1 < n && line[i + 1] == '-'
-                && (i == 0 || char.IsWhiteSpace(line[i - 1]))
-                && (i + 2 == n || char.IsWhiteSpace(line[i + 2])))
-                return i;
-            i++;
+            if (value.ToString() == "--") return start;
         }
         return -1;
     }
