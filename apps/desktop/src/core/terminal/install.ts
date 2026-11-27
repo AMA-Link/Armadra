@@ -26,11 +26,10 @@ import {
   acpAdapter,
   agentSettings as acpAgentSettings,
   createAcpBackend,
-  prepareAcpStart,
   provideAcpTerminal,
-  sshHostOf,
 } from "../acp";
 import { acpSwitching, reviveAcpForDelivery } from "../acp/routes";
+import { type AcpNodeSpawnRequest, spawnAcpNode } from "./acp-node-spawn";
 import { timelineDomainOf } from "../timeline";
 import { loadNode } from "../collab/nodes";
 import { canvasEnvironment } from "../agent/canvas-launch";
@@ -514,40 +513,14 @@ export function install(
       acpAdapter(baseAgent(acpAgentSettings(), agentId)) !== undefined
     );
   };
-  /** 替一个 ACP 节点起会话（依赖编排、定时冷启动）：新开，第一条任务经投递。 */
-  const spawnAcpForNode = async (request: {
-    readonly workspaceId: string;
-    readonly nodeId: string;
-    readonly agentId: string;
-    readonly cwd: string;
-  }) => {
-    const data = loadNode(context.db.database, request.nodeId)?.data;
-    const ssh = sshHostOf(data) !== undefined;
-    const agent = data?.agent as Record<string, unknown> | undefined;
-    prepareAcpStart(request.nodeId, {
-      agentId: request.agentId,
-      permissionMode:
-        typeof agent?.permissionMode === "string"
-          ? agent.permissionMode
-          : undefined,
-      model: typeof agent?.model === "string" ? agent.model : undefined,
-      resume: null,
-    });
-    return manager.spawn({
-      workspaceId: request.workspaceId,
-      // 执行主机上的路径不按本机的规则解析。
-      cwd: ssh ? request.cwd : resolve(request.cwd),
-      command: acpAdapter(baseAgent(acpAgentSettings(), request.agentId))
-        ?.program,
-      kind: "terminal",
-      ownerNodeId: request.nodeId,
-      agentId: request.agentId,
-      backend: "acp",
-      env: ownedEnvironment(request.nodeId, request.agentId, ssh, undefined, {
-        acp: true,
-      }),
-    });
-  };
+  const spawnAcpForNode = (request: AcpNodeSpawnRequest) =>
+    spawnAcpNode(
+      context.db.database,
+      manager,
+      (nodeId, agentId, ssh) =>
+        ownedEnvironment(nodeId, agentId, ssh, undefined, { acp: true }),
+      request,
+    );
 
   /*
    * 每个操作一份实现：路由表里的旧 handler（先把查询串与体解析成这里的入参）
