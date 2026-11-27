@@ -23,7 +23,8 @@ import { type CollabContext, nowSeconds } from "./service";
  * 档位在**上级**的节点设置 `data.agent.childDone`：`off` / `notify`（缺省，一句
  * 提示加怎么读）/ `deliver`（下级的摘要，读不到就退回提示）。
  *
- * 同一个下级的同一轮只回流一次：幂等键里带着下级状态的 `updatedAt`。上级是这个
+ * 同一个下级的同一轮只回流一次：只在它报过 `working` 之后的第一次 `done` 触发（#1073），
+ * 幂等键里另带下级状态的 `updatedAt` 作第二道保险。上级是这个
  * 下级的协调者、正经 `wait` / 工作项账本跟着它时不回流——那边已经有一条路。
  */
 
@@ -37,6 +38,20 @@ export const CHILD_DONE_SENDER = "Armadra 下级回流";
 
 /** `deliver` 档正文的上限（字节以字符近似，与摘要同一个量级）。 */
 const MAX_DELIVER_CHARS = 2_000;
+
+/**
+ * 自上一次回流以来见过 `working` 的节点。回流只在这之后的第一次 `done` 触发：
+ * 一轮结束时适配器会在几毫秒里连报 `done`、别的状态、再 `done`（ACP 的
+ * stopReason 之后还有用量与状态更新），每次的 `updatedAt` 都不同，单靠「进入
+ * done」或幂等键都挡不住（#1073）。记在进程内：重启后第一次 `done` 不回流，
+ * 宁少不重。
+ */
+const working = new Set<string>();
+
+/** 用例之间换一份干净的。 */
+export function resetChildDone(): void {
+  working.clear();
+}
 
 /** `data.agent.childDone`，读不出来就是默认档。 */
 export function childDoneOf(data: unknown): ChildDone {
@@ -105,7 +120,11 @@ export function noteChildDone(
 ): ChildDoneOutcome {
   const queued: string[] = [];
   const skipped: { mainId: string; reason: string }[] = [];
-  if (state !== "done") return { queued, skipped };
+  if (state === "working") {
+    working.add(childId);
+    return { queued, skipped };
+  }
+  if (state !== "done" || !working.delete(childId)) return { queued, skipped };
   const child = loadNode(context.database, childId);
   if (child === undefined || child.nodeType !== "terminal") {
     return { queued, skipped };
