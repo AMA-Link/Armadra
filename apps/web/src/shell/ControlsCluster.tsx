@@ -102,18 +102,21 @@ export function ControlsCluster() {
           "transition-[right] duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none",
         )}
       >
-        <ClusterButton
-          label={t("nodeObservation.open")}
-          active={panels.observation === "drawer"}
-          onClick={() =>
-            setPanel(
-              "observation",
-              panels.observation === "drawer" ? "closed" : "drawer",
-            )
-          }
-        >
-          <ListTree />
-        </ClusterButton>
+        {/* 节点观察与画布偏好只对画布有意义：会话页盖着画布时不挂（#1084）。 */}
+        {!sessionsOpen && (
+          <ClusterButton
+            label={t("nodeObservation.open")}
+            active={panels.observation === "drawer"}
+            onClick={() =>
+              setPanel(
+                "observation",
+                panels.observation === "drawer" ? "closed" : "drawer",
+              )
+            }
+          >
+            <ListTree />
+          </ClusterButton>
+        )}
 
         <ClusterButton
           label={t("sessionPage.title")}
@@ -217,27 +220,29 @@ export function ControlsCluster() {
           </ClusterButton>
         )}
 
-        <DropdownMenu {...preferences.menuProps}>
-          <Tooltip delayDuration={500}>
-            <TooltipTrigger asChild {...preferences.tooltipTriggerProps}>
-              <DropdownMenuTrigger asChild>
-                <IconButton
-                  size="cluster"
-                  label={t("wb.menu")}
-                  active={preferences.menuOpen}
-                >
-                  <SlidersHorizontal />
-                </IconButton>
-              </DropdownMenuTrigger>
-            </TooltipTrigger>
-            {/* 菜单展开时不要再挂 Tooltip：它会压在第一条勾选项上。
+        {!sessionsOpen && (
+          <DropdownMenu {...preferences.menuProps}>
+            <Tooltip delayDuration={500}>
+              <TooltipTrigger asChild {...preferences.tooltipTriggerProps}>
+                <DropdownMenuTrigger asChild>
+                  <IconButton
+                    size="cluster"
+                    label={t("wb.menu")}
+                    active={preferences.menuOpen}
+                  >
+                    <SlidersHorizontal />
+                  </IconButton>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              {/* 菜单展开时不要再挂 Tooltip：它会压在第一条勾选项上。
                 菜单**关掉**之后也不该弹回来，那一下由 `useMenuTooltip` 拦。 */}
-            {preferences.menuOpen ? null : (
-              <CommandTip side="left" label={t("wb.menu")} />
-            )}
-          </Tooltip>
-          <CanvasPreferencesMenu />
-        </DropdownMenu>
+              {preferences.menuOpen ? null : (
+                <CommandTip side="left" label={t("wb.menu")} />
+              )}
+            </Tooltip>
+            <CanvasPreferencesMenu />
+          </DropdownMenu>
+        )}
       </div>
     </>
   );
