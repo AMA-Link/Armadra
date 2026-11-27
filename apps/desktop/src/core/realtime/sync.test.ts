@@ -9,8 +9,17 @@ import * as Y from "yjs";
 
 import { loadBoard, saveBoard } from "../canvas/documents";
 import { stickyNode } from "../canvas/nodes.fixture";
-import { nodesOf, projectDoc } from "./doc";
-import { readUpdatesAfter, realtimeRow } from "./store";
+import { BOARD_FORMAT, BOARD_FORMAT_KEY } from "@armadra/shared";
+
+import {
+  EMPTY_PROJECTION,
+  applyDelta,
+  createBoardDoc,
+  metaOf,
+  nodesOf,
+  projectDoc,
+} from "./doc";
+import { markRealtime, readUpdatesAfter, realtimeRow } from "./store";
 import {
   CLOSE_BAD_FRAME,
   CLOSE_FORBIDDEN,
@@ -87,6 +96,50 @@ describe("同步流", () => {
     expect(projectDoc(client.doc, fx.board.id).nodes.map((n) => n.id)).toEqual([
       note.id,
     ]);
+  });
+
+  it("0.19 之前切到实时、没有格式号的板，加载时补上当前格式号并落库（#1082）", () => {
+    // 老文档：有内容，没有 `meta.boardFormat`。
+    const legacy = createBoardDoc();
+    applyDelta(
+      legacy,
+      EMPTY_PROJECTION,
+      { nodes: [stickyNode(fx.board.id)], edges: [], whiteboard: "" },
+      null,
+    );
+    expect(metaOf(legacy).has(BOARD_FORMAT_KEY)).toBe(false);
+    markRealtime(
+      fx.core.database,
+      fx.board.id,
+      Y.encodeStateAsUpdate(legacy),
+      Date.now(),
+    );
+
+    const live = fx.hub.open(fx.workspaceId, fx.board.id, false);
+    if (live === undefined) throw new Error("not opened");
+    expect(metaOf(live.doc).get(BOARD_FORMAT_KEY)).toBe(BOARD_FORMAT);
+    expect(readUpdatesAfter(fx.core.database, fx.board.id, 0)).toHaveLength(1);
+
+    const client = new MemoryClient();
+    client.connect(fx.hub, live);
+    pumpAll([client]);
+    expect(metaOf(client.doc).get(BOARD_FORMAT_KEY)).toBe(BOARD_FORMAT);
+    expect(projectDoc(client.doc, fx.board.id).nodes).toHaveLength(1);
+  });
+
+  it("已有格式号的板再加载不新增更新", () => {
+    seedOneNote();
+    const first = fx.hub.open(fx.workspaceId, fx.board.id, true);
+    if (first === undefined) throw new Error("not opened");
+    fx.hub.unload(first);
+    const before = readUpdatesAfter(fx.core.database, fx.board.id, 0).length;
+    const again = fx.hub.open(fx.workspaceId, fx.board.id, false);
+    if (again === undefined) throw new Error("not reopened");
+    expect(again).not.toBe(first);
+    expect(metaOf(again.doc).get(BOARD_FORMAT_KEY)).toBe(BOARD_FORMAT);
+    expect(readUpdatesAfter(fx.core.database, fx.board.id, 0)).toHaveLength(
+      before,
+    );
   });
 
   it("设置关着时不切", () => {
