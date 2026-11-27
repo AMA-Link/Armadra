@@ -1,4 +1,5 @@
 import { runDeliveryBridge } from "../../runs/registry";
+import { kickWake } from "./kick-wake";
 import { CHILD_DONE_SENDER } from "../child-done";
 import { expectedProcesses, paneRunsAgent } from "../../agent/launch";
 import {
@@ -490,16 +491,9 @@ export async function attempt(
           now,
         );
     }
-    // 没有会话的目标先踢一下唤醒（不等）：休眠着的接回，core 重启或适配器自己
-    // 退出而断掉的 ACP 会话接上下一代（契约 §129.5）。接得回来的那一类在这一拍
-    // 里就算 `sleeping`，下面照「还早」排队；接不回来的照旧往下走。
-    if (
-      (code === "TARGET_GONE" || code === "TARGET_NOT_AGENT_PANE") &&
-      context.terminals?.sleeping?.(item.targetNodeId) !== true
-    ) {
-      void context.terminals?.wakeNode?.(item.targetNodeId).catch(() => {
-        // 接不回来：唤醒方记日志；排着的那条由 TTL 决定死期。
-      });
+    // 没有会话的目标先踢一下唤醒（契约 §129.5）；接得回来的这一拍里就算 `sleeping`。
+    if (code === "TARGET_GONE" || code === "TARGET_NOT_AGENT_PANE") {
+      kickWake(context, item.targetNodeId);
     }
     if (
       (code === "TARGET_GONE" || code === "TARGET_NOT_AGENT_PANE") &&

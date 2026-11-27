@@ -148,6 +148,30 @@ export function revivableRow(
   return { id: sessionId, agentId: row.agent_id };
 }
 
+/**
+ * 依赖编排替 ACP 节点起会话（会话页新建、工作流起角色）与页面挂载时的
+ * `createSession` 走同一把节点锁：后到的那一个看到活着的 ACP 行就复用它。
+ * 以前两条路各起一个适配器，同一个节点两个进程、一条成了孤儿（#1077）。
+ */
+export function acpSpawnOnce(
+  database: DatabaseSync,
+  manager: {
+    isAlive(sessionId: string): boolean;
+    session(sessionId: string): TerminalSession;
+  },
+  nodeId: string,
+  spawn: () => Promise<TerminalSession>,
+): Promise<TerminalSession> {
+  return exclusive(nodeId, async () => {
+    const latest = loadSession(database, nodeId);
+    if (latest !== undefined && manager.isAlive(latest.sessionId)) {
+      const row = manager.session(latest.sessionId);
+      if (row.backend === "acp") return row;
+    }
+    return spawn();
+  });
+}
+
 /** 同一个节点上的起、停、切换一次一个。 */
 function exclusive<T>(nodeId: string, job: () => Promise<T>): Promise<T> {
   const previous = busyNodes.get(nodeId) ?? Promise.resolve();
