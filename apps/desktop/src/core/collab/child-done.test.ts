@@ -251,4 +251,48 @@ describe("上级会话断了（core 重启、适配器退出）", () => {
     expect(items).toHaveLength(1);
     expect(items[0]?.lastReason).toBe("TARGET_GONE");
   });
+
+  it("接回结束后推一下出队泵，排着的回流随即投进去（#1077）", async () => {
+    const generation = fixture.terminal.liveGeneration;
+    dead();
+    let reviving = false;
+    let finish: (ok: boolean) => void = () => {};
+    const box: { pump?: SendPump } = {};
+    const collab = {
+      ...fixture.collab,
+      nudge: (nodeId: string) => box.pump?.noteQueued(nodeId),
+      terminals: {
+        ...fixture.terminal.bridge,
+        generation: () => fixture.terminal.liveGeneration,
+        sleeping: () => reviving,
+        wakeNode: (_nodeId: string) => {
+          reviving = true;
+          return new Promise<boolean>((done) => {
+            finish = done;
+          });
+        },
+      },
+    };
+    const pump = new SendPump(() => collab);
+    box.pump = pump;
+    pump.noteStatus(child, "working");
+    pump.noteStatus(child, "done");
+    await vi.waitFor(() => expect(reviving).toBe(true));
+    await pump.drain(main);
+    expect(pendingFor(fixture.database, main, 0)[0]?.lastReason).toBe(
+      "TARGET_STARTING",
+    );
+    // 接回来了：行回到 running、上级空闲；途中的状态帧已经错过。
+    fixture.database
+      .prepare("UPDATE terminal_sessions SET status = 'running' WHERE id = ?")
+      .run(mainSession);
+    fixture.terminal.liveGeneration = generation;
+    idle(main, mainSession);
+    reviving = false;
+    finish(true);
+    await vi.waitFor(() => expect(fixture.terminal.submits).toHaveLength(1));
+    expect(fixture.terminal.submits[0]?.data ?? "").toContain(
+      "from: Armadra 下级回流",
+    );
+  });
 });
