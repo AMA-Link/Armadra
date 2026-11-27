@@ -42,6 +42,7 @@ import { scoped, srcKey, withSource } from "../sources/scope";
 import { createLocalConnection } from "../sources/connection";
 import { sourceRegistry } from "../sources/registry";
 import { CLOSE_REVOKED, type ControlSocketOpener } from "./ws";
+import { backoffCeiling } from "../lib/backoff";
 
 type EventType = WorkspaceEvent["type"];
 type EventOf<T extends EventType> = Extract<WorkspaceEvent, { type: T }>;
@@ -204,6 +205,16 @@ export function setWorkspaceEventTransport(
 
 /** 续不上就从现在重订之前缓一下，免得一块坏库把订阅转成忙循环。 */
 export const RESUBSCRIBE_DELAY_MS = 1_000;
+/** 一直订不上（没装事件域、一直被拒）时，重订间隔翻倍到这里封顶。 */
+export const RESUBSCRIBE_CAP_MS = 30_000;
+
+/** 连续第 `failures` 次（从 0 起）订不上之后等多久：1 秒起翻倍，30 秒封顶。 */
+export function resubscribeDelay(failures: number): number {
+  return backoffCeiling(failures, {
+    baseMs: RESUBSCRIBE_DELAY_MS,
+    capMs: RESUBSCRIBE_CAP_MS,
+  });
+}
 
 /* -------------------------------- 连接管理 ------------------------------- */
 
@@ -247,6 +258,10 @@ function lose(connection: Connection, reason: AccessLostReason): void {
 /** 一轮订阅：一直读，直到被拒、被取消，或连接停下。 */
 async function pump(connection: Connection): Promise<void> {
   const { source } = connection;
+  // 连续订不上的次数；订上一次（收到位置帧）就归零。
+  let failures = 0;
+  const pause = () =>
+    new Promise((resolve) => setTimeout(resolve, resubscribeDelay(failures++)));
   while (!connection.stopped) {
     // 这一轮订上过（收到过位置帧）：之后的 `not_found` 是 core 因删除或归档结束了
     // 它，而不是订早了（工作空间还没建好）。
@@ -261,6 +276,7 @@ async function pump(connection: Connection): Promise<void> {
         if (connection.stopped) return;
         if ((item as { type?: unknown } | null)?.type === "cursor") {
           subscribed = true;
+          failures = 0;
           announce(connection, true);
           continue;
         }
@@ -292,12 +308,12 @@ async function pump(connection: Connection): Promise<void> {
       // `snapshot_required` / `cursor_ahead`：从现在重订，订阅者在上升沿上重读。
       // 其余（没装事件域）同样缓一下再试。
       announce(connection, false);
-      await new Promise((resolve) => setTimeout(resolve, RESUBSCRIBE_DELAY_MS));
+      await pause();
       continue;
     }
     // core 主动结束了这一轮（不该发生）：缓一下再订。
     announce(connection, false);
-    await new Promise((resolve) => setTimeout(resolve, RESUBSCRIBE_DELAY_MS));
+    await pause();
   }
 }
 

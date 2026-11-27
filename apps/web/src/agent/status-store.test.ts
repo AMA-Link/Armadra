@@ -211,6 +211,34 @@ describe("agent status mirror", () => {
     expect(scoped(NODE) in store().statuses).toBe(false);
   });
 
+  // core 重启后补齐出 `alive=false`，接回来的第一条活动就该把它作废（#1075）。
+  it("a live activity clears the stale `alive=false` from hydrate", () => {
+    const dead: SessionSummary = {
+      nodeId: NODE,
+      boardId: "board",
+      sessionId: "s1",
+      kind: "terminal",
+      title: "claude",
+      cwd: "/repo",
+      agentId: "claude",
+      state: "done",
+      unread: false,
+      updatedAt: at(0),
+      alive: false,
+    };
+    store().hydrate([dead], WORKSPACE);
+    const activity = (n: number, phase: "exited" | "starting") => ({
+      phase,
+      since: BASE,
+      rev: `boot:${n}`,
+    });
+    store().setActivity(NODE, activity(1, "exited"));
+    expect(store().statuses[scoped(NODE)]!.alive).toBe(false);
+    store().setActivity(NODE, activity(2, "starting"));
+    expect(store().statuses[scoped(NODE)]!.alive).toBeUndefined();
+    expect(store().statuses[scoped(NODE)]!.activity?.phase).toBe("starting");
+  });
+
   it("hydrates from the sessions payload without clobbering fresher state", () => {
     const session: SessionSummary = {
       nodeId: NODE,

@@ -188,3 +188,67 @@ describe("投递", () => {
     expect(pendingFor(fixture.database, main, 0)).toHaveLength(1);
   });
 });
+
+describe("上级会话断了（core 重启、适配器退出）", () => {
+  function dead(): void {
+    fixture.database
+      .prepare(
+        "UPDATE terminal_sessions SET status = 'failed', attach_state = 'exited' WHERE id = ?",
+      )
+      .run(mainSession);
+    fixture.terminal.liveGeneration = undefined as never;
+    fixture.terminal.drive.set(main, { state: "exited" } as never);
+  }
+
+  it("出队时踢一下唤醒；接得回来的当「还早」排着，不取消（#1075）", async () => {
+    dead();
+    let reviving = false;
+    const woken: string[] = [];
+    const collab = {
+      ...fixture.collab,
+      terminals: {
+        ...fixture.terminal.bridge,
+        generation: () => fixture.terminal.liveGeneration,
+        sleeping: () => reviving,
+        // 与 ACP 接回一样：调用的这一拍里同步占住节点。
+        wakeNode: (nodeId: string) => {
+          woken.push(nodeId);
+          reviving = true;
+          return new Promise<boolean>(() => {});
+        },
+      },
+    };
+    const pump = new SendPump(() => collab);
+    pump.noteStatus(child, "working");
+    pump.noteStatus(child, "done");
+    await vi.waitFor(() => expect(woken).toContain(main));
+    await pump.drain(main);
+    const items = pendingFor(fixture.database, main, 0);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      state: "queued",
+      lastReason: "TARGET_STARTING",
+    });
+  });
+
+  it("接不回来的（唤醒答 false）照旧留在队里等 TTL", async () => {
+    dead();
+    const collab = {
+      ...fixture.collab,
+      terminals: {
+        ...fixture.terminal.bridge,
+        generation: () => fixture.terminal.liveGeneration,
+        sleeping: () => false,
+        wakeNode: async () => false,
+      },
+    };
+    const pump = new SendPump(() => collab);
+    pump.noteStatus(child, "working");
+    pump.noteStatus(child, "done");
+    await pump.drain(main);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const items = pendingFor(fixture.database, main, 0);
+    expect(items).toHaveLength(1);
+    expect(items[0]?.lastReason).toBe("TARGET_GONE");
+  });
+});

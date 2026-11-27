@@ -86,6 +86,68 @@ export function acpSwitching(nodeId: string): boolean {
   return busyNodes.has(nodeId);
 }
 
+/**
+ * 投递时接回断掉的 ACP 会话（契约 §129.5）。core 重启（`failed`）或适配器自己
+ * 退出（`exited`）、不是人停的（`termination_intent = 'none'`）才接；同一个节点
+ * 一分钟最多一次，接起来就崩的适配器不会被投递反复拉起。
+ */
+let deliveryReviver:
+  ((nodeId: string) => Promise<boolean> | undefined) | undefined;
+const revivedAt = new Map<string, number>();
+export const DELIVERY_REVIVE_COOLDOWN_MS = 60_000;
+
+/** 有就开始接回并答它的结果；不该接的答 `undefined`。同步占住节点。 */
+export function reviveAcpForDelivery(
+  nodeId: string,
+): Promise<boolean> | undefined {
+  return deliveryReviver?.(nodeId);
+}
+
+/** 用例之间清掉冷却。 */
+export function resetDeliveryRevive(): void {
+  revivedAt.clear();
+}
+
+function reviveAllowed(nodeId: string, now: number): boolean {
+  const last = revivedAt.get(nodeId);
+  if (last !== undefined && now - last < DELIVERY_REVIVE_COOLDOWN_MS) {
+    return false;
+  }
+  revivedAt.set(nodeId, now);
+  return true;
+}
+
+/** 节点当前那一行：ACP、已结束、不是人停的、也不是休眠。 */
+export function revivableRow(
+  database: DatabaseSync,
+  nodeId: string,
+): { readonly id: string; readonly agentId: string } | undefined {
+  const sessionId = loadSession(database, nodeId)?.sessionId;
+  if (sessionId === undefined) return undefined;
+  const row = database
+    .prepare(
+      "SELECT backend_kind, status, termination_intent, agent_id FROM terminal_sessions WHERE id = ?",
+    )
+    .get(sessionId) as
+    | {
+        backend_kind: string;
+        status: string;
+        termination_intent: string;
+        agent_id: string | null;
+      }
+    | undefined;
+  if (
+    row === undefined ||
+    row.backend_kind !== "acp" ||
+    row.agent_id === null ||
+    (row.status !== "failed" && row.status !== "exited") ||
+    row.termination_intent !== "none"
+  ) {
+    return undefined;
+  }
+  return { id: sessionId, agentId: row.agent_id };
+}
+
 /** 同一个节点上的起、停、切换一次一个。 */
 function exclusive<T>(nodeId: string, job: () => Promise<T>): Promise<T> {
   const previous = busyNodes.get(nodeId) ?? Promise.resolve();
@@ -294,27 +356,50 @@ export function installRoutes(context: CoreContext, deps: AcpRouteDeps): void {
     };
 
   /** 节点上这一行的下一代（接回）。休眠着的走休眠执行者，好让它的状态机对得上。 */
+  const relaunchNow = async (
+    wiring: AcpTerminalWiring,
+    nodeId: string,
+    rowId: string,
+    agentId: string,
+  ): Promise<TerminalSession> => {
+    if (wiring.manager.isAlive(rowId)) return wiring.manager.session(rowId);
+    if (hibernatedSession(database, nodeId)?.sessionId === rowId) {
+      await wiring.hibernator.wake(nodeId, "focus");
+      return wiring.manager.session(rowId);
+    }
+    return wiring.manager.revive(
+      rowId,
+      wiring.environment(nodeId, agentId, {
+        acp: true,
+        ssh: sshOf(database, nodeId) !== undefined,
+      }),
+      { ended: true },
+    );
+  };
   const relaunch = (
     wiring: AcpTerminalWiring,
     nodeId: string,
     rowId: string,
     agentId: string,
   ): Promise<TerminalSession> =>
-    exclusive(nodeId, async () => {
-      if (wiring.manager.isAlive(rowId)) return wiring.manager.session(rowId);
-      if (hibernatedSession(database, nodeId)?.sessionId === rowId) {
-        await wiring.hibernator.wake(nodeId, "focus");
-        return wiring.manager.session(rowId);
-      }
-      return wiring.manager.revive(
-        rowId,
-        wiring.environment(nodeId, agentId, {
-          acp: true,
-          ssh: sshOf(database, nodeId) !== undefined,
-        }),
-        { ended: true },
-      );
+    exclusive(nodeId, () => relaunchNow(wiring, nodeId, rowId, agentId));
+
+  // 投递接回（契约 §129.5）：占住节点是同步的，调用者这一拍里就看得到
+  // `acpSwitching`，门链把「没有会话」当「还早」排队。
+  deliveryReviver = (nodeId) => {
+    const wiring = deps.wiring();
+    const row =
+      wiring === undefined ? undefined : revivableRow(database, nodeId);
+    if (wiring === undefined || row === undefined) return undefined;
+    if (wiring.manager.isAlive(row.id) || !reviveAllowed(nodeId, Date.now())) {
+      return undefined;
+    }
+    return exclusive(nodeId, async () => {
+      await wiring.ready;
+      await relaunchNow(wiring, nodeId, row.id, row.agentId);
+      return true;
     });
+  };
 
   /** 一个活着的 ACP 会话行；结束了的（休眠、重启、适配器退出）先接回。 */
   const live = async (
