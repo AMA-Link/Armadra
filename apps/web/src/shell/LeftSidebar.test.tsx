@@ -32,6 +32,8 @@ vi.mock("../api/client", () => ({
     }),
     agents: vi.fn().mockResolvedValue([]),
     loadBoard: vi.fn(),
+    listBoards: vi.fn().mockResolvedValue([]),
+    sessionBoard: vi.fn().mockResolvedValue({ boardId: "sb" }),
     conversations: vi.fn().mockResolvedValue([]),
   },
 }));
@@ -49,6 +51,9 @@ import { usePreferencesStore } from "../app/preferences-store";
 import { useCanvasStore } from "../store/canvas-store";
 import { useNeedsStore } from "../notifications/needs-store";
 import { LeftSidebar } from "./LeftSidebar";
+import { runtimeApi } from "../api/client";
+import { useSessionPage } from "../session-page/store";
+import { document as boardDocument } from "../session-page/fixtures";
 import { COMPACT_QUERY, PHONE_LANDSCAPE_QUERY } from "../platform/layout";
 
 installDomPolyfills();
@@ -138,6 +143,7 @@ const initialPlatform = window.navigator.platform;
 
 afterEach(() => {
   cleanup();
+  useSessionPage.setState({ open: false, creating: false });
   window.matchMedia = initialMatchMedia;
   desktop.mockReturnValue(false);
   Object.defineProperty(window.navigator, "platform", {
@@ -165,6 +171,56 @@ function asMacDesktopShell(): void {
     configurable: true,
   });
 }
+
+describe("画布 / 会话切换（#1084）", () => {
+  it("停靠时树上方有两种视图；切到会话换成会话列表并打开会话页，切回关掉", async () => {
+    vi.mocked(runtimeApi.loadBoard).mockResolvedValue(
+      boardDocument("sb", []) as never,
+    );
+    renderSidebar();
+    const canvasTab = screen.getByRole("tab", { name: "画布" });
+    const sessionsTab = screen.getByRole("tab", { name: "会话" });
+    expect(canvasTab.getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByText("新建画布")).toBeTruthy();
+
+    // Radix 的 Tabs 在按下时切换。
+    fireEvent.mouseDown(sessionsTab);
+    expect(useSessionPage.getState().open).toBe(true);
+    const create = await screen.findByRole("button", { name: "新建会话" });
+    expect(screen.queryByText("新建画布")).toBeNull();
+    fireEvent.click(create);
+    expect(useSessionPage.getState().creating).toBe(true);
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "画布" }));
+    expect(useSessionPage.getState().open).toBe(false);
+    expect(screen.getByText("新建画布")).toBeTruthy();
+  });
+
+  it("会话页从别处打开（工具簇、命令）时侧栏同步到会话视图", async () => {
+    vi.mocked(runtimeApi.loadBoard).mockResolvedValue(
+      boardDocument("sb", []) as never,
+    );
+    renderSidebar();
+    act(() => useSessionPage.getState().show());
+    expect(
+      screen.getByRole("tab", { name: "会话" }).getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(
+      await screen.findByRole("button", { name: "新建会话" }),
+    ).toBeTruthy();
+  });
+
+  it("窄屏抽屉里没有切换：手机走底部导航", async () => {
+    const original = window.matchMedia;
+    vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+      ...original(query),
+      matches: query === COMPACT_QUERY,
+    }));
+    renderSidebar();
+    const drawer = await screen.findByRole("dialog", { name: "侧栏" });
+    expect(within(drawer).queryByRole("tab")).toBeNull();
+  });
+});
 
 describe("LeftSidebar", () => {
   it("自上而下是标题栏、Armadra、新建画布、这台电脑、设置", () => {

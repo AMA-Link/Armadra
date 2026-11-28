@@ -20,7 +20,7 @@
 import { useCompactLayout, usePhoneLandscape } from "../platform/layout";
 import { isSimpleMode } from "../acp/simple-mode";
 import { Sheet, SheetClose, SheetContent, SheetTitle } from "@/ui/sheet";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { createPortal } from "react-dom";
 import { Bell, PanelLeft, Search, Settings } from "lucide-react";
 
@@ -31,6 +31,9 @@ import { commandKeysLabel } from "../keybindings";
 import { SidebarHeader } from "../sidebar/SidebarHeader";
 import { SidebarSearch } from "../sidebar/SidebarSearch";
 import { WorkspaceTree } from "../sidebar/WorkspaceTree";
+import { useSessionListInSidebar } from "../session-page/list-placement";
+import { useSessionPage } from "../session-page/store";
+import { Tabs, TabsList, TabsTrigger } from "@/ui/tabs";
 import { useCanvasStore } from "../store/canvas-store";
 import { Button } from "@/ui/button";
 import { IconButton } from "@/ui/icon-button";
@@ -61,6 +64,10 @@ export function LeftSidebar() {
   // 简洁模式下 Agent 面板默认展开（ACP 设计 §8 第 3 条）；只定初值，之后由人收放。
   const [agentsOpen, setAgentsOpen] = useState(isSimpleMode);
 
+  // 会话模式（#1084）：侧栏停靠时列表在这里，树让给它；切回画布关会话页。
+  const sessionsInSidebar = useSessionListInSidebar();
+  const sessionsOpen = useSessionPage((state) => state.open);
+
   const content = (
     <div className="flex h-full w-full flex-col overflow-hidden">
       <div className="relative shrink-0">
@@ -88,6 +95,17 @@ export function LeftSidebar() {
       {shell || overlay ? <SidebarHeader /> : null}
       {agentsOpen ? (
         <NotificationPanel onClose={() => setAgentsOpen(false)} />
+      ) : sessionsInSidebar ? (
+        <>
+          <ModeTabs sessions={sessionsOpen} />
+          {sessionsOpen ? (
+            <Suspense fallback={<div className="min-h-0 flex-1" />}>
+              <SessionSidebar />
+            </Suspense>
+          ) : (
+            <WorkspaceTree />
+          )}
+        </>
       ) : (
         <WorkspaceTree />
       )}
@@ -155,6 +173,31 @@ export function LeftSidebar() {
       )}
       <SidebarSearch open={searchOpen} onOpenChange={setSearchOpen} />
     </>
+  );
+}
+
+const SessionSidebar = lazy(() => import("../session-page/SessionSidebar"));
+
+/**
+ * 画布 / 会话两种视图的切换（#1084）：与会话页开关、命令 `app.sessions`、
+ * 工具簇的会话钮是同一个状态。切到画布就是关会话页，回到原来的画布与视口。
+ */
+function ModeTabs({ sessions }: { sessions: boolean }) {
+  const t = useT();
+  return (
+    <Tabs
+      value={sessions ? "sessions" : "canvas"}
+      onValueChange={(value) => {
+        if (value === "sessions") useSessionPage.getState().show();
+        else useSessionPage.getState().close();
+      }}
+      className="shrink-0 px-2 pb-1"
+    >
+      <TabsList className="w-full" aria-label={t("sidebar.mode")}>
+        <TabsTrigger value="canvas">{t("sidebar.mode.canvas")}</TabsTrigger>
+        <TabsTrigger value="sessions">{t("sidebar.mode.sessions")}</TabsTrigger>
+      </TabsList>
+    </Tabs>
   );
 }
 

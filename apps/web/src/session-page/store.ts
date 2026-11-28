@@ -16,11 +16,14 @@ interface SessionPageState {
   readonly open: boolean;
   readonly selectedNodeId: string | null;
   readonly starting: readonly StartingSession[];
+  /** 「新建会话」对话框开着（列表在侧栏或页面里都从这里开）。 */
+  readonly creating: boolean;
   show(nodeId?: string): void;
   close(): void;
   toggle(): void;
   select(nodeId: string | null): void;
   addStarting(session: StartingSession): void;
+  setCreating(creating: boolean): void;
 }
 
 /** 会话页（Armadra#1062）：开关、选中的会话、刚新开的会话。 */
@@ -28,6 +31,7 @@ export const useSessionPage = create<SessionPageState>((set) => ({
   open: false,
   selectedNodeId: null,
   starting: [],
+  creating: false,
   show: (nodeId) =>
     set((state) => ({
       open: true,
@@ -36,6 +40,7 @@ export const useSessionPage = create<SessionPageState>((set) => ({
   close: () => set({ open: false }),
   toggle: () => set((state) => ({ open: !state.open })),
   select: (nodeId) => set({ selectedNodeId: nodeId }),
+  setCreating: (creating) => set({ creating }),
   addStarting: (session) =>
     set((state) => ({
       starting: [

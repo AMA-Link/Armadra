@@ -42,7 +42,7 @@ export function SessionPane({
   item: AgentSessionItem;
   /** 手机布局：回到列表。 */
   onBack?: (() => void) | undefined;
-  /** 桌面：右上工具簇压在头部右端，让开它。 */
+  /** 桌面：右上工具簇压在右侧一整列，头部与正文都让开它。 */
   clearOfCluster: boolean;
   /** 手机：左上角浮着侧栏开关，头部让开它。 */
   clearOfToggle?: boolean;
@@ -127,7 +127,8 @@ export function SessionPane({
           </>
         )}
       </header>
-      <div className="relative min-h-0 flex-1">
+      {/* 工具簇是一整列，不只压在头部：正文（消息、命令块、输入框）也让开它（#1084）。 */}
+      <div className={cn("relative min-h-0 flex-1", clearOfCluster && "pr-16")}>
         <React.Suspense fallback={<SessionSkeleton />}>
           {acp ? (
             <SessionView

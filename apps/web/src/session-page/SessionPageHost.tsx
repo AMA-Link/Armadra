@@ -51,8 +51,19 @@ export function SessionPageHost() {
       open: false,
       selectedNodeId: null,
       starting: [],
+      creating: false,
     });
   }, [workspaceId]);
+
+  // 换画布（侧栏、新建、删除、搜索、命令）：要看的是画布，页面关掉（#1084）。
+  // 不清选中：再打开时还停在刚才那条会话上。
+  const boardId = useCanvasStore((state) => state.boardId);
+  const previousBoard = React.useRef(boardId);
+  React.useEffect(() => {
+    if (previousBoard.current === boardId) return;
+    previousBoard.current = boardId;
+    useSessionPage.getState().close();
+  }, [boardId]);
 
   if (!open) return null;
   return (

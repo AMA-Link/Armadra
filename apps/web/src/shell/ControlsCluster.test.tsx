@@ -4,12 +4,14 @@ import { cleanup, render } from "@testing-library/react";
 import { installDomPolyfills, TestProviders } from "../app/test-harness";
 import { useCanvasStore } from "../store/canvas-store";
 import { initialPanels } from "../store/canvas/internal";
+import { useSessionPage } from "../session-page/store";
 import { ControlsCluster } from "./ControlsCluster";
 
 installDomPolyfills();
 afterEach(() => {
   cleanup();
   useCanvasStore.setState({ panels: initialPanels });
+  useSessionPage.setState({ open: false });
 });
 
 const cluster = (container: HTMLElement) =>
@@ -46,5 +48,30 @@ describe("右上工具簇", () => {
       </TestProviders>,
     );
     expect(cluster(container)?.className).toContain("overflow-y-auto");
+  });
+
+  it("会话页开着时不挂节点观察与画布偏好，工作空间级的钮还在（#1084）", () => {
+    const labels = (container: HTMLElement) =>
+      [...(cluster(container)?.querySelectorAll("button") ?? [])].map(
+        (button) => button.getAttribute("aria-label"),
+      );
+    const closed = render(
+      <TestProviders>
+        <ControlsCluster />
+      </TestProviders>,
+    );
+    const before = labels(closed.container);
+    cleanup();
+    useSessionPage.setState({ open: true });
+    const open = render(
+      <TestProviders>
+        <ControlsCluster />
+      </TestProviders>,
+    );
+    const after = labels(open.container);
+    expect(after.length).toBe(before.length - 2);
+    expect(after).toContain(before[1]);
+    expect(after).not.toContain(before[0]);
+    expect(after).not.toContain(before.at(-1));
   });
 });
