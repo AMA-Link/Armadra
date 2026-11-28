@@ -2,6 +2,33 @@
 
 每个版本一节，按发布倒序。括号里是合入的 PR 编号（github.com/AMA-Link/Armadra，2026-10-11 前为 Owlbay/Armadra，旧编号照常跳转）。兼容范围以 `tools/release/compatibility.json` 为准，发布说明里的 `armadra-compatibility` 围栏由它渲染。桌面、服务器与手机 / 平板 App 共用一条版本线和一个标签 `vX.Y.Z`（规则见 `docs/guides/ci-release.md`「版本规则」）；有手机端改动的版本，在「手机与平板」小节里写，其余写在「桌面 / 服务器」下。2026-10-10 之前手机端曾单独编号（1.0.0、1.1.0），内容并入对应的 0.2.5、0.2.6。
 
+## 0.25.1（2026-11-27）
+
+版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.25.1。随包 `@armadra/agent` 0.25.1（与统一版本对齐，代理本身没有改动）与平台协议包 0.25.1（没有形状变化，云端协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.25.1。修复版：0.19 之前切到实时协同的老画布不再被格式闸拒绝；会话页与画布的侧栏、工具簇不再冲突，侧栏多了「画布 / 会话」切换。
+
+Version aligned with armadra-cloud and armadra-agent (all three ship 0.25.1), with `@armadra/agent` 0.25.1 (aligned with the unified version, no changes in the agent) and platform protocol 0.25.1 (no shape changes, the cloud protocol is still 1.4); matching images `armadra-cloud` / `armadra-relay` 0.25.1. A patch release: realtime boards switched on before 0.19 are no longer refused by the format gate; the session page no longer fights the canvas sidebar and tool column, and the sidebar gains a "Canvas / Sessions" switch.
+
+### 桌面 / 服务器
+
+- 老实时板补格式号（#1083，Closes #1082）：0.19 之前切到实时协同、有内容的画布文档里没有 `meta.boardFormat`，客户端格式闸把它当成上一代格式拒绝加入，提示「这块板的数据格式与当前版本不同」，而实时板的普通保存又答 `409 realtime_active`，这类画布既进不了实时也改不了。core 加载实时文档时缺格式号就补上当前号，作为一条普通更新落库并转发；已有格式号的板不产生更新。
+  Format stamp for old realtime boards (#1083, Closes #1082): boards switched to realtime before 0.19 with content had no `meta.boardFormat`, so the client format gate treated them as the previous format and refused to join, while plain saves on a realtime board answer `409 realtime_active`, leaving such boards neither live nor editable. The core now stamps the current format when it loads a realtime document without one, as a normal persisted and broadcast update; boards that already carry the key get no update.
+- 会话页与画布的外壳不再冲突（#1085，#1084）：会话页打开时在侧栏点画布直接回到画布，任何换板（新建、删除、搜索、命令）都会关掉会话页，会话页打开时侧栏不高亮任何画布；会话详情的正文让开右上的工具簇，会话页打开时工具簇隐去「节点观察」与「画布偏好」。
+  The session page no longer fights the canvas shell (#1085, #1084): clicking a board in the sidebar while the session page is open goes straight back to the canvas, any board change (new, delete, search, command) closes the session page, and no board is highlighted while it is open; the session detail body clears the top-right tool column, which hides "Node observation" and "Canvas preferences" while the session page is open.
+- 侧栏「画布 / 会话」切换（#1086，#1084）：会话视图下会话列表放进侧栏，页面只显示详情；侧栏收起时页面自己显示列表。
+  "Canvas / Sessions" switch in the sidebar (#1086, #1084): in the sessions view the session list lives in the sidebar and the page shows only the detail; with the sidebar collapsed the page shows its own list.
+
+### 随包 Agent
+
+- `@armadra/agent` 0.25.1：与统一版本对齐，代理本身没有改动。
+  `@armadra/agent` 0.25.1: aligned with the unified version, no changes in the agent.
+
+### 部署说明
+
+- 不需要迁移：核心库仍是 0074；云端协议（1.4）不变。
+  No migration: the core database stays at 0074; the cloud protocol (1.4) is unchanged.
+- 配套镜像 `ghcr.io/ama-link/armadra-cloud:0.25.1`、`ghcr.io/ama-link/armadra-relay:0.25.1` 与协议包 0.25.1 同号（cloud 侧没有面向用户的改动；控制台页面取自本版服务器壳镜像）；推送中继镜像 `ghcr.io/ama-link/armadra-push-relay:0.25.1` 与服务器壳镜像同号。发版顺序同 0.25.0：先打 Armadra `v0.25.1` 标签，服务器壳镜像推送完成后再打 armadra-cloud `v0.25.1`。
+  Matching images `ghcr.io/ama-link/armadra-cloud:0.25.1` and `ghcr.io/ama-link/armadra-relay:0.25.1` share the number with protocol package 0.25.1 (no user-facing changes on the cloud side; console pages come from this version's server shell image); the push-relay image `ghcr.io/ama-link/armadra-push-relay:0.25.1` shares the number with the server shell image. Release order as in 0.25.0: tag Armadra `v0.25.1` first, then tag armadra-cloud `v0.25.1` once the server shell image has been pushed.
+
 ## 0.25.0（2026-11-27）
 
 版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.25.0。随包 `@armadra/agent` 0.25.0（与统一版本对齐，代理本身没有改动）与平台协议包 0.25.0（没有形状变化，云端协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.25.0。本版的主线是会话页：同一个 Agent 会话既能在页面里像聊天一样对话，也能钉到画布上用；下级做完一轮会回流给上级。另有投递时接回断掉的 ACP 会话、会话页一个会话只起一个适配器、Windows cmd 里带引号的 `--` 等修复。核心库迁移到 0074；核心 JSON API 只增 procedure 与取值（契约 §128、§129）。
