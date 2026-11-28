@@ -4,14 +4,18 @@
 
 ## 0.25.1（2026-11-27）
 
-版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.25.1。随包 `@armadra/agent` 0.25.1（与统一版本对齐，代理本身没有改动）与平台协议包 0.25.1（没有形状变化，云端协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.25.1。修复版：0.19 之前切到实时协同的老画布不再被格式闸拒绝。
+版本统一：Armadra、armadra-cloud、armadra-agent 同为 0.25.1。随包 `@armadra/agent` 0.25.1（与统一版本对齐，代理本身没有改动）与平台协议包 0.25.1（没有形状变化，云端协议仍是 1.4）；配套镜像 `armadra-cloud` / `armadra-relay` 0.25.1。修复版：0.19 之前切到实时协同的老画布不再被格式闸拒绝；会话页与画布的侧栏、工具簇不再冲突，侧栏多了「画布 / 会话」切换。
 
-Version aligned with armadra-cloud and armadra-agent (all three ship 0.25.1), with `@armadra/agent` 0.25.1 (aligned with the unified version, no changes in the agent) and platform protocol 0.25.1 (no shape changes, the cloud protocol is still 1.4); matching images `armadra-cloud` / `armadra-relay` 0.25.1. A patch release: realtime boards switched on before 0.19 are no longer refused by the format gate.
+Version aligned with armadra-cloud and armadra-agent (all three ship 0.25.1), with `@armadra/agent` 0.25.1 (aligned with the unified version, no changes in the agent) and platform protocol 0.25.1 (no shape changes, the cloud protocol is still 1.4); matching images `armadra-cloud` / `armadra-relay` 0.25.1. A patch release: realtime boards switched on before 0.19 are no longer refused by the format gate; the session page no longer fights the canvas sidebar and tool column, and the sidebar gains a "Canvas / Sessions" switch.
 
 ### 桌面 / 服务器
 
 - 老实时板补格式号（#1083，Closes #1082）：0.19 之前切到实时协同、有内容的画布文档里没有 `meta.boardFormat`，客户端格式闸把它当成上一代格式拒绝加入，提示「这块板的数据格式与当前版本不同」，而实时板的普通保存又答 `409 realtime_active`，这类画布既进不了实时也改不了。core 加载实时文档时缺格式号就补上当前号，作为一条普通更新落库并转发；已有格式号的板不产生更新。
   Format stamp for old realtime boards (#1083, Closes #1082): boards switched to realtime before 0.19 with content had no `meta.boardFormat`, so the client format gate treated them as the previous format and refused to join, while plain saves on a realtime board answer `409 realtime_active`, leaving such boards neither live nor editable. The core now stamps the current format when it loads a realtime document without one, as a normal persisted and broadcast update; boards that already carry the key get no update.
+- 会话页与画布的外壳不再冲突（#1085，#1084）：会话页打开时在侧栏点画布直接回到画布，任何换板（新建、删除、搜索、命令）都会关掉会话页，会话页打开时侧栏不高亮任何画布；会话详情的正文让开右上的工具簇，会话页打开时工具簇隐去「节点观察」与「画布偏好」。
+  The session page no longer fights the canvas shell (#1085, #1084): clicking a board in the sidebar while the session page is open goes straight back to the canvas, any board change (new, delete, search, command) closes the session page, and no board is highlighted while it is open; the session detail body clears the top-right tool column, which hides "Node observation" and "Canvas preferences" while the session page is open.
+- 侧栏「画布 / 会话」切换（#1086，#1084）：会话视图下会话列表放进侧栏，页面只显示详情；侧栏收起时页面自己显示列表。
+  "Canvas / Sessions" switch in the sidebar (#1086, #1084): in the sessions view the session list lives in the sidebar and the page shows only the detail; with the sidebar collapsed the page shows its own list.
 
 ### 随包 Agent
 
