@@ -51,6 +51,7 @@ export function SessionPageHost() {
       open: false,
       selectedNodeId: null,
       starting: [],
+      creating: false,
     });
   }, [workspaceId]);
 
