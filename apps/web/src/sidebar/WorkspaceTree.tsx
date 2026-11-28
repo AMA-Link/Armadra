@@ -72,6 +72,7 @@ import { useIsFetching } from "@tanstack/react-query";
 import { activeSourceId, sk } from "../sources/scope";
 import { useBoardMutations, useNewBoard } from "./use-board-mutations";
 import { displayName } from "./display-name";
+import { useSessionPage } from "../session-page/store";
 
 export function WorkspaceTree() {
   const t = useT();
@@ -80,6 +81,9 @@ export function WorkspaceTree() {
   const boards = useCanvasStore((state) => state.boards);
   const boardId = useCanvasStore((state) => state.boardId);
   const selectBoard = useCanvasStore((state) => state.selectBoard);
+  // 会话页盖着画布时没有「当前画布」可高亮（#1084）：行照常列出，不标选中。
+  const sessionsOpen = useSessionPage((state) => state.open);
+  const highlightBoard = !sessionsOpen;
   // 偏好里的键带源前缀；这棵树只列当前源的行，取出各自的 id。
   const sourceId = activeSourceId();
   const openKeys = usePreferencesStore((state) => state.openWorkspaceKeys);
@@ -157,6 +161,9 @@ export function WorkspaceTree() {
 
   const openBoard = useCallback(
     (workspaceId: string, id: string) => {
+      // 在侧栏点画布就是要看画布：会话页盖着时先关（#1084），点的正是当前
+      // 画布时板不变，下面的切板不会替它关。
+      useSessionPage.getState().close();
       if (workspace?.id === workspaceId) {
         selectBoard(id);
         return;
@@ -213,6 +220,7 @@ export function WorkspaceTree() {
                     caption={entry.workspaceName}
                     board={entry.board}
                     active={
+                      highlightBoard &&
                       entry.workspaceId === workspace?.id &&
                       entry.board.id === boardId
                     }
@@ -239,6 +247,7 @@ export function WorkspaceTree() {
                     activeBoardId={
                       summary.id === workspace?.id ? boardId : null
                     }
+                    highlightBoard={highlightBoard}
                     signals={signals}
                     pinnedBoardIds={pinnedBoardIds}
                     pinned={pinnedWorkspaceIds.includes(summary.id)}
@@ -478,6 +487,7 @@ function WorkspaceRow({
   active,
   boards,
   activeBoardId,
+  highlightBoard,
   signals,
   pinnedBoardIds,
   pinned,
@@ -491,6 +501,8 @@ function WorkspaceRow({
   active: boolean;
   boards: BoardEntry[];
   activeBoardId: string | null;
+  /** 会话页开着时为 `false`：当前画布照常保持可见，但不画选中。 */
+  highlightBoard: boolean;
   signals: Record<string, BoardSignal>;
   pinnedBoardIds: string[];
   pinned: boolean;
@@ -589,7 +601,7 @@ function WorkspaceRow({
               key={board.id}
               board={board}
               indent
-              active={board.id === activeBoardId}
+              active={highlightBoard && board.id === activeBoardId}
               pinned={pinnedBoardIds.includes(board.id)}
               signal={signals[board.id]}
               onSelect={() => onSelectBoard(board.id)}

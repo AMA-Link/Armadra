@@ -68,10 +68,14 @@ vi.mock("../platform", () => ({
 import { installDomPolyfills, TestProviders } from "../app/test-harness";
 import { usePreferencesStore } from "../app/preferences-store";
 import { useCanvasStore } from "../store/canvas-store";
+import { useSessionPage } from "../session-page/store";
 import { WorkspaceTree } from "./WorkspaceTree";
 
 installDomPolyfills();
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  useSessionPage.setState({ open: false });
+});
 
 const timestamp = "2026-09-04T10:00:00.000Z";
 const workspace: Workspace = {
@@ -300,6 +304,20 @@ describe("WorkspaceTree", () => {
 
     fireEvent.click(await screen.findByText("实验"));
     expect(useCanvasStore.getState().boardId).toBe(SECOND);
+  });
+
+  it("会话页开着时不标选中画布；点当前画布也回到画布（#1084）", async () => {
+    useSessionPage.setState({ open: true });
+    renderTree();
+    const row = (name: string) =>
+      screen.getByText(name).closest('[class*="group/board"]');
+    await screen.findByText("默认");
+    expect(row("默认")?.getAttribute("data-active")).toBeNull();
+
+    fireEvent.click(screen.getByText("默认"));
+    expect(useSessionPage.getState().open).toBe(false);
+    expect(useCanvasStore.getState().boardId).toBe(FIRST);
+    expect(row("默认")?.getAttribute("data-active")).toBe("true");
   });
 
   it("画布菜单里的置顶把它放进置顶组", async () => {
