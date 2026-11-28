@@ -72,6 +72,7 @@ const goto = vi.hoisted(() => vi.fn());
 vi.mock("@/sidebar/goto-node", () => ({ gotoNode: goto }));
 
 import { useCanvasStore } from "@/store/canvas-store";
+import { initialPanels } from "@/store/canvas/internal";
 import { setDefaultDriverForTest } from "@/acp/driver";
 import { SessionPageHost } from "./SessionPageHost";
 import { useSessionPage } from "./store";
@@ -102,10 +103,17 @@ beforeEach(() => {
   rows.current = [];
   goto.mockReset();
   setDefaultDriverForTest("acp");
+  // 侧栏收起：会话页自带列表（侧栏停靠时列表在侧栏里，见下面「列表的位置」）。
   useCanvasStore.setState({
     workspace: { id: "w1", rootPath: "/repo", name: "repo" },
+    panels: { ...initialPanels, sidebar: "collapsed" },
   } as never);
-  useSessionPage.setState({ open: true, selectedNodeId: null, starting: [] });
+  useSessionPage.setState({
+    open: true,
+    selectedNodeId: null,
+    starting: [],
+    creating: false,
+  });
   api.listBoards.mockReset().mockResolvedValue([{ id: "b1", name: "Main" }]);
   api.sessionBoard.mockReset().mockResolvedValue({ boardId: "b2" });
   api.loadBoard.mockReset().mockImplementation(async (_w, id: string) =>
@@ -318,6 +326,33 @@ describe("换工作空间", () => {
       open: false,
       selectedNodeId: null,
     });
+  });
+});
+
+describe("列表的位置（#1084）", () => {
+  it("侧栏停靠展开时页面不带列表，只剩详情；收起后列表回到页面", async () => {
+    useCanvasStore.setState({
+      panels: { ...initialPanels, sidebar: "open" },
+    } as never);
+    const { container } = mount();
+    expect(await screen.findByText("选择一个会话")).toBeTruthy();
+    expect(container.querySelector('[data-slot="session-list"]')).toBeNull();
+    act(() => {
+      useCanvasStore.setState({
+        panels: { ...initialPanels, sidebar: "collapsed" },
+      } as never);
+    });
+    expect(await screen.findByText("Planner")).toBeTruthy();
+  });
+
+  it("「新建会话」的开关在 store 里：侧栏的列表也能打开对话框", async () => {
+    useCanvasStore.setState({
+      panels: { ...initialPanels, sidebar: "open" },
+    } as never);
+    mount();
+    await screen.findByText("选择一个会话");
+    act(() => useSessionPage.getState().setCreating(true));
+    expect(await screen.findByRole("dialog")).toBeTruthy();
   });
 });
 

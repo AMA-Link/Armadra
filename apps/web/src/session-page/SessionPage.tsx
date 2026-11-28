@@ -13,6 +13,7 @@ import { writeNodeOnBoard } from "./off-canvas-writer";
 import { NewSessionDialog } from "./NewSessionDialog";
 import { SessionList } from "./SessionList";
 import { SessionPane } from "./SessionPane";
+import { useSessionListInSidebar } from "./list-placement";
 import { useSessionPage } from "./store";
 import { useWorkspaceAgentSessions } from "./use-agent-sessions";
 
@@ -32,7 +33,10 @@ export default function SessionPage() {
   const selectedNodeId = useSessionPage((state) => state.selectedNodeId);
   const select = useSessionPage((state) => state.select);
   const close = useSessionPage((state) => state.close);
-  const [creating, setCreating] = React.useState(false);
+  const creating = useSessionPage((state) => state.creating);
+  const setCreating = useSessionPage((state) => state.setCreating);
+  // 侧栏停靠时列表在侧栏里（`SessionSidebar`），这里只剩详情（#1084）。
+  const listInSidebar = useSessionListInSidebar();
 
   // 会话视图的写回（会话 id、模式 / 模型、自动标题）对不在当前画布的会话也要
   // 落到它所在的板上（#1071）。
@@ -54,7 +58,7 @@ export default function SessionPage() {
 
   const selected = items.find((item) => item.nodeId === selectedNodeId);
   const ordered = React.useMemo(() => flatten(tree), [tree]);
-  const showList = !compact || selected === undefined;
+  const showList = !listInSidebar && (!compact || selected === undefined);
   const showPane = !compact || selected !== undefined;
 
   return (
