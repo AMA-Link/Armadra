@@ -15,6 +15,8 @@ function escapeBelongsToPage(event: KeyboardEvent): boolean {
     target.closest("[role=dialog],[role=menu],[role=listbox],[role=combobox]")
   )
     return false;
+  // 终端里的 Escape 是给程序的（vim、CLI 的取消），不关页面（#1088）。
+  if (target.closest(".xterm")) return false;
   if (
     (target instanceof HTMLTextAreaElement ||
       target instanceof HTMLInputElement) &&

@@ -68,11 +68,24 @@ vi.mock("@/acp/SessionView", () => ({
     />
   ),
 }));
+vi.mock("@/terminal/TerminalSurface", () => ({
+  TerminalSurface: (props: {
+    nodeId: string;
+    data: { sessionId?: string };
+  }) => (
+    <div
+      data-testid="terminal-surface"
+      data-node={props.nodeId}
+      data-session={props.data.sessionId ?? ""}
+    />
+  ),
+}));
 const goto = vi.hoisted(() => vi.fn());
 vi.mock("@/sidebar/goto-node", () => ({ gotoNode: goto }));
 
 import { useCanvasStore } from "@/store/canvas-store";
 import { initialPanels } from "@/store/canvas/internal";
+import { useNodeBodyStore } from "@/nodes/node-body-mode";
 import { setDefaultDriverForTest } from "@/acp/driver";
 import { SessionPageHost } from "./SessionPageHost";
 import { useSessionPage } from "./store";
@@ -144,6 +157,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  useNodeBodyStore.setState({ modes: {} });
   useSessionPage.setState({ open: false, selectedNodeId: null, starting: [] });
 });
 
@@ -180,14 +194,40 @@ describe("SessionPage", () => {
     const view = await screen.findByTestId("session-view");
     expect(view.dataset.node).toBe("canvas-acp");
     expect(view.dataset.readOnly).toBe("false");
-    // 工具簇是一整列：正文与头部一样让开它（#1084）。
-    expect(view.closest(".pr-16")).not.toBeNull();
+    // 工具簇是右侧整栏：页面整体在它左边结束，详情区自己不再留空（#1088）。
+    const page = view.closest('[data-slot="session-page"]');
+    expect(page?.className).toContain("pr-(--cluster-rail-w)");
+    expect(view.closest(".pr-16")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "在画布上定位" }));
     expect(goto).toHaveBeenCalledWith("b1", "canvas-acp");
     expect(useSessionPage.getState().open).toBe(false);
   });
 
-  it("终端驱动：只读会话内容 + 输入行 pasteTerminal；会话板上的没有定位", async () => {
+  it("终端驱动缺省显示终端画面，与画布节点同一种节点体（#1088）", async () => {
+    mount();
+    fireEvent.click(await screen.findByText("Shell agent"));
+    const terminal = await screen.findByTestId("terminal-surface");
+    expect(terminal.dataset).toMatchObject({ node: "term", session: SID });
+    expect(screen.queryByTestId("session-view")).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "消息" })).toBeNull();
+  });
+
+  it("终端里的 Escape 不关页面（#1088）", async () => {
+    mount();
+    fireEvent.click(await screen.findByText("Shell agent"));
+    const terminal = await screen.findByTestId("terminal-surface");
+    const xterm = window.document.createElement("textarea");
+    xterm.className = "xterm-helper-textarea";
+    const host = window.document.createElement("div");
+    host.className = "xterm";
+    host.append(xterm);
+    terminal.append(host);
+    fireEvent.keyDown(xterm, { key: "Escape" });
+    expect(useSessionPage.getState().open).toBe(true);
+  });
+
+  it("节点体切成会话内容：只读会话内容 + 输入行 pasteTerminal；会话板上的没有定位", async () => {
+    useNodeBodyStore.getState().set("term", "session");
     mount();
     fireEvent.click(await screen.findByText("Shell agent"));
     const view = await screen.findByTestId("session-view");
