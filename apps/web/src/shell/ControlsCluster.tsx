@@ -49,6 +49,12 @@ import type { ReactNode } from "react";
  * （`app.commandPalette`）与侧栏顶部的入口都还在。
  */
 
+/**
+ * 会话页开着时工具簇那一整栏的宽度（#1088）。会话页右边让出同一个值，
+ * 用 CSS 变量 `--cluster-rail-w` 传过去（`SessionPage` 的 `pr-(--cluster-rail-w)`）。
+ */
+export const CLUSTER_RAIL_WIDTH = "var(--cluster-rail-w)";
+
 /** 工具簇/侧栏钮共用的那条底。 */
 const BAR =
   "flex flex-col gap-2 rounded-card border border-border-strong bg-panel/90 p-1 shadow-overlay backdrop-blur-[12px]";
@@ -78,6 +84,9 @@ export function ControlsCluster() {
 
   // 手机上会话页铺满、底部导航能回画布：簇压在页面上只会挡住列表（#1062 S7）。
   if (compact && sessionsOpen) return null;
+  // 会话页（桌面）：簇是右侧整高的一栏，页面在它左边结束（#1088）。浮着的卡片
+  // 压在会话上要么挡字、要么得让出一条露底色的竖带。
+  const rail = sessionsOpen;
 
   return (
     <>
@@ -86,19 +95,28 @@ export function ControlsCluster() {
         // 簇的第一格落在窗口顶部 44px 的拖拽带里；不写回 no-drag，那一格按下去
         // 是拖窗口。
         {...noDragProps()}
+        data-rail={rail ? "true" : undefined}
         style={{
           // 窗口窄、抽屉宽时不能把簇推出容器：右缘最多让到「容器宽 − 簇宽 − 边距」，
           // 此时簇压在抽屉上，但仍然整个看得见、够得着。
           right: drawer
-            ? `min(calc(14px + min(100vw, ${WORK_PANEL_WIDTH[drawer]})), calc(100% - 58px))`
+            ? rail
+              ? `min(min(100vw, ${WORK_PANEL_WIDTH[drawer]}), calc(100% - ${CLUSTER_RAIL_WIDTH}))`
+              : `min(calc(14px + min(100vw, ${WORK_PANEL_WIDTH[drawer]})), calc(100% - 58px))`
             : undefined,
         }}
         className={cn(
-          BAR,
-          // 右边再让开安全区（手机横屏的刘海与圆角，#766）；开着抽屉时 `style` 接管。
-          "absolute top-[14px] right-[calc(14px+var(--surface-inset-right,0px))] z-[var(--z-cluster)]",
-          // 窗口很矮时簇自己滚，不被裁掉。
-          "max-h-[calc(100%-28px)] overflow-y-auto",
+          rail
+            ? // 整栏：宽度与会话页让出的那一截同一个值（`CLUSTER_RAIL_WIDTH`）。
+              "absolute inset-y-0 right-[var(--surface-inset-right,0px)] flex w-(--cluster-rail-w) flex-col items-center gap-2 border-l border-border bg-panel px-1 pt-[14px] pb-2"
+            : cn(
+                BAR,
+                // 右边再让开安全区（手机横屏的刘海与圆角，#766）；开着抽屉时 `style` 接管。
+                "absolute top-[14px] right-[calc(14px+var(--surface-inset-right,0px))]",
+                // 窗口很矮时簇自己滚，不被裁掉。
+                "max-h-[calc(100%-28px)]",
+              ),
+          "z-[var(--z-cluster)] overflow-y-auto",
           "transition-[right] duration-(--dur-base) ease-(--ease-out) motion-reduce:transition-none",
         )}
       >

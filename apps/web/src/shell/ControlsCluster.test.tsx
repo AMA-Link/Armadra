@@ -74,4 +74,43 @@ describe("右上工具簇", () => {
     expect(after).not.toContain(before[0]);
     expect(after).not.toContain(before.at(-1));
   });
+
+  it("会话页开着时是右侧整栏，不是浮着的卡片（#1088）", () => {
+    const floating = render(
+      <TestProviders>
+        <ControlsCluster />
+      </TestProviders>,
+    );
+    const card = cluster(floating.container);
+    expect(card?.dataset.rail).toBeUndefined();
+    expect(card?.className).toContain("top-[14px]");
+    cleanup();
+    useSessionPage.setState({ open: true });
+    const { container } = render(
+      <TestProviders>
+        <ControlsCluster />
+      </TestProviders>,
+    );
+    const rail = cluster(container);
+    expect(rail?.dataset.rail).toBe("true");
+    expect(rail?.className).toContain("inset-y-0");
+    expect(rail?.className).toContain("w-(--cluster-rail-w)");
+    expect(rail?.className).toContain("border-l");
+    expect(rail?.className).not.toContain("shadow-overlay");
+  });
+
+  it("整栏遇到抽屉时让到抽屉左边", () => {
+    useSessionPage.setState({ open: true });
+    useCanvasStore.setState({
+      panels: { ...initialPanels, explorer: "drawer" },
+    });
+    const { container } = render(
+      <TestProviders>
+        <ControlsCluster />
+      </TestProviders>,
+    );
+    const right = cluster(container)?.style.right ?? "";
+    expect(right).toContain("min(100vw, var(--drawer-w))");
+    expect(right).toContain("var(--cluster-rail-w)");
+  });
 });

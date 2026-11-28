@@ -7,7 +7,7 @@ import { driverOf } from "@/acp/driver";
 import { agentLabel, agentMark } from "@/agent/launch";
 import { errorCode, runtimeApi } from "@/api/client";
 import { HeaderApproval } from "@/approval/ApprovalShell";
-import { useT } from "@/app/preferences-store";
+import { usePreferencesStore, useT } from "@/app/preferences-store";
 import { gotoNode } from "@/sidebar/goto-node";
 import { useCanvasStore } from "@/store/canvas-store";
 import { ContextReadsBadge } from "@/nodes/ContextReadsBadge";
@@ -27,23 +27,28 @@ import { StatusPill } from "@/ui/status-pill";
 import { Textarea } from "@/ui/textarea";
 import { toast } from "@/ui/toast";
 import type { AgentSessionItem } from "./model";
+import { useNodeBodyMode } from "@/nodes/node-body-mode";
+import { terminalSchemeAttribute } from "@/terminal/surface/appearance";
 import { useSessionPage } from "./store";
 import { useSessionHeader } from "./use-session-header";
 
 /** 消息流带着 Markdown 渲染：和画布上的节点体一样按需加载。 */
 const SessionView = React.lazy(() => import("@/acp/SessionView"));
+/** 终端画面（xterm 及其插件）同样按需加载。 */
+const TerminalSurface = React.lazy(() =>
+  import("@/terminal/TerminalSurface").then((module) => ({
+    default: module.TerminalSurface,
+  })),
+);
 
 export function SessionPane({
   item,
   onBack,
-  clearOfCluster,
   clearOfToggle = false,
 }: {
   item: AgentSessionItem;
   /** 手机布局：回到列表。 */
   onBack?: (() => void) | undefined;
-  /** 桌面：右上工具簇压在右侧一整列，头部与正文都让开它。 */
-  clearOfCluster: boolean;
   /** 手机：左上角浮着侧栏开关，头部让开它。 */
   clearOfToggle?: boolean;
 }) {
@@ -51,6 +56,13 @@ export function SessionPane({
   const workspaceId = useCanvasStore((state) => state.workspace?.id ?? "");
   const agent = item.data.agent;
   const acp = driverOf(agent) === "acp";
+  // 终端驱动：与画布上同一个节点显示同一种节点体（#1088）。缺省是终端画面，
+  // 切成「会话内容」才是只读时间线 + 输入行。
+  const bodyMode = useNodeBodyMode(item.nodeId, agent);
+  // 终端偏好「始终深色」：终端四周那一圈跟着深（与画布节点同一个属性）。
+  const termScheme = usePreferencesStore((state) =>
+    terminalSchemeAttribute(state.terminal.colorScheme),
+  );
   const sessionId = item.data.sessionId ?? item.session?.sessionId ?? null;
   const header = useSessionHeader(
     item.nodeId,
@@ -76,7 +88,7 @@ export function SessionPane({
         className={cn(
           "flex h-12 shrink-0 items-center gap-2 border-b",
           clearOfToggle ? "pl-12" : "pl-3",
-          clearOfCluster ? "pr-16" : "pr-3",
+          "pr-3",
         )}
       >
         {onBack && (
@@ -127,8 +139,7 @@ export function SessionPane({
           </>
         )}
       </header>
-      {/* 工具簇是一整列，不只压在头部：正文（消息、命令块、输入框）也让开它（#1084）。 */}
-      <div className={cn("relative min-h-0 flex-1", clearOfCluster && "pr-16")}>
+      <div className="relative min-h-0 flex-1">
         <React.Suspense fallback={<SessionSkeleton />}>
           {acp ? (
             <SessionView
@@ -138,6 +149,21 @@ export function SessionPane({
             />
           ) : sessionId === null ? (
             <SessionSkeleton />
+          ) : bodyMode === "terminal" ? (
+            // 同一个 PTY 多一个查看端：窗口尺寸由 core 定（正在输入的那一端，
+            // 否则最大的那一端，`core/terminal/viewers.ts`），与画布上那份不抢。
+            <div
+              data-slot="session-terminal"
+              data-term-scheme={termScheme}
+              className="h-full bg-background p-2"
+            >
+              <TerminalSurface
+                key={`${item.nodeId}:${sessionId}`}
+                nodeId={item.nodeId}
+                data={{ ...item.data, sessionId }}
+                collapsed={false}
+              />
+            </div>
           ) : (
             <div className="flex h-full flex-col">
               <div className="min-h-0 flex-1">

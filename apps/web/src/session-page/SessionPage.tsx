@@ -67,6 +67,8 @@ export default function SessionPage() {
       aria-label={t("sessionPage.title")}
       className={cn(
         "absolute inset-0 z-[var(--z-session-page)] flex bg-background",
+        // 桌面：右边是工具簇那一整栏（`ControlsCluster` 的 rail，#1088），页面在它左边结束。
+        !compact && "pr-(--cluster-rail-w)",
         // 手机：底部导航压在页面上，内容停在它上面（Armadra#1062 S7）。
         compact && "pb-[calc(var(--mobile-nav-h)+var(--safe-bottom))]",
       )}
@@ -116,7 +118,6 @@ export default function SessionPage() {
             <SessionPane
               item={selected}
               onBack={compact ? () => select(null) : undefined}
-              clearOfCluster={!compact}
               clearOfToggle={compact}
             />
           ) : (
